@@ -1,0 +1,6 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Metrics Reporter Kafka,org.apache.kylin.metrics.lib.impl.kafka,KafkaReservoirReporter.KafkaReservoirListener,39,0,0,0,10,0,5,0,5,0
+Apache Kylin - Metrics Reporter Kafka,org.apache.kylin.metrics.lib.impl.kafka,KafkaReservoirReporter,62,0,0,0,15,0,8,0,8,0
+Apache Kylin - Metrics Reporter Kafka,org.apache.kylin.metrics.lib.impl.kafka,KafkaActiveReserviorListener,247,0,20,0,55,0,17,0,7,0
+Apache Kylin - Metrics Reporter Kafka,org.apache.kylin.metrics.lib.impl.kafka,KafkaReservoirReporter.Builder,30,0,0,0,7,0,3,0,3,0
+Apache Kylin - Metrics Reporter Kafka,org.apache.kylin.metrics.lib.impl.kafka,KafkaSink,18,0,0,0,2,0,2,0,2,0

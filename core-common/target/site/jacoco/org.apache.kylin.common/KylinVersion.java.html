@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KylinVersion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common</a> &gt; <span class="el_source">KylinVersion.java</span></div><h1>KylinVersion.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common;
+
+import java.io.File;
+import java.nio.charset.Charset;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import javax.annotation.Nullable;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.base.Predicate;
+import org.apache.kylin.shaded.com.google.common.collect.Iterables;
+
+public class KylinVersion implements Comparable {
+    private static final String COMMIT_SHA1_V15 = &quot;commit_SHA1&quot;;
+    private static final String COMMIT_SHA1_V13 = &quot;commit.sha1&quot;;
+
+    public final int major;
+    public final int minor;
+    public final int revision;
+    public final int internal;
+    public final boolean isSnapshot;
+
+<span class="fc" id="L46">    public KylinVersion(String version) {</span>
+
+<span class="fc" id="L48">        Preconditions.checkNotNull(version);</span>
+
+<span class="fc" id="L50">        int index = version.indexOf(&quot;-&quot;);//index of &quot;-SNAPSHOT&quot;</span>
+        String[] splits;
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (index == -1) {</span>
+<span class="fc" id="L53">            splits = version.split(&quot;\\.&quot;);</span>
+<span class="fc" id="L54">            isSnapshot = false;</span>
+        } else {
+<span class="nc" id="L56">            splits = version.substring(0, index).split(&quot;\\.&quot;);</span>
+<span class="nc" id="L57">            isSnapshot = true;</span>
+        }
+
+<span class="fc" id="L60">        major = Integer.parseInt(splits[0]);</span>
+<span class="fc" id="L61">        minor = Integer.parseInt(splits[1]);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        revision = splits.length &gt; 2 ? Integer.parseInt(splits[2]) : 0;</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        internal = splits.length &gt; 3 ? Integer.parseInt(splits[3]) : 0;</span>
+<span class="fc" id="L64">    }</span>
+
+    @Override
+    public String toString() {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        return &quot;&quot; + major + &quot;.&quot; + minor + &quot;.&quot; + revision + &quot;.&quot; + internal + (isSnapshot ? &quot;-SNAPSHOT&quot; : &quot;&quot;);</span>
+    }
+
+    @Override
+    public int compareTo(Object o) {
+<span class="fc" id="L73">        KylinVersion v = (KylinVersion) o;</span>
+        int comp;
+
+<span class="fc" id="L76">        comp = this.major - v.major;</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (comp != 0)</span>
+<span class="fc" id="L78">            return comp;</span>
+
+<span class="fc" id="L80">        comp = this.minor - v.minor;</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        if (comp != 0)</span>
+<span class="nc" id="L82">            return comp;</span>
+
+<span class="fc" id="L84">        comp = this.revision - v.revision;</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (comp != 0)</span>
+<span class="nc" id="L86">            return comp;</span>
+
+<span class="fc" id="L88">        comp = this.internal - v.internal;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (comp != 0)</span>
+<span class="fc" id="L90">            return comp;</span>
+
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        return (this.isSnapshot ? 0 : 1) - (v.isSnapshot ? 0 : 1);</span>
+    }
+
+    /**
+     * Require MANUAL updating kylin version per ANY upgrading.
+     */
+<span class="fc" id="L98">    private static final KylinVersion CURRENT_KYLIN_VERSION = new KylinVersion(&quot;4.0.0&quot;);</span>
+
+<span class="fc" id="L100">    private static final KylinVersion VERSION_200 = new KylinVersion(&quot;2.0.0&quot;);</span>
+
+<span class="fc" id="L102">    private static final Set&lt;KylinVersion&gt; SIGNATURE_INCOMPATIBLE_REVISIONS = new HashSet&lt;KylinVersion&gt;();</span>
+
+    /**
+     * 1.5.1 is actually compatible with 1.5.0's cube. However the &quot;calculate signature&quot; method in 1.5.1 code base somehow
+     * gives different signature values for 1.5.0 cubes. To prevent from users having to take care of this mess, as people
+     * usually won't expect to take lots of efforts for small upgrade (from 1.5.0 to 1.5.1), a special list of
+     * SIGNATURE_INCOMPATIBLE_REVISIONS is introduced to silently take care of such legacy cubes.
+     *
+     * We should NEVER add new stuff to SIGNATURE_INCOMPATIBLE_REVISIONS. &quot;calculate signature&quot; should always return consistent values
+     * to compatible versions. If it's impossible to maintain consistent signatures between upgrade, we should increase the minor version,
+     * e.g. it's better to skip 1.5.1 and use 1.6.0 as the next release version to 1.5.0, or even to use 2.0.0, as people tends to accept
+     * doing more (e.g. Having to use sth like a metastore upgrade tool when upgrading Kylin)
+     */
+    static {
+<span class="fc" id="L116">        SIGNATURE_INCOMPATIBLE_REVISIONS.add(new KylinVersion(&quot;1.5.1&quot;));</span>
+<span class="fc" id="L117">        SIGNATURE_INCOMPATIBLE_REVISIONS.add(new KylinVersion(&quot;1.6.1&quot;));</span>
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * Get current Kylin version
+     * &lt;p/&gt;
+     * Currently the implementation is reading directly from constant variable
+     *
+     * @return current kylin version in String
+     */
+    public static KylinVersion getCurrentVersion() {
+<span class="fc" id="L128">        return CURRENT_KYLIN_VERSION;</span>
+    }
+
+    public static boolean isBefore200(String ver) {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        return new KylinVersion(ver).compareTo(VERSION_200) &lt; 0;</span>
+    }
+
+    public static int compare(String v1, String v2) {
+<span class="nc" id="L136">        return new KylinVersion(v1).compareTo(new KylinVersion(v2));</span>
+    }
+
+    public static void main(String[] args) {
+<span class="nc" id="L140">        System.out.println(getKylinClientInformation());</span>
+<span class="nc" id="L141">    }</span>
+
+    public boolean isCompatibleWith(KylinVersion v) {
+<span class="nc" id="L144">        KylinVersion current = CURRENT_KYLIN_VERSION;</span>
+<span class="nc bnc" id="L145" title="All 4 branches missed.">        if (current.major != v.major || current.minor != v.minor) {</span>
+<span class="nc" id="L146">            return false;</span>
+        } else {
+<span class="nc" id="L148">            return true;</span>
+        }
+    }
+
+    public boolean isSignatureCompatibleWith(final KylinVersion v) {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (!isCompatibleWith(v)) {</span>
+<span class="nc" id="L154">            return false;</span>
+        }
+
+<span class="nc bnc" id="L157" title="All 4 branches missed.">        if (v.isSnapshot || isSnapshot) {</span>
+<span class="nc" id="L158">            return false;//for snapshot versions things are undetermined</span>
+        }
+
+<span class="nc" id="L161">        boolean signatureIncompatible = Iterables.any(Iterables.filter(</span>
+
+<span class="nc" id="L163">                SIGNATURE_INCOMPATIBLE_REVISIONS, new Predicate&lt;KylinVersion&gt;() {</span>
+                    @Override
+                    public boolean apply(@Nullable KylinVersion input) {
+<span class="nc bnc" id="L166" title="All 6 branches missed.">                        return input == null ? false : v.major == input.major &amp;&amp; v.minor == input.minor;</span>
+                    }
+<span class="nc" id="L168">                }), new Predicate&lt;KylinVersion&gt;() {</span>
+                    @Override
+                    public boolean apply(@Nullable KylinVersion input) {
+<span class="nc bnc" id="L171" title="All 4 branches missed.">                        return input == null ? false : input.revision &gt; v.revision;</span>
+                    }
+                });
+
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        return !signatureIncompatible;</span>
+    }
+
+    public static String getKylinClientInformation() {
+<span class="nc" id="L179">        StringBuilder buf = new StringBuilder();</span>
+
+<span class="nc" id="L181">        buf.append(&quot;kylin.home: &quot;).append(</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                KylinConfig.getKylinHome() == null ? &quot;UNKNOWN&quot; : new File(KylinConfig.getKylinHome()).getAbsolutePath())</span>
+<span class="nc" id="L183">                .append(&quot;\n&quot;);</span>
+<span class="nc" id="L184">        buf.append(&quot;kylin.version:&quot;).append(KylinVersion.getCurrentVersion()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L185">        buf.append(&quot;commit:&quot;).append(getGitCommitInfo()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L186">        buf.append(&quot;os.name:&quot;).append(System.getProperty(&quot;os.name&quot;)).append(&quot;\n&quot;);</span>
+<span class="nc" id="L187">        buf.append(&quot;os.arch:&quot;).append(System.getProperty(&quot;os.arch&quot;)).append(&quot;\n&quot;);</span>
+<span class="nc" id="L188">        buf.append(&quot;os.version:&quot;).append(System.getProperty(&quot;os.version&quot;)).append(&quot;\n&quot;);</span>
+<span class="nc" id="L189">        buf.append(&quot;java.version:&quot;).append(System.getProperty(&quot;java.version&quot;)).append(&quot;\n&quot;);</span>
+<span class="nc" id="L190">        buf.append(&quot;java.vendor:&quot;).append(System.getProperty(&quot;java.vendor&quot;));</span>
+
+<span class="nc" id="L192">        return buf.toString();</span>
+    }
+
+    public static String getGitCommitInfo() {
+        try {
+<span class="nc" id="L197">            File commitFile = new File(KylinConfig.getKylinHome(), COMMIT_SHA1_V15);</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">            if (!commitFile.exists()) {</span>
+<span class="nc" id="L199">                commitFile = new File(KylinConfig.getKylinHome(), COMMIT_SHA1_V13);</span>
+            }
+<span class="nc" id="L201">            List&lt;String&gt; lines = FileUtils.readLines(commitFile, Charset.defaultCharset());</span>
+<span class="nc" id="L202">            StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            for (String line : lines) {</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                if (!line.startsWith(&quot;#&quot;)) {</span>
+<span class="nc" id="L205">                    sb.append(line).append(&quot;;&quot;);</span>
+                }
+<span class="nc" id="L207">            }</span>
+<span class="nc" id="L208">            return sb.toString();</span>
+<span class="nc" id="L209">        } catch (Exception e) {</span>
+<span class="nc" id="L210">            return StringUtils.EMPTY;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

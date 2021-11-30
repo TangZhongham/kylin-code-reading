@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColumnDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">ColumnDesc.java</span></div><h1>ColumnDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+
+import java.util.Locale;
+import org.apache.kylin.metadata.datatype.DataType;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+/**
+ * Column Metadata from Source. All name should be uppercase.
+ * &lt;p/&gt;
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+public class ColumnDesc implements Serializable {
+
+    @JsonProperty(&quot;id&quot;)
+    private String id;
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+
+    @JsonProperty(&quot;datatype&quot;)
+    private String datatype;
+
+    @JsonProperty(&quot;comment&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String comment;
+
+    @JsonProperty(&quot;data_gen&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String dataGen;
+
+    @JsonProperty(&quot;index&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String index;
+
+<span class="pc" id="L61">    @JsonProperty(&quot;cc_expr&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String computedColumnExpr = null;//if null, it's not a computed column
+
+    // parsed from data type
+    private DataType type;
+
+    private TableDesc table;
+<span class="pc" id="L69">    private int zeroBasedIndex = -1;</span>
+<span class="pc" id="L70">    private boolean isNullable = true;</span>
+
+    private TblColRef ref;
+
+<span class="fc" id="L74">    public ColumnDesc() { // default constructor for Jackson</span>
+<span class="fc" id="L75">    }</span>
+
+<span class="fc" id="L77">    public ColumnDesc(ColumnDesc other) {</span>
+<span class="fc" id="L78">        this.id = other.id;</span>
+<span class="fc" id="L79">        this.name = other.name;</span>
+<span class="fc" id="L80">        this.datatype = other.datatype;</span>
+<span class="fc" id="L81">        this.dataGen = other.datatype;</span>
+<span class="fc" id="L82">        this.comment = other.comment;</span>
+<span class="fc" id="L83">        this.dataGen = other.dataGen;</span>
+<span class="fc" id="L84">        this.index = other.index;</span>
+<span class="fc" id="L85">        this.computedColumnExpr = other.computedColumnExpr;</span>
+<span class="fc" id="L86">    }</span>
+
+    public ColumnDesc(String id, String name, String datatype, String comment, String dataGen, String index,
+<span class="nc" id="L89">            String computedColumnExpr) {</span>
+<span class="nc" id="L90">        this.id = id;</span>
+<span class="nc" id="L91">        this.name = name;</span>
+<span class="nc" id="L92">        this.datatype = datatype;</span>
+<span class="nc" id="L93">        this.comment = comment;</span>
+<span class="nc" id="L94">        this.dataGen = dataGen;</span>
+<span class="nc" id="L95">        this.index = index;</span>
+<span class="nc" id="L96">        this.computedColumnExpr = computedColumnExpr;</span>
+<span class="nc" id="L97">    }</span>
+
+    /** Use TableRef.getColumn() instead */
+    @Deprecated
+    public TblColRef getRef() {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (ref == null) {</span>
+<span class="fc" id="L103">            ref = new TblColRef(this);</span>
+        }
+<span class="fc" id="L105">        return ref;</span>
+    }
+
+    public int getZeroBasedIndex() {
+<span class="fc" id="L109">        return zeroBasedIndex;</span>
+    }
+
+    public String getDatatype() {
+<span class="fc" id="L113">        return datatype;</span>
+    }
+
+    public void setDatatype(String datatype) {
+        //logger.info(&quot;setting datatype to &quot; + datatype);
+<span class="fc" id="L118">        this.datatype = datatype;</span>
+<span class="fc" id="L119">        type = DataType.getType(datatype);</span>
+<span class="fc" id="L120">    }</span>
+
+    public DataType getUpgradedType() {
+<span class="nc" id="L123">        return this.type;</span>
+    }
+
+    public String getId() {
+<span class="fc" id="L127">        return id;</span>
+    }
+
+    public void setId(String id) {
+<span class="fc" id="L131">        this.id = id;</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (id != null)</span>
+<span class="fc" id="L133">            zeroBasedIndex = Integer.parseInt(id) - 1;</span>
+<span class="fc" id="L134">    }</span>
+
+    public String getName() {
+<span class="fc" id="L137">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="fc" id="L141">        this.name = name;</span>
+<span class="fc" id="L142">    }</span>
+
+    public TableDesc getTable() {
+<span class="fc" id="L145">        return table;</span>
+    }
+
+    public void setTable(TableDesc table) {
+<span class="fc" id="L149">        this.table = table;</span>
+<span class="fc" id="L150">    }</span>
+
+    public String getComment() {
+<span class="nc" id="L153">        return comment;</span>
+    }
+
+    public void setComment(String comment) {
+<span class="fc" id="L157">        this.comment = comment;</span>
+<span class="fc" id="L158">    }</span>
+
+    public DataType getType() {
+<span class="fc" id="L161">        return type;</span>
+    }
+
+    public String getTypeName() {
+<span class="nc" id="L165">        return type.getName();</span>
+    }
+
+    public int getTypePrecision() {
+<span class="nc" id="L169">        return type.getPrecision();</span>
+    }
+
+    public int getTypeScale() {
+<span class="nc" id="L173">        return type.getScale();</span>
+    }
+
+    public boolean isNullable() {
+<span class="nc" id="L177">        return this.isNullable;</span>
+    }
+
+    public void setNullable(boolean nullable) {
+<span class="nc" id="L181">        this.isNullable = nullable;</span>
+<span class="nc" id="L182">    }</span>
+
+    public String getDataGen() {
+<span class="fc" id="L185">        return dataGen;</span>
+    }
+
+    public String getIndex() {
+<span class="nc" id="L189">        return index;</span>
+    }
+
+    public String getComputedColumnExpr() {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        Preconditions.checkState(computedColumnExpr != null);</span>
+
+<span class="nc" id="L195">        return computedColumnExpr;</span>
+    }
+
+    public boolean isComputedColumn() {
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        return computedColumnExpr != null;</span>
+    }
+
+    public void init(TableDesc table) {
+<span class="fc" id="L203">        this.table = table;</span>
+
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if (name != null)</span>
+<span class="fc" id="L206">            name = name.toUpperCase(Locale.ROOT);</span>
+
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (id != null)</span>
+<span class="fc" id="L209">            zeroBasedIndex = Integer.parseInt(id) - 1;</span>
+
+<span class="fc" id="L211">        DataType normalized = DataType.getType(datatype);</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (normalized == null) {</span>
+<span class="nc" id="L213">            this.setDatatype(null);</span>
+        } else {
+<span class="fc" id="L215">            this.setDatatype(normalized.toString());</span>
+        }
+<span class="fc" id="L217">    }</span>
+
+    // for test mainly
+    public static ColumnDesc mockup(TableDesc table, int oneBasedColumnIndex, String name, String datatype) {
+<span class="nc" id="L221">        ColumnDesc desc = new ColumnDesc();</span>
+<span class="nc" id="L222">        String id = &quot;&quot; + oneBasedColumnIndex;</span>
+<span class="nc" id="L223">        desc.setId(id);</span>
+<span class="nc" id="L224">        desc.setName(name);</span>
+<span class="nc" id="L225">        desc.setDatatype(datatype);</span>
+<span class="nc" id="L226">        desc.init(table);</span>
+<span class="nc" id="L227">        return desc;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L232">        final int prime = 31;</span>
+<span class="nc" id="L233">        int result = 1;</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        result = prime * result + ((table == null) ? 0 : table.hashCode());</span>
+<span class="nc" id="L236">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (this == obj)</span>
+<span class="fc" id="L242">            return true;</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L244">            return false;</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L246">            return false;</span>
+<span class="fc" id="L247">        ColumnDesc other = (ColumnDesc) obj;</span>
+
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        if (name == null) {</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">            if (other.name != null)</span>
+<span class="nc" id="L251">                return false;</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        } else if (!name.equals(other.name))</span>
+<span class="fc" id="L253">            return false;</span>
+
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (table == null) {</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            if (other.table != null)</span>
+<span class="nc" id="L257">                return false;</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        } else if (!table.getIdentity().equals(other.table.getIdentity()))</span>
+<span class="fc" id="L259">            return false;</span>
+
+<span class="nc" id="L261">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L266">        return &quot;ColumnDesc{&quot; + &quot;id='&quot; + id + '\'' + &quot;, name='&quot; + name + '\'' + &quot;, datatype='&quot; + datatype + '\''</span>
+                + &quot;, comment='&quot; + comment + '\'' + '}';
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

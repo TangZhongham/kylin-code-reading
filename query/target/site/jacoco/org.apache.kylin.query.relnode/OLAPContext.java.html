@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPContext.java</span></div><h1>OLAPContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+import org.apache.calcite.DataContext;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.threadlocal.InternalThreadLocal;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.metadata.expression.ExpressionColCollector;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.DynamicFunctionDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.JoinsTree;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.realization.SQLDigest.SQLCall;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.apache.kylin.query.routing.RealizationCheck;
+import org.apache.kylin.query.schema.OLAPSchema;
+import org.apache.kylin.storage.StorageContext;
+import org.apache.kylin.storage.hybrid.HybridInstance;
+
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+
+/**
+ */
+public class OLAPContext {
+
+    public static final String PRM_ACCEPT_PARTIAL_RESULT = &quot;AcceptPartialResult&quot;;
+    public static final String PRM_USER_AUTHEN_INFO = &quot;UserAuthenInfo&quot;;
+
+<span class="nc" id="L70">    static final InternalThreadLocal&lt;Map&lt;String, String&gt;&gt; _localPrarameters = new InternalThreadLocal&lt;&gt;();</span>
+
+<span class="nc" id="L72">    static final InternalThreadLocal&lt;Map&lt;Integer, OLAPContext&gt;&gt; _localContexts = new InternalThreadLocal&lt;&gt;();</span>
+
+    public static void setParameters(Map&lt;String, String&gt; parameters) {
+<span class="nc" id="L75">        _localPrarameters.set(parameters);</span>
+<span class="nc" id="L76">    }</span>
+
+    public static void clearParameter() {
+<span class="nc" id="L79">        _localPrarameters.remove();</span>
+<span class="nc" id="L80">    }</span>
+
+    public static void registerContext(OLAPContext ctx) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (_localContexts.get() == null) {</span>
+<span class="nc" id="L84">            Map&lt;Integer, OLAPContext&gt; contextMap = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L85">            _localContexts.set(contextMap);</span>
+        }
+<span class="nc" id="L87">        _localContexts.get().put(ctx.id, ctx);</span>
+<span class="nc" id="L88">    }</span>
+
+    public static Collection&lt;OLAPContext&gt; getThreadLocalContexts() {
+<span class="nc" id="L91">        Map&lt;Integer, OLAPContext&gt; map = _localContexts.get();</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        return map == null ? null : map.values();</span>
+    }
+
+    public static OLAPContext getThreadLocalContextById(int id) {
+<span class="nc" id="L96">        Map&lt;Integer, OLAPContext&gt; map = _localContexts.get();</span>
+<span class="nc" id="L97">        return map.get(id);</span>
+    }
+
+    public static void clearThreadLocalContexts() {
+<span class="nc" id="L101">        _localContexts.remove();</span>
+<span class="nc" id="L102">    }</span>
+
+<span class="nc" id="L104">    public OLAPContext(int seq) {</span>
+<span class="nc" id="L105">        this.id = seq;</span>
+<span class="nc" id="L106">        this.storageContext = new StorageContext(seq);</span>
+<span class="nc" id="L107">        this.sortColumns = Lists.newArrayList();</span>
+<span class="nc" id="L108">        this.sortOrders = Lists.newArrayList();</span>
+<span class="nc" id="L109">        Map&lt;String, String&gt; parameters = _localPrarameters.get();</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (parameters != null) {</span>
+<span class="nc" id="L111">            String acceptPartialResult = parameters.get(PRM_ACCEPT_PARTIAL_RESULT);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if (acceptPartialResult != null) {</span>
+<span class="nc" id="L113">                this.storageContext.setAcceptPartialResult(Boolean.parseBoolean(acceptPartialResult));</span>
+            }
+<span class="nc" id="L115">            String acceptUserInfo = parameters.get(PRM_USER_AUTHEN_INFO);</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (null != acceptUserInfo)</span>
+<span class="nc" id="L117">                this.olapAuthen.parseUserInfo(acceptUserInfo);</span>
+        }
+<span class="nc" id="L119">    }</span>
+
+    public final int id;
+    public final StorageContext storageContext;
+
+    // query info
+<span class="nc" id="L125">    public OLAPSchema olapSchema = null;</span>
+<span class="nc" id="L126">    public OLAPTableScan firstTableScan = null; // to be fact table scan except &quot;select * from lookupTable&quot;</span>
+<span class="nc" id="L127">    public Set&lt;OLAPTableScan&gt; allTableScans = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L128">    public Set&lt;OLAPJoinRel&gt; allOlapJoins = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L129">    public Set&lt;MeasureDesc&gt; involvedMeasure = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L130">    public TupleInfo returnTupleInfo = null;</span>
+<span class="nc" id="L131">    public boolean afterAggregate = false;</span>
+<span class="nc" id="L132">    public boolean afterHavingClauseFilter = false;</span>
+<span class="nc" id="L133">    public boolean afterLimit = false;</span>
+<span class="nc" id="L134">    public boolean limitPrecedesAggr = false;</span>
+<span class="nc" id="L135">    public boolean afterJoin = false;</span>
+<span class="nc" id="L136">    public boolean hasJoin = false;</span>
+<span class="nc" id="L137">    public boolean hasLimit = false;</span>
+<span class="nc" id="L138">    public boolean hasWindow = false;</span>
+<span class="nc" id="L139">    public boolean groupByExpression = false; // checkout if group by column has operator</span>
+<span class="nc" id="L140">    public boolean afterOuterAggregate = false;</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    public boolean disableLimitPushdown = !KylinConfig.getInstanceFromEnv().isLimitPushDownEnabled();</span>
+<span class="nc" id="L142">    public boolean isExactlyAggregate = false;</span>
+
+    // cube metadata
+    public IRealization realization;
+    public RealizationCheck realizationCheck;
+    public boolean fixedModel;
+
+<span class="nc" id="L149">    public Set&lt;TblColRef&gt; allColumns = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L150">    public List&lt;TblColRef&gt; groupByColumns = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L151">    public Set&lt;TblColRef&gt; subqueryJoinParticipants = new HashSet&lt;&gt;();//subqueryJoinParticipants will be added to groupByColumns(only when other group by co-exists) and allColumns</span>
+<span class="nc" id="L152">    public Set&lt;TblColRef&gt; metricsColumns = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L153">    public List&lt;FunctionDesc&gt; aggregations = new ArrayList&lt;&gt;(); // storage level measure type, on top of which various sql aggr function may apply</span>
+<span class="nc" id="L154">    public List&lt;TblColRef&gt; aggrOutCols = new ArrayList&lt;&gt;(); // aggregation output (inner) columns</span>
+<span class="nc" id="L155">    public List&lt;SQLCall&gt; aggrSqlCalls = new ArrayList&lt;&gt;(); // sql level aggregation function call</span>
+<span class="nc" id="L156">    public Set&lt;TblColRef&gt; filterColumns = new HashSet&lt;&gt;();</span>
+    public TupleFilter filter;
+    public TupleFilter havingFilter;
+<span class="nc" id="L159">    public List&lt;JoinDesc&gt; joins = new LinkedList&lt;&gt;();</span>
+    public JoinsTree joinsTree;
+<span class="nc" id="L161">    public boolean isBorrowedContext = false; // Whether preparedContext is borrowed from cache</span>
+    List&lt;TblColRef&gt; sortColumns;
+    List&lt;SQLDigest.OrderEnum&gt; sortOrders;
+
+    // rewrite info
+<span class="nc" id="L166">    public Map&lt;String, RelDataType&gt; rewriteFields = new HashMap&lt;&gt;();</span>
+
+    // dynamic columns info, note that the name of TblColRef will be the field name
+<span class="nc" id="L169">    public Map&lt;TblColRef, RelDataType&gt; dynamicFields = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L171">    public Map&lt;TblColRef, TupleExpression&gt; dynGroupBy = new HashMap&lt;&gt;();</span>
+
+    // hive query
+<span class="nc" id="L174">    public String sql = &quot;&quot;;</span>
+
+<span class="nc" id="L176">    public OLAPAuthentication olapAuthen = new OLAPAuthentication();</span>
+
+    public boolean isSimpleQuery() {
+<span class="nc bnc" id="L179" title="All 6 branches missed.">        return (joins.isEmpty()) &amp;&amp; (groupByColumns.isEmpty()) &amp;&amp; (aggregations.isEmpty());</span>
+    }
+
+    SQLDigest sqlDigest;
+
+    public SQLDigest getSQLDigest() {
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (sqlDigest == null) {</span>
+<span class="nc" id="L186">            Set&lt;TblColRef&gt; rtDimColumns = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            for (TupleExpression tupleExpr : dynGroupBy.values()) {</span>
+<span class="nc" id="L188">                rtDimColumns.addAll(ExpressionColCollector.collectColumns(tupleExpr));</span>
+<span class="nc" id="L189">            }</span>
+<span class="nc" id="L190">            Set&lt;TblColRef&gt; rtMetricColumns = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L191">            List&lt;DynamicFunctionDesc&gt; dynFuncs = Lists.newLinkedList();</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            for (FunctionDesc functionDesc : aggregations) {</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                if (functionDesc instanceof DynamicFunctionDesc) {</span>
+<span class="nc" id="L194">                    DynamicFunctionDesc dynFunc = (DynamicFunctionDesc) functionDesc;</span>
+<span class="nc" id="L195">                    rtMetricColumns.addAll(dynFunc.getMeasureColumnSet());</span>
+<span class="nc" id="L196">                    rtDimColumns.addAll(dynFunc.getFilterColumnSet());</span>
+<span class="nc" id="L197">                    dynFuncs.add(dynFunc);</span>
+                }
+<span class="nc" id="L199">            }</span>
+<span class="nc" id="L200">            sqlDigest = new SQLDigest(firstTableScan.getTableName(), allColumns, joins, // model</span>
+                    groupByColumns, subqueryJoinParticipants, dynGroupBy, groupByExpression, // group by
+                    metricsColumns, aggregations, aggrSqlCalls, dynFuncs, // aggregation
+                    rtDimColumns, rtMetricColumns, // runtime related columns
+                    filterColumns, filter, havingFilter, // filter
+                    sortColumns, sortOrders, limitPrecedesAggr, hasLimit, isBorrowedContext, // sort &amp; limit
+                    involvedMeasure);
+        }
+<span class="nc" id="L208">        return sqlDigest;</span>
+    }
+
+    public boolean isDynamicColumnEnabled() {
+<span class="nc bnc" id="L212" title="All 4 branches missed.">        return olapSchema != null &amp;&amp; olapSchema.getProjectInstance().getConfig().isDynamicColumnEnabled();</span>
+    }
+
+    public boolean hasPrecalculatedFields() {
+<span class="nc bnc" id="L216" title="All 4 branches missed.">        return realization instanceof CubeInstance || realization instanceof HybridInstance;</span>
+    }
+
+    public void resetSQLDigest() {
+<span class="nc" id="L220">        this.sqlDigest = null;</span>
+<span class="nc" id="L221">    }</span>
+
+    public boolean belongToContextTables(TblColRef tblColRef) {
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        for (OLAPTableScan olapTableScan : this.allTableScans) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">            if (olapTableScan.getColumnRowType().getAllColumns().contains(tblColRef)) {</span>
+<span class="nc" id="L226">                return true;</span>
+            }
+<span class="nc" id="L228">        }</span>
+
+<span class="nc" id="L230">        return false;</span>
+    }
+
+    public boolean belongToFactTableDims(TblColRef tblColRef) {
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        if (!belongToContextTables(tblColRef)) {</span>
+<span class="nc" id="L235">            return false;</span>
+        }
+<span class="nc" id="L237">        KylinConfig kylinConfig = olapSchema.getConfig();</span>
+<span class="nc" id="L238">        String projectName = olapSchema.getProjectName();</span>
+<span class="nc" id="L239">        String factTableName = firstTableScan.getOlapTable().getTableName();</span>
+<span class="nc" id="L240">        Set&lt;IRealization&gt; realizations = ProjectManager.getInstance(kylinConfig).getRealizationsByTable(projectName,</span>
+                factTableName);
+<span class="nc bnc" id="L242" title="All 2 branches missed.">        for (IRealization real : realizations) {</span>
+<span class="nc" id="L243">            DataModelDesc model = real.getModel();</span>
+<span class="nc" id="L244">            TblColRef.fixUnknownModel(model, tblColRef.getTableRef().getTableIdentity(), tblColRef);</span>
+
+            // cannot be a measure column
+<span class="nc" id="L247">            Set&lt;String&gt; metrics = Sets.newHashSet(model.getMetrics());</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            if (metrics.contains(tblColRef.getIdentity())) {</span>
+<span class="nc" id="L249">                tblColRef.unfixTableRef();</span>
+<span class="nc" id="L250">                return false;</span>
+            }
+
+            // must belong to a fact table
+<span class="nc bnc" id="L254" title="All 2 branches missed.">            for (TableRef factTable : model.getFactTables()) {</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                if (factTable.getColumns().contains(tblColRef)) {</span>
+<span class="nc" id="L256">                    tblColRef.unfixTableRef();</span>
+<span class="nc" id="L257">                    return true;</span>
+                }
+<span class="nc" id="L259">            }</span>
+<span class="nc" id="L260">            tblColRef.unfixTableRef();</span>
+<span class="nc" id="L261">        }</span>
+<span class="nc" id="L262">        return false;</span>
+    }
+
+    public void setReturnTupleInfo(RelDataType rowType, ColumnRowType columnRowType) {
+<span class="nc" id="L266">        TupleInfo info = new TupleInfo();</span>
+<span class="nc" id="L267">        List&lt;RelDataTypeField&gt; fieldList = rowType.getFieldList();</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        for (int i = 0; i &lt; fieldList.size(); i++) {</span>
+<span class="nc" id="L269">            RelDataTypeField field = fieldList.get(i);</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">            TblColRef col = columnRowType == null ? null : columnRowType.getColumnByIndex(i);</span>
+<span class="nc" id="L271">            info.setField(field.getName(), col, i);</span>
+        }
+<span class="nc" id="L273">        this.returnTupleInfo = info;</span>
+<span class="nc" id="L274">    }</span>
+
+    public void addSort(TblColRef col, SQLDigest.OrderEnum order) {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        if (col != null) {</span>
+<span class="nc" id="L278">            sortColumns.add(col);</span>
+<span class="nc" id="L279">            sortOrders.add(order);</span>
+        }
+<span class="nc" id="L281">    }</span>
+
+    public void fixModel(DataModelDesc model, Map&lt;String, String&gt; aliasMap) {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (fixedModel)</span>
+<span class="nc" id="L285">            return;</span>
+
+<span class="nc bnc" id="L287" title="All 2 branches missed.">        for (OLAPTableScan tableScan : this.allTableScans) {</span>
+<span class="nc" id="L288">            tableScan.fixColumnRowTypeWithModel(model, aliasMap);</span>
+<span class="nc" id="L289">        }</span>
+<span class="nc" id="L290">        fixedModel = true;</span>
+<span class="nc" id="L291">    }</span>
+
+    public void unfixModel() {
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        if (!fixedModel)</span>
+<span class="nc" id="L295">            return;</span>
+
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        for (OLAPTableScan tableScan : this.allTableScans) {</span>
+<span class="nc" id="L298">            tableScan.unfixColumnRowTypeWithModel();</span>
+<span class="nc" id="L299">        }</span>
+<span class="nc" id="L300">        fixedModel = false;</span>
+<span class="nc" id="L301">    }</span>
+
+    public void bindVariable(DataContext dataContext) {
+<span class="nc" id="L304">        bindVariable(this.filter, dataContext);</span>
+<span class="nc" id="L305">    }</span>
+
+    private void bindVariable(TupleFilter filter, DataContext dataContext) {
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        if (filter == null) {</span>
+<span class="nc" id="L309">            return;</span>
+        }
+
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        for (TupleFilter childFilter : filter.getChildren()) {</span>
+<span class="nc" id="L313">            bindVariable(childFilter, dataContext);</span>
+<span class="nc" id="L314">        }</span>
+
+<span class="nc bnc" id="L316" title="All 4 branches missed.">        if (filter instanceof CompareTupleFilter &amp;&amp; dataContext != null) {</span>
+<span class="nc" id="L317">            CompareTupleFilter compFilter = (CompareTupleFilter) filter;</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">            for (Map.Entry&lt;String, Object&gt; entry : compFilter.getVariables().entrySet()) {</span>
+<span class="nc" id="L319">                String variable = entry.getKey();</span>
+<span class="nc" id="L320">                Object value = dataContext.get(variable);</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">                if (value != null) {</span>
+<span class="nc" id="L322">                    String str = value.toString();</span>
+<span class="nc" id="L323">                    str = transferDateTimeColumnToMillis(compFilter, str);</span>
+<span class="nc" id="L324">                    compFilter.clearPreviousVariableValues(variable);</span>
+<span class="nc" id="L325">                    compFilter.bindVariable(variable, str);</span>
+                }
+
+<span class="nc" id="L328">            }</span>
+        }
+<span class="nc" id="L330">    }</span>
+
+    private String transferDateTimeColumnToMillis(CompareTupleFilter compFilter, String value) {
+<span class="nc" id="L333">        TblColRef column = compFilter.getColumn();</span>
+        // To fix KYLIN-4157, when using PrepareStatement query, functions within WHERE will cause InternalErrorException
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        if (Objects.isNull(column)){</span>
+<span class="nc" id="L336">            return value;</span>
+        }
+
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (column.getType().isDateTimeFamily()){</span>
+<span class="nc" id="L340">            value = String.valueOf(DateFormat.stringToMillis(value));</span>
+        }
+<span class="nc" id="L342">        return value;</span>
+    }
+    // ============================================================================
+
+    public interface IAccessController {
+        void check(List&lt;OLAPContext&gt; contexts, KylinConfig config);
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

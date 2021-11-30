@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColumnTupleExpression.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.expression</a> &gt; <span class="el_source">ColumnTupleExpression.java</span></div><h1>ColumnTupleExpression.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.expression;
+
+import java.nio.ByteBuffer;
+import java.util.Collections;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.DataModelManager;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+
+public class ColumnTupleExpression extends TupleExpression {
+
+    private static final String _QUALIFIED_ = &quot;_QUALIFIED_&quot;;
+
+    private TblColRef columnRef;
+
+    public ColumnTupleExpression(TblColRef column) {
+<span class="fc" id="L42">        super(ExpressionOperatorEnum.COLUMN, Collections.&lt;TupleExpression&gt; emptyList());</span>
+<span class="fc" id="L43">        this.columnRef = column;</span>
+<span class="fc" id="L44">    }</span>
+
+    @Override
+    public void verify() {
+<span class="nc" id="L48">    }</span>
+
+    @Override
+    public Object calculate(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="fc" id="L52">        return tuple.getValue(columnRef);</span>
+    }
+
+    @Override
+    public TupleExpression accept(ExpressionVisitor visitor) {
+<span class="fc" id="L57">        return visitor.visitColumn(this);</span>
+    }
+
+    @Override
+    public void serialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+<span class="fc" id="L62">        TableRef tableRef = columnRef.getTableRef();</span>
+
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (tableRef == null) {</span>
+            // un-qualified column
+<span class="fc" id="L66">            String table = columnRef.getTable();</span>
+<span class="fc" id="L67">            BytesUtil.writeUTFString(table, buffer);</span>
+
+<span class="fc" id="L69">            String columnId = columnRef.getColumnDesc().getId();</span>
+<span class="fc" id="L70">            BytesUtil.writeUTFString(columnId, buffer);</span>
+
+<span class="fc" id="L72">            String columnName = columnRef.getName();</span>
+<span class="fc" id="L73">            BytesUtil.writeUTFString(columnName, buffer);</span>
+
+<span class="fc" id="L75">            String dataType = columnRef.getDatatype();</span>
+<span class="fc" id="L76">            BytesUtil.writeUTFString(dataType, buffer);</span>
+<span class="fc" id="L77">        } else {</span>
+            // qualified column (from model)
+<span class="nc" id="L79">            BytesUtil.writeUTFString(_QUALIFIED_, buffer);</span>
+
+<span class="nc" id="L81">            String model = tableRef.getModel().getName();</span>
+<span class="nc" id="L82">            BytesUtil.writeUTFString(model, buffer);</span>
+
+<span class="nc" id="L84">            String alias = tableRef.getAlias();</span>
+<span class="nc" id="L85">            BytesUtil.writeUTFString(alias, buffer);</span>
+
+<span class="nc" id="L87">            String col = columnRef.getName();</span>
+<span class="nc" id="L88">            BytesUtil.writeUTFString(col, buffer);</span>
+        }
+<span class="fc" id="L90">    }</span>
+
+    @Override
+    public void deserialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+<span class="fc" id="L94">        String tableName = BytesUtil.readUTFString(buffer);</span>
+
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (_QUALIFIED_.equals(tableName)) {</span>
+            // qualified column (from model)
+<span class="nc" id="L98">            String model = BytesUtil.readUTFString(buffer);</span>
+<span class="nc" id="L99">            String alias = BytesUtil.readUTFString(buffer);</span>
+<span class="nc" id="L100">            String col = BytesUtil.readUTFString(buffer);</span>
+
+<span class="nc" id="L102">            KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L103">            DataModelDesc modelDesc = DataModelManager.getInstance(config).getDataModelDesc(model);</span>
+<span class="nc" id="L104">            this.columnRef = modelDesc.findColumn(alias, col);</span>
+
+<span class="nc" id="L106">        } else {</span>
+            // un-qualified column
+<span class="fc" id="L108">            TableDesc tableDesc = null;</span>
+
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (tableName != null) {</span>
+<span class="fc" id="L111">                tableDesc = new TableDesc();</span>
+<span class="fc" id="L112">                tableDesc.setName(tableName);</span>
+            }
+
+<span class="fc" id="L115">            ColumnDesc column = new ColumnDesc();</span>
+<span class="fc" id="L116">            column.setId(BytesUtil.readUTFString(buffer));</span>
+<span class="fc" id="L117">            column.setName(BytesUtil.readUTFString(buffer));</span>
+<span class="fc" id="L118">            column.setDatatype(BytesUtil.readUTFString(buffer));</span>
+<span class="fc" id="L119">            column.init(tableDesc);</span>
+
+<span class="fc" id="L121">            this.columnRef = column.getRef();</span>
+        }
+<span class="fc" id="L123">    }</span>
+
+    public TblColRef getColumn() {
+<span class="fc" id="L126">        return columnRef;</span>
+    }
+
+    public String toString() {
+<span class="nc" id="L130">        return columnRef.getCanonicalName();</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L136">            return true;</span>
+<span class="pc bpc" id="L137" title="2 of 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L138">            return false;</span>
+
+<span class="fc" id="L140">        ColumnTupleExpression that = (ColumnTupleExpression) o;</span>
+
+<span class="pc bpc" id="L142" title="3 of 4 branches missed.">        return columnRef != null ? columnRef.equals(that.columnRef) : that.columnRef == null;</span>
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        return columnRef != null ? columnRef.hashCode() : 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

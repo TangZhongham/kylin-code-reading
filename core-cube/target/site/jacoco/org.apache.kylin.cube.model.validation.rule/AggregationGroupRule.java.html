@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AggregationGroupRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model.validation.rule</a> &gt; <span class="el_source">AggregationGroupRule.java</span></div><h1>AggregationGroupRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model.validation.rule;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.kylin.cube.model.AggregationGroup;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.validation.IValidatorRule;
+import org.apache.kylin.cube.model.validation.ResultLevel;
+import org.apache.kylin.cube.model.validation.ValidateContext;
+
+import org.apache.kylin.shaded.com.google.common.collect.Iterables;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ *  find forbid overlaps in each AggregationGroup
+ *  the include dims in AggregationGroup must contain all mandatory, hierarchy and joint
+ */
+<span class="fc" id="L41">public class AggregationGroupRule implements IValidatorRule&lt;CubeDesc&gt; {</span>
+
+    public static final String AGGREGATION_GROUP = &quot;Aggregation group &quot;;
+
+    @Override
+    public void validate(CubeDesc cube, ValidateContext context) {
+<span class="fc" id="L47">        inner(cube, context);</span>
+<span class="fc" id="L48">    }</span>
+
+    private void inner(CubeDesc cube, ValidateContext context) {
+
+<span class="pc bpc" id="L52" title="2 of 4 branches missed.">        if (cube.getAggregationGroups() == null || cube.getAggregationGroups().isEmpty()) {</span>
+<span class="nc" id="L53">            context.addResult(ResultLevel.ERROR, &quot;Cube should have at least one Aggregation group.&quot;);</span>
+<span class="nc" id="L54">            return;</span>
+        }
+
+<span class="fc" id="L57">        int index = 1;</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (AggregationGroup agg : cube.getAggregationGroups()) {</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            if (agg.getIncludes() == null) {</span>
+<span class="nc" id="L60">                context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; 'includes' field not set&quot;);</span>
+<span class="nc" id="L61">                continue;</span>
+            }
+
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if (agg.getSelectRule() == null) {</span>
+<span class="nc" id="L65">                context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; 'select rule' field not set&quot;);</span>
+<span class="nc" id="L66">                continue;</span>
+            }
+
+<span class="fc" id="L69">            Set&lt;String&gt; includeDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (agg.getIncludes() != null) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                for (String include : agg.getIncludes()) {</span>
+<span class="fc" id="L72">                    includeDims.add(include);</span>
+                }
+            }
+
+<span class="fc" id="L76">            Set&lt;String&gt; mandatoryDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            if (agg.getSelectRule().mandatoryDims != null) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                for (String m : agg.getSelectRule().mandatoryDims) {</span>
+<span class="fc" id="L79">                    mandatoryDims.add(m);</span>
+                }
+            }
+
+<span class="fc" id="L83">            Set&lt;String&gt; hierarchyDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            if (agg.getSelectRule().hierarchyDims != null) {</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                for (String[] ss : agg.getSelectRule().hierarchyDims) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    for (String s : ss) {</span>
+<span class="fc" id="L87">                        hierarchyDims.add(s);</span>
+                    }
+                }
+            }
+
+<span class="fc" id="L92">            Set&lt;String&gt; jointDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">            if (agg.getSelectRule().jointDims != null) {</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                for (String[] ss : agg.getSelectRule().jointDims) {</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                    for (String s : ss) {</span>
+<span class="fc" id="L96">                        jointDims.add(s);</span>
+                    }
+                }
+            }
+
+<span class="pc bpc" id="L101" title="2 of 6 branches missed.">            if (!includeDims.containsAll(mandatoryDims) || !includeDims.containsAll(hierarchyDims) || !includeDims.containsAll(jointDims)) {</span>
+<span class="fc" id="L102">                List&lt;String&gt; notIncluded = Lists.newArrayList();</span>
+<span class="fc" id="L103">                final Iterable&lt;String&gt; all = Iterables.unmodifiableIterable(Iterables.concat(mandatoryDims, hierarchyDims, jointDims));</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                for (String dim : all) {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    if (includeDims.contains(dim) == false) {</span>
+<span class="fc" id="L106">                        notIncluded.add(dim);</span>
+                    }
+<span class="fc" id="L108">                }</span>
+<span class="fc" id="L109">                context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; 'includes' dimensions not include all the dimensions:&quot; + notIncluded.toString());</span>
+<span class="fc" id="L110">                continue;</span>
+            }
+
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">            if (CollectionUtils.containsAny(mandatoryDims, hierarchyDims)) {</span>
+<span class="nc" id="L114">                Set&lt;String&gt; intersection = new HashSet&lt;&gt;(mandatoryDims);</span>
+<span class="nc" id="L115">                intersection.retainAll(hierarchyDims);</span>
+<span class="nc" id="L116">                context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; mandatory dimension has overlap with hierarchy dimension: &quot; + intersection.toString());</span>
+<span class="nc" id="L117">                continue;</span>
+            }
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            if (CollectionUtils.containsAny(mandatoryDims, jointDims)) {</span>
+<span class="nc" id="L120">                Set&lt;String&gt; intersection = new HashSet&lt;&gt;(mandatoryDims);</span>
+<span class="nc" id="L121">                intersection.retainAll(jointDims);</span>
+<span class="nc" id="L122">                context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; mandatory dimension has overlap with joint dimension: &quot; + intersection.toString());</span>
+<span class="nc" id="L123">                continue;</span>
+            }
+
+<span class="fc" id="L126">            int jointDimNum = 0;</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">            if (agg.getSelectRule().jointDims != null) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                for (String[] joints : agg.getSelectRule().jointDims) {</span>
+
+<span class="fc" id="L130">                    Set&lt;String&gt; oneJoint = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                    for (String s : joints) {</span>
+<span class="fc" id="L132">                        oneJoint.add(s);</span>
+                    }
+
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                    if (oneJoint.size() &lt; 2) {</span>
+<span class="nc" id="L136">                        context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; require at least 2 dimensions in a joint: &quot; + oneJoint.toString());</span>
+<span class="nc" id="L137">                        continue;</span>
+                    }
+<span class="fc" id="L139">                    jointDimNum += oneJoint.size();</span>
+
+<span class="fc" id="L141">                    int overlapHierarchies = 0;</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                    if (agg.getSelectRule().hierarchyDims != null) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                        for (String[] oneHierarchy : agg.getSelectRule().hierarchyDims) {</span>
+<span class="fc" id="L144">                            Set&lt;String&gt; share = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L145">                            share.addAll(CollectionUtils.intersection(oneJoint, Arrays.asList(oneHierarchy)));</span>
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                            if (!share.isEmpty()) {</span>
+<span class="fc" id="L148">                                overlapHierarchies++;</span>
+                            }
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                            if (share.size() &gt; 1) {</span>
+<span class="fc" id="L151">                                context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; joint dimensions has overlap with more than 1 dimensions in same hierarchy: &quot; + share.toString());</span>
+<span class="fc" id="L152">                                continue;</span>
+                            }
+                        }
+
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                        if (overlapHierarchies &gt; 1) {</span>
+<span class="nc" id="L157">                            context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; joint dimensions has overlap with more than 1 hierarchies&quot;);</span>
+<span class="nc" id="L158">                            continue;</span>
+                        }
+                    }
+                }
+
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                if (jointDimNum != jointDims.size()) {</span>
+
+<span class="nc" id="L165">                    Set&lt;String&gt; existing = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="nc" id="L166">                    Set&lt;String&gt; overlap = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                    for (String[] joints : agg.getSelectRule().jointDims) {</span>
+<span class="nc" id="L168">                        Set&lt;String&gt; oneJoint = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">                        for (String s : joints) {</span>
+<span class="nc" id="L170">                            oneJoint.add(s);</span>
+                        }
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                        if (CollectionUtils.containsAny(existing, oneJoint)) {</span>
+<span class="nc" id="L173">                            overlap.addAll(CollectionUtils.intersection(existing, oneJoint));</span>
+                        }
+<span class="nc" id="L175">                        existing.addAll(oneJoint);</span>
+                    }
+<span class="nc" id="L177">                    context.addResult(ResultLevel.ERROR, AGGREGATION_GROUP + index + &quot; a dimension exists in more than one joint: &quot; + overlap.toString());</span>
+<span class="nc" id="L178">                    continue;</span>
+                }
+            }
+<span class="fc" id="L181">            long combination = 0;</span>
+            try {
+<span class="fc" id="L183">                combination = agg.calculateCuboidCombination();</span>
+<span class="fc" id="L184">            } catch (Exception ex) {</span>
+<span class="fc" id="L185">                combination = getMaxCombinations(cube) + 1;</span>
+            } finally {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                if (combination &gt; getMaxCombinations(cube)) {</span>
+<span class="fc" id="L188">                    String msg = AGGREGATION_GROUP + index + &quot; has too many combinations, current combination is &quot; + combination + &quot;, max allowed combination is &quot; + getMaxCombinations(cube) + &quot;; use 'mandatory'/'hierarchy'/'joint' to optimize; or update 'kylin.cube.aggrgroup.max-combination' to a bigger value.&quot;;</span>
+<span class="fc" id="L189">                    context.addResult(ResultLevel.ERROR, msg);</span>
+                }
+            }
+
+<span class="fc" id="L193">            index++;</span>
+<span class="fc" id="L194">        }</span>
+<span class="fc" id="L195">    }</span>
+
+    protected long getMaxCombinations(CubeDesc cubeDesc) {
+<span class="fc" id="L198">        return cubeDesc.getConfig().getCubeAggrGroupMaxCombination();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

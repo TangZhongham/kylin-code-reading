@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/MetricsManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/QuerySparkJobEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/QuerySparkExecutionEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/QueryPropertyEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/QueryCubePropertyEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/JobPropertyEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/QueryRPCPropertyEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/property/QuerySparkStageEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/TimePropertyEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/TimedRecordEvent.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/ReporterBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/BlockingReservoir.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/StubReservoir.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/InstantReservoir.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/StubReservoirReporter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/BaseScheduledReporter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/StubSink.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/RecordEventTimeDetail.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/RecordEvent.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/AbstractActiveReservoir.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/impl/MetricsSystem.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/ActiveReservoirListener.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/ActiveReservoir.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/Sink.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/ActiveReservoirReporter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/ActiveReservoirRecordFilter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/lib/Record.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/main/java/org/apache/kylin/metrics/QuerySparkMetrics.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/property/MetricsPropertyEnumTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/RecordEventTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/InstantReservoirTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/RecordEventTimeDetailTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/MetricsSystemTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/BlockingReservoirTest.java">
+</file>
+</checkstyle>

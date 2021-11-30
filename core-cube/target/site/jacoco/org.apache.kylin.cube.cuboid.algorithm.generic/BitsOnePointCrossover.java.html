@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitsOnePointCrossover.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm.generic</a> &gt; <span class="el_source">BitsOnePointCrossover.java</span></div><h1>BitsOnePointCrossover.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm.generic;
+
+import org.apache.commons.math3.exception.DimensionMismatchException;
+import org.apache.commons.math3.exception.MathIllegalArgumentException;
+import org.apache.commons.math3.exception.util.DummyLocalizable;
+import org.apache.commons.math3.genetics.Chromosome;
+import org.apache.commons.math3.genetics.ChromosomePair;
+import org.apache.commons.math3.genetics.CrossoverPolicy;
+import org.apache.commons.math3.genetics.GeneticAlgorithm;
+
+import java.util.BitSet;
+
+/**
+ * Modified from the OnePointCrossover.java in https://github.com/apache/commons-math
+ * &lt;p&gt;
+ * One point crossover policy. A random crossover point is selected and the
+ * first part from each parent is copied to the corresponding child, and the
+ * second parts are copied crosswise.
+ * &lt;p&gt;
+ * Example:
+ * &lt;pre&gt;
+ * -C- denotes a crossover point
+ *                   -C-                                 -C-
+ * p1 = (1 0 1 0 0 1  | 0 1 1)    X    p2 = (0 1 1 0 1 0  | 1 1 1)
+ *      \------------/ \-----/              \------------/ \-----/
+ *            ||         (*)                       ||        (**)
+ *            VV         (**)                      VV        (*)
+ *      /------------\ /-----\              /------------\ /-----\
+ * c1 = (1 0 1 0 0 1  | 1 1 1)    X    c2 = (0 1 1 0 1 0  | 0 1 1)
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * This policy works only on {@link BitsChromosome}, and therefore it
+ * is parameterized by T. Moreover, the chromosomes must have same lengths.
+ */
+<span class="nc" id="L53">public class BitsOnePointCrossover implements CrossoverPolicy {</span>
+
+    /**
+     * Performs one point crossover. A random crossover point is selected and the
+     * first part from each parent is copied to the corresponding child, and the
+     * second parts are copied crosswise.
+     * &lt;p&gt;
+     * Example:
+     * &lt;pre&gt;
+     * -C- denotes a crossover point
+     *                   -C-                                 -C-
+     * p1 = (1 0 1 0 0 1  | 0 1 1)    X    p2 = (0 1 1 0 1 0  | 1 1 1)
+     *      \------------/ \-----/              \------------/ \-----/
+     *            ||         (*)                       ||        (**)
+     *            VV         (**)                      VV        (*)
+     *      /------------\ /-----\              /------------\ /-----\
+     * c1 = (1 0 1 0 0 1  | 1 1 1)    X    c2 = (0 1 1 0 1 0  | 0 1 1)
+     * &lt;/pre&gt;
+     *
+     * @param first  first parent (p1)
+     * @param second second parent (p2)
+     * @return pair of two children (c1,c2)
+     * @throws IllegalArgumentException     if one of the chromosomes is
+     *                                      not an instance of {@link BitsChromosome}
+     * @throws MathIllegalArgumentException if the length of the two chromosomes is different
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // OK because of instanceof checks
+    public ChromosomePair crossover(final Chromosome first, final Chromosome second)
+            throws DimensionMismatchException, MathIllegalArgumentException {
+
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        if (!(first instanceof BitsChromosome &amp;&amp; second instanceof BitsChromosome)) {</span>
+<span class="nc" id="L84">            throw new MathIllegalArgumentException(</span>
+                    new DummyLocalizable(&quot;bits one-point crossover only works on BitsChromosome&quot;));
+        }
+<span class="nc" id="L87">        return crossover((BitsChromosome) first, (BitsChromosome) second);</span>
+    }
+
+    /**
+     * Helper for {@link #crossover(Chromosome, Chromosome)}. Performs the actual crossover.
+     *
+     * @param first  the first chromosome.
+     * @param second the second chromosome.
+     * @return the pair of new chromosomes that resulted from the crossover.
+     * @throws DimensionMismatchException if the length of the two chromosomes is different
+     */
+    private ChromosomePair crossover(final BitsChromosome first, final BitsChromosome second)
+            throws DimensionMismatchException {
+<span class="nc" id="L100">        final int length = first.getLength();</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        if (length != second.getLength()) {</span>
+<span class="nc" id="L102">            throw new DimensionMismatchException(second.getLength(), length);</span>
+        }
+
+<span class="nc" id="L105">        final BitSet parent1Key = first.getRepresentation();</span>
+<span class="nc" id="L106">        final BitSet parent2Key = second.getRepresentation();</span>
+
+<span class="nc" id="L108">        final BitSet child1Key = new BitSet(length);</span>
+<span class="nc" id="L109">        final BitSet child2Key = new BitSet(length);</span>
+
+        // select a crossover point at random (0 and length makes no sense)
+<span class="nc" id="L112">        final int crossoverIndex = 1 + (GeneticAlgorithm.getRandomGenerator().nextInt(length - 2));</span>
+
+<span class="nc" id="L114">        BitSet a = (BitSet) parent1Key.clone();</span>
+<span class="nc" id="L115">        a.clear(crossoverIndex, length);</span>
+<span class="nc" id="L116">        BitSet b = (BitSet) parent2Key.clone();</span>
+<span class="nc" id="L117">        b.clear(0, crossoverIndex);</span>
+
+<span class="nc" id="L119">        BitSet c = (BitSet) parent1Key.clone();</span>
+<span class="nc" id="L120">        c.clear(crossoverIndex, length);</span>
+<span class="nc" id="L121">        BitSet d = (BitSet) parent2Key.clone();</span>
+<span class="nc" id="L122">        d.clear(0, crossoverIndex);</span>
+
+<span class="nc" id="L124">        child1Key.or(a);</span>
+<span class="nc" id="L125">        child1Key.or(d);</span>
+
+<span class="nc" id="L127">        child2Key.or(c);</span>
+<span class="nc" id="L128">        child2Key.or(b);</span>
+<span class="nc" id="L129">        return new ChromosomePair(first.newBitsChromosome(child1Key), second.newBitsChromosome(child2Key));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

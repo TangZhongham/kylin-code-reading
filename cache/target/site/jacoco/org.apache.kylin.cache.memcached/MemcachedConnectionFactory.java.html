@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemcachedConnectionFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.memcached</a> &gt; <span class="el_source">MemcachedConnectionFactory.java</span></div><h1>MemcachedConnectionFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.memcached;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.channels.SocketChannel;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+
+import org.apache.kylin.common.KylinConfig;
+
+import net.spy.memcached.ConnectionFactory;
+import net.spy.memcached.ConnectionObserver;
+import net.spy.memcached.DefaultConnectionFactory;
+import net.spy.memcached.FailureMode;
+import net.spy.memcached.HashAlgorithm;
+import net.spy.memcached.MemcachedConnection;
+import net.spy.memcached.MemcachedNode;
+import net.spy.memcached.NodeLocator;
+import net.spy.memcached.OperationFactory;
+import net.spy.memcached.auth.AuthDescriptor;
+import net.spy.memcached.compat.SpyObject;
+import net.spy.memcached.metrics.MetricCollector;
+import net.spy.memcached.metrics.MetricType;
+import net.spy.memcached.metrics.NoopMetricCollector;
+import net.spy.memcached.ops.Operation;
+import net.spy.memcached.transcoders.Transcoder;
+
+public class MemcachedConnectionFactory extends SpyObject implements ConnectionFactory {
+    private ConnectionFactory underlying;
+<span class="fc" id="L53">    private Map&lt;String, String&gt; metricsConfig = KylinConfig.getInstanceFromEnv().getKylinMetricsConf();</span>
+
+<span class="fc" id="L55">    public MemcachedConnectionFactory(ConnectionFactory underlying) {</span>
+<span class="fc" id="L56">        this.underlying = underlying;</span>
+<span class="fc" id="L57">    }</span>
+
+    @Override
+    public MetricType enableMetrics() {
+<span class="nc" id="L61">        String metricType = metricsConfig.get(&quot;memcached.metricstype&quot;);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        return metricType == null ? DefaultConnectionFactory.DEFAULT_METRIC_TYPE</span>
+<span class="nc" id="L63">                : MetricType.valueOf(metricType.toUpperCase(Locale.ROOT));</span>
+    }
+
+    @Override
+    public MetricCollector getMetricCollector() {
+<span class="nc" id="L68">        String enableMetrics = metricsConfig.get(&quot;memcached.enabled&quot;);</span>
+<span class="nc bnc" id="L69" title="All 4 branches missed.">        if (enableMetrics().equals(MetricType.OFF) || enableMetrics == null</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                || &quot;false&quot;.equalsIgnoreCase(enableMetrics)) {</span>
+<span class="nc" id="L71">            getLogger().debug(&quot;Memcached metrics collection disabled.&quot;);</span>
+<span class="nc" id="L72">            return new NoopMetricCollector();</span>
+        } else {
+<span class="nc" id="L74">            getLogger().info(&quot;Memcached metrics collection enabled (Profile &quot; + enableMetrics() + &quot;).&quot;);</span>
+<span class="nc" id="L75">            return new MemcachedMetrics();</span>
+        }
+    }
+
+    @Override
+    public MemcachedConnection createConnection(List&lt;InetSocketAddress&gt; addrs) throws IOException {
+<span class="fc" id="L81">        return underlying.createConnection(addrs);</span>
+    }
+
+    @Override
+    public MemcachedNode createMemcachedNode(SocketAddress sa, SocketChannel c, int bufSize) {
+<span class="nc" id="L86">        return underlying.createMemcachedNode(sa, c, bufSize);</span>
+    }
+
+    @Override
+    public BlockingQueue&lt;Operation&gt; createOperationQueue() {
+<span class="nc" id="L91">        return underlying.createOperationQueue();</span>
+    }
+
+    @Override
+    public BlockingQueue&lt;Operation&gt; createReadOperationQueue() {
+<span class="nc" id="L96">        return underlying.createReadOperationQueue();</span>
+    }
+
+    @Override
+    public BlockingQueue&lt;Operation&gt; createWriteOperationQueue() {
+<span class="nc" id="L101">        return underlying.createWriteOperationQueue();</span>
+    }
+
+    @Override
+    public long getOpQueueMaxBlockTime() {
+<span class="nc" id="L106">        return underlying.getOpQueueMaxBlockTime();</span>
+    }
+
+    @Override
+    public ExecutorService getListenerExecutorService() {
+<span class="fc" id="L111">        return underlying.getListenerExecutorService();</span>
+    }
+
+    @Override
+    public boolean isDefaultExecutorService() {
+<span class="nc" id="L116">        return underlying.isDefaultExecutorService();</span>
+    }
+
+    @Override
+    public NodeLocator createLocator(List&lt;MemcachedNode&gt; nodes) {
+<span class="nc" id="L121">        return underlying.createLocator(nodes);</span>
+    }
+
+    @Override
+    public OperationFactory getOperationFactory() {
+<span class="fc" id="L126">        return underlying.getOperationFactory();</span>
+    }
+
+    @Override
+    public long getOperationTimeout() {
+<span class="fc" id="L131">        return underlying.getOperationTimeout();</span>
+    }
+
+    @Override
+    public boolean isDaemon() {
+<span class="fc" id="L136">        return underlying.isDaemon();</span>
+    }
+
+    @Override
+    public boolean useNagleAlgorithm() {
+<span class="nc" id="L141">        return underlying.useNagleAlgorithm();</span>
+    }
+
+    @Override
+    public Collection&lt;ConnectionObserver&gt; getInitialObservers() {
+<span class="nc" id="L146">        return underlying.getInitialObservers();</span>
+    }
+
+    @Override
+    public FailureMode getFailureMode() {
+<span class="nc" id="L151">        return underlying.getFailureMode();</span>
+    }
+
+    @Override
+    public Transcoder&lt;Object&gt; getDefaultTranscoder() {
+<span class="fc" id="L156">        return underlying.getDefaultTranscoder();</span>
+    }
+
+    @Override
+    public boolean shouldOptimize() {
+<span class="nc" id="L161">        return underlying.shouldOptimize();</span>
+    }
+
+    @Override
+    public int getReadBufSize() {
+<span class="nc" id="L166">        return underlying.getReadBufSize();</span>
+    }
+
+    @Override
+    public HashAlgorithm getHashAlg() {
+<span class="nc" id="L171">        return underlying.getHashAlg();</span>
+    }
+
+    @Override
+    public long getMaxReconnectDelay() {
+<span class="nc" id="L176">        return underlying.getMaxReconnectDelay();</span>
+    }
+
+    @Override
+    public AuthDescriptor getAuthDescriptor() {
+<span class="fc" id="L181">        return underlying.getAuthDescriptor();</span>
+    }
+
+    @Override
+    public int getTimeoutExceptionThreshold() {
+<span class="nc" id="L186">        return underlying.getTimeoutExceptionThreshold();</span>
+    }
+
+    @Override
+    public long getAuthWaitTime() {
+<span class="nc" id="L191">        return underlying.getAuthWaitTime();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

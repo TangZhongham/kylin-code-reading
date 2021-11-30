@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColumnMeta.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.querymeta</a> &gt; <span class="el_source">ColumnMeta.java</span></div><h1>ColumnMeta.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.querymeta;
+
+import java.io.Serializable;
+
+/**
+ */
+public class ColumnMeta implements Serializable {
+    private static final long serialVersionUID = 1L;
+    protected String TABLE_CAT;
+    protected String TABLE_SCHEM;
+    protected String TABLE_NAME;
+    protected String COLUMN_NAME;
+    protected int DATA_TYPE;
+    protected String TYPE_NAME;
+    protected int COLUMN_SIZE;
+    protected int BUFFER_LENGTH;
+    protected int DECIMAL_DIGITS;
+    protected int NUM_PREC_RADIX;
+    protected int NULLABLE;
+    protected String REMARKS;
+    protected String COLUMN_DEF;
+    protected int SQL_DATA_TYPE;
+    protected int SQL_DATETIME_SUB;
+    protected int CHAR_OCTET_LENGTH;
+    protected int ORDINAL_POSITION;
+    protected String IS_NULLABLE;
+    protected String SCOPE_CATLOG;
+    protected String SCOPE_SCHEMA;
+    protected String SCOPE_TABLE;
+    protected short SOURCE_DATA_TYPE;
+    protected String IS_AUTOINCREMENT;
+
+<span class="nc" id="L51">    public ColumnMeta() {</span>
+<span class="nc" id="L52">    }</span>
+
+    public ColumnMeta(String tABLE_CAT, String tABLE_SCHEM, String tABLE_NAME, String cOLUMN_NAME, int dATA_TYPE, String tYPE_NAME, int cOLUMN_SIZE, int bUFFER_LENGTH, int dECIMAL_DIGITS, int nUM_PREC_RADIX, int nULLABLE, String rEMARKS, String cOLUMN_DEF, int sQL_DATA_TYPE, int sQL_DATETIME_SUB, int cHAR_OCTET_LENGTH, int oRDINAL_POSITION, String iS_NULLABLE, String sCOPE_CATLOG, String sCOPE_SCHEMA, String sCOPE_TABLE, short sOURCE_DATA_TYPE, String iS_AUTOINCREMENT) {
+<span class="nc" id="L55">        super();</span>
+<span class="nc" id="L56">        TABLE_CAT = tABLE_CAT;</span>
+<span class="nc" id="L57">        TABLE_SCHEM = tABLE_SCHEM;</span>
+<span class="nc" id="L58">        TABLE_NAME = tABLE_NAME;</span>
+<span class="nc" id="L59">        COLUMN_NAME = cOLUMN_NAME;</span>
+<span class="nc" id="L60">        DATA_TYPE = dATA_TYPE;</span>
+<span class="nc" id="L61">        TYPE_NAME = tYPE_NAME;</span>
+<span class="nc" id="L62">        COLUMN_SIZE = cOLUMN_SIZE;</span>
+<span class="nc" id="L63">        BUFFER_LENGTH = bUFFER_LENGTH;</span>
+<span class="nc" id="L64">        DECIMAL_DIGITS = dECIMAL_DIGITS;</span>
+<span class="nc" id="L65">        NUM_PREC_RADIX = nUM_PREC_RADIX;</span>
+<span class="nc" id="L66">        NULLABLE = nULLABLE;</span>
+<span class="nc" id="L67">        REMARKS = rEMARKS;</span>
+<span class="nc" id="L68">        COLUMN_DEF = cOLUMN_DEF;</span>
+<span class="nc" id="L69">        SQL_DATA_TYPE = sQL_DATA_TYPE;</span>
+<span class="nc" id="L70">        SQL_DATETIME_SUB = sQL_DATETIME_SUB;</span>
+<span class="nc" id="L71">        CHAR_OCTET_LENGTH = cHAR_OCTET_LENGTH;</span>
+<span class="nc" id="L72">        ORDINAL_POSITION = oRDINAL_POSITION;</span>
+<span class="nc" id="L73">        IS_NULLABLE = iS_NULLABLE;</span>
+<span class="nc" id="L74">        SCOPE_CATLOG = sCOPE_CATLOG;</span>
+<span class="nc" id="L75">        SCOPE_SCHEMA = sCOPE_SCHEMA;</span>
+<span class="nc" id="L76">        SCOPE_TABLE = sCOPE_TABLE;</span>
+<span class="nc" id="L77">        SOURCE_DATA_TYPE = sOURCE_DATA_TYPE;</span>
+<span class="nc" id="L78">        IS_AUTOINCREMENT = iS_AUTOINCREMENT;</span>
+<span class="nc" id="L79">    }</span>
+
+    public String getTABLE_CAT() {
+<span class="nc" id="L82">        return TABLE_CAT;</span>
+    }
+
+    public void setTABLE_CAT(String tABLE_CAT) {
+<span class="nc" id="L86">        TABLE_CAT = tABLE_CAT;</span>
+<span class="nc" id="L87">    }</span>
+
+    public String getTABLE_SCHEM() {
+<span class="nc" id="L90">        return TABLE_SCHEM;</span>
+    }
+
+    public void setTABLE_SCHEM(String tABLE_SCHEM) {
+<span class="nc" id="L94">        TABLE_SCHEM = tABLE_SCHEM;</span>
+<span class="nc" id="L95">    }</span>
+
+    public String getTABLE_NAME() {
+<span class="nc" id="L98">        return TABLE_NAME;</span>
+    }
+
+    public void setTABLE_NAME(String tABLE_NAME) {
+<span class="nc" id="L102">        TABLE_NAME = tABLE_NAME;</span>
+<span class="nc" id="L103">    }</span>
+
+    public String getCOLUMN_NAME() {
+<span class="nc" id="L106">        return COLUMN_NAME;</span>
+    }
+
+    public void setCOLUMN_NAME(String cOLUMN_NAME) {
+<span class="nc" id="L110">        COLUMN_NAME = cOLUMN_NAME;</span>
+<span class="nc" id="L111">    }</span>
+
+    public int getDATA_TYPE() {
+<span class="nc" id="L114">        return DATA_TYPE;</span>
+    }
+
+    public void setDATA_TYPE(int dATA_TYPE) {
+<span class="nc" id="L118">        DATA_TYPE = dATA_TYPE;</span>
+<span class="nc" id="L119">    }</span>
+
+    public String getTYPE_NAME() {
+<span class="nc" id="L122">        return TYPE_NAME;</span>
+    }
+
+    public void setTYPE_NAME(String tYPE_NAME) {
+<span class="nc" id="L126">        TYPE_NAME = tYPE_NAME;</span>
+<span class="nc" id="L127">    }</span>
+
+    public int getCOLUMN_SIZE() {
+<span class="nc" id="L130">        return COLUMN_SIZE;</span>
+    }
+
+    public void setCOLUMN_SIZE(int cOLUMN_SIZE) {
+<span class="nc" id="L134">        COLUMN_SIZE = cOLUMN_SIZE;</span>
+<span class="nc" id="L135">    }</span>
+
+    public int getBUFFER_LENGTH() {
+<span class="nc" id="L138">        return BUFFER_LENGTH;</span>
+    }
+
+    public void setBUFFER_LENGTH(int bUFFER_LENGTH) {
+<span class="nc" id="L142">        BUFFER_LENGTH = bUFFER_LENGTH;</span>
+<span class="nc" id="L143">    }</span>
+
+    public int getDECIMAL_DIGITS() {
+<span class="nc" id="L146">        return DECIMAL_DIGITS;</span>
+    }
+
+    public void setDECIMAL_DIGITS(int dECIMAL_DIGITS) {
+<span class="nc" id="L150">        DECIMAL_DIGITS = dECIMAL_DIGITS;</span>
+<span class="nc" id="L151">    }</span>
+
+    public int getNUM_PREC_RADIX() {
+<span class="nc" id="L154">        return NUM_PREC_RADIX;</span>
+    }
+
+    public void setNUM_PREC_RADIX(int nUM_PREC_RADIX) {
+<span class="nc" id="L158">        NUM_PREC_RADIX = nUM_PREC_RADIX;</span>
+<span class="nc" id="L159">    }</span>
+
+    public int getNULLABLE() {
+<span class="nc" id="L162">        return NULLABLE;</span>
+    }
+
+    public void setNULLABLE(int nULLABLE) {
+<span class="nc" id="L166">        NULLABLE = nULLABLE;</span>
+<span class="nc" id="L167">    }</span>
+
+    public String getREMARKS() {
+<span class="nc" id="L170">        return REMARKS;</span>
+    }
+
+    public void setREMARKS(String rEMARKS) {
+<span class="nc" id="L174">        REMARKS = rEMARKS;</span>
+<span class="nc" id="L175">    }</span>
+
+    public String getCOLUMN_DEF() {
+<span class="nc" id="L178">        return COLUMN_DEF;</span>
+    }
+
+    public void setCOLUMN_DEF(String cOLUMN_DEF) {
+<span class="nc" id="L182">        COLUMN_DEF = cOLUMN_DEF;</span>
+<span class="nc" id="L183">    }</span>
+
+    public int getSQL_DATA_TYPE() {
+<span class="nc" id="L186">        return SQL_DATA_TYPE;</span>
+    }
+
+    public void setSQL_DATA_TYPE(int sQL_DATA_TYPE) {
+<span class="nc" id="L190">        SQL_DATA_TYPE = sQL_DATA_TYPE;</span>
+<span class="nc" id="L191">    }</span>
+
+    public int getSQL_DATETIME_SUB() {
+<span class="nc" id="L194">        return SQL_DATETIME_SUB;</span>
+    }
+
+    public void setSQL_DATETIME_SUB(int sQL_DATETIME_SUB) {
+<span class="nc" id="L198">        SQL_DATETIME_SUB = sQL_DATETIME_SUB;</span>
+<span class="nc" id="L199">    }</span>
+
+    public int getCHAR_OCTET_LENGTH() {
+<span class="nc" id="L202">        return CHAR_OCTET_LENGTH;</span>
+    }
+
+    public void setCHAR_OCTET_LENGTH(int cHAR_OCTET_LENGTH) {
+<span class="nc" id="L206">        CHAR_OCTET_LENGTH = cHAR_OCTET_LENGTH;</span>
+<span class="nc" id="L207">    }</span>
+
+    public int getORDINAL_POSITION() {
+<span class="nc" id="L210">        return ORDINAL_POSITION;</span>
+    }
+
+    public void setORDINAL_POSITION(int oRDINAL_POSITION) {
+<span class="nc" id="L214">        ORDINAL_POSITION = oRDINAL_POSITION;</span>
+<span class="nc" id="L215">    }</span>
+
+    public String getIS_NULLABLE() {
+<span class="nc" id="L218">        return IS_NULLABLE;</span>
+    }
+
+    public void setIS_NULLABLE(String iS_NULLABLE) {
+<span class="nc" id="L222">        IS_NULLABLE = iS_NULLABLE;</span>
+<span class="nc" id="L223">    }</span>
+
+    public String getSCOPE_CATLOG() {
+<span class="nc" id="L226">        return SCOPE_CATLOG;</span>
+    }
+
+    public void setSCOPE_CATLOG(String sCOPE_CATLOG) {
+<span class="nc" id="L230">        SCOPE_CATLOG = sCOPE_CATLOG;</span>
+<span class="nc" id="L231">    }</span>
+
+    public String getSCOPE_SCHEMA() {
+<span class="nc" id="L234">        return SCOPE_SCHEMA;</span>
+    }
+
+    public void setSCOPE_SCHEMA(String sCOPE_SCHEMA) {
+<span class="nc" id="L238">        SCOPE_SCHEMA = sCOPE_SCHEMA;</span>
+<span class="nc" id="L239">    }</span>
+
+    public String getSCOPE_TABLE() {
+<span class="nc" id="L242">        return SCOPE_TABLE;</span>
+    }
+
+    public void setSCOPE_TABLE(String sCOPE_TABLE) {
+<span class="nc" id="L246">        SCOPE_TABLE = sCOPE_TABLE;</span>
+<span class="nc" id="L247">    }</span>
+
+    public short getSOURCE_DATA_TYPE() {
+<span class="nc" id="L250">        return SOURCE_DATA_TYPE;</span>
+    }
+
+    public void setSOURCE_DATA_TYPE(short sOURCE_DATA_TYPE) {
+<span class="nc" id="L254">        SOURCE_DATA_TYPE = sOURCE_DATA_TYPE;</span>
+<span class="nc" id="L255">    }</span>
+
+    public String getIS_AUTOINCREMENT() {
+<span class="nc" id="L258">        return IS_AUTOINCREMENT;</span>
+    }
+
+    public void setIS_AUTOINCREMENT(String iS_AUTOINCREMENT) {
+<span class="nc" id="L262">        this.IS_AUTOINCREMENT = iS_AUTOINCREMENT;</span>
+<span class="nc" id="L263">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

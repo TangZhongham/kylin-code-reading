@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColumnGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.datagen</a> &gt; <span class="el_source">ColumnGenerator.java</span></div><h1>ColumnGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.datagen;
+
+import java.io.IOException;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.NoSuchElementException;
+import java.util.Random;
+import java.util.TreeSet;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.ColumnDesc;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+public class ColumnGenerator {
+
+    final private ColumnGenConfig conf;
+    final private ColumnDesc targetCol;
+    final private int targetRows;
+
+<span class="fc" id="L49">    public ColumnGenerator(ColumnDesc col, int nRows, ModelDataGenerator modelGen) throws IOException {</span>
+<span class="fc" id="L50">        this.conf = new ColumnGenConfig(col, modelGen);</span>
+<span class="fc" id="L51">        this.targetCol = col;</span>
+<span class="fc" id="L52">        this.targetRows = nRows;</span>
+<span class="fc" id="L53">    }</span>
+
+    public Iterator&lt;String&gt; generate(long seed) {
+        Base result;
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (conf.isFK) {</span>
+<span class="fc" id="L58">            result = new DiscreteGen(conf.values, seed);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        } else if (conf.isID) {</span>
+<span class="fc" id="L60">            result = new IDGen(conf.idStart);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        } else if (conf.isRandom) {</span>
+<span class="fc" id="L62">            result = new RandomGen(targetCol, conf.randFormat, conf.randStart, conf.randEnd, conf.cardinality);</span>
+        } else {
+<span class="fc" id="L64">            result = new DiscreteGen(conf.values);</span>
+        }
+
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (conf.cardinality &gt; 0) {</span>
+<span class="nc" id="L68">            result = new CardinalityFilter(result, conf.cardinality);</span>
+        }
+
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (conf.genNull) {</span>
+<span class="fc" id="L72">            result = new AddNullFilter(result, conf.genNullPct, conf.genNullStr);</span>
+        }
+
+<span class="fc bfc" id="L75" title="All 4 branches covered.">        if (conf.order || conf.unique) {</span>
+<span class="fc" id="L76">            result = new OrderFilter(result, conf.unique, targetRows);</span>
+        }
+
+<span class="fc" id="L79">        return result;</span>
+    }
+
+<span class="fc" id="L82">    abstract public static class Base implements Iterator&lt;String&gt; {</span>
+        @Override
+        public void remove() {
+<span class="nc" id="L85">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    private class RandomGen extends Base {
+
+        private DataType type;
+        private String format;
+        private int randStart;
+        private int randEnd;
+        private Random rand;
+
+<span class="fc" id="L97">        public RandomGen(ColumnDesc col, String format, int randStart, int randEnd, int cardinality) {</span>
+<span class="fc" id="L98">            this.type = col.getType();</span>
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (type.isStringFamily()) {</span>
+                // string
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                if (StringUtils.isBlank(format)) {</span>
+<span class="fc" id="L103">                    String name = col.getName();</span>
+<span class="fc" id="L104">                    format = name.substring(0, Math.min(4, name.length())) + ColumnGenConfig.$RANDOM;</span>
+                }
+<span class="fc" id="L106">                Preconditions.checkArgument(format.contains(ColumnGenConfig.$RANDOM));</span>
+<span class="fc" id="L107">                initNumberRange(randStart, randEnd, cardinality);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            } else if (type.isTimeFamily()) {</span>
+                // time
+<span class="fc" id="L110">                format = StringUtil.noBlank(format, DateFormat.DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS);</span>
+<span class="fc" id="L111">                initDateTimeRange(randStart, randEnd, 0);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            } else if (type.isDateTimeFamily()) {</span>
+                // date
+<span class="fc" id="L114">                format = StringUtil.noBlank(format, DateFormat.DEFAULT_DATE_PATTERN);</span>
+<span class="fc" id="L115">                initDateTimeRange(randStart, randEnd, cardinality);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            } else if (type.isIntegerFamily()) {</span>
+                // integer
+<span class="fc" id="L118">                initNumberRange(randStart, randEnd, cardinality);</span>
+<span class="fc" id="L119">                format = StringUtil.noBlank(format, &quot;#&quot;);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            } else if (type.isNumberFamily()) {</span>
+                // double
+<span class="fc" id="L122">                initNumberRange(randStart, randEnd, 0);</span>
+<span class="fc" id="L123">                format = StringUtil.noBlank(format, &quot;.##&quot;);</span>
+            } else {
+<span class="nc" id="L125">                throw new IllegalArgumentException();</span>
+            }
+
+<span class="fc" id="L128">            this.format = format;</span>
+<span class="fc" id="L129">            this.rand = new Random();</span>
+<span class="fc" id="L130">        }</span>
+
+        private void initDateTimeRange(int randStart, int randEnd, int days) {
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">            if (randStart == 0 &amp;&amp; randEnd == 0) {</span>
+<span class="fc" id="L134">                randStart = 2010;</span>
+<span class="fc" id="L135">                randEnd = 2015;</span>
+            }
+<span class="fc" id="L137">            randEnd = Math.max(randEnd, randStart + (days / 365) + 1);</span>
+
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            Preconditions.checkArgument(randStart &lt; randEnd);</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            Preconditions.checkArgument((randEnd - randStart) * 365 &gt;= days);</span>
+
+<span class="fc" id="L142">            this.randStart = randStart;</span>
+<span class="fc" id="L143">            this.randEnd = randEnd;</span>
+<span class="fc" id="L144">        }</span>
+
+        private void initNumberRange(int randStart, int randEnd, int cardinality) {
+<span class="fc bfc" id="L147" title="All 4 branches covered.">            if (randStart == 0 &amp;&amp; randEnd == 0) {</span>
+<span class="fc" id="L148">                randStart = 0;</span>
+<span class="fc" id="L149">                randEnd = 1000;</span>
+            }
+<span class="fc" id="L151">            randEnd = Math.max(randEnd, randStart + cardinality);</span>
+
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            Preconditions.checkArgument(randStart &lt; randEnd);</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">            Preconditions.checkArgument(randEnd - randStart &gt;= cardinality);</span>
+
+<span class="fc" id="L156">            this.randStart = randStart;</span>
+<span class="fc" id="L157">            this.randEnd = randEnd;</span>
+<span class="fc" id="L158">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc" id="L162">            return true;</span>
+        }
+
+        @Override
+        public String next() {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (type.isStringFamily()) {</span>
+                // string
+<span class="fc" id="L169">                return format.replace(ColumnGenConfig.$RANDOM, &quot;&quot; + randomInt());</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            } else if (type.isTimeFamily()) {</span>
+                // time
+<span class="fc" id="L172">                return DateFormat.formatToTimeStr(randomMillis(), format);</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            } else if (type.isDateTimeFamily()) {</span>
+                // date
+<span class="fc" id="L175">                return DateFormat.formatToDateStr(randomMillis(), format);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            } else if (type.isIntegerFamily()) {</span>
+                // integer
+<span class="fc" id="L178">                return formatNumber(randomInt());</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            } else if (type.isNumberFamily()) {</span>
+                // double
+<span class="fc" id="L181">                return formatNumber(randomDouble());</span>
+            } else {
+<span class="nc" id="L183">                throw new NoSuchElementException();</span>
+            }
+        }
+
+        private String formatNumber(double i) {
+<span class="fc" id="L188">            return new DecimalFormat(format, DecimalFormatSymbols.getInstance(Locale.ROOT)).format(i);</span>
+        }
+
+        private int randomInt() {
+<span class="fc" id="L192">            return randStart + rand.nextInt(randEnd - randStart);</span>
+        }
+
+        private double randomDouble() {
+<span class="fc" id="L196">            return randomInt() + rand.nextDouble();</span>
+        }
+
+        private long randomMillis() {
+<span class="fc" id="L200">            int secondsInYear = 3600 * 24 * 365;</span>
+<span class="fc" id="L201">            long year = randStart + rand.nextInt(randEnd - randStart) - 1970L;</span>
+<span class="fc" id="L202">            long second = year * secondsInYear + rand.nextInt(secondsInYear);</span>
+<span class="fc" id="L203">            return second * 1000;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc" id="L208">            throw new UnsupportedOperationException();</span>
+        }
+
+    }
+
+    private class IDGen extends Base {
+
+        int next;
+
+<span class="fc" id="L217">        public IDGen(int start) {</span>
+<span class="fc" id="L218">            next = start;</span>
+<span class="fc" id="L219">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc" id="L223">            return true;</span>
+        }
+
+        @Override
+        public String next() {
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            if (!hasNext()) {</span>
+<span class="nc" id="L229">                throw new NoSuchElementException();</span>
+            }
+<span class="fc" id="L231">            return &quot;&quot; + (next++);</span>
+        }
+    }
+
+    private class DiscreteGen extends Base {
+
+        private List&lt;String&gt; values;
+        private Random rand;
+
+<span class="fc" id="L240">        public DiscreteGen(List&lt;String&gt; values) {</span>
+<span class="fc" id="L241">            this.values = values;</span>
+<span class="fc" id="L242">            this.rand = new Random();</span>
+<span class="fc" id="L243">        }</span>
+
+<span class="fc" id="L245">        public DiscreteGen(List&lt;String&gt; values, long seed) {</span>
+<span class="fc" id="L246">            this.values = values;</span>
+<span class="fc" id="L247">            this.rand = new Random(seed);</span>
+<span class="fc" id="L248">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="nc" id="L252">            return true;</span>
+        }
+
+        @Override
+        public String next() {
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">            if (values.isEmpty())</span>
+<span class="nc" id="L258">                throw new NoSuchElementException();</span>
+
+<span class="fc" id="L260">            return values.get(rand.nextInt(values.size()));</span>
+        }
+    }
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">    private class CardinalityFilter extends Base {</span>
+
+        private Iterator&lt;String&gt; input;
+        private int card;
+        private TreeSet&lt;String&gt; cache;
+
+<span class="nc" id="L270">        public CardinalityFilter(Iterator&lt;String&gt; input, int card) {</span>
+<span class="nc bnc" id="L271" title="All 4 branches missed.">            assert card &gt; 0;</span>
+<span class="nc" id="L272">            this.input = input;</span>
+<span class="nc" id="L273">            this.card = card;</span>
+<span class="nc" id="L274">            this.cache = new TreeSet&lt;String&gt;();</span>
+<span class="nc" id="L275">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="nc" id="L279">            return input.hasNext();</span>
+        }
+
+        @Override
+        public String next() {
+<span class="nc" id="L284">            String r = input.next();</span>
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">            if (cache.size() &lt; card) {</span>
+<span class="nc" id="L287">                cache.add(r);</span>
+<span class="nc" id="L288">                return r;</span>
+            }
+
+<span class="nc" id="L291">            r = cache.floor(r);</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">            return r == null ? cache.first() : r;</span>
+        }
+    }
+
+    private class AddNullFilter extends Base {
+
+        private Iterator&lt;String&gt; input;
+        private double nullPct;
+        private String nullStr;
+        private Random rand;
+
+<span class="fc" id="L303">        public AddNullFilter(Iterator&lt;String&gt; input, double nullPct, String nullStr) {</span>
+<span class="fc" id="L304">            this.input = input;</span>
+<span class="fc" id="L305">            this.nullPct = nullPct;</span>
+<span class="fc" id="L306">            this.nullStr = nullStr;</span>
+<span class="fc" id="L307">            this.rand = new Random();</span>
+<span class="fc" id="L308">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="nc" id="L312">            return true;</span>
+        }
+
+        @Override
+        public String next() {
+<span class="fc" id="L317">            String r = nullStr;</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            if (input.hasNext()) {</span>
+<span class="fc" id="L319">                r = input.next();</span>
+            }
+
+<span class="fc bfc" id="L322" title="All 2 branches covered.">            if (rand.nextDouble() &lt; nullPct) {</span>
+<span class="fc" id="L323">                r = nullStr;</span>
+            }
+<span class="fc" id="L325">            return r;</span>
+        }
+    }
+
+<span class="fc" id="L329">    final private Comparator&lt;String&gt; comp = new Comparator&lt;String&gt;() {</span>
+        @Override
+        public int compare(String s1, String s2) {
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">            if (s1 == null) {</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">                return s2 == null ? 0 : -1;</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">            } else if (s2 == null) {</span>
+<span class="nc" id="L335">                return 1;</span>
+            } else {
+<span class="fc bfc" id="L337" title="All 2 branches covered.">                if (targetCol.getType().isNumberFamily())</span>
+<span class="fc" id="L338">                    return Double.compare(Double.parseDouble(s1), Double.parseDouble(s2));</span>
+                else
+<span class="fc" id="L340">                    return s1.compareTo(s2);</span>
+            }
+        }
+    };
+
+    private class OrderFilter extends Base {
+
+        private Iterator&lt;String&gt; iter;
+
+<span class="fc" id="L349">        public OrderFilter(Iterator&lt;String&gt; input, boolean unique, int targetRows) {</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">            Collection&lt;String&gt; cache = unique ? new TreeSet&lt;String&gt;(comp) : new ArrayList&lt;String&gt;(targetRows);</span>
+<span class="fc" id="L351">            int cap = targetRows * 100;</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">            for (int i = 0; cache.size() &lt; targetRows; i++) {</span>
+<span class="fc" id="L353">                cache.add(input.next());</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">                if (i &gt;= cap)</span>
+<span class="nc" id="L355">                    throw new IllegalStateException();</span>
+            }
+
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            if (cache instanceof List) {</span>
+<span class="fc" id="L359">                Collections.sort((List&lt;String&gt;) cache, comp);</span>
+            }
+
+<span class="fc" id="L362">            iter = cache.iterator();</span>
+<span class="fc" id="L363">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="nc" id="L367">            return iter.hasNext();</span>
+        }
+
+        @Override
+        public String next() {
+<span class="fc" id="L372">            return iter.next();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TupleFilterVisitor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode.visitor</a> &gt; <span class="el_source">TupleFilterVisitor.java</span></div><h1>TupleFilterVisitor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.query.relnode.visitor;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import org.apache.calcite.avatica.util.TimeUnitRange;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexDynamicParam;
+import org.apache.calcite.rex.RexInputRef;
+import org.apache.calcite.rex.RexLiteral;
+import org.apache.calcite.rex.RexLocalRef;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexVisitorImpl;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.type.SqlTypeFamily;
+import org.apache.calcite.util.NlsString;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.filter.CaseTupleFilter;
+import org.apache.kylin.metadata.filter.ColumnTupleFilter;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.ConstantTupleFilter;
+import org.apache.kylin.metadata.filter.DynamicTupleFilter;
+import org.apache.kylin.metadata.filter.ExtractTupleFilter;
+import org.apache.kylin.metadata.filter.LogicalTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.UnsupportedTupleFilter;
+import org.apache.kylin.metadata.filter.function.Functions;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.query.relnode.ColumnRowType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.math.BigDecimal;
+import java.util.GregorianCalendar;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">public class TupleFilterVisitor extends RexVisitorImpl&lt;TupleFilter&gt; {</span>
+
+<span class="fc" id="L67">    private static Logger logger = LoggerFactory.getLogger(TupleFilterVisitor.class);</span>
+
+    final ColumnRowType inputRowType;
+
+    // is the fact table is a streamingv2 table
+<span class="nc" id="L72">    private boolean autoJustByTimezone = false;</span>
+<span class="fc" id="L73">    private static final long TIME_ZONE_OFFSET = TimeZone.getTimeZone(KylinConfig.getInstanceFromEnv().getStreamingDerivedTimeTimezone())</span>
+<span class="fc" id="L74">            .getRawOffset();</span>
+
+    public TupleFilterVisitor(ColumnRowType inputRowType) {
+<span class="nc" id="L77">        super(true);</span>
+<span class="nc" id="L78">        this.inputRowType = inputRowType;</span>
+<span class="nc" id="L79">    }</span>
+
+    @Override
+    public TupleFilter visitCall(RexCall call) {
+<span class="nc" id="L83">        TupleFilter filter = null;</span>
+<span class="nc" id="L84">        SqlOperator op = call.getOperator();</span>
+<span class="nc bnc" id="L85" title="All 17 branches missed.">        switch (op.getKind()) {</span>
+        case AND:
+<span class="nc" id="L87">            filter = new LogicalTupleFilter(TupleFilter.FilterOperatorEnum.AND);</span>
+<span class="nc" id="L88">            break;</span>
+        case OR:
+<span class="nc" id="L90">            filter = new LogicalTupleFilter(TupleFilter.FilterOperatorEnum.OR);</span>
+<span class="nc" id="L91">            break;</span>
+        case NOT:
+<span class="nc" id="L93">            filter = new LogicalTupleFilter(TupleFilter.FilterOperatorEnum.NOT);</span>
+<span class="nc" id="L94">            break;</span>
+        case EQUALS:
+<span class="nc" id="L96">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.EQ);</span>
+<span class="nc" id="L97">            break;</span>
+        case GREATER_THAN:
+<span class="nc" id="L99">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.GT);</span>
+<span class="nc" id="L100">            break;</span>
+        case LESS_THAN:
+<span class="nc" id="L102">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.LT);</span>
+<span class="nc" id="L103">            break;</span>
+        case GREATER_THAN_OR_EQUAL:
+<span class="nc" id="L105">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.GTE);</span>
+<span class="nc" id="L106">            break;</span>
+        case LESS_THAN_OR_EQUAL:
+<span class="nc" id="L108">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.LTE);</span>
+<span class="nc" id="L109">            break;</span>
+        case NOT_EQUALS:
+<span class="nc" id="L111">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.NEQ);</span>
+<span class="nc" id="L112">            break;</span>
+        case IS_NULL:
+<span class="nc" id="L114">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.ISNULL);</span>
+<span class="nc" id="L115">            break;</span>
+        case IS_NOT_NULL:
+<span class="nc" id="L117">            filter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.ISNOTNULL);</span>
+<span class="nc" id="L118">            break;</span>
+        case CAST:
+        case REINTERPRET:
+            // NOTE: use child directly
+<span class="nc" id="L122">            break;</span>
+        case CASE:
+<span class="nc" id="L124">            filter = new CaseTupleFilter();</span>
+<span class="nc" id="L125">            break;</span>
+        case OTHER:
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            if (op.getName().equalsIgnoreCase(&quot;extract_date&quot;)) {</span>
+<span class="nc" id="L128">                filter = new ExtractTupleFilter(TupleFilter.FilterOperatorEnum.EXTRACT);</span>
+            } else {
+<span class="nc" id="L130">                filter = Functions.getFunctionTupleFilter(op.getName());</span>
+            }
+<span class="nc" id="L132">            break;</span>
+        case LIKE:
+        case OTHER_FUNCTION:
+<span class="nc" id="L135">            filter = Functions.getFunctionTupleFilter(op.getName());</span>
+<span class="nc" id="L136">            break;</span>
+        case PLUS:
+        case MINUS:
+        case TIMES:
+        case DIVIDE:
+<span class="nc" id="L141">            TupleFilter f = dealWithTrivialExpr(call);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if (f != null) {</span>
+                // is a trivial expr
+<span class="nc" id="L144">                return f;</span>
+            }
+<span class="nc" id="L146">            filter = new UnsupportedTupleFilter(TupleFilter.FilterOperatorEnum.UNSUPPORTED);</span>
+<span class="nc" id="L147">            break;</span>
+        default:
+<span class="nc" id="L149">            filter = new UnsupportedTupleFilter(TupleFilter.FilterOperatorEnum.UNSUPPORTED);</span>
+        }
+
+<span class="nc" id="L152">        boolean isChildValueDateTimeType = false;</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        for (RexNode operand : call.operands) {</span>
+<span class="nc" id="L154">            TupleFilter childFilter = operand.accept(this);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (filter == null) {</span>
+<span class="nc" id="L156">                filter = cast(childFilter, call.type);</span>
+            } else {
+<span class="nc" id="L158">                filter.addChild(childFilter);</span>
+            }
+<span class="nc bnc" id="L160" title="All 4 branches missed.">            if (operand instanceof RexLiteral &amp;&amp; ((RexLiteral) operand).getValue() instanceof GregorianCalendar) {</span>
+<span class="nc" id="L161">                isChildValueDateTimeType = true;</span>
+            }
+<span class="nc" id="L163">        }</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (filter instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L165">            CompareTupleFilter compFilter = (CompareTupleFilter) filter;</span>
+<span class="nc bnc" id="L166" title="All 4 branches missed.">            if (compFilter.getChildren().size() == 2 &amp;&amp; compFilter.getChildren().get(0) instanceof ColumnTupleFilter</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                    &amp;&amp; compFilter.getChildren().get(1) instanceof ConstantTupleFilter) {</span>
+<span class="nc" id="L168">                ColumnTupleFilter colFilter = (ColumnTupleFilter) compFilter.getChildren().get(0);</span>
+<span class="nc" id="L169">                ConstantTupleFilter constFilter = (ConstantTupleFilter) compFilter.getChildren().get(1);</span>
+<span class="nc bnc" id="L170" title="All 4 branches missed.">                if (isChildValueDateTimeType &amp;&amp; colFilter.getColumn().getType().isStringFamily()) {</span>
+<span class="nc" id="L171">                    Set&lt;Object&gt; newValues = Sets.newHashSet();</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                    for (Object v : constFilter.getValues()) {</span>
+<span class="nc" id="L173">                        newValues.add(DateFormat.formatToDateStr(DateFormat.stringToMillis(v.toString())));</span>
+<span class="nc" id="L174">                    }</span>
+<span class="nc" id="L175">                    ConstantTupleFilter newConstFilter = new ConstantTupleFilter(newValues);</span>
+<span class="nc" id="L176">                    filter = new CompareTupleFilter(filter.getOperator());</span>
+<span class="nc" id="L177">                    filter.addChild(colFilter);</span>
+<span class="nc" id="L178">                    filter.addChild(newConstFilter);</span>
+                }
+            }
+        }
+
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (op.getKind() == SqlKind.OR) {</span>
+<span class="nc" id="L184">            filter = mergeToInClause(filter);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        } else if (op.getKind() == SqlKind.NOT) {</span>
+<span class="nc bnc" id="L186" title="All 4 branches missed.">            assert (filter.getChildren().size() == 1);</span>
+<span class="nc" id="L187">            filter = filter.getChildren().get(0).reverse();</span>
+        }
+<span class="nc" id="L189">        return filter;</span>
+    }
+
+    //KYLIN-2597 - Deal with trivial expression in filters like x = 1 + 2
+    private TupleFilter dealWithTrivialExpr(RexCall call) {
+<span class="nc" id="L194">        ImmutableList&lt;RexNode&gt; operators = call.operands;</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (operators.size() != 2) {</span>
+<span class="nc" id="L196">            return null;</span>
+        }
+
+<span class="nc" id="L199">        BigDecimal left = null;</span>
+<span class="nc" id="L200">        BigDecimal right = null;</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        for (RexNode rexNode : operators) {</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if (!(rexNode instanceof RexLiteral)) {</span>
+<span class="nc" id="L203">                return null;// only trivial expr with constants</span>
+            }
+
+<span class="nc" id="L206">            RexLiteral temp = (RexLiteral) rexNode;</span>
+<span class="nc bnc" id="L207" title="All 4 branches missed.">            if (temp.getType().getFamily() != SqlTypeFamily.NUMERIC || !(temp.getValue() instanceof BigDecimal)) {</span>
+<span class="nc" id="L208">                return null;// only numeric constants now</span>
+            }
+
+<span class="nc bnc" id="L211" title="All 2 branches missed.">            if (left == null) {</span>
+<span class="nc" id="L212">                left = (BigDecimal) temp.getValue();</span>
+            } else {
+<span class="nc" id="L214">                right = (BigDecimal) temp.getValue();</span>
+            }
+<span class="nc" id="L216">        }</span>
+
+<span class="nc" id="L218">        Preconditions.checkNotNull(left);</span>
+<span class="nc" id="L219">        Preconditions.checkNotNull(right);</span>
+
+<span class="nc bnc" id="L221" title="All 5 branches missed.">        switch (call.op.getKind()) {</span>
+        case PLUS:
+<span class="nc" id="L223">            return new ConstantTupleFilter(left.add(right).toString());</span>
+        case MINUS:
+<span class="nc" id="L225">            return new ConstantTupleFilter(left.subtract(right).toString());</span>
+        case TIMES:
+<span class="nc" id="L227">            return new ConstantTupleFilter(left.multiply(right).toString());</span>
+        case DIVIDE:
+<span class="nc" id="L229">            return new ConstantTupleFilter(left.divide(right).toString());</span>
+        default:
+<span class="nc" id="L231">            return null;</span>
+        }
+    }
+
+    private TupleFilter cast(TupleFilter filter, RelDataType type) {
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        if ((filter instanceof ConstantTupleFilter) == false) {</span>
+<span class="nc" id="L237">            return filter;</span>
+        }
+
+<span class="nc" id="L240">        ConstantTupleFilter constFilter = (ConstantTupleFilter) filter;</span>
+
+<span class="nc bnc" id="L242" title="All 4 branches missed.">        if (type.getFamily() == SqlTypeFamily.DATE || type.getFamily() == SqlTypeFamily.DATETIME</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                || type.getFamily() == SqlTypeFamily.TIMESTAMP) {</span>
+<span class="nc" id="L244">            List&lt;String&gt; newValues = Lists.newArrayList();</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">            for (Object v : constFilter.getValues()) {</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">                if (v == null) {</span>
+<span class="nc" id="L247">                    newValues.add(null);</span>
+                } else {
+<span class="nc" id="L249">                    long ts = DateFormat.stringToMillis(v.toString());</span>
+                    // Change column value of date/timestamp type from local timezone to UTC timezone by minus offset in RelNode level.
+                    // This will change request sent to storage level(receiver), thus affect segment/fragment level purge.
+<span class="nc bnc" id="L252" title="All 4 branches missed.">                    if (autoJustByTimezone &amp;&amp; (type.getFamily() == SqlTypeFamily.TIMESTAMP</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                            || type.getFamily() == SqlTypeFamily.DATETIME)) {</span>
+<span class="nc" id="L254">                        ts -= TIME_ZONE_OFFSET;</span>
+                    }
+<span class="nc" id="L256">                    newValues.add(String.valueOf(ts));</span>
+                }
+<span class="nc" id="L258">            }</span>
+<span class="nc" id="L259">            constFilter = new ConstantTupleFilter(newValues);</span>
+        }
+<span class="nc" id="L261">        return constFilter;</span>
+    }
+
+    @VisibleForTesting
+    static TupleFilter mergeToInClause(TupleFilter filter) {
+<span class="fc" id="L266">        List&lt;? extends TupleFilter&gt; children = filter.getChildren();</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (children.isEmpty()) {</span>
+<span class="nc" id="L268">            return filter;</span>
+        }
+        // key: inColumn
+        // Value: first: inValues
+        // Value: second: dynamicVariables
+<span class="fc" id="L273">        Map&lt;TblColRef, Pair&lt;Set&lt;Object&gt;, Map&lt;String, Object&gt;&gt;&gt; inColumnMap = Maps.newHashMap();</span>
+<span class="fc" id="L274">        List&lt;TupleFilter&gt; extraFilters = Lists.newLinkedList();</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        for (TupleFilter child : children) {</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            if (child.getOperator() == TupleFilter.FilterOperatorEnum.EQ) {</span>
+<span class="fc" id="L277">                CompareTupleFilter compFilter = (CompareTupleFilter) child;</span>
+<span class="fc" id="L278">                TblColRef column = compFilter.getColumn();</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                if (column != null) {</span>
+<span class="fc" id="L280">                    Pair&lt;Set&lt;Object&gt;, Map&lt;String, Object&gt;&gt; tmpValue = inColumnMap.get(column);</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">                    if (tmpValue == null) {</span>
+<span class="fc" id="L282">                        Set&lt;Object&gt; inValues = Sets.newHashSet();</span>
+<span class="fc" id="L283">                        Map&lt;String, Object&gt; dynamicVariables = Maps.newHashMap();</span>
+<span class="fc" id="L284">                        tmpValue = new Pair&lt;&gt;(inValues, dynamicVariables);</span>
+<span class="fc" id="L285">                        inColumnMap.put(column, tmpValue);</span>
+                    }
+
+<span class="fc" id="L288">                    tmpValue.getFirst().addAll(compFilter.getValues());</span>
+<span class="fc" id="L289">                    tmpValue.getSecond().putAll(compFilter.getVariables());</span>
+<span class="fc" id="L290">                    continue;</span>
+                }
+            }
+<span class="fc" id="L293">            extraFilters.add(child);</span>
+<span class="fc" id="L294">        }</span>
+
+<span class="fc" id="L296">        children.clear();</span>
+
+<span class="fc" id="L298">        TupleFilter ret = new LogicalTupleFilter(TupleFilter.FilterOperatorEnum.OR);</span>
+<span class="fc" id="L299">        ret.addChildren(extraFilters);</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        for (Map.Entry&lt;TblColRef, Pair&lt;Set&lt;Object&gt;, Map&lt;String, Object&gt;&gt;&gt; entry : inColumnMap.entrySet()) {</span>
+<span class="fc" id="L301">            CompareTupleFilter inFilter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.IN);</span>
+<span class="fc" id="L302">            inFilter.addChild(new ColumnTupleFilter(entry.getKey()));</span>
+<span class="fc" id="L303">            inFilter.addChild(new ConstantTupleFilter(entry.getValue().getFirst()));</span>
+<span class="fc" id="L304">            inFilter.getVariables().putAll(entry.getValue().getSecond());</span>
+<span class="fc" id="L305">            ret.addChild(inFilter);</span>
+<span class="fc" id="L306">        }</span>
+
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">        return ret.getChildren().size() == 1 ? ret.getChildren().get(0) : ret;</span>
+    }
+
+    @Override
+    public TupleFilter visitLocalRef(RexLocalRef localRef) {
+<span class="nc" id="L313">        throw new UnsupportedOperationException(&quot;local ref:&quot; + localRef);</span>
+    }
+
+    @Override
+    public TupleFilter visitInputRef(RexInputRef inputRef) {
+<span class="nc" id="L318">        TblColRef column = inputRowType.getColumnByIndex(inputRef.getIndex());</span>
+<span class="nc" id="L319">        ColumnTupleFilter filter = new ColumnTupleFilter(column);</span>
+<span class="nc" id="L320">        return filter;</span>
+    }
+
+    @SuppressWarnings(&quot;unused&quot;)
+    private String normToTwoDigits(int i) {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (i &lt; 10)</span>
+<span class="nc" id="L326">            return &quot;0&quot; + i;</span>
+        else
+<span class="nc" id="L328">            return &quot;&quot; + i;</span>
+    }
+
+    @Override
+    public TupleFilter visitLiteral(RexLiteral literal) {
+<span class="nc" id="L333">        String strValue = null;</span>
+<span class="nc" id="L334">        Object literalValue = literal.getValue();</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        if (literalValue instanceof NlsString) {</span>
+<span class="nc" id="L336">            strValue = ((NlsString) literalValue).getValue();</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">        } else if (literalValue instanceof GregorianCalendar) {</span>
+<span class="nc" id="L338">            GregorianCalendar g = (GregorianCalendar) literalValue;</span>
+<span class="nc" id="L339">            strValue = Long.toString(g.getTimeInMillis());</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        } else if (literalValue instanceof TimeUnitRange) {</span>
+            // Extract(x from y) in where clause
+<span class="nc" id="L342">            strValue = ((TimeUnitRange) literalValue).name();</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">        } else if (literalValue == null) {</span>
+<span class="nc" id="L344">            strValue = null;</span>
+        } else {
+<span class="nc" id="L346">            strValue = literalValue.toString();</span>
+        }
+<span class="nc" id="L348">        TupleFilter filter = new ConstantTupleFilter(strValue);</span>
+<span class="nc" id="L349">        return filter;</span>
+    }
+
+    @Override
+    public TupleFilter visitDynamicParam(RexDynamicParam dynamicParam) {
+<span class="nc" id="L354">        String name = dynamicParam.getName();</span>
+<span class="nc" id="L355">        TupleFilter filter = new DynamicTupleFilter(name);</span>
+<span class="nc" id="L356">        return filter;</span>
+    }
+
+    public void setAutoJustByTimezone(boolean autoJustByTimezone) {
+<span class="nc" id="L360">        this.autoJustByTimezone = autoJustByTimezone;</span>
+<span class="nc" id="L361">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

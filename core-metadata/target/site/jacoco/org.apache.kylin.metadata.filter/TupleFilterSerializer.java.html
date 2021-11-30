@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TupleFilterSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter</a> &gt; <span class="el_source">TupleFilterSerializer.java</span></div><h1>TupleFilterSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.filter;
+
+import java.lang.reflect.InvocationTargetException;
+import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Stack;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.filter.UDF.MassInTupleFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ * http://eli.thegreenplace.net/2011/09/29/an-interesting-tree-serialization-algorithm-from-dwarf
+ * 
+ * @author xjiang
+ * 
+ */
+<span class="nc" id="L41">public class TupleFilterSerializer {</span>
+
+<span class="fc" id="L43">    private static final Logger logger = LoggerFactory.getLogger(TupleFilterSerializer.class);</span>
+
+    public interface Decorator {
+        TupleFilter onSerialize(TupleFilter filter);
+    }
+
+    private static final int BUFFER_SIZE = 65536;
+<span class="fc" id="L50">    private static final Map&lt;Integer, TupleFilter.FilterOperatorEnum&gt; ID_OP_MAP = new HashMap&lt;Integer, TupleFilter.FilterOperatorEnum&gt;();</span>
+<span class="fc" id="L51">    protected static final Map&lt;TupleFilter.FilterOperatorEnum, Class&gt; extendedTupleFilters = Maps.newHashMap();</span>
+
+    static {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (TupleFilter.FilterOperatorEnum op : TupleFilter.FilterOperatorEnum.values()) {</span>
+<span class="fc" id="L55">            ID_OP_MAP.put(op.getValue(), op);</span>
+        }
+<span class="fc" id="L57">    }</span>
+
+    public static byte[] serialize(TupleFilter rootFilter, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="fc" id="L60">        return serialize(rootFilter, null, cs);</span>
+    }
+
+    public static byte[] serialize(TupleFilter rootFilter, Decorator decorator, IFilterCodeSystem&lt;?&gt; cs) {
+        ByteBuffer buffer;
+<span class="fc" id="L65">        int bufferSize = BUFFER_SIZE;</span>
+        while (true) {
+            try {
+<span class="fc" id="L68">                buffer = ByteBuffer.allocate(bufferSize);</span>
+<span class="fc" id="L69">                internalSerialize(rootFilter, decorator, buffer, cs);</span>
+<span class="fc" id="L70">                break;</span>
+<span class="nc" id="L71">            } catch (BufferOverflowException e) {</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">                if (bufferSize == (1 &lt;&lt; 30))</span>
+<span class="nc" id="L73">                    throw e;</span>
+
+<span class="nc" id="L75">                logger.info(&quot;Buffer size {} cannot hold the filter, resizing to 2 times&quot;, bufferSize);</span>
+<span class="nc" id="L76">                bufferSize = bufferSize &lt;&lt; 1;</span>
+<span class="nc" id="L77">            }</span>
+        }
+<span class="fc" id="L79">        byte[] result = new byte[buffer.position()];</span>
+<span class="fc" id="L80">        System.arraycopy(buffer.array(), 0, result, 0, buffer.position());</span>
+<span class="fc" id="L81">        return result;</span>
+    }
+
+    private static void internalSerialize(TupleFilter filter, Decorator decorator, ByteBuffer buffer,
+            IFilterCodeSystem&lt;?&gt; cs) {
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (decorator != null) { // give decorator a chance to manipulate the output filter</span>
+<span class="nc" id="L87">            filter = decorator.onSerialize(filter);</span>
+        }
+
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        if (filter == null) {</span>
+<span class="nc" id="L91">            return;</span>
+        }
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (filter.hasChildren()) {</span>
+            // serialize filter+true
+<span class="fc" id="L96">            serializeFilter(1, filter, buffer, cs);</span>
+            // serialize children
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (TupleFilter child : filter.getChildren()) {</span>
+<span class="fc" id="L99">                internalSerialize(child, decorator, buffer, cs);</span>
+<span class="fc" id="L100">            }</span>
+            // serialize none
+<span class="fc" id="L102">            serializeFilter(-1, filter, buffer, cs);</span>
+        } else {
+            // serialize filter+false
+<span class="fc" id="L105">            serializeFilter(0, filter, buffer, cs);</span>
+        }
+<span class="fc" id="L107">    }</span>
+
+    private static void serializeFilter(int flag, TupleFilter filter, ByteBuffer buffer, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (flag &lt; 0) {</span>
+<span class="fc" id="L111">            BytesUtil.writeVInt(-1, buffer);</span>
+        } else {
+<span class="fc" id="L113">            int opVal = filter.getOperator().getValue();</span>
+<span class="fc" id="L114">            BytesUtil.writeVInt(opVal, buffer);</span>
+<span class="fc" id="L115">            filter.serialize(cs, buffer);</span>
+<span class="fc" id="L116">            BytesUtil.writeVInt(flag, buffer);</span>
+        }
+<span class="fc" id="L118">    }</span>
+
+    public static TupleFilter deserialize(byte[] bytes, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="fc" id="L121">        ByteBuffer buffer = ByteBuffer.wrap(bytes);</span>
+<span class="fc" id="L122">        TupleFilter rootFilter = null;</span>
+<span class="fc" id="L123">        Stack&lt;TupleFilter&gt; parentStack = new Stack&lt;TupleFilter&gt;();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        while (buffer.hasRemaining()) {</span>
+<span class="fc" id="L125">            int opVal = BytesUtil.readVInt(buffer);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (opVal &lt; 0) {</span>
+<span class="fc" id="L127">                parentStack.pop();</span>
+<span class="fc" id="L128">                continue;</span>
+            }
+
+            // deserialize filter
+<span class="fc" id="L132">            TupleFilter filter = createTupleFilter(opVal);</span>
+<span class="fc" id="L133">            filter.deserialize(cs, buffer);</span>
+
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (rootFilter == null) {</span>
+                // push root to stack
+<span class="fc" id="L137">                rootFilter = filter;</span>
+<span class="fc" id="L138">                parentStack.push(filter);</span>
+<span class="fc" id="L139">                BytesUtil.readVInt(buffer);</span>
+<span class="fc" id="L140">                continue;</span>
+            }
+
+            // add filter to parent
+<span class="fc" id="L144">            TupleFilter parentFilter = parentStack.peek();</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            if (parentFilter != null) {</span>
+<span class="fc" id="L146">                parentFilter.addChild(filter);</span>
+            }
+
+            // push filter to stack or not based on having children or not
+<span class="fc" id="L150">            int hasChild = BytesUtil.readVInt(buffer);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (hasChild == 1) {</span>
+<span class="nc" id="L152">                parentStack.push(filter);</span>
+            }
+<span class="fc" id="L154">        }</span>
+<span class="fc" id="L155">        return rootFilter;</span>
+    }
+
+    private static TupleFilter createTupleFilter(int opVal) {
+<span class="fc" id="L159">        TupleFilter.FilterOperatorEnum op = ID_OP_MAP.get(opVal);</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (op == null) {</span>
+<span class="nc" id="L161">            throw new IllegalStateException(&quot;operator value is &quot; + opVal);</span>
+        }
+<span class="fc" id="L163">        TupleFilter filter = null;</span>
+<span class="pc bpc" id="L164" title="8 of 11 branches missed.">        switch (op) {</span>
+        case AND:
+        case OR:
+        case NOT:
+<span class="nc" id="L168">            filter = new LogicalTupleFilter(op);</span>
+<span class="nc" id="L169">            break;</span>
+        case EQ:
+        case NEQ:
+        case LT:
+        case LTE:
+        case GT:
+        case GTE:
+        case IN:
+        case NOTIN:
+        case ISNULL:
+        case ISNOTNULL:
+<span class="fc" id="L180">            filter = new CompareTupleFilter(op);</span>
+<span class="fc" id="L181">            break;</span>
+        case EXTRACT:
+<span class="nc" id="L183">            filter = new ExtractTupleFilter(op);</span>
+<span class="nc" id="L184">            break;</span>
+        case CASE:
+<span class="nc" id="L186">            filter = new CaseTupleFilter();</span>
+<span class="nc" id="L187">            break;</span>
+        case COLUMN:
+<span class="fc" id="L189">            filter = new ColumnTupleFilter(null);</span>
+<span class="fc" id="L190">            break;</span>
+        case CONSTANT:
+<span class="fc" id="L192">            filter = new ConstantTupleFilter();</span>
+<span class="fc" id="L193">            break;</span>
+        case DYNAMIC:
+<span class="nc" id="L195">            filter = new DynamicTupleFilter(null);</span>
+<span class="nc" id="L196">            break;</span>
+        case FUNCTION:
+<span class="nc" id="L198">            filter = new BuiltInFunctionTupleFilter(null);</span>
+<span class="nc" id="L199">            break;</span>
+        case UNSUPPORTED:
+<span class="nc" id="L201">            filter = new UnsupportedTupleFilter(op);</span>
+<span class="nc" id="L202">            break;</span>
+        case MASSIN:
+<span class="nc" id="L204">            filter = new MassInTupleFilter();</span>
+<span class="nc" id="L205">            break;</span>
+        default: {
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (extendedTupleFilters.containsKey(op)) {</span>
+                try {
+<span class="nc" id="L209">                    filter = (TupleFilter) extendedTupleFilters.get(op).getConstructor().newInstance();</span>
+<span class="nc" id="L210">                } catch (InstantiationException | IllegalAccessException | InvocationTargetException</span>
+                        | NoSuchMethodException e) {
+<span class="nc" id="L212">                    throw new RuntimeException(e);</span>
+<span class="nc" id="L213">                }</span>
+            } else {
+<span class="nc" id="L215">                throw new IllegalStateException(&quot;Error FilterOperatorEnum: &quot; + op.getValue());</span>
+            }
+        }
+        }
+
+<span class="fc" id="L220">        return filter;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

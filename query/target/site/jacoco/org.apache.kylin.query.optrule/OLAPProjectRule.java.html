@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPProjectRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.optrule</a> &gt; <span class="el_source">OLAPProjectRule.java</span></div><h1>OLAPProjectRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.optrule;
+
+import java.util.List;
+
+import org.apache.calcite.plan.Convention;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptRule;
+import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelCollation;
+import org.apache.calcite.rel.RelCollationTraitDef;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.convert.ConverterRule;
+import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.metadata.RelMdCollation;
+import org.apache.kylin.query.relnode.OLAPProjectRel;
+import org.apache.kylin.query.relnode.OLAPRel;
+
+import com.google.common.base.Supplier;
+
+/**
+ */
+public class OLAPProjectRule extends ConverterRule {
+
+<span class="nc" id="L43">    public static final RelOptRule INSTANCE = new OLAPProjectRule();</span>
+
+    public OLAPProjectRule() {
+<span class="nc" id="L46">        super(LogicalProject.class, RelOptUtil.PROJECT_PREDICATE, Convention.NONE, OLAPRel.CONVENTION,</span>
+                &quot;OLAPProjectRule&quot;);
+<span class="nc" id="L48">    }</span>
+
+    @Override
+    public RelNode convert(final RelNode rel) {
+
+        //  KYLIN-3281
+        //  OLAPProjectRule can't normal working with projectRel[input=sortRel]
+<span class="nc" id="L55">        final LogicalProject project = (LogicalProject) rel;</span>
+<span class="nc" id="L56">        final RelNode convertChild = convert(project.getInput(),</span>
+<span class="nc" id="L57">                project.getInput().getTraitSet().replace(OLAPRel.CONVENTION));</span>
+<span class="nc" id="L58">        final RelOptCluster cluster = convertChild.getCluster();</span>
+<span class="nc" id="L59">        final RelTraitSet traitSet = cluster.traitSet().replace(OLAPRel.CONVENTION)</span>
+<span class="nc" id="L60">                .replaceIfs(RelCollationTraitDef.INSTANCE, new Supplier&lt;List&lt;RelCollation&gt;&gt;() {</span>
+                    public List&lt;RelCollation&gt; get() {
+                        //  CALCITE-88
+<span class="nc" id="L63">                        return RelMdCollation.project(cluster.getMetadataQuery(), convertChild, project.getProjects());</span>
+                    }
+                });
+<span class="nc" id="L66">        return new OLAPProjectRel(convertChild.getCluster(), traitSet, convertChild, project.getProjects(),</span>
+<span class="nc" id="L67">                project.getRowType());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

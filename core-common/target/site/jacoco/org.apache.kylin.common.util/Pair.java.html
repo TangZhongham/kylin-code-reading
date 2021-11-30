@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Pair.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">Pair.java</span></div><h1>Pair.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.Serializable;
+
+/**
+ * A generic class for pairs. Copied from org.apache.hadoop.hbase.util.Pair
+ * @param &lt;T1&gt;
+ * @param &lt;T2&gt;
+ */
+public class Pair&lt;T1, T2&gt; implements Serializable {
+    private static final long serialVersionUID = -3986244606585552569L;
+
+<span class="pc" id="L31">    protected T1 first = null;</span>
+<span class="pc" id="L32">    protected T2 second = null;</span>
+
+    /**
+     * Default constructor.
+     */
+<span class="nc" id="L37">    public Pair() {</span>
+<span class="nc" id="L38">    }</span>
+
+    /**
+     * Constructor
+     * @param a operand
+     * @param b operand
+     */
+<span class="fc" id="L45">    public Pair(T1 a, T2 b) {</span>
+<span class="fc" id="L46">        this.first = a;</span>
+<span class="fc" id="L47">        this.second = b;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Constructs a new pair, inferring the type via the passed arguments
+     * @param &lt;T1&gt; type for first
+     * @param &lt;T2&gt; type for second
+     * @param a first element
+     * @param b second element
+     * @return a new pair containing the passed arguments
+     */
+    public static &lt;T1, T2&gt; Pair&lt;T1, T2&gt; newPair(T1 a, T2 b) {
+<span class="fc" id="L59">        return new Pair&lt;T1, T2&gt;(a, b);</span>
+    }
+
+    private static boolean equals(Object x, Object y) {
+<span class="nc bnc" id="L63" title="All 8 branches missed.">        return (x == null &amp;&amp; y == null) || (x != null &amp;&amp; x.equals(y));</span>
+    }
+
+    /**
+     * Return the first element stored in the pair.
+     * @return T1
+     */
+    public T1 getFirst() {
+<span class="fc" id="L71">        return first;</span>
+    }
+    
+    public T1 getKey() {
+<span class="nc" id="L75">        return first;</span>
+    }
+
+    /**
+     * Replace the first element of the pair.
+     * @param a operand
+     */
+    public void setFirst(T1 a) {
+<span class="nc" id="L83">        this.first = a;</span>
+<span class="nc" id="L84">    }</span>
+
+    /**
+     * Return the second element stored in the pair.
+     * @return T2
+     */
+    public T2 getSecond() {
+<span class="nc" id="L91">        return second;</span>
+    }
+    
+    public T2 getValue() {
+<span class="nc" id="L95">        return second;</span>
+    }
+
+    /**
+     * Replace the second element of the pair.
+     * @param b operand
+     */
+    public void setSecond(T2 b) {
+<span class="nc" id="L103">        this.second = b;</span>
+<span class="nc" id="L104">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    public boolean equals(Object other) {
+<span class="nc bnc" id="L109" title="All 6 branches missed.">        return other instanceof Pair &amp;&amp; equals(first, ((Pair) other).first) &amp;&amp; equals(second, ((Pair) other).second);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (first == null)</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            return (second == null) ? 0 : second.hashCode() + 1;</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        else if (second == null)</span>
+<span class="nc" id="L117">            return first.hashCode() + 2;</span>
+        else
+<span class="nc" id="L119">            return first.hashCode() * 17 + second.hashCode();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L124">        return &quot;{&quot; + getFirst() + &quot;,&quot; + getSecond() + &quot;}&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitmapSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.bitmap</a> &gt; <span class="el_source">BitmapSerializer.java</span></div><h1>BitmapSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.measure.bitmap;
+
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+public class BitmapSerializer extends DataTypeSerializer&lt;BitmapCounter&gt; {
+<span class="fc" id="L28">    private static final BitmapCounterFactory factory = RoaringBitmapCounterFactory.INSTANCE;</span>
+<span class="fc" id="L29">    private static final BitmapCounter DELEGATE = factory.newBitmap();</span>
+
+    private static final int IS_RESULT_FLAG = 1;
+    private static final int RESULT_SIZE = 12;
+    private static final int DEFAULT_MAX_SIZE = 1024;
+
+    // called by reflection
+<span class="fc" id="L36">    public BitmapSerializer(DataType type) {</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    public void serialize(BitmapCounter value, ByteBuffer out) {
+        try {
+<span class="fc" id="L42">            value.write(out);</span>
+<span class="nc" id="L43">        } catch (IOException e) {</span>
+<span class="nc" id="L44">            throw new RuntimeException(e);</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">    }</span>
+
+    @Override
+    public BitmapCounter deserialize(ByteBuffer in) {
+        try {
+            //The length of RoaringBitmap is larger than 12
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">            if (peekLength(in) == RESULT_SIZE) {</span>
+<span class="nc" id="L53">                int flag = in.getInt();</span>
+<span class="nc" id="L54">                return factory.newBitmap(in.getLong());</span>
+            } else {
+<span class="fc" id="L56">                return factory.newBitmap(in);</span>
+            }
+<span class="nc" id="L58">        } catch (IOException e) {</span>
+<span class="nc" id="L59">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="fc" id="L65">        ByteBuffer buffer = in.slice();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (buffer.getInt(0) == IS_RESULT_FLAG) {</span>
+<span class="nc" id="L67">            return RESULT_SIZE;</span>
+        } else {
+<span class="fc" id="L69">            return DELEGATE.peekLength(in);</span>
+        }
+    }
+
+    @Override
+    public int maxLength() {
+        // the bitmap is non-fixed length, and we just assume 8MB here, maybe change it later
+        // some statistics for bitmap: 
+        // 1 million distinct keys takes about 2MB storage
+        // 5 million takes 10MB
+        // 10 million takes 12MB
+<span class="nc" id="L80">        return 8 * 1024 * 1024;</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+        // It's difficult to decide the size before data was ingested, comparing with HLLCounter(16) as 64KB, here is assumption
+<span class="nc" id="L86">        return 8 * 1024;</span>
+    }
+
+    @Override
+    protected double getStorageBytesEstimate(double averageNumOfElementsInCounter) {
+        // MappeableArrayContainer DEFAULT_MAX_SIZE = 4096
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (averageNumOfElementsInCounter &lt; DEFAULT_MAX_SIZE) {</span>
+            // 8 = 4 + 4 for SERIAL_COOKIE_NO_RUNCONTAINER + size
+            // size * 8 = 2 * size + 2 * size + 4 * size as keys + values Cardinality + startOffsets
+            // size * 8 for values array
+<span class="nc" id="L96">            return 8 + averageNumOfElementsInCounter * 16;</span>
+        } else {
+<span class="nc" id="L98">            return getStorageBytesEstimate();</span>
+        }
+    }
+
+    @Override
+    public boolean supportDirectReturnResult() {
+<span class="nc" id="L104">        return true;</span>
+    }
+
+    @Override
+    public ByteBuffer getFinalResult(ByteBuffer in) {
+<span class="nc" id="L109">        ByteBuffer out = ByteBuffer.allocate(RESULT_SIZE);</span>
+        try {
+<span class="nc" id="L111">            BitmapCounter counter = factory.newBitmap(in);</span>
+<span class="nc" id="L112">            out.putInt(IS_RESULT_FLAG);</span>
+<span class="nc" id="L113">            out.putLong(counter.getCount());</span>
+<span class="nc" id="L114">        } catch (IOException e) {</span>
+<span class="nc" id="L115">            throw new RuntimeException(e);</span>
+<span class="nc" id="L116">        }</span>
+<span class="nc" id="L117">        out.flip();</span>
+<span class="nc" id="L118">        return out;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

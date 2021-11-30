@@ -1,0 +1,764 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QuerySparkMetrics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metrics</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics</a> &gt; <span class="el_source">QuerySparkMetrics.java</span></div><h1>QuerySparkMetrics.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metrics;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.metrics.lib.impl.RecordEvent;
+import org.apache.kylin.metrics.lib.impl.TimedRecordEvent;
+import org.apache.kylin.metrics.property.QuerySparkExecutionEnum;
+import org.apache.kylin.metrics.property.QuerySparkJobEnum;
+import org.apache.kylin.metrics.property.QuerySparkStageEnum;
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.kylin.shaded.com.google.common.cache.Cache;
+import org.apache.kylin.shaded.com.google.common.cache.CacheBuilder;
+import org.apache.kylin.shaded.com.google.common.cache.RemovalListener;
+import org.apache.kylin.shaded.com.google.common.cache.RemovalNotification;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Serializable;
+import java.util.Map;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+public class QuerySparkMetrics {
+<span class="nc" id="L44">    private static final Logger logger = LoggerFactory.getLogger(QuerySparkMetrics.class);</span>
+<span class="nc" id="L45">    private static ScheduledExecutorService scheduledExecutor = null;</span>
+<span class="nc" id="L46">    private static QuerySparkMetrics instance =</span>
+            new QuerySparkMetrics(new QuerySparkMetricsRemovalListener());
+    private static final int sparkMetricsNum = 10;
+    private org.apache.kylin.shaded.com.google.common.cache.Cache&lt;String, QueryExecutionMetrics&gt; queryExecutionMetricsMap;
+
+    // default removal listener
+    private static class QuerySparkMetricsRemovalListener implements RemovalListener&lt;String,
+            QueryExecutionMetrics&gt; {
+        @Override
+        public void onRemoval(RemovalNotification&lt;String, QueryExecutionMetrics&gt; notification) {
+            try {
+<span class="nc" id="L57">                updateMetricsToReservoir(notification.getKey(), notification.getValue());</span>
+<span class="nc" id="L58">                logger.info(&quot;Query metrics {} is removed due to {}, update to metrics reservoir successful&quot;,</span>
+<span class="nc" id="L59">                        notification.getKey(), notification.getCause());</span>
+<span class="nc" id="L60">            } catch (Exception e) {</span>
+<span class="nc" id="L61">                logger.warn(&quot;Query metrics {} is removed due to {}, update to metrics reservoir failed&quot;,</span>
+<span class="nc" id="L62">                        notification.getKey(), notification.getCause());</span>
+<span class="nc" id="L63">            }</span>
+<span class="nc" id="L64">        }</span>
+    }
+
+<span class="nc" id="L67">    private QuerySparkMetrics(RemovalListener removalListener) {</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (queryExecutionMetricsMap != null) {</span>
+<span class="nc" id="L69">            queryExecutionMetricsMap.cleanUp();</span>
+<span class="nc" id="L70">            queryExecutionMetricsMap = null;</span>
+        }
+<span class="nc" id="L72">        queryExecutionMetricsMap = CacheBuilder.newBuilder()</span>
+<span class="nc" id="L73">                .maximumSize(KylinConfig.getInstanceFromEnv().getKylinMetricsCacheMaxEntries())</span>
+<span class="nc" id="L74">                .expireAfterWrite(KylinConfig.getInstanceFromEnv().getKylinMetricsCacheExpireSeconds(),</span>
+                        TimeUnit.SECONDS)
+<span class="nc" id="L76">                .removalListener(removalListener).build();</span>
+
+<span class="nc bnc" id="L78" title="All 4 branches missed.">        if (scheduledExecutor != null &amp;&amp; !scheduledExecutor.isShutdown()) {</span>
+<span class="nc" id="L79">            scheduledExecutor.shutdown();</span>
+<span class="nc" id="L80">            scheduledExecutor = null;</span>
+        }
+<span class="nc" id="L82">        scheduledExecutor = Executors.newSingleThreadScheduledExecutor();</span>
+<span class="nc" id="L83">        scheduledExecutor.scheduleWithFixedDelay(new Runnable() {</span>
+                                                     @Override
+                                                     public void run() {
+<span class="nc" id="L86">                                                         queryExecutionMetricsMap.cleanUp();</span>
+<span class="nc" id="L87">                                                     }</span>
+                                                 },
+<span class="nc" id="L89">                KylinConfig.getInstanceFromEnv().getKylinMetricsCacheExpireSeconds(),</span>
+<span class="nc" id="L90">                KylinConfig.getInstanceFromEnv().getKylinMetricsCacheExpireSeconds(), TimeUnit.SECONDS);</span>
+<span class="nc" id="L91">    }</span>
+
+    private void shutdown() {
+<span class="nc" id="L94">        queryExecutionMetricsMap.invalidateAll();</span>
+<span class="nc" id="L95">    }</span>
+
+    // only for test case
+    @VisibleForTesting
+    public static void init(RemovalListener removalListener) {
+<span class="nc" id="L100">        instance = new QuerySparkMetrics(removalListener);</span>
+<span class="nc" id="L101">    }</span>
+
+    public static QuerySparkMetrics getInstance() {
+<span class="nc" id="L104">        return instance;</span>
+    }
+
+    public void onJobStart(String queryId, String sparderName, long executionId, long executionStartTime, int jobId,
+            long jobStartTime) {
+<span class="nc" id="L109">        QueryExecutionMetrics queryExecutionMetrics = queryExecutionMetricsMap.getIfPresent(queryId);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (queryExecutionMetrics == null) {</span>
+<span class="nc" id="L111">            queryExecutionMetrics = new QueryExecutionMetrics();</span>
+<span class="nc" id="L112">            ConcurrentMap&lt;Integer, SparkJobMetrics&gt; sparkJobMetricsMap = Maps.newConcurrentMap();</span>
+<span class="nc" id="L113">            queryExecutionMetrics.setQueryId(queryId);</span>
+<span class="nc" id="L114">            queryExecutionMetrics.setSparderName(sparderName);</span>
+<span class="nc" id="L115">            queryExecutionMetrics.setExecutionId(executionId);</span>
+<span class="nc" id="L116">            queryExecutionMetrics.setStartTime(executionStartTime);</span>
+<span class="nc" id="L117">            queryExecutionMetrics.setSparkJobMetricsMap(sparkJobMetricsMap);</span>
+<span class="nc" id="L118">            queryExecutionMetricsMap.put(queryId, queryExecutionMetrics);</span>
+        }
+<span class="nc" id="L120">        SparkJobMetrics sparkJobMetrics = new SparkJobMetrics();</span>
+<span class="nc" id="L121">        sparkJobMetrics.setExecutionId(executionId);</span>
+<span class="nc" id="L122">        sparkJobMetrics.setJobId(jobId);</span>
+<span class="nc" id="L123">        sparkJobMetrics.setStartTime(jobStartTime);</span>
+
+<span class="nc" id="L125">        ConcurrentMap&lt;Integer, SparkStageMetrics&gt; sparkStageMetricsMap = Maps.newConcurrentMap();</span>
+<span class="nc" id="L126">        sparkJobMetrics.setSparkStageMetricsMap(sparkStageMetricsMap);</span>
+
+<span class="nc" id="L128">        queryExecutionMetrics.getSparkJobMetricsMap().put(jobId, sparkJobMetrics);</span>
+<span class="nc" id="L129">    }</span>
+
+    public void onSparkStageStart(String queryId, int jobId, int stageId, String stageType, long submitTime) {
+<span class="nc" id="L132">        QueryExecutionMetrics queryExecutionMetrics = queryExecutionMetricsMap.getIfPresent(queryId);</span>
+<span class="nc bnc" id="L133" title="All 4 branches missed.">        if (queryExecutionMetrics != null &amp;&amp; queryExecutionMetrics.getSparkJobMetricsMap().get(jobId) != null) {</span>
+<span class="nc" id="L134">            SparkStageMetrics sparkStageMetrics = new SparkStageMetrics();</span>
+<span class="nc" id="L135">            sparkStageMetrics.setStageId(stageId);</span>
+<span class="nc" id="L136">            sparkStageMetrics.setStageType(stageType);</span>
+<span class="nc" id="L137">            sparkStageMetrics.setSubmitTime(submitTime);</span>
+<span class="nc" id="L138">            queryExecutionMetrics.getSparkJobMetricsMap().get(jobId).getSparkStageMetricsMap().put(stageId,</span>
+                    sparkStageMetrics);
+        }
+<span class="nc" id="L141">    }</span>
+
+    public void updateSparkStageMetrics(String queryId, int jobId, int stageId, boolean isSuccess,
+            SparkStageMetrics sparkStageMetricsEnd) {
+<span class="nc" id="L145">        QueryExecutionMetrics queryExecutionMetrics = queryExecutionMetricsMap.getIfPresent(queryId);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (queryExecutionMetrics != null) {</span>
+<span class="nc" id="L147">            SparkJobMetrics sparkJobMetrics = queryExecutionMetrics.getSparkJobMetricsMap().get(jobId);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (sparkJobMetrics != null) {</span>
+<span class="nc" id="L149">                SparkStageMetrics sparkStageMetrics = sparkJobMetrics.getSparkStageMetricsMap().get(stageId);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                if (sparkStageMetrics != null) {</span>
+<span class="nc" id="L151">                    sparkStageMetrics.setSuccess(isSuccess);</span>
+<span class="nc" id="L152">                    sparkStageMetrics.setMetrics(sparkStageMetricsEnd.getResultSize(),</span>
+<span class="nc" id="L153">                            sparkStageMetricsEnd.getExecutorDeserializeTime(),</span>
+<span class="nc" id="L154">                            sparkStageMetricsEnd.getExecutorDeserializeCpuTime(),</span>
+<span class="nc" id="L155">                            sparkStageMetricsEnd.getExecutorRunTime(), sparkStageMetricsEnd.getExecutorCpuTime(),</span>
+<span class="nc" id="L156">                            sparkStageMetricsEnd.getJvmGCTime(), sparkStageMetricsEnd.getResultSerializationTime(),</span>
+<span class="nc" id="L157">                            sparkStageMetricsEnd.getMemoryBytesSpilled(), sparkStageMetricsEnd.getDiskBytesSpilled(),</span>
+<span class="nc" id="L158">                            sparkStageMetricsEnd.getPeakExecutionMemory());</span>
+                }
+            }
+        }
+<span class="nc" id="L162">    }</span>
+
+    public void updateSparkJobMetrics(String queryId, int jobId, long jobEndTime, boolean isSuccess) {
+<span class="nc" id="L165">        QueryExecutionMetrics queryExecutionMetrics = queryExecutionMetricsMap.getIfPresent(queryId);</span>
+<span class="nc bnc" id="L166" title="All 4 branches missed.">        if (queryExecutionMetrics != null &amp;&amp; queryExecutionMetrics.getSparkJobMetricsMap().get(jobId) != null) {</span>
+<span class="nc" id="L167">            SparkJobMetrics sparkJobMetrics = queryExecutionMetrics.getSparkJobMetricsMap().get(jobId);</span>
+<span class="nc" id="L168">            sparkJobMetrics.setEndTime(jobEndTime);</span>
+<span class="nc" id="L169">            sparkJobMetrics.setSuccess(isSuccess);</span>
+        }
+<span class="nc" id="L171">    }</span>
+
+    public void updateExecutionMetrics(String queryId, long executionEndTime) {
+<span class="nc" id="L174">        QueryExecutionMetrics queryExecutionMetrics = queryExecutionMetricsMap.getIfPresent(queryId);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (queryExecutionMetrics != null) {</span>
+<span class="nc" id="L176">            queryExecutionMetrics.setEndTime(executionEndTime);</span>
+        }
+<span class="nc" id="L178">    }</span>
+
+    public Cache&lt;String, QueryExecutionMetrics&gt; getQueryExecutionMetricsMap() {
+<span class="nc" id="L181">        return queryExecutionMetricsMap;</span>
+    }
+
+    public QueryExecutionMetrics getQueryExecutionMetrics(String queryId) {
+<span class="nc" id="L185">        return queryExecutionMetricsMap.getIfPresent(queryId);</span>
+    }
+
+    /**
+     * report query related metrics
+     */
+    public static void updateMetricsToReservoir(String queryId,
+                                                QueryExecutionMetrics queryExecutionMetrics) {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (!KylinConfig.getInstanceFromEnv().isKylinMetricsReporterForQueryEnabled()) {</span>
+<span class="nc" id="L194">            return;</span>
+        }
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (queryExecutionMetrics != null) {</span>
+<span class="nc" id="L197">            RecordEvent queryExecutionMetricsEvent = new TimedRecordEvent(</span>
+<span class="nc" id="L198">                    KylinConfig.getInstanceFromEnv().getKylinMetricsSubjectQueryExecution());</span>
+
+<span class="nc" id="L200">            setQueryWrapper(queryExecutionMetricsEvent, queryExecutionMetrics.getUser(),</span>
+<span class="nc" id="L201">                    queryExecutionMetrics.getSqlIdCode(), queryExecutionMetrics.getQueryType(),</span>
+<span class="nc" id="L202">                    queryId, queryExecutionMetrics.getProject(),</span>
+<span class="nc" id="L203">                    queryExecutionMetrics.getException());</span>
+
+<span class="nc" id="L205">            setSparkExecutionWrapper(queryExecutionMetricsEvent, queryExecutionMetrics.getSparderName(),</span>
+<span class="nc" id="L206">                    queryExecutionMetrics.getExecutionId(), queryExecutionMetrics.getRealization(),</span>
+<span class="nc" id="L207">                    queryExecutionMetrics.getRealizationTypes(),</span>
+<span class="nc" id="L208">                    queryExecutionMetrics.getCuboidIds(),</span>
+<span class="nc" id="L209">                    queryExecutionMetrics.getStartTime(), queryExecutionMetrics.getEndTime());</span>
+
+<span class="nc" id="L211">            setQueryMetrics(queryExecutionMetricsEvent, queryExecutionMetrics.getSqlDuration(),</span>
+<span class="nc" id="L212">                    queryExecutionMetrics.getTotalScanCount(), queryExecutionMetrics.getTotalScanBytes(),</span>
+<span class="nc" id="L213">                    queryExecutionMetrics.getResultCount());</span>
+
+<span class="nc" id="L215">            long[] queryExecutionMetricsList = new long[sparkMetricsNum];</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">            for (Map.Entry&lt;Integer, QuerySparkMetrics.SparkJobMetrics&gt; sparkJobMetricsEntry : queryExecutionMetrics</span>
+<span class="nc" id="L217">                    .getSparkJobMetricsMap().entrySet()) {</span>
+<span class="nc" id="L218">                RecordEvent sparkJobMetricsEvent = new TimedRecordEvent(</span>
+<span class="nc" id="L219">                        KylinConfig.getInstanceFromEnv().getKylinMetricsSubjectQuerySparkJob());</span>
+
+<span class="nc" id="L221">                setSparkJobWrapper(sparkJobMetricsEvent, queryExecutionMetrics.getProject(),</span>
+<span class="nc" id="L222">                        queryId, queryExecutionMetrics.getExecutionId(),</span>
+<span class="nc" id="L223">                        sparkJobMetricsEntry.getValue().getJobId(), sparkJobMetricsEntry.getValue().getStartTime(),</span>
+<span class="nc" id="L224">                        sparkJobMetricsEntry.getValue().getEndTime(), sparkJobMetricsEntry.getValue().isSuccess());</span>
+
+<span class="nc" id="L226">                long[] sparkJobMetricsList = new long[sparkMetricsNum];</span>
+                for (Map.Entry&lt;Integer, QuerySparkMetrics.SparkStageMetrics&gt; sparkStageMetricsEntry : sparkJobMetricsEntry
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                        .getValue().getSparkStageMetricsMap().entrySet()) {</span>
+<span class="nc" id="L229">                    RecordEvent sparkStageMetricsEvent = new TimedRecordEvent(</span>
+<span class="nc" id="L230">                            KylinConfig.getInstanceFromEnv().getKylinMetricsSubjectQuerySparkStage());</span>
+<span class="nc" id="L231">                    QuerySparkMetrics.SparkStageMetrics sparkStageMetrics = sparkStageMetricsEntry.getValue();</span>
+<span class="nc" id="L232">                    setStageWrapper(sparkStageMetricsEvent, queryExecutionMetrics.getProject(), null,</span>
+<span class="nc" id="L233">                            queryId, queryExecutionMetrics.getExecutionId(),</span>
+<span class="nc" id="L234">                            sparkJobMetricsEntry.getValue().getJobId(), sparkStageMetrics.getStageId(),</span>
+<span class="nc" id="L235">                            sparkStageMetrics.getSubmitTime(), sparkStageMetrics.isSuccess());</span>
+<span class="nc" id="L236">                    setStageMetrics(sparkStageMetricsEvent, sparkStageMetrics.getResultSize(),</span>
+<span class="nc" id="L237">                            sparkStageMetrics.getExecutorDeserializeTime(),</span>
+<span class="nc" id="L238">                            sparkStageMetrics.getExecutorDeserializeCpuTime(), sparkStageMetrics.getExecutorRunTime(),</span>
+<span class="nc" id="L239">                            sparkStageMetrics.getExecutorCpuTime(), sparkStageMetrics.getJvmGCTime(),</span>
+<span class="nc" id="L240">                            sparkStageMetrics.getResultSerializationTime(), sparkStageMetrics.getMemoryBytesSpilled(),</span>
+<span class="nc" id="L241">                            sparkStageMetrics.getDiskBytesSpilled(), sparkStageMetrics.getPeakExecutionMemory());</span>
+                    //Update spark stage level metrics
+<span class="nc" id="L243">                    MetricsManager.getInstance().update(sparkStageMetricsEvent);</span>
+
+<span class="nc" id="L245">                    sparkJobMetricsList[0] += sparkStageMetrics.getResultSize();</span>
+<span class="nc" id="L246">                    sparkJobMetricsList[1] += sparkStageMetrics.getExecutorDeserializeTime();</span>
+<span class="nc" id="L247">                    sparkJobMetricsList[2] += sparkStageMetrics.getExecutorDeserializeCpuTime();</span>
+<span class="nc" id="L248">                    sparkJobMetricsList[3] += sparkStageMetrics.getExecutorRunTime();</span>
+<span class="nc" id="L249">                    sparkJobMetricsList[4] += sparkStageMetrics.getExecutorCpuTime();</span>
+<span class="nc" id="L250">                    sparkJobMetricsList[5] += sparkStageMetrics.getJvmGCTime();</span>
+<span class="nc" id="L251">                    sparkJobMetricsList[6] += sparkStageMetrics.getResultSerializationTime();</span>
+<span class="nc" id="L252">                    sparkJobMetricsList[7] += sparkStageMetrics.getMemoryBytesSpilled();</span>
+<span class="nc" id="L253">                    sparkJobMetricsList[8] += sparkStageMetrics.getDiskBytesSpilled();</span>
+<span class="nc" id="L254">                    sparkJobMetricsList[9] += sparkStageMetrics.getPeakExecutionMemory();</span>
+<span class="nc" id="L255">                }</span>
+<span class="nc" id="L256">                setSparkJobMetrics(sparkJobMetricsEvent, sparkJobMetricsList[0], sparkJobMetricsList[1],</span>
+                        sparkJobMetricsList[2], sparkJobMetricsList[3], sparkJobMetricsList[4], sparkJobMetricsList[5],
+                        sparkJobMetricsList[6], sparkJobMetricsList[7], sparkJobMetricsList[8], sparkJobMetricsList[9]);
+                //Update spark job level metrics
+<span class="nc" id="L260">                MetricsManager.getInstance().update(sparkJobMetricsEvent);</span>
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">                for (int i = 0; i &lt; sparkMetricsNum; i++) {</span>
+<span class="nc" id="L263">                    queryExecutionMetricsList[i] += sparkJobMetricsList[i];</span>
+                }
+<span class="nc" id="L265">            }</span>
+<span class="nc" id="L266">            setSparkExecutionMetrics(queryExecutionMetricsEvent,</span>
+<span class="nc" id="L267">                    queryExecutionMetrics.getEndTime() - queryExecutionMetrics.getStartTime(),</span>
+                    queryExecutionMetricsList[0], queryExecutionMetricsList[1], queryExecutionMetricsList[2],
+                    queryExecutionMetricsList[3], queryExecutionMetricsList[4], queryExecutionMetricsList[5],
+                    queryExecutionMetricsList[6], queryExecutionMetricsList[7], queryExecutionMetricsList[8],
+                    queryExecutionMetricsList[9]);
+            //Update execution level metrics
+<span class="nc" id="L273">            MetricsManager.getInstance().update(queryExecutionMetricsEvent);</span>
+        }
+<span class="nc" id="L275">    }</span>
+
+    private static void setQueryWrapper(RecordEvent metricsEvent, String user, long sqlIdCode, String queryType,
+            String queryId, String project, String exception) {
+<span class="nc" id="L279">        metricsEvent.put(QuerySparkExecutionEnum.USER.toString(), user);</span>
+<span class="nc" id="L280">        metricsEvent.put(QuerySparkExecutionEnum.ID_CODE.toString(), sqlIdCode);</span>
+<span class="nc" id="L281">        metricsEvent.put(QuerySparkExecutionEnum.TYPE.toString(), queryType);</span>
+<span class="nc" id="L282">        metricsEvent.put(QuerySparkExecutionEnum.QUERY_ID.toString(), queryId);</span>
+<span class="nc" id="L283">        metricsEvent.put(QuerySparkExecutionEnum.PROJECT.toString(), project);</span>
+<span class="nc" id="L284">        metricsEvent.put(QuerySparkExecutionEnum.EXCEPTION.toString(), exception);</span>
+<span class="nc" id="L285">    }</span>
+
+    private static void setSparkExecutionWrapper(RecordEvent metricsEvent, String sparderName,
+                                                 long executionId, String realizationName,
+                                                 String realizationType, String cuboidIds,
+                                                 long startTime, long endTime) {
+<span class="nc" id="L291">        metricsEvent.put(QuerySparkExecutionEnum.SPARDER_NAME.toString(), sparderName);</span>
+<span class="nc" id="L292">        metricsEvent.put(QuerySparkExecutionEnum.EXECUTION_ID.toString(), executionId);</span>
+<span class="nc" id="L293">        metricsEvent.put(QuerySparkExecutionEnum.REALIZATION.toString(), realizationName);</span>
+<span class="nc" id="L294">        metricsEvent.put(QuerySparkExecutionEnum.REALIZATION_TYPE.toString(), realizationType);</span>
+<span class="nc" id="L295">        metricsEvent.put(QuerySparkExecutionEnum.CUBOID_IDS.toString(), cuboidIds);</span>
+<span class="nc" id="L296">        metricsEvent.put(QuerySparkExecutionEnum.START_TIME.toString(), startTime);</span>
+<span class="nc" id="L297">        metricsEvent.put(QuerySparkExecutionEnum.END_TIME.toString(), endTime);</span>
+<span class="nc" id="L298">    }</span>
+
+    private static void setQueryMetrics(RecordEvent metricsEvent, long sqlDuration, long totalScanCount,
+            long totalScanBytes, long resultCount) {
+<span class="nc" id="L302">        metricsEvent.put(QuerySparkExecutionEnum.TIME_COST.toString(), sqlDuration);</span>
+<span class="nc" id="L303">        metricsEvent.put(QuerySparkExecutionEnum.TOTAL_SCAN_COUNT.toString(), totalScanCount);</span>
+<span class="nc" id="L304">        metricsEvent.put(QuerySparkExecutionEnum.TOTAL_SCAN_BYTES.toString(), totalScanBytes);</span>
+<span class="nc" id="L305">        metricsEvent.put(QuerySparkExecutionEnum.RESULT_COUNT.toString(), resultCount);</span>
+<span class="nc" id="L306">    }</span>
+
+    private static void setSparkExecutionMetrics(RecordEvent metricsEvent, long executionDuration, long resultSize,
+            long executorDeserializeTime, long executorDeserializeCpuTime, long executorRunTime, long executorCpuTime,
+            long jvmGCTime, long resultSerializationTime, long memoryBytesSpilled, long diskBytesSpilled,
+            long peakExecutionMemory) {
+<span class="nc" id="L312">        metricsEvent.put(QuerySparkExecutionEnum.EXECUTION_DURATION.toString(), executionDuration);</span>
+
+<span class="nc" id="L314">        metricsEvent.put(QuerySparkExecutionEnum.RESULT_SIZE.toString(), resultSize);</span>
+<span class="nc" id="L315">        metricsEvent.put(QuerySparkExecutionEnum.EXECUTOR_DESERIALIZE_TIME.toString(), executorDeserializeTime);</span>
+<span class="nc" id="L316">        metricsEvent.put(QuerySparkExecutionEnum.EXECUTOR_DESERIALIZE_CPU_TIME.toString(), executorDeserializeCpuTime);</span>
+<span class="nc" id="L317">        metricsEvent.put(QuerySparkExecutionEnum.EXECUTOR_RUN_TIME.toString(), executorRunTime);</span>
+<span class="nc" id="L318">        metricsEvent.put(QuerySparkExecutionEnum.EXECUTOR_CPU_TIME.toString(), executorCpuTime);</span>
+<span class="nc" id="L319">        metricsEvent.put(QuerySparkExecutionEnum.JVM_GC_TIME.toString(), jvmGCTime);</span>
+<span class="nc" id="L320">        metricsEvent.put(QuerySparkExecutionEnum.RESULT_SERIALIZATION_TIME.toString(), resultSerializationTime);</span>
+<span class="nc" id="L321">        metricsEvent.put(QuerySparkExecutionEnum.MEMORY_BYTE_SPILLED.toString(), memoryBytesSpilled);</span>
+<span class="nc" id="L322">        metricsEvent.put(QuerySparkExecutionEnum.DISK_BYTES_SPILLED.toString(), diskBytesSpilled);</span>
+<span class="nc" id="L323">        metricsEvent.put(QuerySparkExecutionEnum.PEAK_EXECUTION_MEMORY.toString(), peakExecutionMemory);</span>
+<span class="nc" id="L324">    }</span>
+
+    private static void setSparkJobMetrics(RecordEvent metricsEvent, long resultSize, long executorDeserializeTime,
+            long executorDeserializeCpuTime, long executorRunTime, long executorCpuTime, long jvmGCTime,
+            long resultSerializationTime, long memoryBytesSpilled, long diskBytesSpilled, long peakExecutionMemory) {
+<span class="nc" id="L329">        metricsEvent.put(QuerySparkJobEnum.RESULT_SIZE.toString(), resultSize);</span>
+<span class="nc" id="L330">        metricsEvent.put(QuerySparkJobEnum.EXECUTOR_DESERIALIZE_TIME.toString(), executorDeserializeTime);</span>
+<span class="nc" id="L331">        metricsEvent.put(QuerySparkJobEnum.EXECUTOR_DESERIALIZE_CPU_TIME.toString(), executorDeserializeCpuTime);</span>
+<span class="nc" id="L332">        metricsEvent.put(QuerySparkJobEnum.EXECUTOR_RUN_TIME.toString(), executorRunTime);</span>
+<span class="nc" id="L333">        metricsEvent.put(QuerySparkJobEnum.EXECUTOR_CPU_TIME.toString(), executorCpuTime);</span>
+<span class="nc" id="L334">        metricsEvent.put(QuerySparkJobEnum.JVM_GC_TIME.toString(), jvmGCTime);</span>
+<span class="nc" id="L335">        metricsEvent.put(QuerySparkJobEnum.RESULT_SERIALIZATION_TIME.toString(), resultSerializationTime);</span>
+<span class="nc" id="L336">        metricsEvent.put(QuerySparkJobEnum.MEMORY_BYTE_SPILLED.toString(), memoryBytesSpilled);</span>
+<span class="nc" id="L337">        metricsEvent.put(QuerySparkJobEnum.DISK_BYTES_SPILLED.toString(), diskBytesSpilled);</span>
+<span class="nc" id="L338">        metricsEvent.put(QuerySparkJobEnum.PEAK_EXECUTION_MEMORY.toString(), peakExecutionMemory);</span>
+<span class="nc" id="L339">    }</span>
+
+    private static void setStageMetrics(RecordEvent metricsEvent, long resultSize, long executorDeserializeTime,
+            long executorDeserializeCpuTime, long executorRunTime, long executorCpuTime, long jvmGCTime,
+            long resultSerializationTime, long memoryBytesSpilled, long diskBytesSpilled, long peakExecutionMemory) {
+<span class="nc" id="L344">        metricsEvent.put(QuerySparkStageEnum.RESULT_SIZE.toString(), resultSize);</span>
+<span class="nc" id="L345">        metricsEvent.put(QuerySparkStageEnum.EXECUTOR_DESERIALIZE_TIME.toString(), executorDeserializeTime);</span>
+<span class="nc" id="L346">        metricsEvent.put(QuerySparkStageEnum.EXECUTOR_DESERIALIZE_CPU_TIME.toString(), executorDeserializeCpuTime);</span>
+<span class="nc" id="L347">        metricsEvent.put(QuerySparkStageEnum.EXECUTOR_RUN_TIME.toString(), executorRunTime);</span>
+<span class="nc" id="L348">        metricsEvent.put(QuerySparkStageEnum.EXECUTOR_CPU_TIME.toString(), executorCpuTime);</span>
+<span class="nc" id="L349">        metricsEvent.put(QuerySparkStageEnum.JVM_GC_TIME.toString(), jvmGCTime);</span>
+<span class="nc" id="L350">        metricsEvent.put(QuerySparkStageEnum.RESULT_SERIALIZATION_TIME.toString(), resultSerializationTime);</span>
+<span class="nc" id="L351">        metricsEvent.put(QuerySparkStageEnum.MEMORY_BYTE_SPILLED.toString(), memoryBytesSpilled);</span>
+<span class="nc" id="L352">        metricsEvent.put(QuerySparkStageEnum.DISK_BYTES_SPILLED.toString(), diskBytesSpilled);</span>
+<span class="nc" id="L353">        metricsEvent.put(QuerySparkStageEnum.PEAK_EXECUTION_MEMORY.toString(), peakExecutionMemory);</span>
+<span class="nc" id="L354">    }</span>
+
+    private static void setStageWrapper(RecordEvent metricsEvent, String projectName, String realizationName,
+            String queryId, long executionId, int jobId, int stageId, long submitTime, boolean isSuccess) {
+<span class="nc" id="L358">        metricsEvent.put(QuerySparkStageEnum.PROJECT.toString(), projectName);</span>
+<span class="nc" id="L359">        metricsEvent.put(QuerySparkStageEnum.REALIZATION.toString(), realizationName);</span>
+<span class="nc" id="L360">        metricsEvent.put(QuerySparkStageEnum.QUERY_ID.toString(), queryId);</span>
+<span class="nc" id="L361">        metricsEvent.put(QuerySparkStageEnum.EXECUTION_ID.toString(), executionId);</span>
+<span class="nc" id="L362">        metricsEvent.put(QuerySparkStageEnum.JOB_ID.toString(), jobId);</span>
+<span class="nc" id="L363">        metricsEvent.put(QuerySparkStageEnum.STAGE_ID.toString(), stageId);</span>
+<span class="nc" id="L364">        metricsEvent.put(QuerySparkStageEnum.SUBMIT_TIME.toString(), submitTime);</span>
+<span class="nc" id="L365">        metricsEvent.put(QuerySparkStageEnum.IF_SUCCESS.toString(), isSuccess);</span>
+<span class="nc" id="L366">    }</span>
+
+    private static void setSparkJobWrapper(RecordEvent metricsEvent, String projectName, String queryId,
+            long executionId, int jobId, long startTime, long endTime, boolean isSuccess) {
+<span class="nc" id="L370">        metricsEvent.put(QuerySparkJobEnum.PROJECT.toString(), projectName);</span>
+<span class="nc" id="L371">        metricsEvent.put(QuerySparkJobEnum.QUERY_ID.toString(), queryId);</span>
+<span class="nc" id="L372">        metricsEvent.put(QuerySparkJobEnum.EXECUTION_ID.toString(), executionId);</span>
+<span class="nc" id="L373">        metricsEvent.put(QuerySparkJobEnum.JOB_ID.toString(), jobId);</span>
+<span class="nc" id="L374">        metricsEvent.put(QuerySparkJobEnum.START_TIME.toString(), startTime);</span>
+<span class="nc" id="L375">        metricsEvent.put(QuerySparkJobEnum.END_TIME.toString(), endTime);</span>
+<span class="nc" id="L376">        metricsEvent.put(QuerySparkJobEnum.IF_SUCCESS.toString(), isSuccess);</span>
+<span class="nc" id="L377">    }</span>
+
+<span class="nc" id="L379">    public static class QueryExecutionMetrics implements Serializable {</span>
+        private long sqlIdCode;
+        private String user;
+        private String queryType;
+        private String project;
+        private String exception;
+        private long executionId;
+        private String sparderName;
+        private long executionDuration;
+        private String queryId;
+        private String realization;
+        private String realizationTypes;
+        private String cuboidIds;
+        private long startTime;
+        private long endTime;
+        private ConcurrentMap&lt;Integer, SparkJobMetrics&gt; sparkJobMetricsMap;
+
+        private long sqlDuration;
+        private long totalScanCount;
+        private long totalScanBytes;
+        private int resultCount;
+
+        public String getUser() {
+<span class="nc" id="L402">            return user;</span>
+        }
+
+        public void setUser(String user) {
+<span class="nc" id="L406">            this.user = user;</span>
+<span class="nc" id="L407">        }</span>
+
+        public int getResultCount() {
+<span class="nc" id="L410">            return resultCount;</span>
+        }
+
+        public long getSqlDuration() {
+<span class="nc" id="L414">            return sqlDuration;</span>
+        }
+
+        public long getTotalScanBytes() {
+<span class="nc" id="L418">            return totalScanBytes;</span>
+        }
+
+        public long getTotalScanCount() {
+<span class="nc" id="L422">            return totalScanCount;</span>
+        }
+
+        public void setResultCount(int resultCount) {
+<span class="nc" id="L426">            this.resultCount = resultCount;</span>
+<span class="nc" id="L427">        }</span>
+
+        public void setSqlDuration(long sqlDuration) {
+<span class="nc" id="L430">            this.sqlDuration = sqlDuration;</span>
+<span class="nc" id="L431">        }</span>
+
+        public void setTotalScanBytes(long totalScanBytes) {
+<span class="nc" id="L434">            this.totalScanBytes = totalScanBytes;</span>
+<span class="nc" id="L435">        }</span>
+
+        public void setTotalScanCount(long totalScanCount) {
+<span class="nc" id="L438">            this.totalScanCount = totalScanCount;</span>
+<span class="nc" id="L439">        }</span>
+
+        public String getException() {
+<span class="nc" id="L442">            return exception;</span>
+        }
+
+        public void setException(String exception) {
+<span class="nc" id="L446">            this.exception = exception;</span>
+<span class="nc" id="L447">        }</span>
+
+        public void setProject(String project) {
+<span class="nc" id="L450">            this.project = project;</span>
+<span class="nc" id="L451">        }</span>
+
+        public String getProject() {
+<span class="nc" id="L454">            return project;</span>
+        }
+
+        public String getQueryType() {
+<span class="nc" id="L458">            return queryType;</span>
+        }
+
+        public long getSqlIdCode() {
+<span class="nc" id="L462">            return sqlIdCode;</span>
+        }
+
+        public void setQueryType(String queryType) {
+<span class="nc" id="L466">            this.queryType = queryType;</span>
+<span class="nc" id="L467">        }</span>
+
+        public void setSqlIdCode(long sqlIdCode) {
+<span class="nc" id="L470">            this.sqlIdCode = sqlIdCode;</span>
+<span class="nc" id="L471">        }</span>
+
+        public long getEndTime() {
+<span class="nc" id="L474">            return endTime;</span>
+        }
+
+        public long getStartTime() {
+<span class="nc" id="L478">            return startTime;</span>
+        }
+
+        public void setEndTime(long endTime) {
+<span class="nc" id="L482">            this.endTime = endTime;</span>
+<span class="nc" id="L483">        }</span>
+
+        public void setStartTime(long startTime) {
+<span class="nc" id="L486">            this.startTime = startTime;</span>
+<span class="nc" id="L487">        }</span>
+
+        public void setQueryId(String queryId) {
+<span class="nc" id="L490">            this.queryId = queryId;</span>
+<span class="nc" id="L491">        }</span>
+
+        public String getQueryId() {
+<span class="nc" id="L494">            return queryId;</span>
+        }
+
+        public long getExecutionDuration() {
+<span class="nc" id="L498">            return executionDuration;</span>
+        }
+
+        public void setExecutionDuration(long executionDuration) {
+<span class="nc" id="L502">            this.executionDuration = executionDuration;</span>
+<span class="nc" id="L503">        }</span>
+
+        public ConcurrentMap&lt;Integer, SparkJobMetrics&gt; getSparkJobMetricsMap() {
+<span class="nc" id="L506">            return sparkJobMetricsMap;</span>
+        }
+
+        public long getExecutionId() {
+<span class="nc" id="L510">            return executionId;</span>
+        }
+
+        public String getSparderName() {
+<span class="nc" id="L514">            return sparderName;</span>
+        }
+
+        public void setExecutionId(long executionId) {
+<span class="nc" id="L518">            this.executionId = executionId;</span>
+<span class="nc" id="L519">        }</span>
+
+        public void setSparderName(String sparderName) {
+<span class="nc" id="L522">            this.sparderName = sparderName;</span>
+<span class="nc" id="L523">        }</span>
+
+        public String getCuboidIds() {
+<span class="nc" id="L526">            return cuboidIds;</span>
+        }
+
+        public void setCuboidIds(String cuboidIds) {
+<span class="nc" id="L530">            this.cuboidIds = cuboidIds;</span>
+<span class="nc" id="L531">        }</span>
+
+        public String getRealization() {
+<span class="nc" id="L534">            return realization;</span>
+        }
+
+        public String getRealizationTypes() {
+<span class="nc" id="L538">            return realizationTypes;</span>
+        }
+
+        public void setRealization(String realization) {
+<span class="nc" id="L542">            this.realization = realization;</span>
+<span class="nc" id="L543">        }</span>
+
+        public void setRealizationTypes(String realizationTypes) {
+<span class="nc" id="L546">            this.realizationTypes = realizationTypes;</span>
+<span class="nc" id="L547">        }</span>
+
+        public void setSparkJobMetricsMap(ConcurrentMap&lt;Integer, SparkJobMetrics&gt; sparkJobMetricsMap) {
+<span class="nc" id="L550">            this.sparkJobMetricsMap = sparkJobMetricsMap;</span>
+<span class="nc" id="L551">        }</span>
+    }
+
+<span class="nc" id="L554">    public static class SparkJobMetrics implements Serializable {</span>
+        private long executionId;
+        private int jobId;
+        private long startTime;
+        private long endTime;
+        private boolean isSuccess;
+        private ConcurrentMap&lt;Integer, SparkStageMetrics&gt; sparkStageMetricsMap;
+
+        public void setStartTime(long startTime) {
+<span class="nc" id="L563">            this.startTime = startTime;</span>
+<span class="nc" id="L564">        }</span>
+
+        public void setEndTime(long endTime) {
+<span class="nc" id="L567">            this.endTime = endTime;</span>
+<span class="nc" id="L568">        }</span>
+
+        public long getStartTime() {
+<span class="nc" id="L571">            return startTime;</span>
+        }
+
+        public long getEndTime() {
+<span class="nc" id="L575">            return endTime;</span>
+        }
+
+        public void setExecutionId(long executionId) {
+<span class="nc" id="L579">            this.executionId = executionId;</span>
+<span class="nc" id="L580">        }</span>
+
+        public long getExecutionId() {
+<span class="nc" id="L583">            return executionId;</span>
+        }
+
+        public void setSparkStageMetricsMap(ConcurrentMap&lt;Integer, SparkStageMetrics&gt; sparkStageMetricsMap) {
+<span class="nc" id="L587">            this.sparkStageMetricsMap = sparkStageMetricsMap;</span>
+<span class="nc" id="L588">        }</span>
+
+        public void setJobId(int jobId) {
+<span class="nc" id="L591">            this.jobId = jobId;</span>
+<span class="nc" id="L592">        }</span>
+
+        public void setSuccess(boolean success) {
+<span class="nc" id="L595">            isSuccess = success;</span>
+<span class="nc" id="L596">        }</span>
+
+        public boolean isSuccess() {
+<span class="nc" id="L599">            return isSuccess;</span>
+        }
+
+        public ConcurrentMap&lt;Integer, SparkStageMetrics&gt; getSparkStageMetricsMap() {
+<span class="nc" id="L603">            return sparkStageMetricsMap;</span>
+        }
+
+        public int getJobId() {
+<span class="nc" id="L607">            return jobId;</span>
+        }
+    }
+
+<span class="nc" id="L611">    public static class SparkStageMetrics implements Serializable {</span>
+        private int stageId;
+        private String stageType;
+        private long submitTime;
+        private long endTime;
+        private boolean isSuccess;
+        private long resultSize;
+        private long executorDeserializeTime;
+        private long executorDeserializeCpuTime;
+        private long executorRunTime;
+        private long executorCpuTime;
+        private long jvmGCTime;
+        private long resultSerializationTime;
+        private long memoryBytesSpilled;
+        private long diskBytesSpilled;
+        private long peakExecutionMemory;
+
+        public void setMetrics(long resultSize, long executorDeserializeTime, long executorDeserializeCpuTime,
+                long executorRunTime, long executorCpuTime, long jvmGCTime, long resultSerializationTime,
+                long memoryBytesSpilled, long diskBytesSpilled, long peakExecutionMemory) {
+<span class="nc" id="L631">            this.resultSize = resultSize;</span>
+<span class="nc" id="L632">            this.executorDeserializeTime = executorDeserializeTime;</span>
+<span class="nc" id="L633">            this.executorDeserializeCpuTime = executorDeserializeCpuTime;</span>
+<span class="nc" id="L634">            this.executorRunTime = executorRunTime;</span>
+<span class="nc" id="L635">            this.executorCpuTime = executorCpuTime;</span>
+<span class="nc" id="L636">            this.jvmGCTime = jvmGCTime;</span>
+<span class="nc" id="L637">            this.resultSerializationTime = resultSerializationTime;</span>
+<span class="nc" id="L638">            this.memoryBytesSpilled = memoryBytesSpilled;</span>
+<span class="nc" id="L639">            this.diskBytesSpilled = diskBytesSpilled;</span>
+<span class="nc" id="L640">            this.peakExecutionMemory = peakExecutionMemory;</span>
+<span class="nc" id="L641">        }</span>
+
+        public long getEndTime() {
+<span class="nc" id="L644">            return endTime;</span>
+        }
+
+        public long getSubmitTime() {
+<span class="nc" id="L648">            return submitTime;</span>
+        }
+
+        public void setEndTime(long endTime) {
+<span class="nc" id="L652">            this.endTime = endTime;</span>
+<span class="nc" id="L653">        }</span>
+
+        public void setSubmitTime(long submitTime) {
+<span class="nc" id="L656">            this.submitTime = submitTime;</span>
+<span class="nc" id="L657">        }</span>
+
+        public boolean isSuccess() {
+<span class="nc" id="L660">            return isSuccess;</span>
+        }
+
+        public void setSuccess(boolean success) {
+<span class="nc" id="L664">            isSuccess = success;</span>
+<span class="nc" id="L665">        }</span>
+
+        public void setStageType(String stageType) {
+<span class="nc" id="L668">            this.stageType = stageType;</span>
+<span class="nc" id="L669">        }</span>
+
+        public void setStageId(int stageId) {
+<span class="nc" id="L672">            this.stageId = stageId;</span>
+<span class="nc" id="L673">        }</span>
+
+        public void setResultSize(long resultSize) {
+<span class="nc" id="L676">            this.resultSize = resultSize;</span>
+<span class="nc" id="L677">        }</span>
+
+        public void setResultSerializationTime(long resultSerializationTime) {
+<span class="nc" id="L680">            this.resultSerializationTime = resultSerializationTime;</span>
+<span class="nc" id="L681">        }</span>
+
+        public void setPeakExecutionMemory(long peakExecutionMemory) {
+<span class="nc" id="L684">            this.peakExecutionMemory = peakExecutionMemory;</span>
+<span class="nc" id="L685">        }</span>
+
+        public void setMemoryBytesSpilled(long memoryBytesSpilled) {
+<span class="nc" id="L688">            this.memoryBytesSpilled = memoryBytesSpilled;</span>
+<span class="nc" id="L689">        }</span>
+
+        public void setJvmGCTime(long jvmGCTime) {
+<span class="nc" id="L692">            this.jvmGCTime = jvmGCTime;</span>
+<span class="nc" id="L693">        }</span>
+
+        public void setExecutorRunTime(long executorRunTime) {
+<span class="nc" id="L696">            this.executorRunTime = executorRunTime;</span>
+<span class="nc" id="L697">        }</span>
+
+        public void setExecutorDeserializeTime(long executorDeserializeTime) {
+<span class="nc" id="L700">            this.executorDeserializeTime = executorDeserializeTime;</span>
+<span class="nc" id="L701">        }</span>
+
+        public void setExecutorDeserializeCpuTime(long executorDeserializeCpuTime) {
+<span class="nc" id="L704">            this.executorDeserializeCpuTime = executorDeserializeCpuTime;</span>
+<span class="nc" id="L705">        }</span>
+
+        public void setExecutorCpuTime(long executorCpuTime) {
+<span class="nc" id="L708">            this.executorCpuTime = executorCpuTime;</span>
+<span class="nc" id="L709">        }</span>
+
+        public void setDiskBytesSpilled(long diskBytesSpilled) {
+<span class="nc" id="L712">            this.diskBytesSpilled = diskBytesSpilled;</span>
+<span class="nc" id="L713">        }</span>
+
+        public String getStageType() {
+<span class="nc" id="L716">            return stageType;</span>
+        }
+
+        public long getResultSize() {
+<span class="nc" id="L720">            return resultSize;</span>
+        }
+
+        public long getResultSerializationTime() {
+<span class="nc" id="L724">            return resultSerializationTime;</span>
+        }
+
+        public long getPeakExecutionMemory() {
+<span class="nc" id="L728">            return peakExecutionMemory;</span>
+        }
+
+        public long getMemoryBytesSpilled() {
+<span class="nc" id="L732">            return memoryBytesSpilled;</span>
+        }
+
+        public long getJvmGCTime() {
+<span class="nc" id="L736">            return jvmGCTime;</span>
+        }
+
+        public long getExecutorRunTime() {
+<span class="nc" id="L740">            return executorRunTime;</span>
+        }
+
+        public long getExecutorDeserializeTime() {
+<span class="nc" id="L744">            return executorDeserializeTime;</span>
+        }
+
+        public long getExecutorDeserializeCpuTime() {
+<span class="nc" id="L748">            return executorDeserializeCpuTime;</span>
+        }
+
+        public long getExecutorCpuTime() {
+<span class="nc" id="L752">            return executorCpuTime;</span>
+        }
+
+        public long getDiskBytesSpilled() {
+<span class="nc" id="L756">            return diskBytesSpilled;</span>
+        }
+
+        public int getStageId() {
+<span class="nc" id="L760">            return stageId;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

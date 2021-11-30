@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CapabilityResult.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.realization</a> &gt; <span class="el_source">CapabilityResult.java</span></div><h1>CapabilityResult.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.realization;
+
+import java.util.Collection;
+import java.util.List;
+
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+<span class="nc" id="L30">public class CapabilityResult {</span>
+
+    /**
+     * Is capable or not
+     */
+    public boolean capable;
+
+    /**
+     * The smaller the cost, the more capable the realization
+     */
+    public int cost;
+
+    /**
+     * reason of incapable
+     */
+    public IncapableCause incapableCause;
+
+    /**
+     * Marker objects to indicate all special features
+     * (dimension-as-measure, topN etc.) that have influenced the capability check.
+     */
+<span class="nc" id="L51">    public List&lt;CapabilityInfluence&gt; influences = Lists.newArrayListWithCapacity(1);</span>
+
+    public static interface CapabilityInfluence {
+        /**
+         * Suggest a multiplier to influence query cost
+         */
+        double suggestCostMultiplier();
+
+        MeasureDesc getInvolvedMeasure();
+    }
+
+    public static class DimensionAsMeasure implements CapabilityInfluence {
+
+        final FunctionDesc function;
+
+<span class="nc" id="L66">        public DimensionAsMeasure(FunctionDesc function) {</span>
+<span class="nc" id="L67">            this.function = function;</span>
+<span class="nc" id="L68">        }</span>
+
+        @Override
+        public double suggestCostMultiplier() {
+<span class="nc" id="L72">            return 1;</span>
+        }
+
+        @Override
+        public MeasureDesc getInvolvedMeasure() {
+<span class="nc" id="L77">            return null;</span>
+        }
+
+        public FunctionDesc getMeasureFunction() {
+<span class="nc" id="L81">            return function;</span>
+        }
+    }
+
+<span class="nc" id="L85">    public static enum IncapableType {</span>
+<span class="nc" id="L86">        UNMATCHED_DIMENSION, UNMATCHED_AGGREGATION, UNSUPPORT_MASSIN, UNSUPPORT_RAWQUERY, LIMIT_PRECEDE_AGGR, II_UNMATCHED_FACT_TABLE, II_MISSING_COLS</span>
+    }
+
+<span class="nc" id="L89">    public static class IncapableCause {</span>
+        private IncapableType incapableType;
+        private Collection&lt;TblColRef&gt; unmatchedDimensions;
+        private Collection&lt;FunctionDesc&gt; unmatchedAggregations;
+
+        public static IncapableCause unmatchedDimensions(Collection&lt;TblColRef&gt; unmatchedDimensions) {
+<span class="nc" id="L95">            IncapableCause incapableCause = new IncapableCause();</span>
+<span class="nc" id="L96">            incapableCause.setIncapableType(IncapableType.UNMATCHED_DIMENSION);</span>
+<span class="nc" id="L97">            incapableCause.setUnmatchedDimensions(unmatchedDimensions);</span>
+<span class="nc" id="L98">            return incapableCause;</span>
+        }
+
+        public static IncapableCause unmatchedAggregations(Collection&lt;FunctionDesc&gt; unmatchedAggregations) {
+<span class="nc" id="L102">            IncapableCause incapableCause = new IncapableCause();</span>
+<span class="nc" id="L103">            incapableCause.setIncapableType(IncapableType.UNMATCHED_AGGREGATION);</span>
+<span class="nc" id="L104">            incapableCause.setUnmatchedAggregations(unmatchedAggregations);</span>
+<span class="nc" id="L105">            return incapableCause;</span>
+        }
+
+        public static IncapableCause create(IncapableType incapableType) {
+<span class="nc" id="L109">            IncapableCause incapableCause = new IncapableCause();</span>
+<span class="nc" id="L110">            incapableCause.setIncapableType(incapableType);</span>
+<span class="nc" id="L111">            return incapableCause;</span>
+        }
+
+        public IncapableType getIncapableType() {
+<span class="nc" id="L115">            return incapableType;</span>
+        }
+
+        public void setIncapableType(IncapableType incapableType) {
+<span class="nc" id="L119">            this.incapableType = incapableType;</span>
+<span class="nc" id="L120">        }</span>
+
+        public Collection&lt;TblColRef&gt; getUnmatchedDimensions() {
+<span class="nc" id="L123">            return unmatchedDimensions;</span>
+        }
+
+        public void setUnmatchedDimensions(Collection&lt;TblColRef&gt; unmatchedDimensions) {
+<span class="nc" id="L127">            this.unmatchedDimensions = unmatchedDimensions;</span>
+<span class="nc" id="L128">        }</span>
+
+        public Collection&lt;FunctionDesc&gt; getUnmatchedAggregations() {
+<span class="nc" id="L131">            return unmatchedAggregations;</span>
+        }
+
+        public void setUnmatchedAggregations(Collection&lt;FunctionDesc&gt; unmatchedAggregations) {
+<span class="nc" id="L135">            this.unmatchedAggregations = unmatchedAggregations;</span>
+<span class="nc" id="L136">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

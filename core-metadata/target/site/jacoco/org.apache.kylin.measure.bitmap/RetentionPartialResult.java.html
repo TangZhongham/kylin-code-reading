@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RetentionPartialResult.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.bitmap</a> &gt; <span class="el_source">RetentionPartialResult.java</span></div><h1>RetentionPartialResult.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.measure.bitmap;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.StringUtil;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public class RetentionPartialResult {
+
+<span class="nc" id="L34">    private static final BitmapCounterFactory factory = RoaringBitmapCounterFactory.INSTANCE;</span>
+<span class="nc" id="L35">    public static final String FILTER_DELIMETER = KylinConfig.getInstanceFromEnv().getIntersectFilterOrSeparator();</span>
+    Map&lt;String, BitmapCounter&gt; map;
+    List&lt;String&gt; keyList;
+    Map&lt;String, List&lt;String&gt;&gt; childKeyToParentKey;
+
+<span class="nc" id="L40">    public RetentionPartialResult() {</span>
+<span class="nc" id="L41">        map = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L42">    }</span>
+
+    public void add(Object key, List keyList, Object value) {
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        Preconditions.checkArgument(key != null);</span>
+<span class="nc bnc" id="L46" title="All 4 branches missed.">        Preconditions.checkArgument(keyList != null &amp;&amp; keyList.size() &gt;= 0);</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (this.keyList == null) {</span>
+<span class="nc" id="L48">            this.keyList = Lists.transform(keyList, i -&gt; i.toString());</span>
+<span class="nc" id="L49">            childKeyToParentKey = new HashMap&lt;&gt;(5);</span>
+
+<span class="nc bnc" id="L51" title="All 2 branches missed.">            for (String sKey : this.keyList) {</span>
+<span class="nc" id="L52">                String[] elements = StringUtil.splitAndTrim(sKey, FILTER_DELIMETER);</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">                for (String s : elements) {</span>
+<span class="nc bnc" id="L54" title="All 4 branches missed.">                    if (s != null &amp;&amp; s.trim().length() &gt; 0) {</span>
+<span class="nc" id="L55">                        List&lt;String&gt; parent = childKeyToParentKey.computeIfAbsent(s.trim(), o -&gt; new ArrayList());</span>
+<span class="nc" id="L56">                        parent.add(sKey);</span>
+                    }
+                }
+<span class="nc" id="L59">            }</span>
+
+        }
+
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (this.keyList != null) {</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            if (this.keyList.contains(key.toString())) {</span>
+<span class="nc" id="L65">                BitmapCounter counter = map.computeIfAbsent(key.toString(), o -&gt; factory.newBitmap());</span>
+<span class="nc" id="L66">                counter.orWith((BitmapCounter) value);</span>
+            }
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if (childKeyToParentKey.size() &gt; 0) {</span>
+<span class="nc" id="L70">                String sKey = key.toString();</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                if (childKeyToParentKey.containsKey(sKey)) {</span>
+<span class="nc" id="L72">                    List&lt;String&gt; parents = childKeyToParentKey.get(sKey);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">                    for (String parent : parents) {</span>
+<span class="nc" id="L74">                        BitmapCounter counter = map.computeIfAbsent(parent, o -&gt; factory.newBitmap());</span>
+<span class="nc" id="L75">                        counter.orWith((BitmapCounter) value);</span>
+<span class="nc" id="L76">                    }</span>
+                }
+            }
+        }
+<span class="nc" id="L80">    }</span>
+
+    private BitmapCounter result() {
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        if (keyList == null || keyList.isEmpty()) {</span>
+<span class="nc" id="L84">            return null;</span>
+        }
+        // if any specified key not in map, the intersection must be 0
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        for (String key : keyList) {</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">            if (!map.containsKey(key)) {</span>
+<span class="nc" id="L89">                return null;</span>
+            }
+<span class="nc" id="L91">        }</span>
+<span class="nc" id="L92">        BitmapCounter counter = null;</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (String key : keyList) {</span>
+<span class="nc" id="L94">            BitmapCounter c = map.get(key);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">            if (counter == null) {</span>
+<span class="nc" id="L96">                counter = factory.newBitmap();</span>
+<span class="nc" id="L97">                counter.orWith(c);</span>
+            } else {
+<span class="nc" id="L99">                counter.andWith(c);</span>
+            }
+<span class="nc" id="L101">        }</span>
+
+<span class="nc" id="L103">        return counter;</span>
+    }
+
+    public String valueResult() {
+<span class="nc" id="L107">        BitmapCounter counter = result();</span>
+<span class="nc" id="L108">        String result = &quot;&quot;;</span>
+<span class="nc bnc" id="L109" title="All 4 branches missed.">        if (counter != null &amp;&amp; counter.getCount() &gt; 0) {</span>
+<span class="nc" id="L110">            result = &quot;[&quot; + StringUtils.join(counter.iterator(), &quot;,&quot;) + &quot;]&quot;;</span>
+        }
+<span class="nc" id="L112">        return result;</span>
+    }
+
+    public long countResult() {
+<span class="nc" id="L116">        BitmapCounter counter = result();</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        return counter != null ? counter.getCount() : 0;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

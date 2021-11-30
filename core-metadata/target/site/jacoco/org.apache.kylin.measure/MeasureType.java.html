@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure</a> &gt; <span class="el_source">MeasureType.java</span></div><h1>MeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure;
+
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * MeasureType captures how a kind of aggregation is defined, how it is calculated 
+ * during cube build, and how it is involved in query and storage scan.
+ * 
+ * @param &lt;T&gt; the Java type of aggregation data object, e.g. HLLCounter
+ */
+<span class="fc" id="L41">abstract public class MeasureType&lt;T&gt; implements java.io.Serializable {</span>
+    private static final long serialVersionUID = 1L;
+
+    /* ============================================================================
+     * Define
+     * ---------------------------------------------------------------------------- */
+
+    /** Validates a user defined FunctionDesc has expected parameter etc. Throw IllegalArgumentException if anything wrong. */
+    public void validate(FunctionDesc functionDesc) throws IllegalArgumentException {
+<span class="nc" id="L50">        return;</span>
+    }
+
+    /** Although most aggregated object takes only 8 bytes like long or double, 
+     * some advanced aggregation like HyperLogLog or TopN can consume more than 10 KB for 
+     * each object, which requires special care on memory allocation. */
+    public boolean isMemoryHungry() {
+<span class="nc" id="L57">        return false;</span>
+    }
+
+    /** Return true if this MeasureType only aggregate values in base cuboid, and output initial value in child cuboid. */
+    public boolean onlyAggrInBaseCuboid() {
+<span class="nc" id="L62">        return false;</span>
+    }
+
+    /* ============================================================================
+     * Build
+     * ---------------------------------------------------------------------------- */
+
+    /** Return a MeasureIngester which knows how to init aggregation object from raw records. */
+    abstract public MeasureIngester&lt;T&gt; newIngester();
+
+    /** Return a MeasureAggregator which does aggregation. */
+    abstract public MeasureAggregator&lt;T&gt; newAggregator();
+
+    /** Some special measures need dictionary to encode column values for optimal storage. TopN is an example. */
+    public List&lt;TblColRef&gt; getColumnsNeedDictionary(FunctionDesc functionDesc) {
+<span class="nc" id="L77">        return Collections.emptyList();</span>
+    }
+
+    /* ============================================================================
+     * Cube Selection
+     * ---------------------------------------------------------------------------- */
+
+    /**
+     * Some special measures hold columns which are usually treated as dimensions (or vice-versa). 
+     * This is where they override to influence cube capability check.
+     * 
+     * A SQLDigest contains dimensions and measures extracted from a query. After comparing to
+     * cube definition, the matched dimensions and measures are crossed out, and what's left is
+     * the &lt;code&gt;unmatchedDimensions&lt;/code&gt; and &lt;code&gt;unmatchedAggregations&lt;/code&gt;.
+     * 
+     * Each measure type on the cube is then called on this method to check if any of the unmatched
+     * can be fulfilled. If a measure type cannot fulfill any of the unmatched, it simply return null.
+     * Or otherwise, &lt;code&gt;unmatchedDimensions&lt;/code&gt; and &lt;code&gt;unmatchedAggregations&lt;/code&gt; must
+     * be modified to drop the satisfied dimension or measure, and a CapabilityInfluence object
+     * must be returned to mark the contribution of this measure type.
+     */
+    public CapabilityInfluence influenceCapabilityCheck(Collection&lt;TblColRef&gt; unmatchedDimensions, Collection&lt;FunctionDesc&gt; unmatchedAggregations, SQLDigest digest, MeasureDesc measureDesc) {
+<span class="nc" id="L99">        return null;</span>
+    }
+
+    /* ============================================================================
+     * Query Rewrite
+     * ---------------------------------------------------------------------------- */
+
+    /** Whether or not Calcite rel-tree needs rewrite to do last around of aggregation */
+    abstract public boolean needRewrite();
+
+    /** Does the rewrite involves an extra field to hold the pre-calculated */
+    public boolean needRewriteField() {
+<span class="nc" id="L111">        return true;</span>
+    }
+
+    /**
+     * Returns a map from UDAF to Calcite aggregation function implementation class.
+     * There can be zero or more UDAF defined on a measure type.
+     */
+    public Map&lt;String, Class&lt;?&gt;&gt; getRewriteCalciteAggrFunctions() {
+<span class="fc" id="L119">        return null;</span>
+    }
+
+    /* ============================================================================
+     * Storage
+     * ---------------------------------------------------------------------------- */
+
+    /**
+     * Some special measures hold columns which are usually treated as dimensions (or vice-versa). 
+     * They need to adjust dimensions and measures in &lt;code&gt;sqlDigest&lt;/code&gt; before scanning,
+     * such that correct cuboid and measures can be selected by storage.
+     */
+    public void adjustSqlDigest(List&lt;MeasureDesc&gt; measureDescs, SQLDigest sqlDigest) {
+<span class="nc" id="L132">    }</span>
+
+    /** Return true if one storage record maps to multiple tuples, or false otherwise. */
+    public boolean needAdvancedTupleFilling() {
+<span class="nc" id="L136">        return false;</span>
+    }
+
+    /** The simple filling mode, one tuple per storage record. */
+    public void fillTupleSimply(Tuple tuple, int indexInTuple, Object measureValue) {
+<span class="nc" id="L141">        tuple.setMeasureValue(indexInTuple, measureValue);</span>
+<span class="nc" id="L142">    }</span>
+
+    /** The advanced filling mode, multiple tuples per storage record. */
+    public IAdvMeasureFiller getAdvancedTupleFiller(FunctionDesc function, TupleInfo returnTupleInfo, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L146">        throw new UnsupportedOperationException();</span>
+    }
+
+    public static interface IAdvMeasureFiller {
+
+        /** Reload a value from storage and get ready to fill multiple tuples with it. */
+        void reload(Object measureValue);
+
+        /** Returns how many rows contained in last loaded value. */
+        int getNumOfRows();
+
+        /** Fill in specified row into tuple. */
+        void fillTuple(Tuple tuple, int row);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

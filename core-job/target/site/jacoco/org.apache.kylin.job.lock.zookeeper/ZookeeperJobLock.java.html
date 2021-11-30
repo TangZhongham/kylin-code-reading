@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZookeeperJobLock.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.lock.zookeeper</a> &gt; <span class="el_source">ZookeeperJobLock.java</span></div><h1>ZookeeperJobLock.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.job.lock.zookeeper;
+
+import java.io.Closeable;
+import java.util.concurrent.Executor;
+
+import org.apache.kylin.common.lock.DistributedLock;
+import org.apache.kylin.job.lock.JobLock;
+
+/**
+ * A simple delegator to ZookeeperDistributedLock with a default constructor.
+ */
+<span class="nc" id="L30">public class ZookeeperJobLock implements DistributedLock, JobLock {</span>
+
+<span class="nc" id="L32">    private ZookeeperDistributedLock lock = (ZookeeperDistributedLock) new ZookeeperDistributedLock.Factory().lockForCurrentProcess();</span>
+
+    @Override
+    public String getClient() {
+<span class="nc" id="L36">        return lock.getClient();</span>
+    }
+
+    @Override
+    public boolean lock(String lockPath) {
+<span class="nc" id="L41">        return lock.lock(lockPath);</span>
+    }
+
+    @Override
+    public boolean globalPermanentLock(String lockPath) {
+<span class="nc" id="L46">        return lock.globalPermanentLock(lockPath);</span>
+    }
+
+    @Override
+    public boolean lock(String lockPath, long timeout) {
+<span class="nc" id="L51">        return lock.lock(lockPath, timeout);</span>
+    }
+
+    @Override
+    public String peekLock(String lockPath) {
+<span class="nc" id="L56">        return lock.peekLock(lockPath);</span>
+    }
+
+    @Override
+    public boolean isLocked(String lockPath) {
+<span class="nc" id="L61">        return lock.isLocked(lockPath);</span>
+    }
+
+    @Override
+    public boolean isLockedByMe(String lockPath) {
+<span class="nc" id="L66">        return lock.isLockedByMe(lockPath);</span>
+    }
+
+    @Override
+    public void unlock(String lockPath) {
+<span class="nc" id="L71">        lock.unlock(lockPath);</span>
+<span class="nc" id="L72">    }</span>
+
+    @Override
+    public void purgeLocks(String lockPathRoot) {
+<span class="nc" id="L76">        lock.purgeLocks(lockPathRoot);</span>
+<span class="nc" id="L77">    }</span>
+
+    @Override
+    public Closeable watchLocks(String lockPathRoot, Executor executor, Watcher watcher) {
+<span class="nc" id="L81">        return lock.watchLocks(lockPathRoot, executor, watcher);</span>
+    }
+
+    @Override
+    public boolean lockJobEngine() {
+<span class="nc" id="L86">        return lock.lockJobEngine();</span>
+    }
+
+    @Override
+    public void unlockJobEngine() {
+<span class="nc" id="L91">        lock.unlockJobEngine();</span>
+<span class="nc" id="L92">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

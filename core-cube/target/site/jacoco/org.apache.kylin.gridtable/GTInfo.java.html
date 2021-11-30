@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTInfo.java</span></div><h1>GTInfo.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+
+import org.apache.kylin.common.util.BytesSerializer;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.cube.gridtable.CubeCodeSystem;
+import org.apache.kylin.cube.gridtable.TrimmedCubeCodeSystem;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class GTInfo {
+<span class="fc" id="L38">    private static final Logger logger = LoggerFactory.getLogger(GTInfo.class);</span>
+
+    public static Builder builder() {
+<span class="fc" id="L41">        return new Builder();</span>
+    }
+
+    String tableName;
+    IGTCodeSystem codeSystem;
+
+    // column schema
+    DataType[] colTypes;
+    ImmutableBitSet colPreferIndex;
+    int nColumns;
+    ImmutableBitSet colAll;
+    TblColRef[] colRefs;
+
+    // grid info
+    ImmutableBitSet primaryKey; // order by, uniqueness is not required
+    ImmutableBitSet[] colBlocks; // primary key must be the first column block
+    int rowBlockSize; // 0: disable row block
+    ImmutableBitSet colBlocksAll;
+
+    // not included during serialization, only used for loadColumns
+    ImmutableBitSet dynamicDims;
+
+    // must create from builder
+    private GTInfo() {
+    }
+
+    public String getTableName() {
+<span class="nc" id="L68">        return tableName;</span>
+    }
+
+    public int getColumnCount() {
+<span class="fc" id="L72">        return nColumns;</span>
+    }
+
+    public DataType getColumnType(int i) {
+<span class="fc" id="L76">        return colTypes[i];</span>
+    }
+
+    public int getColumnBlockCount() {
+<span class="nc" id="L80">        return colBlocks.length;</span>
+    }
+
+    public ImmutableBitSet getColumnBlock(int i) {
+<span class="nc" id="L84">        return colBlocks[i];</span>
+    }
+
+    public ImmutableBitSet[] getColumnBlocks() {
+<span class="nc" id="L88">        return colBlocks;</span>
+    }
+
+    public ImmutableBitSet getPrimaryKey() {
+<span class="nc" id="L92">        return primaryKey;</span>
+    }
+
+    public ImmutableBitSet getAllColumns() {
+<span class="fc" id="L96">        return colAll;</span>
+    }
+
+    public ImmutableBitSet getDynamicDims() {
+<span class="nc" id="L100">        return dynamicDims;</span>
+    }
+
+    public boolean isRowBlockEnabled() {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        return rowBlockSize &gt; 0;</span>
+    }
+
+    public int getRowBlockSize() {
+<span class="nc" id="L108">        return rowBlockSize;</span>
+    }
+
+    public int getMaxRecordLength() {
+<span class="fc" id="L112">        return getMaxColumnLength(colAll);</span>
+    }
+
+    public int getMaxColumnLength(ImmutableBitSet selectedCols) {
+<span class="fc" id="L116">        int result = 0;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="fc" id="L118">            int c = selectedCols.trueBitAt(i);</span>
+<span class="fc" id="L119">            result += codeSystem.maxCodeLength(c);</span>
+        }
+<span class="fc" id="L121">        return result;</span>
+    }
+
+    public int getMaxColumnLength() {
+<span class="nc" id="L125">        int max = 0;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        for (int i = 0; i &lt; nColumns; i++)</span>
+<span class="nc" id="L127">            max = Math.max(max, codeSystem.maxCodeLength(i));</span>
+<span class="nc" id="L128">        return max;</span>
+    }
+
+    public ImmutableBitSet selectColumns(ImmutableBitSet selectedColBlocks) {
+<span class="nc" id="L132">        ImmutableBitSet result = ImmutableBitSet.EMPTY;</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        for (int i = 0; i &lt; selectedColBlocks.trueBitCount(); i++) {</span>
+<span class="nc" id="L134">            result = result.or(colBlocks[selectedColBlocks.trueBitAt(i)]);</span>
+        }
+<span class="nc" id="L136">        return result;</span>
+    }
+
+    public ImmutableBitSet selectColumnBlocks(ImmutableBitSet columns) {
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (columns == null)</span>
+<span class="nc" id="L141">            columns = colAll;</span>
+
+<span class="fc" id="L143">        BitSet result = new BitSet();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        for (int i = 0; i &lt; colBlocks.length; i++) {</span>
+<span class="fc" id="L145">            ImmutableBitSet cb = colBlocks[i];</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">            if (cb.intersects(columns)) {</span>
+<span class="fc" id="L147">                result.set(i);</span>
+            }
+        }
+<span class="fc" id="L150">        return new ImmutableBitSet(result);</span>
+    }
+
+    public TblColRef colRef(int i) {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (colRefs == null) {</span>
+<span class="nc" id="L155">            colRefs = new TblColRef[nColumns];</span>
+        }
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (colRefs[i] == null) {</span>
+<span class="nc" id="L158">            colRefs[i] = GTUtil.tblColRef(i, colTypes[i].toString());</span>
+        }
+<span class="nc" id="L160">        return colRefs[i];</span>
+    }
+
+    public void validateColRef(TblColRef ref) {
+<span class="nc" id="L164">        TblColRef expected = colRef(ref.getColumnDesc().getZeroBasedIndex());</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (!expected.equals(ref))</span>
+<span class="nc" id="L166">            throw new IllegalArgumentException();</span>
+<span class="nc" id="L167">    }</span>
+
+    void validate() {
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (codeSystem == null)</span>
+<span class="nc" id="L171">            throw new IllegalStateException();</span>
+
+<span class="pc bpc" id="L173" title="2 of 4 branches missed.">        if (primaryKey == null || primaryKey.cardinality() == 0)</span>
+<span class="nc" id="L174">            throw new IllegalStateException();</span>
+
+<span class="fc" id="L176">        codeSystem.init(this);</span>
+
+<span class="fc" id="L178">        validateColumnBlocks();</span>
+<span class="fc" id="L179">    }</span>
+
+    private void validateColumnBlocks() {
+<span class="fc" id="L182">        colAll = new ImmutableBitSet(0, nColumns);</span>
+
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (colBlocks == null) {</span>
+<span class="fc" id="L185">            colBlocks = new ImmutableBitSet[2];</span>
+<span class="fc" id="L186">            colBlocks[0] = primaryKey;</span>
+<span class="fc" id="L187">            colBlocks[1] = colAll.andNot(primaryKey);</span>
+        }
+
+<span class="fc" id="L190">        colBlocksAll = new ImmutableBitSet(0, colBlocks.length);</span>
+
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (colPreferIndex == null)</span>
+<span class="nc" id="L193">            colPreferIndex = ImmutableBitSet.EMPTY;</span>
+
+        // column blocks must not overlap
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        for (int i = 0; i &lt; colBlocks.length; i++) {</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">            for (int j = i + 1; j &lt; colBlocks.length; j++) {</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                if (colBlocks[i].intersects(colBlocks[j]))</span>
+<span class="nc" id="L199">                    throw new IllegalStateException();</span>
+            }
+        }
+
+        // column block must cover all columns
+<span class="fc" id="L204">        ImmutableBitSet merge = ImmutableBitSet.EMPTY;</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        for (int i = 0; i &lt; colBlocks.length; i++) {</span>
+<span class="fc" id="L206">            merge = merge.or(colBlocks[i]);</span>
+        }
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (!merge.equals(colAll))</span>
+<span class="nc" id="L209">            throw new IllegalStateException();</span>
+
+        // primary key must be the first column block
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (!primaryKey.equals(colBlocks[0]))</span>
+<span class="nc" id="L213">            throw new IllegalStateException();</span>
+
+        // drop empty column block
+<span class="fc" id="L216">        LinkedList&lt;ImmutableBitSet&gt; list = new LinkedList&lt;ImmutableBitSet&gt;(Arrays.asList(colBlocks));</span>
+<span class="fc" id="L217">        Iterator&lt;ImmutableBitSet&gt; it = list.iterator();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L219">            ImmutableBitSet cb = it.next();</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            if (cb.isEmpty())</span>
+<span class="nc" id="L221">                it.remove();</span>
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">        colBlocks = list.toArray(new ImmutableBitSet[list.size()]);</span>
+
+        // for dynamic dimensions
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">        if (dynamicDims == null)</span>
+<span class="fc" id="L227">            dynamicDims = ImmutableBitSet.EMPTY;</span>
+<span class="fc" id="L228">    }</span>
+
+    public static class Builder {
+        final GTInfo info;
+
+<span class="fc" id="L233">        private Builder() {</span>
+<span class="fc" id="L234">            this.info = new GTInfo();</span>
+<span class="fc" id="L235">        }</span>
+
+        /** optional */
+        public Builder setTableName(String name) {
+<span class="nc" id="L239">            info.tableName = name;</span>
+<span class="nc" id="L240">            return this;</span>
+        }
+
+        /** required */
+        public Builder setCodeSystem(IGTCodeSystem cs) {
+<span class="fc" id="L245">            info.codeSystem = cs;</span>
+<span class="fc" id="L246">            return this;</span>
+        }
+
+        /** required */
+        public Builder setColumns(DataType... colTypes) {
+<span class="fc" id="L251">            info.nColumns = colTypes.length;</span>
+<span class="fc" id="L252">            info.colTypes = colTypes;</span>
+<span class="fc" id="L253">            return this;</span>
+        }
+
+        /** required */
+        public Builder setPrimaryKey(ImmutableBitSet primaryKey) {
+<span class="fc" id="L258">            info.primaryKey = primaryKey;</span>
+<span class="fc" id="L259">            return this;</span>
+        }
+
+        /** optional */
+        public Builder enableColumnBlock(ImmutableBitSet[] columnBlocks) {
+<span class="fc" id="L264">            info.colBlocks = new ImmutableBitSet[columnBlocks.length];</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">            for (int i = 0; i &lt; columnBlocks.length; i++) {</span>
+<span class="fc" id="L266">                info.colBlocks[i] = columnBlocks[i];</span>
+            }
+<span class="fc" id="L268">            return this;</span>
+        }
+
+        /** optional */
+        public Builder enableRowBlock(int rowBlockSize) {
+<span class="fc" id="L273">            info.rowBlockSize = rowBlockSize;</span>
+<span class="fc" id="L274">            return this;</span>
+        }
+
+        /** optional */
+        public Builder setColumnPreferIndex(ImmutableBitSet colPreferIndex) {
+<span class="fc" id="L279">            info.colPreferIndex = colPreferIndex;</span>
+<span class="fc" id="L280">            return this;</span>
+        }
+
+        /** optional */
+        public Builder enableDynamicDims(ImmutableBitSet dynamicDims) {
+<span class="nc" id="L285">            info.dynamicDims = dynamicDims;</span>
+<span class="nc" id="L286">            return this;</span>
+        }
+
+        public GTInfo build() {
+<span class="fc" id="L290">            info.validate();</span>
+<span class="fc" id="L291">            return info;</span>
+        }
+    }
+
+    public IGTCodeSystem getCodeSystem() {
+<span class="nc" id="L296">        return codeSystem;</span>
+    }
+
+    public int getMaxLength() {
+<span class="nc" id="L300">        int ret = 0;</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        for (int i = 0; i &lt; colAll.trueBitCount(); i++) {</span>
+<span class="nc" id="L302">            ret += codeSystem.maxCodeLength(colAll.trueBitAt(i));</span>
+        }
+<span class="nc" id="L304">        return ret;</span>
+    }
+
+<span class="fc" id="L307">    public static final BytesSerializer&lt;GTInfo&gt; serializer = new BytesSerializer&lt;GTInfo&gt;() {</span>
+        @Override
+        public void serialize(GTInfo value, ByteBuffer out) {
+<span class="nc bnc" id="L310" title="All 2 branches missed.">            if (value.codeSystem instanceof CubeCodeSystem) {</span>
+<span class="nc" id="L311">                BytesUtil.writeAsciiString(CubeCodeSystem.class.getCanonicalName(), out);</span>
+<span class="nc" id="L312">                TrimmedCubeCodeSystem trimmed = ((CubeCodeSystem) value.codeSystem).trimForCoprocessor();</span>
+<span class="nc" id="L313">                TrimmedCubeCodeSystem.serializer.serialize(trimmed, out);</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            } else if (value.codeSystem != null) {</span>
+<span class="nc" id="L315">                BytesUtil.writeAsciiString(value.codeSystem.getClass().getCanonicalName(), out);</span>
+<span class="nc" id="L316">                BytesSerializer&lt;IGTCodeSystem&gt; serializer = null;</span>
+                try {
+<span class="nc" id="L318">                    serializer = (BytesSerializer&lt;IGTCodeSystem&gt;) value.codeSystem.getClass().getField(&quot;serializer&quot;).get(null);</span>
+<span class="nc" id="L319">                } catch (IllegalAccessException | NoSuchFieldException e) {</span>
+<span class="nc" id="L320">                    throw new RuntimeException(&quot;failed to get serializer for &quot; + value.codeSystem.getClass(), e);</span>
+<span class="nc" id="L321">                }</span>
+<span class="nc" id="L322">                serializer.serialize(value.codeSystem, out);</span>
+<span class="nc" id="L323">            } else {</span>
+<span class="nc" id="L324">                throw new IllegalStateException(&quot;code system cannot be null&quot;);</span>
+            }
+
+<span class="nc" id="L327">            BytesUtil.writeUTFString(value.tableName, out);</span>
+<span class="nc" id="L328">            BytesUtil.writeVInt(value.colTypes.length, out);</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            for (DataType dataType : value.colTypes) {</span>
+<span class="nc" id="L330">                DataType.serializer.serialize(dataType, out);</span>
+            }
+<span class="nc" id="L332">            ImmutableBitSet.serializer.serialize(value.colPreferIndex, out);</span>
+<span class="nc" id="L333">            ImmutableBitSet.serializer.serialize(value.primaryKey, out);</span>
+<span class="nc" id="L334">            BytesUtil.writeVInt(value.colBlocks.length, out);</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">            for (ImmutableBitSet x : value.colBlocks) {</span>
+<span class="nc" id="L336">                ImmutableBitSet.serializer.serialize(x, out);</span>
+            }
+<span class="nc" id="L338">            BytesUtil.writeVInt(value.rowBlockSize, out);</span>
+<span class="nc" id="L339">        }</span>
+
+        @Override
+        public GTInfo deserialize(ByteBuffer in) {
+<span class="nc" id="L343">            IGTCodeSystem codeSystem = null;</span>
+<span class="nc" id="L344">            String codeSystemType = BytesUtil.readAsciiString(in);</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">            if (CubeCodeSystem.class.getCanonicalName().equals(codeSystemType)) {</span>
+<span class="nc" id="L346">                codeSystem = TrimmedCubeCodeSystem.serializer.deserialize(in);</span>
+            } else {
+                try {
+<span class="nc" id="L349">                    Class clazz = Class.forName(codeSystemType);</span>
+<span class="nc" id="L350">                    BytesSerializer&lt;IGTCodeSystem&gt; serializer = (BytesSerializer&lt;IGTCodeSystem&gt;) clazz.getField(&quot;serializer&quot;).get(null);</span>
+<span class="nc" id="L351">                    codeSystem = serializer.deserialize(in);</span>
+<span class="nc" id="L352">                } catch (Exception e) {</span>
+<span class="nc" id="L353">                    throw new RuntimeException(&quot;Failed to deserialize IGTCodeSystem &quot; + codeSystemType, e);</span>
+<span class="nc" id="L354">                }</span>
+            }
+
+<span class="nc" id="L357">            String newTableName = BytesUtil.readUTFString(in);</span>
+
+<span class="nc" id="L359">            int colTypesSize = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L360">            DataType[] newColTypes = new DataType[colTypesSize];</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">            for (int i = 0; i &lt; colTypesSize; ++i) {</span>
+<span class="nc" id="L362">                newColTypes[i] = DataType.serializer.deserialize(in);</span>
+            }
+
+<span class="nc" id="L365">            ImmutableBitSet newColPreferIndex = ImmutableBitSet.serializer.deserialize(in);</span>
+<span class="nc" id="L366">            ImmutableBitSet newPrimaryKey = ImmutableBitSet.serializer.deserialize(in);</span>
+
+<span class="nc" id="L368">            int colBlockSize = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L369">            ImmutableBitSet[] newColBlocks = new ImmutableBitSet[colBlockSize];</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            for (int i = 0; i &lt; colBlockSize; ++i) {</span>
+<span class="nc" id="L371">                newColBlocks[i] = ImmutableBitSet.serializer.deserialize(in);</span>
+            }
+
+<span class="nc" id="L374">            int newRowBlockSize = BytesUtil.readVInt(in);</span>
+
+<span class="nc" id="L376">            return GTInfo.builder().setCodeSystem(codeSystem).//</span>
+<span class="nc" id="L377">            setTableName(newTableName).//</span>
+<span class="nc" id="L378">            setColumns(newColTypes).//</span>
+<span class="nc" id="L379">            setColumnPreferIndex(newColPreferIndex).//</span>
+<span class="nc" id="L380">            setPrimaryKey(newPrimaryKey).//</span>
+<span class="nc" id="L381">            enableColumnBlock(newColBlocks).//</span>
+<span class="nc" id="L382">            enableRowBlock(newRowBlockSize).build();</span>
+        }
+    };
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

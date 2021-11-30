@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StorageContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage</a> &gt; <span class="el_source">StorageContext.java</span></div><h1>StorageContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.storage;
+
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.debug.BackdoorToggles;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMapping;
+import org.apache.kylin.gridtable.StorageLimitLevel;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.storage.gtrecord.GTCubeStorageQueryBase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Range;
+
+/**
+ * @author xjiang
+ */
+public class StorageContext {
+<span class="fc" id="L39">    private static final Logger logger = LoggerFactory.getLogger(StorageContext.class);</span>
+
+    public final int ctxId;
+
+    private StorageURL connUrl;
+<span class="fc" id="L44">    private int limit = Integer.MAX_VALUE;</span>
+<span class="fc" id="L45">    private boolean overlookOuterLimit = false;</span>
+<span class="fc" id="L46">    private int offset = 0;</span>
+<span class="fc" id="L47">    private int finalPushDownLimit = Integer.MAX_VALUE;</span>
+<span class="fc" id="L48">    private StorageLimitLevel storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="fc" id="L49">    private boolean hasSort = false;</span>
+<span class="fc" id="L50">    private boolean acceptPartialResult = false;</span>
+
+<span class="fc" id="L52">    private boolean exactAggregation = false;</span>
+<span class="fc" id="L53">    private boolean needStorageAggregation = false;</span>
+<span class="fc" id="L54">    private boolean enableCoprocessor = false;</span>
+<span class="fc" id="L55">    private boolean enableStreamAggregate = false;</span>
+
+    private IStorageQuery storageQuery;
+<span class="fc" id="L58">    private AtomicLong processedRowCount = new AtomicLong();</span>
+    private Cuboid cuboid;
+    private CuboidToGridTableMapping mapping;
+<span class="fc" id="L61">    private boolean partialResultReturned = false;</span>
+
+    private Range&lt;Long&gt; reusedPeriod;
+
+    private long filterMask;
+
+    public StorageContext() {
+<span class="fc" id="L68">        this(0);</span>
+<span class="fc" id="L69">    }</span>
+
+<span class="fc" id="L71">    public StorageContext(int ctxId) {</span>
+<span class="fc" id="L72">        this.ctxId = ctxId;</span>
+<span class="fc" id="L73">    }</span>
+
+    public long getFilterMask() {
+<span class="nc" id="L76">        return filterMask;</span>
+    }
+
+    public void setFilterMask(long filterMask) {
+<span class="nc" id="L80">        this.filterMask = filterMask;</span>
+<span class="nc" id="L81">    }</span>
+
+    public StorageURL getConnUrl() {
+<span class="nc" id="L84">        return connUrl;</span>
+    }
+
+    public void setConnUrl(StorageURL connUrl) {
+<span class="nc" id="L88">        this.connUrl = connUrl;</span>
+<span class="nc" id="L89">    }</span>
+
+    //the limit here correspond to the limit concept in SQL
+    //also take into consideration Statement.setMaxRows in JDBC
+    private int getLimit() {
+<span class="nc bnc" id="L94" title="All 4 branches missed.">        if (overlookOuterLimit || BackdoorToggles.getStatementMaxRows() == null</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">                || BackdoorToggles.getStatementMaxRows() == 0) {</span>
+<span class="nc" id="L96">            return limit;</span>
+        } else {
+<span class="nc" id="L98">            return Math.min(limit, BackdoorToggles.getStatementMaxRows());</span>
+        }
+    }
+
+    public void setLimit(int l) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (limit != Integer.MAX_VALUE) {</span>
+<span class="fc" id="L104">            logger.warn(&quot;Setting limit to {} but in current olap context, the limit is already {}, won't apply&quot;, l,</span>
+<span class="fc" id="L105">                    limit);</span>
+        } else {
+<span class="fc" id="L107">            limit = l;</span>
+        }
+<span class="fc" id="L109">    }</span>
+
+    //outer limit is sth like Statement.setMaxRows in JDBC
+    public void setOverlookOuterLimit() {
+<span class="nc" id="L113">        this.overlookOuterLimit = true;</span>
+<span class="nc" id="L114">    }</span>
+
+    //the offset here correspond to the offset concept in SQL
+    public int getOffset() {
+<span class="nc" id="L118">        return offset;</span>
+    }
+
+    public void setOffset(int offset) {
+<span class="nc" id="L122">        this.offset = offset;</span>
+<span class="nc" id="L123">    }</span>
+
+    /**
+     * in contrast to the limit in SQL concept, &quot;limit push down&quot; means
+     * whether the limit is effective in storage level. Some queries are not possible 
+     * to leverage limit clause, checkout 
+     * {@link GTCubeStorageQueryBase#enableStorageLimitIfPossible(org.apache.kylin.cube.cuboid.Cuboid, java.util.Collection, java.util.Set, java.util.Collection, org.apache.kylin.metadata.filter.TupleFilter, java.util.Set, java.util.Collection, org.apache.kylin.storage.StorageContext)}
+     */
+    public boolean isLimitPushDownEnabled() {
+<span class="fc" id="L132">        return isValidPushDownLimit(finalPushDownLimit);</span>
+    }
+
+    public static boolean isValidPushDownLimit(long finalPushDownLimit) {
+<span class="pc bpc" id="L136" title="3 of 4 branches missed.">        return finalPushDownLimit &lt; Integer.MAX_VALUE &amp;&amp; finalPushDownLimit &gt; 0;</span>
+    }
+
+    public int getFinalPushDownLimit() {
+<span class="fc" id="L140">        return finalPushDownLimit;</span>
+    }
+
+    public StorageLimitLevel getStorageLimitLevel() {
+<span class="fc" id="L144">        return storageLimitLevel;</span>
+    }
+
+    public void applyLimitPushDown(IRealization realization, StorageLimitLevel storageLimitLevel) {
+
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        if (storageLimitLevel == StorageLimitLevel.NO_LIMIT) {</span>
+<span class="fc" id="L150">            return;</span>
+        }
+
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (!realization.supportsLimitPushDown()) {</span>
+<span class="nc" id="L154">            logger.warn(&quot;Not enabling limit push down because cube storage type not supported&quot;);</span>
+<span class="nc" id="L155">            return;</span>
+        }
+
+<span class="nc" id="L158">        long temp = this.getOffset() + (long) this.getLimit();</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (!isValidPushDownLimit(temp)) {</span>
+<span class="nc" id="L161">            logger.warn(&quot;Not enabling limit push down because current limit is invalid: &quot; + this.getLimit());</span>
+<span class="nc" id="L162">            return;</span>
+        }
+
+<span class="nc" id="L165">        this.finalPushDownLimit = (int) temp;</span>
+<span class="nc" id="L166">        this.storageLimitLevel = storageLimitLevel;</span>
+<span class="nc" id="L167">        logger.info(&quot;Enabling limit push down: {} at level: {}&quot;, temp, storageLimitLevel);</span>
+<span class="nc" id="L168">    }</span>
+
+    public boolean mergeSortPartitionResults() {
+<span class="nc" id="L171">        return mergeSortPartitionResults(finalPushDownLimit);</span>
+    }
+
+    public static boolean mergeSortPartitionResults(int finalPushDownLimit) {
+<span class="nc" id="L175">        return isValidPushDownLimit(finalPushDownLimit);</span>
+    }
+
+    public void markSort() {
+<span class="nc" id="L179">        this.hasSort = true;</span>
+<span class="nc" id="L180">    }</span>
+
+    public boolean hasSort() {
+<span class="nc" id="L183">        return this.hasSort;</span>
+    }
+
+    public void setCuboid(Cuboid c) {
+<span class="nc" id="L187">        cuboid = c;</span>
+<span class="nc" id="L188">    }</span>
+
+    public Cuboid getCuboid() {
+<span class="nc" id="L191">        return cuboid;</span>
+    }
+
+    public CuboidToGridTableMapping getMapping() {
+<span class="nc" id="L195">        return mapping;</span>
+    }
+
+    public void setMapping(CuboidToGridTableMapping mapping) {
+<span class="nc" id="L199">        this.mapping = mapping;</span>
+<span class="nc" id="L200">    }</span>
+
+    public long getProcessedRowCount() {
+<span class="nc" id="L203">        return processedRowCount.get();</span>
+    }
+
+    public long increaseProcessedRowCount(long count) {
+<span class="nc" id="L207">        return processedRowCount.addAndGet(count);</span>
+    }
+
+    public boolean isAcceptPartialResult() {
+<span class="nc" id="L211">        return acceptPartialResult;</span>
+    }
+
+    public void setAcceptPartialResult(boolean acceptPartialResult) {
+<span class="nc" id="L215">        this.acceptPartialResult = acceptPartialResult;</span>
+<span class="nc" id="L216">    }</span>
+
+    public boolean isPartialResultReturned() {
+<span class="nc" id="L219">        return partialResultReturned;</span>
+    }
+
+    public void setPartialResultReturned(boolean partialResultReturned) {
+<span class="nc" id="L223">        this.partialResultReturned = partialResultReturned;</span>
+<span class="nc" id="L224">    }</span>
+
+    public boolean isNeedStorageAggregation() {
+<span class="nc" id="L227">        return needStorageAggregation;</span>
+    }
+
+    public void setNeedStorageAggregation(boolean needStorageAggregation) {
+<span class="nc" id="L231">        this.needStorageAggregation = needStorageAggregation;</span>
+<span class="nc" id="L232">    }</span>
+
+    public void setExactAggregation(boolean isExactAggregation) {
+<span class="nc" id="L235">        this.exactAggregation = isExactAggregation;</span>
+<span class="nc" id="L236">    }</span>
+
+    public boolean isExactAggregation() {
+<span class="nc" id="L239">        return this.exactAggregation;</span>
+    }
+
+    public void enableCoprocessor() {
+<span class="nc" id="L243">        this.enableCoprocessor = true;</span>
+<span class="nc" id="L244">    }</span>
+
+    public boolean isCoprocessorEnabled() {
+<span class="nc" id="L247">        return this.enableCoprocessor;</span>
+    }
+
+    public Range&lt;Long&gt; getReusedPeriod() {
+<span class="nc" id="L251">        return reusedPeriod;</span>
+    }
+
+    public void setReusedPeriod(Range&lt;Long&gt; reusedPeriod) {
+<span class="nc" id="L255">        this.reusedPeriod = reusedPeriod;</span>
+<span class="nc" id="L256">    }</span>
+
+    public IStorageQuery getStorageQuery() {
+<span class="nc" id="L259">        return storageQuery;</span>
+    }
+
+    public void setStorageQuery(IStorageQuery storageQuery) {
+<span class="nc" id="L263">        this.storageQuery = storageQuery;</span>
+<span class="nc" id="L264">    }</span>
+
+    public boolean isStreamAggregateEnabled() {
+<span class="nc" id="L267">        return enableStreamAggregate;</span>
+    }
+
+    public void enableStreamAggregate() {
+<span class="nc" id="L271">        this.enableStreamAggregate = true;</span>
+<span class="nc" id="L272">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

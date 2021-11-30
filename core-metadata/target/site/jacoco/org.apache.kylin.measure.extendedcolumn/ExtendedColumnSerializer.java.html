@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExtendedColumnSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.extendedcolumn</a> &gt; <span class="el_source">ExtendedColumnSerializer.java</span></div><h1>ExtendedColumnSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.measure.extendedcolumn;
+
+import java.nio.ByteBuffer;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
+public class ExtendedColumnSerializer extends DataTypeSerializer&lt;ByteArray&gt; {
+
+    private int extendedColumnSize;
+    private int maxLength;
+
+<span class="fc" id="L33">    public ExtendedColumnSerializer(DataType dataType) {</span>
+<span class="fc" id="L34">        this.extendedColumnSize = dataType.getPrecision();</span>
+<span class="fc" id="L35">        this.maxLength = this.extendedColumnSize + 4;//4 bytes for the length preamble</span>
+<span class="fc" id="L36">    }</span>
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="fc" id="L40">        int mark = in.position();</span>
+<span class="fc" id="L41">        int size = BytesUtil.readVInt(in);</span>
+<span class="fc" id="L42">        int total = in.position() - mark;</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        if (size &gt;= 0) {</span>
+            //size &lt;0 is the null case
+<span class="nc" id="L45">            total += size;</span>
+        }
+<span class="fc" id="L47">        in.position(mark);</span>
+<span class="fc" id="L48">        return total;</span>
+    }
+
+    @Override
+    public int maxLength() {
+<span class="fc" id="L53">        return maxLength;</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+<span class="nc" id="L58">        return extendedColumnSize / 2;</span>
+    }
+
+    @Override
+    public void serialize(ByteArray value, ByteBuffer out) {
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">        if (value != null &amp;&amp; value.array() != null) {</span>
+<span class="fc" id="L64">            BytesUtil.writeByteArray(value.array(), value.offset(), value.length(), out);</span>
+        } else {
+<span class="fc" id="L66">            BytesUtil.writeByteArray(null, out);</span>
+        }
+<span class="fc" id="L68">    }</span>
+
+    @Override
+    public ByteArray deserialize(ByteBuffer in) {
+        //the array in ByteArray is garanteed to be completed owned by the ByteArray 
+<span class="fc" id="L73">        return new ByteArray(BytesUtil.readByteArray(in));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

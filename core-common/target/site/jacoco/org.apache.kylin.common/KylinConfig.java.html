@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KylinConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common</a> &gt; <span class="el_source">KylinConfig.java</span></div><h1>KylinConfig.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.restclient.RestClient;
+import org.apache.kylin.common.threadlocal.InternalThreadLocal;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.OrderedProperties;
+import org.apache.kylin.common.util.VersionUtil;
+import org.apache.zookeeper.Shell;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.StringReader;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.nio.ByteOrder;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+/**
+ */
+public class KylinConfig extends KylinConfigBase {
+    private static final long serialVersionUID = 1L;
+<span class="fc" id="L57">    private static final Logger logger = LoggerFactory.getLogger(KylinConfig.class);</span>
+    private static final String METADATA_URI_PREFIX = &quot;Metadata uri : &quot;;
+
+    /**
+     * Kylin properties file name
+     */
+    public static final String KYLIN_CONF_PROPERTIES_FILE = &quot;kylin.properties&quot;;
+    public static final String KYLIN_DEFAULT_CONF_PROPERTIES_FILE = &quot;kylin-defaults.properties&quot;;
+    public static final String KYLIN_CONF = &quot;KYLIN_CONF&quot;;
+
+    // static cached instances
+<span class="fc" id="L68">    private static KylinConfig SYS_ENV_INSTANCE = null;</span>
+
+    // static default Ordered Properties, only need load from classpath once
+<span class="fc" id="L71">    private static OrderedProperties defaultOrderedProperties = new OrderedProperties();</span>
+
+    // thread-local instances, will override SYS_ENV_INSTANCE
+<span class="fc" id="L74">    private static transient InternalThreadLocal&lt;KylinConfig&gt; THREAD_ENV_INSTANCE = new InternalThreadLocal&lt;&gt;();</span>
+
+    static {
+        /*
+         * Make Calcite to work with Unicode.
+         *
+         * Sets default char set for string literals in SQL and row types of
+         * RelNode. This is more a label used to compare row type equality. For
+         * both SQL string and row record, they are passed to Calcite in String
+         * object and does not require additional codec.
+         *
+         * Ref SaffronProperties.defaultCharset
+         * Ref SqlUtil.translateCharacterSetName()
+         * Ref NlsString constructor()
+         */
+        // copied from org.apache.calcite.util.ConversionUtil.NATIVE_UTF16_CHARSET_NAME
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        String NATIVE_UTF16_CHARSET_NAME = (ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN) ? &quot;UTF-16BE&quot; : &quot;UTF-16LE&quot;;</span>
+<span class="fc" id="L91">        System.setProperty(&quot;saffron.default.charset&quot;, NATIVE_UTF16_CHARSET_NAME);</span>
+<span class="fc" id="L92">        System.setProperty(&quot;saffron.default.nationalcharset&quot;, NATIVE_UTF16_CHARSET_NAME);</span>
+<span class="fc" id="L93">        System.setProperty(&quot;saffron.default.collation.name&quot;, NATIVE_UTF16_CHARSET_NAME + &quot;$en_US&quot;);</span>
+
+<span class="fc" id="L95">    }</span>
+
+    public static File getKylinHomeAtBestEffort() {
+<span class="fc" id="L98">        String kylinHome = KylinConfig.getKylinHome();</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (kylinHome != null) {</span>
+<span class="nc" id="L100">            return new File(kylinHome).getAbsoluteFile();</span>
+        } else {
+<span class="fc" id="L102">            File confFile = KylinConfig.getSitePropertiesFile();</span>
+<span class="fc" id="L103">            return confFile.getAbsoluteFile().getParentFile().getParentFile();</span>
+        }
+    }
+
+    /**
+     * Build default ordered properties from classpath, due to those files exist in core-common.jar, no need to load them each time.
+     */
+    private static void buildDefaultOrderedProperties() {
+        // 1. load default configurations from classpath.
+        // we have a kylin-defaults.properties in kylin/core-common/src/main/resources
+        try {
+<span class="fc" id="L114">            URL resource = Thread.currentThread().getContextClassLoader()</span>
+<span class="fc" id="L115">                    .getResource(KYLIN_DEFAULT_CONF_PROPERTIES_FILE);</span>
+<span class="fc" id="L116">            Preconditions.checkNotNull(resource);</span>
+<span class="fc" id="L117">            logger.info(&quot;Loading kylin-defaults.properties from {}&quot;, resource.getPath());</span>
+<span class="fc" id="L118">            loadPropertiesFromInputStream(resource.openStream(), defaultOrderedProperties);</span>
+
+            // 2. load additional default configurations from classpath.
+            // This is old logic, will load kylin-defaults(0~9).properties in kylin/core-common/src/main/resources
+            // Suggest remove this logic if no needed.
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L124">                String fileName = &quot;kylin-defaults&quot; + (i) + &quot;.properties&quot;;</span>
+<span class="fc" id="L125">                URL additionalResource = Thread.currentThread().getContextClassLoader().getResource(fileName);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                if (additionalResource != null) {</span>
+<span class="nc" id="L127">                    logger.info(&quot;Loading {} from {} &quot;, fileName, additionalResource.getPath());</span>
+<span class="nc" id="L128">                    loadPropertiesFromInputStream(additionalResource.openStream(), defaultOrderedProperties);</span>
+                }
+            }
+<span class="nc" id="L131">        } catch (IOException e) {</span>
+<span class="nc" id="L132">            throw new RuntimeException(e);</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">    }</span>
+
+    public static KylinConfig getInstanceFromEnv(boolean allowConfigFileNoExist) {
+<span class="fc" id="L137">        synchronized (KylinConfig.class) {</span>
+<span class="fc" id="L138">            KylinConfig config = THREAD_ENV_INSTANCE.get();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (config != null) {</span>
+<span class="fc" id="L140">                return config;</span>
+            }
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (SYS_ENV_INSTANCE == null) {</span>
+                try {
+                    //build default ordered properties will only be called once.
+                    //This logic no need called by CoProcessor due to it didn't call getInstanceFromEnv.
+<span class="fc" id="L147">                    buildDefaultOrderedProperties();</span>
+
+<span class="fc" id="L149">                    config = new KylinConfig();</span>
+                    try {
+<span class="fc" id="L151">                        config.reloadKylinConfig(buildSiteProperties());</span>
+<span class="nc" id="L152">                    } catch (KylinConfigCannotInitException e) {</span>
+<span class="nc" id="L153">                        logger.info(&quot;Kylin Config Can not Init Exception&quot;);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                        if (!allowConfigFileNoExist) {</span>
+<span class="nc" id="L155">                            throw e;</span>
+                        }
+<span class="fc" id="L157">                    }</span>
+
+<span class="fc" id="L159">                    VersionUtil.loadKylinVersion();</span>
+<span class="fc" id="L160">                    logger.info(&quot;Initialized a new KylinConfig from getInstanceFromEnv : &quot;</span>
+<span class="fc" id="L161">                            + System.identityHashCode(config));</span>
+<span class="fc" id="L162">                    SYS_ENV_INSTANCE = config;</span>
+<span class="nc" id="L163">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L164">                    throw new IllegalStateException(&quot;Failed to find KylinConfig &quot;, e);</span>
+<span class="fc" id="L165">                }</span>
+            }
+<span class="fc" id="L167">            return SYS_ENV_INSTANCE;</span>
+        }
+    }
+
+    public static KylinConfig getInstanceFromEnv() {
+<span class="fc" id="L172">        return getInstanceFromEnv(false);</span>
+    }
+
+    // Only used in test cases!!!
+    public static void destroyInstance() {
+<span class="fc" id="L177">        synchronized (KylinConfig.class) {</span>
+<span class="fc" id="L178">            logger.info(&quot;Destroy KylinConfig&quot;);</span>
+<span class="fc" id="L179">            dumpStackTrace();</span>
+<span class="fc" id="L180">            SYS_ENV_INSTANCE = null;</span>
+<span class="fc" id="L181">            THREAD_ENV_INSTANCE = new InternalThreadLocal&lt;&gt;();</span>
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">    }</span>
+
+    private static void dumpStackTrace() {
+
+        //uncomment below to start debugging
+
+        //        Thread t = Thread.currentThread();
+        //        int maxStackTraceDepth = 20;
+        //        int current = 0;
+        //
+        //        StackTraceElement[] stackTrace = t.getStackTrace();
+        //        StringBuilder buf = new StringBuilder(&quot;This is not a exception, just for diagnose purpose:&quot;);
+        //        buf.append(&quot;\n&quot;);
+        //        for (StackTraceElement e : stackTrace) {
+        //            if (++current &gt; maxStackTraceDepth) {
+        //                break;
+        //            }
+        //            buf.append(&quot;\t&quot;).append(&quot;at &quot;).append(e.toString()).append(&quot;\n&quot;);
+        //        }
+        //        logger.info(buf.toString());
+<span class="fc" id="L203">    }</span>
+
+<span class="fc" id="L205">    public enum UriType {</span>
+<span class="fc" id="L206">        PROPERTIES_FILE, REST_ADDR, LOCAL_FOLDER, HDFS_FILE</span>
+    }
+
+    private static UriType decideUriType(String metaUri) {
+
+        try {
+<span class="fc" id="L212">            File file = new File(metaUri);</span>
+            // for the developers using windows, without this condition, it will never find the file
+<span class="pc bpc" id="L214" title="2 of 6 branches missed.">            if (file.exists() || metaUri.contains(&quot;/&quot;) || Shell.WINDOWS) {</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">                if (!file.exists()) {</span>
+<span class="nc" id="L216">                    file.mkdirs();</span>
+                }
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                if (file.isDirectory()) {</span>
+<span class="fc" id="L219">                    return UriType.LOCAL_FOLDER;</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">                } else if (file.isFile()) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                    if (file.getName().equalsIgnoreCase(KYLIN_CONF_PROPERTIES_FILE)) {</span>
+<span class="nc" id="L222">                        return UriType.PROPERTIES_FILE;</span>
+                    } else {
+<span class="nc" id="L224">                        throw new IllegalStateException(</span>
+                                METADATA_URI_PREFIX + metaUri + &quot; is a local file but not kylin.properties&quot;);
+                    }
+                } else {
+<span class="nc" id="L228">                    throw new IllegalStateException(METADATA_URI_PREFIX + metaUri</span>
+                            + &quot; looks like a file but it's neither a file nor a directory&quot;);
+                }
+            } else {
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                if (RestClient.matchFullRestPattern(metaUri))</span>
+<span class="fc" id="L233">                    return UriType.REST_ADDR;</span>
+                else
+<span class="fc" id="L235">                    throw new IllegalStateException(METADATA_URI_PREFIX + metaUri + &quot; is not a valid REST URI address&quot;);</span>
+            }
+<span class="fc" id="L237">        } catch (Exception e) {</span>
+<span class="fc" id="L238">            throw new IllegalStateException(METADATA_URI_PREFIX + metaUri + &quot; is not recognized&quot;, e);</span>
+        }
+    }
+
+    public static KylinConfig createInstanceFromUri(String uri) {
+        /**
+         * --hbase: 1. PROPERTIES_FILE: path to kylin.properties 2. REST_ADDR:
+         * rest service resource, format: user:password@host:port --local: 1.
+         * LOCAL_FOLDER: path to resource folder
+         */
+<span class="fc" id="L248">        UriType uriType = decideUriType(uri);</span>
+
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (uriType == UriType.LOCAL_FOLDER) {</span>
+<span class="fc" id="L251">            KylinConfig config = new KylinConfig();</span>
+<span class="fc" id="L252">            config.setMetadataUrl(uri);</span>
+<span class="fc" id="L253">            return config;</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        } else if (uriType == UriType.PROPERTIES_FILE) {</span>
+            KylinConfig config;
+            try {
+<span class="nc" id="L257">                config = new KylinConfig();</span>
+<span class="nc" id="L258">                InputStream is = new FileInputStream(uri);</span>
+<span class="nc" id="L259">                Properties prop = streamToProps(is);</span>
+<span class="nc" id="L260">                config.reloadKylinConfig(prop);</span>
+<span class="nc" id="L261">            } catch (IOException e) {</span>
+<span class="nc" id="L262">                throw new RuntimeException(e);</span>
+<span class="nc" id="L263">            }</span>
+<span class="nc" id="L264">            return config;</span>
+        } else {// rest_addr
+            try {
+<span class="fc" id="L267">                KylinConfig config = new KylinConfig();</span>
+<span class="fc" id="L268">                RestClient client = new RestClient(uri);</span>
+<span class="nc" id="L269">                String propertyText = client.getKylinProperties();</span>
+<span class="nc" id="L270">                InputStream is = IOUtils.toInputStream(propertyText, Charset.defaultCharset());</span>
+<span class="nc" id="L271">                Properties prop = streamToProps(is);</span>
+<span class="nc" id="L272">                config.reloadKylinConfig(prop);</span>
+<span class="nc" id="L273">                return config;</span>
+<span class="fc" id="L274">            } catch (IOException e) {</span>
+<span class="fc" id="L275">                throw new RuntimeException(e);</span>
+            }
+        }
+    }
+
+    public static Properties streamToProps(InputStream is) throws IOException {
+<span class="nc" id="L281">        Properties prop = new Properties();</span>
+<span class="nc" id="L282">        prop.load(is);</span>
+<span class="nc" id="L283">        IOUtils.closeQuietly(is);</span>
+<span class="nc" id="L284">        return prop;</span>
+    }
+
+    public static void setKylinConfigInEnvIfMissing(Properties prop) {
+<span class="fc" id="L288">        synchronized (KylinConfig.class) {</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            if (SYS_ENV_INSTANCE == null) {</span>
+                try {
+<span class="nc" id="L291">                    KylinConfig config = new KylinConfig();</span>
+<span class="nc" id="L292">                    config.reloadKylinConfig(prop);</span>
+<span class="nc" id="L293">                    logger.info(&quot;Resetting SYS_ENV_INSTANCE by a input stream: {}&quot;, System.identityHashCode(config));</span>
+<span class="nc" id="L294">                    SYS_ENV_INSTANCE = config;</span>
+<span class="nc" id="L295">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L296">                    throw new IllegalStateException(&quot;Failed to find KylinConfig &quot;, e);</span>
+<span class="nc" id="L297">                }</span>
+            }
+<span class="fc" id="L299">        }</span>
+<span class="fc" id="L300">    }</span>
+
+    public static void setKylinConfigInEnvIfMissing(String propsInStr) throws IOException {
+<span class="nc" id="L303">        Properties props = new Properties();</span>
+<span class="nc" id="L304">        props.load(new StringReader(propsInStr));</span>
+<span class="nc" id="L305">        setKylinConfigInEnvIfMissing(props);</span>
+<span class="nc" id="L306">    }</span>
+
+    // auto-closeable API to remind that a thread local config must always be removed
+    public static SetAndUnsetThreadLocalConfig setAndUnsetThreadLocalConfig(KylinConfig config) {
+<span class="fc" id="L310">        return new SetAndUnsetThreadLocalConfig(config);</span>
+    }
+
+    public static class SetAndUnsetThreadLocalConfig implements AutoCloseable {
+
+<span class="fc" id="L315">        public SetAndUnsetThreadLocalConfig(KylinConfig config) {</span>
+<span class="fc" id="L316">            THREAD_ENV_INSTANCE.set(config);</span>
+<span class="fc" id="L317">        }</span>
+
+        public KylinConfig get() {
+<span class="nc" id="L320">            Preconditions.checkNotNull(THREAD_ENV_INSTANCE.get(),</span>
+                    &quot;KylinConfig thread local instance is already closed&quot;);
+<span class="nc" id="L322">            return THREAD_ENV_INSTANCE.get();</span>
+        }
+
+        @Override
+        public void close() {
+<span class="fc" id="L327">            THREAD_ENV_INSTANCE.remove();</span>
+<span class="fc" id="L328">        }</span>
+    }
+
+    public static KylinConfig createKylinConfig(String propsInStr) {
+        try {
+<span class="nc" id="L333">            Properties props = new Properties();</span>
+<span class="nc" id="L334">            props.load(new StringReader(propsInStr));</span>
+<span class="nc" id="L335">            return createKylinConfig(props);</span>
+<span class="nc" id="L336">        } catch (IOException e) {</span>
+<span class="nc" id="L337">            throw new RuntimeException(&quot;Failed to create KylinConfig from string: &quot; + propsInStr, e);</span>
+        }
+    }
+
+    public static KylinConfig createKylinConfig(KylinConfig another) {
+<span class="fc" id="L342">        return createKylinConfig(another.getRawAllProperties());</span>
+    }
+
+    public static KylinConfig createKylinConfig(Properties prop) {
+<span class="fc" id="L346">        KylinConfig kylinConfig = new KylinConfig();</span>
+<span class="fc" id="L347">        kylinConfig.reloadKylinConfig(prop);</span>
+<span class="fc" id="L348">        return kylinConfig;</span>
+    }
+
+    public static File getKylinConfDir() {
+<span class="nc" id="L352">        return getSitePropertiesFile().getParentFile();</span>
+    }
+
+    // should be private; package visible for test only
+    static File getSitePropertiesFile() {
+<span class="fc" id="L357">        String kylinConfHome = System.getProperty(KYLIN_CONF);</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        if (!StringUtils.isEmpty(kylinConfHome)) {</span>
+<span class="fc" id="L359">            logger.info(&quot;Use KYLIN_CONF={}&quot;, kylinConfHome);</span>
+<span class="fc" id="L360">            return existFile(kylinConfHome);</span>
+        }
+
+<span class="nc" id="L363">        logger.debug(&quot;KYLIN_CONF property was not set, will seek KYLIN_HOME env variable&quot;);</span>
+
+<span class="nc" id="L365">        String kylinHome = getKylinHome();</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">        if (StringUtils.isEmpty(kylinHome))</span>
+<span class="nc" id="L367">            throw new KylinConfigCannotInitException(&quot;Didn't find KYLIN_CONF or KYLIN_HOME, please set one of them&quot;);</span>
+
+<span class="nc" id="L369">        logger.info(&quot;Use KYLIN_HOME={}&quot;, kylinHome);</span>
+<span class="nc" id="L370">        String path = kylinHome + File.separator + &quot;conf&quot;;</span>
+<span class="nc" id="L371">        return existFile(path);</span>
+    }
+
+    /**
+     * Return a File only if it exists
+     */
+    private static File existFile(String path) {
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">        if (path == null) {</span>
+<span class="nc" id="L379">            return null;</span>
+        }
+
+<span class="fc" id="L382">        return new File(path, KYLIN_CONF_PROPERTIES_FILE);</span>
+    }
+
+    // build kylin properties from site deployment, a.k.a KYLIN_HOME/conf/kylin.properties
+    private static Properties buildSiteProperties() {
+<span class="fc" id="L387">        Properties conf = new Properties();</span>
+
+<span class="fc" id="L389">        OrderedProperties orderedProperties = buildSiteOrderedProps();</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; each : orderedProperties.entrySet()) {</span>
+<span class="fc" id="L391">            conf.put(each.getKey(), each.getValue().trim());</span>
+<span class="fc" id="L392">        }</span>
+
+<span class="fc" id="L394">        return conf;</span>
+    }
+
+    // build kylin properties from site deployment, a.k.a KYLIN_HOME/conf/kylin.properties
+    private static OrderedProperties buildSiteOrderedProps() {
+
+        try {
+            // 1. load default configurations from classpath.
+            // we have kylin-defaults.properties in kylin/core-common/src/main/resources
+            // Load them each time will caused thread block when multiple query request to Kylin
+<span class="fc" id="L404">            OrderedProperties orderedProperties = new OrderedProperties();</span>
+<span class="fc" id="L405">            orderedProperties.putAll(defaultOrderedProperties);</span>
+
+            // 2. load site conf, to keep backward compatibility it's still named kylin.properties
+            // actually it's better to be named kylin-site.properties
+<span class="fc" id="L409">            File propFile = getSitePropertiesFile();</span>
+<span class="pc bpc" id="L410" title="2 of 4 branches missed.">            if (propFile == null || !propFile.exists()) {</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">                logger.error(&quot;fail to locate &quot; + KYLIN_CONF_PROPERTIES_FILE + &quot; at '&quot;</span>
+<span class="nc" id="L412">                        + (propFile != null ? propFile.getAbsolutePath() : &quot;&quot;) + &quot;'&quot;);</span>
+<span class="nc" id="L413">                throw new RuntimeException(&quot;fail to locate &quot; + KYLIN_CONF_PROPERTIES_FILE);</span>
+            }
+<span class="fc" id="L415">            loadPropertiesFromInputStream(new FileInputStream(propFile), orderedProperties);</span>
+
+            // 3. still support kylin.properties.override as secondary override
+            // not suggest to use it anymore
+<span class="fc" id="L419">            File propOverrideFile = new File(propFile.getParentFile(), propFile.getName() + &quot;.override&quot;);</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">            if (propOverrideFile.exists()) {</span>
+<span class="nc" id="L421">                loadPropertiesFromInputStream(new FileInputStream(propOverrideFile), orderedProperties);</span>
+            }
+<span class="fc" id="L423">            return orderedProperties;</span>
+<span class="nc" id="L424">        } catch (IOException e) {</span>
+<span class="nc" id="L425">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    /**
+     * will close the passed in inputstream
+     */
+    private static void loadPropertiesFromInputStream(InputStream inputStream, OrderedProperties properties) {
+<span class="fc" id="L433">        Preconditions.checkNotNull(properties);</span>
+
+<span class="fc" id="L435">        try (BufferedReader confReader = new BufferedReader(</span>
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+<span class="fc" id="L437">            OrderedProperties temp = new OrderedProperties();</span>
+<span class="fc" id="L438">            temp.load(confReader);</span>
+<span class="fc" id="L439">            temp = BCC.check(temp);</span>
+
+<span class="fc" id="L441">            properties.putAll(temp);</span>
+<span class="nc" id="L442">        } catch (Exception e) {</span>
+<span class="nc" id="L443">            throw new RuntimeException(e);</span>
+<span class="fc" id="L444">        }</span>
+<span class="fc" id="L445">    }</span>
+
+    public static void setSandboxEnvIfPossible() {
+<span class="nc" id="L448">        File dir1 = new File(&quot;../examples/test_case_data/sandbox&quot;);</span>
+<span class="nc" id="L449">        File dir2 = new File(&quot;../../kylin/examples/test_case_data/sandbox&quot;);</span>
+
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        if (dir1.exists()) {</span>
+<span class="nc" id="L452">            logger.info(&quot;Setting sandbox env, KYLIN_CONF=&quot; + dir1.getAbsolutePath());</span>
+<span class="nc" id="L453">            ClassUtil.addClasspath(dir1.getAbsolutePath());</span>
+<span class="nc" id="L454">            System.setProperty(KylinConfig.KYLIN_CONF, dir1.getAbsolutePath());</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">        } else if (dir2.exists()) {</span>
+<span class="nc" id="L456">            logger.info(&quot;Setting sandbox env, KYLIN_CONF=&quot; + dir2.getAbsolutePath());</span>
+<span class="nc" id="L457">            ClassUtil.addClasspath(dir2.getAbsolutePath());</span>
+<span class="nc" id="L458">            System.setProperty(KylinConfig.KYLIN_CONF, dir2.getAbsolutePath());</span>
+        }
+<span class="nc" id="L460">    }</span>
+
+    // ============================================================================
+
+<span class="fc" id="L464">    transient Map&lt;Class, Object&gt; managersCache = new ConcurrentHashMap&lt;&gt;();</span>
+
+    private KylinConfig() {
+<span class="fc" id="L467">        super();</span>
+<span class="fc" id="L468">    }</span>
+
+    protected KylinConfig(Properties props, boolean force) {
+<span class="fc" id="L471">        super(props, force);</span>
+<span class="fc" id="L472">    }</span>
+
+    public &lt;T&gt; T getManager(Class&lt;T&gt; clz) {
+<span class="nc" id="L475">        KylinConfig base = base();</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">        if (base != this)</span>
+<span class="nc" id="L477">            return base.getManager(clz);</span>
+
+<span class="nc bnc" id="L479" title="All 2 branches missed.">        if (managersCache == null) {</span>
+<span class="nc" id="L480">            managersCache = new ConcurrentHashMap&lt;&gt;();</span>
+        }
+
+<span class="nc" id="L483">        Object mgr = managersCache.get(clz);</span>
+<span class="nc bnc" id="L484" title="All 2 branches missed.">        if (mgr != null)</span>
+<span class="nc" id="L485">            return (T) mgr;</span>
+
+<span class="nc" id="L487">        synchronized (clz) {</span>
+<span class="nc" id="L488">            mgr = managersCache.get(clz);</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">            if (mgr != null)</span>
+<span class="nc" id="L490">                return (T) mgr;</span>
+
+            try {
+<span class="nc" id="L493">                logger.info(&quot;Creating new manager instance of {}&quot;, clz);</span>
+
+                // new manager via static Manager.newInstance()
+<span class="nc" id="L496">                Method method = clz.getDeclaredMethod(&quot;newInstance&quot;, KylinConfig.class);</span>
+<span class="nc" id="L497">                method.setAccessible(true); // override accessibility</span>
+<span class="nc" id="L498">                mgr = method.invoke(null, this);</span>
+<span class="nc" id="L499">            } catch (Exception e) {</span>
+<span class="nc" id="L500">                throw new RuntimeException(e);</span>
+<span class="nc" id="L501">            }</span>
+<span class="nc" id="L502">            managersCache.put(clz, mgr);</span>
+<span class="nc" id="L503">        }</span>
+<span class="nc" id="L504">        return (T) mgr;</span>
+    }
+
+    public void clearManagers() {
+<span class="nc" id="L508">        KylinConfig base = base();</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">        if (base != this) {</span>
+<span class="nc" id="L510">            base.clearManagers();</span>
+<span class="nc" id="L511">            return;</span>
+        }
+
+<span class="nc" id="L514">        Map&lt;Class, Closeable&gt; closableManagers = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="nc" id="L516">        managersCache.forEach((key, value) -&gt; {</span>
+<span class="nc bnc" id="L517" title="All 2 branches missed.">            if (value instanceof Closeable) {</span>
+<span class="nc" id="L518">                closableManagers.put(key, (Closeable) value);</span>
+            }
+<span class="nc" id="L520">        });</span>
+
+<span class="nc" id="L522">        managersCache.clear();</span>
+
+<span class="nc bnc" id="L524" title="All 2 branches missed.">        if (closableManagers.size() &gt; 0) {</span>
+<span class="nc" id="L525">            closableManagers.forEach((key, value) -&gt; {</span>
+<span class="nc" id="L526">                logger.info(&quot;Close manager {}&quot;, key.getSimpleName());</span>
+<span class="nc" id="L527">                value.close();</span>
+<span class="nc" id="L528">            });</span>
+        }
+<span class="nc" id="L530">    }</span>
+
+    public Properties exportToProperties() {
+<span class="nc" id="L533">        Properties all = getAllProperties();</span>
+<span class="nc" id="L534">        Properties copy = new Properties();</span>
+<span class="nc" id="L535">        copy.putAll(all);</span>
+<span class="nc" id="L536">        return copy;</span>
+    }
+
+    public String exportAllToString() {
+<span class="nc" id="L540">        final Properties allProps = getProperties(null);</span>
+<span class="nc" id="L541">        final OrderedProperties orderedProperties = KylinConfig.buildSiteOrderedProps();</span>
+
+<span class="nc bnc" id="L543" title="All 2 branches missed.">        for (Map.Entry&lt;Object, Object&gt; entry : allProps.entrySet()) {</span>
+<span class="nc" id="L544">            String key = entry.getKey().toString();</span>
+<span class="nc" id="L545">            String value = entry.getValue().toString();</span>
+<span class="nc" id="L546">            orderedProperties.setProperty(key, value);</span>
+<span class="nc" id="L547">        }</span>
+        // Reset some properties which might be overriden by system properties
+<span class="nc" id="L549">        String[] systemProps = { &quot;kylin.server.cluster-servers&quot;, &quot;kylin.server.cluster-servers-with-mode&quot; };</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">        for (String sysProp : systemProps) {</span>
+<span class="nc" id="L551">            String sysPropValue = System.getProperty(sysProp);</span>
+<span class="nc bnc" id="L552" title="All 2 branches missed.">            if (!Strings.isNullOrEmpty(sysPropValue)) {</span>
+<span class="nc" id="L553">                orderedProperties.setProperty(sysProp, sysPropValue);</span>
+            }
+        }
+        
+<span class="nc" id="L557">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L558" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; entry : orderedProperties.entrySet()) {</span>
+<span class="nc" id="L559">            sb.append(entry.getKey() + &quot;=&quot; + entry.getValue()).append('\n');</span>
+<span class="nc" id="L560">        }</span>
+<span class="nc" id="L561">        return sb.toString();</span>
+
+    }
+
+    public String exportToString(Collection&lt;String&gt; propertyKeys) {
+<span class="nc" id="L566">        Properties filteredProps = getProperties(propertyKeys);</span>
+<span class="nc" id="L567">        OrderedProperties orderedProperties = KylinConfig.buildSiteOrderedProps();</span>
+
+<span class="nc bnc" id="L569" title="All 2 branches missed.">        for (String key : propertyKeys) {</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">            if (!filteredProps.containsKey(key)) {</span>
+<span class="nc" id="L571">                filteredProps.put(key, orderedProperties.getProperty(key, &quot;&quot;));</span>
+            }
+<span class="nc" id="L573">        }</span>
+
+<span class="nc" id="L575">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L576" title="All 2 branches missed.">        for (Map.Entry&lt;Object, Object&gt; entry : filteredProps.entrySet()) {</span>
+<span class="nc" id="L577">            sb.append(entry.getKey() + &quot;=&quot; + entry.getValue()).append('\n');</span>
+<span class="nc" id="L578">        }</span>
+<span class="nc" id="L579">        return sb.toString();</span>
+    }
+
+    public void exportToFile(File file) throws IOException {
+<span class="nc" id="L583">        try (FileOutputStream fos = new FileOutputStream(file)) {</span>
+<span class="nc" id="L584">            getAllProperties().store(fos, file.getAbsolutePath());</span>
+        }
+<span class="nc" id="L586">    }</span>
+
+    public synchronized void reloadFromSiteProperties() {
+<span class="fc" id="L589">        reloadKylinConfig(buildSiteProperties());</span>
+<span class="fc" id="L590">    }</span>
+
+    public KylinConfig base() {
+<span class="fc" id="L593">        return this;</span>
+    }
+
+    private int superHashCode() {
+<span class="fc" id="L597">        return super.hashCode();</span>
+    }
+
+    /**
+     * This is only used in test.
+     *
+     * 1. Load metadata from localMetaDir
+     * 2. Prepare a temp working-dir
+     */
+    public static void setKylinConfigForLocalTest(String localMetaDir) {
+<span class="nc" id="L607">        synchronized (KylinConfig.class) {</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">            if (!new File(localMetaDir, &quot;kylin.properties&quot;).exists())</span>
+<span class="nc" id="L609">                throw new IllegalArgumentException(localMetaDir + &quot; is not a valid local meta dir&quot;);</span>
+
+<span class="nc" id="L611">            destroyInstance();</span>
+
+<span class="nc" id="L613">            logger.info(&quot;Setting KylinConfig to {} in UT.&quot;, localMetaDir);</span>
+<span class="nc" id="L614">            System.setProperty(KylinConfig.KYLIN_CONF, localMetaDir);</span>
+
+<span class="nc" id="L616">            KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L617">            config.setMetadataUrl(localMetaDir);</span>
+
+            // create a local working dir
+<span class="nc" id="L620">            File workingDir = new File(localMetaDir, &quot;working-dir&quot;);</span>
+<span class="nc" id="L621">            workingDir.mkdirs();</span>
+<span class="nc" id="L622">            String path = &quot;&quot;;</span>
+            try {
+                // remove the &quot;..&quot; in path string
+<span class="nc" id="L625">                path = workingDir.getCanonicalPath();</span>
+<span class="nc" id="L626">            } catch (IOException e) {</span>
+<span class="nc" id="L627">                throw new IllegalStateException(&quot;&quot;);</span>
+<span class="nc" id="L628">            }</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">            if (!path.startsWith(&quot;/&quot;))</span>
+<span class="nc" id="L630">                path = &quot;/&quot; + path;</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">            if (!path.endsWith(&quot;/&quot;))</span>
+<span class="nc" id="L632">                path = path + &quot;/&quot;;</span>
+<span class="nc" id="L633">            path = path.replace(&quot;\\&quot;, &quot;/&quot;);</span>
+<span class="nc" id="L634">            config.setProperty(&quot;kylin.env.hdfs-working-dir&quot;, &quot;file:&quot; + path);</span>
+<span class="nc" id="L635">        }</span>
+<span class="nc" id="L636">    }</span>
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L640">        return base().superHashCode();</span>
+    }
+
+    @Override
+    public boolean equals(Object another) {
+<span class="nc bnc" id="L645" title="All 2 branches missed.">        if (!(another instanceof KylinConfig))</span>
+<span class="nc" id="L646">            return false;</span>
+        else
+<span class="nc bnc" id="L648" title="All 2 branches missed.">            return this.base() == ((KylinConfig) another).base();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

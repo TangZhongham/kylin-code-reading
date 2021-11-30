@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/build-engine/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/cache/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-cube/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-job/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-job/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-metadata/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-metrics/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core-storage/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/jdbc/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/jdbc/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-classloader/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-engine/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-metadata/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-query/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-test/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/metastore-hbase/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/metrics-reporter-hive/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/metrics-reporter-kafka/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/query/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/server-base/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/server/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/server/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/source-hive/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/tool/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/tool/src/main/resources" charset="UTF-8" />
+  </component>
+</project>

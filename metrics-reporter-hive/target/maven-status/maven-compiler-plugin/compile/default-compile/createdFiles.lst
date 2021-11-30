@@ -1,0 +1,10 @@
+org/apache/kylin/metrics/lib/impl/hive/HiveProducer$1.class
+org/apache/kylin/metrics/lib/impl/hive/HiveProducer.class
+org/apache/kylin/metrics/lib/impl/hive/HiveProducer$2.class
+org/apache/kylin/metrics/lib/impl/hive/HiveProducerRecord$RecordKey.class
+org/apache/kylin/metrics/lib/impl/hive/HiveReservoirReporter$Builder.class
+org/apache/kylin/metrics/lib/impl/hive/HiveSink.class
+org/apache/kylin/metrics/lib/impl/hive/HiveReservoirReporter$HiveReservoirListener.class
+org/apache/kylin/metrics/lib/impl/hive/HiveReservoirReporter$1.class
+org/apache/kylin/metrics/lib/impl/hive/HiveReservoirReporter.class
+org/apache/kylin/metrics/lib/impl/hive/HiveProducerRecord.class

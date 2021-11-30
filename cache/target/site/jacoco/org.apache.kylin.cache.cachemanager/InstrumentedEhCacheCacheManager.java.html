@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstrumentedEhCacheCacheManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.cachemanager</a> &gt; <span class="el_source">InstrumentedEhCacheCacheManager.java</span></div><h1>InstrumentedEhCacheCacheManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.cachemanager;
+
+import java.util.Collection;
+import java.util.Map;
+
+import org.apache.kylin.cache.ehcache.InstrumentedEhCacheCache;
+import org.apache.kylin.common.KylinConfig;
+import org.springframework.cache.Cache;
+import org.springframework.cache.ehcache.EhCacheCache;
+import org.springframework.cache.support.AbstractCacheManager;
+import org.springframework.util.Assert;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+import net.sf.ehcache.Ehcache;
+import net.sf.ehcache.Status;
+
+/**
+ * CacheManager backed by an EhCache {@link net.sf.ehcache.CacheManager}.
+ *
+ */
+<span class="fc" id="L40">public class InstrumentedEhCacheCacheManager extends AbstractCacheManager {</span>
+
+    private net.sf.ehcache.CacheManager cacheManager;
+<span class="fc" id="L43">    private Map&lt;String, String&gt; metricsConfig = KylinConfig.getInstanceFromEnv().getKylinMetricsConf();</span>
+<span class="fc" id="L44">    private boolean enableMetrics = false;</span>
+
+    /**
+     * Return the backing EhCache {@link net.sf.ehcache.CacheManager}.
+     */
+    public net.sf.ehcache.CacheManager getCacheManager() {
+<span class="nc" id="L50">        return this.cacheManager;</span>
+    }
+
+    /**
+     * Set the backing EhCache {@link net.sf.ehcache.CacheManager}.
+     */
+    public void setCacheManager(net.sf.ehcache.CacheManager cacheManager) {
+<span class="fc" id="L57">        this.cacheManager = cacheManager;</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (&quot;true&quot;.equalsIgnoreCase(metricsConfig.get(&quot;ehcache.enabled&quot;))) {</span>
+<span class="nc" id="L59">            enableMetrics = true;</span>
+        }
+<span class="fc" id="L61">    }</span>
+
+    @Override
+    protected Collection&lt;Cache&gt; loadCaches() {
+<span class="fc" id="L65">        Assert.notNull(this.cacheManager, &quot;A backing EhCache CacheManager is required&quot;);</span>
+<span class="fc" id="L66">        Status status = this.cacheManager.getStatus();</span>
+<span class="fc" id="L67">        Assert.isTrue(Status.STATUS_ALIVE.equals(status),</span>
+<span class="fc" id="L68">                &quot;An 'alive' EhCache CacheManager is required - current cache is &quot; + status.toString());</span>
+
+<span class="fc" id="L70">        String[] names = this.cacheManager.getCacheNames();</span>
+<span class="fc" id="L71">        Collection&lt;Cache&gt; caches = Sets.newLinkedHashSetWithExpectedSize(names.length);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (String name : names) {</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if (enableMetrics) {</span>
+<span class="nc" id="L74">                caches.add(new InstrumentedEhCacheCache(this.cacheManager.getEhcache(name)));</span>
+            } else {
+<span class="fc" id="L76">                caches.add(new EhCacheCache(this.cacheManager.getEhcache(name)));</span>
+            }
+        }
+<span class="fc" id="L79">        return caches;</span>
+    }
+
+    @Override
+    public Cache getCache(String name) {
+<span class="fc" id="L84">        Cache cache = super.getCache(name);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (cache == null) {</span>
+            // check the EhCache cache again
+            // (in case the cache was added at runtime)
+<span class="nc" id="L88">            Ehcache ehcache = this.cacheManager.getEhcache(name);</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">            if (ehcache != null) {</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">                if (enableMetrics) {</span>
+<span class="nc" id="L91">                    cache = new InstrumentedEhCacheCache(ehcache);</span>
+                } else {
+<span class="nc" id="L93">                    cache = new EhCacheCache(ehcache);</span>
+                }
+<span class="nc" id="L95">                addCache(cache);</span>
+            }
+        }
+<span class="fc" id="L98">        return cache;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

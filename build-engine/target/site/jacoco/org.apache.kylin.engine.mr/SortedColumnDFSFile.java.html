@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SortedColumnDFSFile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">SortedColumnDFSFile.java</span></div><h1>SortedColumnDFSFile.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.kylin.engine.mr;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.source.IReadableTable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Created by xiefan on 16-11-22.
+ *
+ * Read values from multi col files and ensure their order using a K-Way merge algorithm
+ *
+ * You need to ensure that values inside each file is sorted
+ */
+public class SortedColumnDFSFile implements IReadableTable {
+
+<span class="nc" id="L42">    private static final Logger logger = LoggerFactory.getLogger(SortedColumnDFSFile.class);</span>
+
+    private String dfsPath;
+
+    private DFSFileTable dfsFileTable;
+
+    private DataType dataType;
+
+<span class="nc" id="L50">    public SortedColumnDFSFile(String path, DataType dataType) {</span>
+<span class="nc" id="L51">        this.dfsPath = path;</span>
+<span class="nc" id="L52">        this.dfsFileTable = new DFSFileTable(path, -1);</span>
+<span class="nc" id="L53">        this.dataType = dataType;</span>
+<span class="nc" id="L54">    }</span>
+
+    @Override
+    public TableReader getReader() throws IOException {
+<span class="nc" id="L58">        final Comparator&lt;String&gt; comparator = getComparatorByType(dataType);</span>
+
+<span class="nc" id="L60">        ArrayList&lt;TableReader&gt; readers = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L61">        String filePath = HadoopUtil.fixWindowsPath(dfsPath);</span>
+<span class="nc" id="L62">        FileSystem fs = HadoopUtil.getFileSystem(filePath);</span>
+<span class="nc" id="L63">        ArrayList&lt;FileStatus&gt; allFiles = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L64">        FileStatus status = fs.getFileStatus(new Path(filePath));</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if (status.isFile()) {</span>
+<span class="nc" id="L66">            allFiles.add(status);</span>
+        } else {
+<span class="nc" id="L68">            FileStatus[] listStatus = fs.listStatus(new Path(filePath));</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            for (FileStatus f : listStatus) {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                if (f.isFile())</span>
+<span class="nc" id="L71">                    allFiles.add(f);</span>
+            }
+        }
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        for (FileStatus f : allFiles) {</span>
+<span class="nc" id="L75">            DFSFileTableReader reader = new DFSFileTableReader(f.getPath().toString(), -1);</span>
+<span class="nc" id="L76">            readers.add(reader);</span>
+<span class="nc" id="L77">        }</span>
+
+<span class="nc" id="L79">        return new SortedColumnDFSFileReader(readers, comparator);</span>
+    }
+
+    @Override
+    public TableSignature getSignature() throws IOException {
+<span class="nc" id="L84">        return dfsFileTable.getSignature();</span>
+    }
+    
+    @Override
+    public boolean exists() throws IOException {
+<span class="nc" id="L89">        return dfsFileTable.exists();</span>
+    }
+
+    private Comparator&lt;String&gt; getComparatorByType(DataType type) {
+<span class="nc" id="L93">        return null;</span>
+//        Comparator&lt;String&gt; comparator;
+//        if (!type.isNumberFamily()) {
+//            comparator = new ByteComparator&lt;&gt;(new StringBytesConverter());
+//        } else if (type.isIntegerFamily()) {
+//            comparator = new Comparator&lt;String&gt;() {
+//                @Override
+//                public int compare(String str1, String str2) {
+//                    try {
+//                        Long num1 = Long.parseLong(str1);
+//                        Long num2 = Long.parseLong(str2);
+//                        return num1.compareTo(num2);
+//                    } catch (NumberFormatException e) {
+//                        logger.error(&quot;NumberFormatException when parse integer family number.str1:&quot; + str1 + &quot; str2:&quot; + str2);
+//                        e.printStackTrace();
+//                        return 0;
+//                    }
+//                }
+//            };
+//        } else {
+//            comparator = new Comparator&lt;String&gt;() {
+//                @Override
+//                public int compare(String str1, String str2) {
+//                    try {
+//                        Double num1 = Double.parseDouble(str1);
+//                        Double num2 = Double.parseDouble(str2);
+//                        return num1.compareTo(num2);
+//                    } catch (NumberFormatException e) {
+//                        logger.error(&quot;NumberFormatException when parse doul family number.str1:&quot; + str1 + &quot; str2:&quot; + str2);
+//                        return 0;
+//                    }
+//                }
+//            };
+//        }
+//        return comparator;
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L132">        return dfsPath;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

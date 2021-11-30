@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveReservoirReporter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Metrics Reporter Hive</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.lib.impl.hive</a> &gt; <span class="el_source">HiveReservoirReporter.java</span></div><h1>HiveReservoirReporter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metrics.lib.impl.hive;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+
+import org.apache.kylin.metrics.lib.ActiveReservoir;
+import org.apache.kylin.metrics.lib.ActiveReservoirListener;
+import org.apache.kylin.metrics.lib.ActiveReservoirReporter;
+import org.apache.kylin.metrics.lib.Record;
+import org.apache.kylin.metrics.lib.impl.ReporterBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * A reporter which listens for new records and publishes them to hive.
+ */
+public class HiveReservoirReporter extends ActiveReservoirReporter {
+
+    public static final String HIVE_REPORTER_SUFFIX = &quot;HIVE&quot;;
+<span class="nc" id="L41">    public static final HiveSink sink = new HiveSink();</span>
+<span class="nc" id="L42">    protected static final Logger logger = LoggerFactory.getLogger(HiveReservoirReporter.class);</span>
+    private final ActiveReservoir activeReservoir;
+    private final HiveReservoirListener listener;
+
+<span class="nc" id="L46">    public HiveReservoirReporter(ActiveReservoir activeReservoir, Properties props) throws Exception {</span>
+<span class="nc" id="L47">        this.activeReservoir = activeReservoir;</span>
+<span class="nc" id="L48">        this.listener = new HiveReservoirListener(props);</span>
+<span class="nc" id="L49">    }</span>
+
+    /**
+     * Returns a new {@link Builder} for {@link HiveReservoirReporter}.
+     *
+     * @param activeReservoir the registry to report
+     * @return a {@link Builder} instance for a {@link HiveReservoirReporter}
+     */
+    public static Builder forRegistry(ActiveReservoir activeReservoir) {
+<span class="nc" id="L58">        return new Builder(activeReservoir);</span>
+    }
+
+    public static String getTableFromSubject(String subject) {
+<span class="nc" id="L62">        return sink.getTableFromSubject(subject);</span>
+    }
+
+    /**
+     * Starts the reporter.
+     */
+    public void start() {
+<span class="nc" id="L69">        activeReservoir.addListener(listener);</span>
+<span class="nc" id="L70">    }</span>
+
+    /**
+     * Stops the reporter.
+     */
+    public void stop() {
+<span class="nc" id="L76">        activeReservoir.removeListener(listener);</span>
+<span class="nc" id="L77">    }</span>
+
+    /**
+     * Stops the reporter.
+     */
+    @Override
+    public void close() {
+<span class="nc" id="L84">        stop();</span>
+<span class="nc" id="L85">    }</span>
+
+    /**
+     * A builder for {@link HiveReservoirReporter} instances.
+     */
+    public static class Builder extends ReporterBuilder {
+
+        private Builder(ActiveReservoir activeReservoir) {
+<span class="nc" id="L93">            super(activeReservoir);</span>
+<span class="nc" id="L94">        }</span>
+
+        private void setFixedProperties() {
+<span class="nc" id="L97">        }</span>
+
+        /**
+         * Builds a {@link HiveReservoirReporter} with the given properties.
+         *
+         * @return a {@link HiveReservoirReporter}
+         */
+        public HiveReservoirReporter build() throws Exception {
+<span class="nc" id="L105">            setFixedProperties();</span>
+<span class="nc" id="L106">            return new HiveReservoirReporter(registry, props);</span>
+        }
+    }
+
+    private class HiveReservoirListener implements ActiveReservoirListener {
+        private Properties props;
+<span class="nc" id="L112">        private Map&lt;String, HiveProducer&gt; producerMap = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L114">        private HiveReservoirListener(Properties props) throws Exception {</span>
+<span class="nc" id="L115">            this.props = props;</span>
+<span class="nc" id="L116">        }</span>
+
+        private synchronized HiveProducer getProducer(String metricType) throws Exception {
+<span class="nc" id="L119">            HiveProducer producer = producerMap.get(metricType);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            if (producer == null) {</span>
+<span class="nc" id="L121">                producer = new HiveProducer(metricType, props);</span>
+<span class="nc" id="L122">                producerMap.put(metricType, producer);</span>
+            }
+<span class="nc" id="L124">            return producer;</span>
+        }
+
+        public boolean onRecordUpdate(final List&lt;Record&gt; records) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            if (records.isEmpty()) {</span>
+<span class="nc" id="L129">                return true;</span>
+            }
+<span class="nc" id="L131">            logger.info(&quot;Try to write {} records&quot;, records.size());</span>
+            try {
+<span class="nc" id="L133">                Map&lt;String, List&lt;Record&gt;&gt; queues = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                for (Record record : records) {</span>
+<span class="nc" id="L135">                    List&lt;Record&gt; recordQueues = queues.get(record.getSubject());</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                    if (recordQueues == null) {</span>
+<span class="nc" id="L137">                        recordQueues = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L138">                        queues.put(record.getSubject(), recordQueues);</span>
+                    }
+<span class="nc" id="L140">                    recordQueues.add(record);</span>
+<span class="nc" id="L141">                }</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                for (Map.Entry&lt;String, List&lt;Record&gt;&gt; entry : queues.entrySet()) {</span>
+<span class="nc" id="L143">                    HiveProducer producer = getProducer(entry.getKey());</span>
+<span class="nc" id="L144">                    producer.send(entry.getValue());</span>
+<span class="nc" id="L145">                }</span>
+<span class="nc" id="L146">                queues.clear();</span>
+<span class="nc" id="L147">            } catch (Exception e) {</span>
+<span class="nc" id="L148">                logger.error(e.getMessage(), e);</span>
+<span class="nc" id="L149">                return false;</span>
+<span class="nc" id="L150">            }</span>
+<span class="nc" id="L151">            return true;</span>
+        }
+
+        public boolean onRecordUpdate(final Record record) {
+            try {
+<span class="nc" id="L156">                HiveProducer producer = getProducer(record.getSubject());</span>
+<span class="nc" id="L157">                producer.send(record);</span>
+<span class="nc" id="L158">            } catch (Exception e) {</span>
+<span class="nc" id="L159">                logger.error(e.getMessage(), e);</span>
+<span class="nc" id="L160">                return false;</span>
+<span class="nc" id="L161">            }</span>
+<span class="nc" id="L162">            return true;</span>
+        }
+
+        public void close() {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            for (HiveProducer producer : producerMap.values()) {</span>
+<span class="nc" id="L167">                producer.close();</span>
+<span class="nc" id="L168">            }</span>
+<span class="nc" id="L169">            producerMap.clear();</span>
+<span class="nc" id="L170">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

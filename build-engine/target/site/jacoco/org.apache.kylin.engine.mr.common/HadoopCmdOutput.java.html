@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HadoopCmdOutput.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">HadoopCmdOutput.java</span></div><h1>HadoopCmdOutput.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapreduce.Counters;
+import org.apache.hadoop.mapreduce.FileSystemCounter;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.JobStatus;
+import org.apache.hadoop.mapreduce.TaskCompletionEvent;
+import org.apache.hadoop.mapreduce.TaskCounter;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.job.constant.ExecutableConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * @author xduo
+ * 
+ */
+public class HadoopCmdOutput {
+
+<span class="nc" id="L44">    protected static final Logger logger = LoggerFactory.getLogger(HadoopCmdOutput.class);</span>
+
+    private final StringBuilder output;
+    private final Job job;
+
+    public HadoopCmdOutput(Job job, StringBuilder output) {
+<span class="nc" id="L50">        super();</span>
+<span class="nc" id="L51">        this.job = job;</span>
+<span class="nc" id="L52">        this.output = output;</span>
+<span class="nc" id="L53">    }</span>
+
+    public String getMrJobId() {
+<span class="nc" id="L56">        return getInfo().get(ExecutableConstants.MR_JOB_ID);</span>
+    }
+
+    public Map&lt;String, String&gt; getInfo() {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (job != null) {</span>
+<span class="nc" id="L61">            Map&lt;String, String&gt; status = new HashMap&lt;String, String&gt;();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (null != job.getJobID()) {</span>
+<span class="nc" id="L63">                status.put(ExecutableConstants.MR_JOB_ID, job.getJobID().toString());</span>
+            }
+<span class="nc bnc" id="L65" title="All 2 branches missed.">            if (null != job.getTrackingURL()) {</span>
+<span class="nc" id="L66">                status.put(ExecutableConstants.YARN_APP_URL, job.getTrackingURL().toString());</span>
+            }
+<span class="nc" id="L68">            return status;</span>
+        } else {
+<span class="nc" id="L70">            return Collections.emptyMap();</span>
+        }
+    }
+
+    private String mapInputRecords;
+    private String hdfsBytesWritten;
+    private String rawInputBytesRead;
+
+    public String getMapInputRecords() {
+<span class="nc" id="L79">        return mapInputRecords;</span>
+    }
+
+    public String getHdfsBytesWritten() {
+<span class="nc" id="L83">        return hdfsBytesWritten;</span>
+    }
+
+    public String getRawInputBytesRead() {
+<span class="nc" id="L87">        return rawInputBytesRead;</span>
+    }
+
+    public void updateJobCounter() {
+        try {
+<span class="nc" id="L92">            Counters counters = job.getCounters();</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (counters == null) {</span>
+<span class="nc" id="L94">                String errorMsg = &quot;no counters for job &quot; + getMrJobId();</span>
+<span class="nc" id="L95">                logger.warn(errorMsg);</span>
+<span class="nc" id="L96">                output.append(errorMsg);</span>
+<span class="nc" id="L97">            } else {</span>
+<span class="nc" id="L98">                this.output.append(counters.toString()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L99">                logger.debug(counters.toString());</span>
+
+<span class="nc" id="L101">                mapInputRecords = String.valueOf(counters.findCounter(TaskCounter.MAP_INPUT_RECORDS).getValue());</span>
+<span class="nc" id="L102">                rawInputBytesRead = &quot;&quot;;</span>
+
+<span class="nc" id="L104">                String outputFolder = job.getConfiguration().get(&quot;mapreduce.output.fileoutputformat.outputdir&quot;,</span>
+<span class="nc" id="L105">                        KylinConfig.getInstanceFromEnv().getHdfsWorkingDirectory());</span>
+<span class="nc" id="L106">                logger.debug(&quot;outputFolder is &quot; + outputFolder);</span>
+<span class="nc" id="L107">                Path outputPath = new Path(outputFolder);</span>
+<span class="nc" id="L108">                String fsScheme = outputPath.getFileSystem(job.getConfiguration()).getScheme();</span>
+<span class="nc" id="L109">                long bytesWritten = counters.findCounter(fsScheme, FileSystemCounter.BYTES_WRITTEN).getValue();</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (bytesWritten == 0) {</span>
+<span class="nc" id="L111">                    logger.debug(&quot;Seems no counter found for &quot; + fsScheme);</span>
+<span class="nc" id="L112">                    bytesWritten = counters.findCounter(&quot;FileSystemCounters&quot;, &quot;HDFS_BYTES_WRITTEN&quot;).getValue();</span>
+                }
+<span class="nc" id="L114">                hdfsBytesWritten = String.valueOf(bytesWritten);</span>
+            }
+<span class="nc" id="L116">            JobStatus jobStatus = job.getStatus();</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            if (jobStatus.getState() == JobStatus.State.FAILED) {</span>
+<span class="nc" id="L118">                logger.warn(&quot;Job Diagnostics:&quot; + jobStatus.getFailureInfo());</span>
+<span class="nc" id="L119">                output.append(&quot;Job Diagnostics:&quot;).append(jobStatus.getFailureInfo()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L120">                TaskCompletionEvent taskEvent = getOneTaskFailure(job);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">                if (taskEvent != null) {</span>
+<span class="nc" id="L122">                    String[] fails = job.getTaskDiagnostics(taskEvent.getTaskAttemptId());</span>
+<span class="nc" id="L123">                    logger.warn(&quot;Failure task Diagnostics:&quot;);</span>
+<span class="nc" id="L124">                    output.append(&quot;Failure task Diagnostics:&quot;).append(&quot;\n&quot;);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                    for (String failure : fails) {</span>
+<span class="nc" id="L126">                        logger.warn(failure);</span>
+<span class="nc" id="L127">                        output.append(failure).append(&quot;\n&quot;);</span>
+                    }
+                }
+            }
+<span class="nc" id="L131">        } catch (Exception e) {</span>
+<span class="nc" id="L132">            logger.error(e.getLocalizedMessage(), e);</span>
+<span class="nc" id="L133">            output.append(e.getLocalizedMessage());</span>
+<span class="nc" id="L134">        }</span>
+<span class="nc" id="L135">    }</span>
+
+    private TaskCompletionEvent getOneTaskFailure(Job job) throws IOException, InterruptedException {
+<span class="nc" id="L138">        TaskCompletionEvent lastEvent = null;</span>
+<span class="nc" id="L139">        int index = 0;</span>
+<span class="nc" id="L140">        int failCount = 0;</span>
+<span class="nc" id="L141">        TaskCompletionEvent[] events = job.getTaskCompletionEvents(index);</span>
+        //This returns either nothing (if no task executions or no exceptions at all) or the last failure event within a subset of the exceptions from the first
+        //index at which exceptions are found in the task completion events
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (events == null) {</span>
+<span class="nc" id="L145">            return lastEvent;</span>
+        }
+<span class="nc bnc" id="L147" title="All 4 branches missed.">        while (events.length &gt; 0 &amp;&amp; failCount == 0) {</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            for (TaskCompletionEvent event : events) {</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">                if (event.getStatus().equals(TaskCompletionEvent.Status.FAILED)) {</span>
+<span class="nc" id="L150">                    failCount++;</span>
+<span class="nc" id="L151">                    lastEvent = event;</span>
+                }
+            }
+<span class="nc" id="L154">            index += 10;</span>
+<span class="nc" id="L155">            events = job.getTaskCompletionEvents(index);</span>
+        }
+<span class="nc" id="L157">        return lastEvent;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HybridInstance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.hybrid</a> &gt; <span class="el_source">HybridInstance.java</span></div><h1>HybridInstance.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.storage.hybrid;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.project.RealizationEntry;
+import org.apache.kylin.metadata.realization.CapabilityResult;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.RealizationRegistry;
+import org.apache.kylin.metadata.realization.RealizationType;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE, setterVisibility = JsonAutoDetect.Visibility.NONE)
+<span class="fc" id="L53">public class HybridInstance extends RootPersistentEntity implements IRealization {</span>
+
+<span class="fc" id="L55">    private final static Logger logger = LoggerFactory.getLogger(HybridInstance.class);</span>
+
+    public static HybridInstance create(KylinConfig config, String name, List&lt;RealizationEntry&gt; realizationEntries) {
+<span class="nc" id="L58">        HybridInstance hybridInstance = new HybridInstance();</span>
+
+<span class="nc" id="L60">        hybridInstance.setConfig(config);</span>
+<span class="nc" id="L61">        hybridInstance.setName(name);</span>
+<span class="nc" id="L62">        hybridInstance.setRealizationEntries(realizationEntries);</span>
+<span class="nc" id="L63">        hybridInstance.updateRandomUuid();</span>
+
+<span class="nc" id="L65">        return hybridInstance;</span>
+    }
+
+    // ============================================================================
+
+    @JsonIgnore
+    private KylinConfig config;
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+
+    @JsonProperty(&quot;realizations&quot;)
+    private List&lt;RealizationEntry&gt; realizationEntries;
+
+<span class="fc" id="L79">    @JsonProperty(&quot;cost&quot;)</span>
+    private int cost = 50;
+
+<span class="fc" id="L82">    private volatile IRealization[] realizations = null;</span>
+<span class="fc" id="L83">    private List&lt;TblColRef&gt; allDimensions = null;</span>
+<span class="fc" id="L84">    private Set&lt;TblColRef&gt; allColumns = null;</span>
+<span class="fc" id="L85">    private Set&lt;ColumnDesc&gt; allColumnDescs = null;</span>
+<span class="fc" id="L86">    private List&lt;MeasureDesc&gt; allMeasures = null;</span>
+    private long dateRangeStart;
+    private long dateRangeEnd;
+<span class="fc" id="L89">    private boolean isReady = false;</span>
+
+    @Override
+    public String resourceName() {
+<span class="fc" id="L93">        return name;</span>
+    }
+
+    public List&lt;RealizationEntry&gt; getRealizationEntries() {
+<span class="nc" id="L97">        return realizationEntries;</span>
+    }
+
+    public void setRealizationEntries(List&lt;RealizationEntry&gt; realizationEntries) {
+<span class="nc" id="L101">        this.realizationEntries = realizationEntries;</span>
+<span class="nc" id="L102">    }</span>
+
+    private void init() {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (realizations != null)</span>
+<span class="fc" id="L106">            return;</span>
+
+<span class="fc" id="L108">        synchronized (this) {</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (realizations != null)</span>
+<span class="nc" id="L110">                return;</span>
+
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">            if (realizationEntries == null || realizationEntries.size() == 0)</span>
+<span class="fc" id="L113">                return;</span>
+
+<span class="fc" id="L115">            RealizationRegistry registry = RealizationRegistry.getInstance(config);</span>
+<span class="fc" id="L116">            List&lt;IRealization&gt; realizationList = Lists.newArrayList();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            for (int i = 0; i &lt; realizationEntries.size(); i++) {</span>
+<span class="fc" id="L118">                IRealization realization = registry.getRealization(realizationEntries.get(i).getType(), realizationEntries.get(i).getRealization());</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                if (realization == null) {</span>
+<span class="nc" id="L120">                    logger.error(&quot;Realization '&quot; + realizationEntries.get(i) + &quot; is not found, remove from Hybrid '&quot; + this.getName() + &quot;'&quot;);</span>
+<span class="nc" id="L121">                    continue;</span>
+                }
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                if (realization.isReady() == false) {</span>
+<span class="nc" id="L124">                    logger.error(&quot;Realization '&quot; + realization.getName() + &quot; is disabled, remove from Hybrid '&quot; + this.getName() + &quot;'&quot;);</span>
+<span class="nc" id="L125">                    continue;</span>
+                }
+<span class="fc" id="L127">                realizationList.add(realization);</span>
+            }
+
+<span class="fc" id="L130">            LinkedHashSet&lt;TblColRef&gt; columns = new LinkedHashSet&lt;TblColRef&gt;();</span>
+<span class="fc" id="L131">            LinkedHashSet&lt;TblColRef&gt; dimensions = new LinkedHashSet&lt;TblColRef&gt;();</span>
+<span class="fc" id="L132">            LinkedHashSet&lt;MeasureDesc&gt; measures = new LinkedHashSet&lt;MeasureDesc&gt;();</span>
+<span class="fc" id="L133">            dateRangeStart = 0;</span>
+<span class="fc" id="L134">            dateRangeEnd = Long.MAX_VALUE;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            for (IRealization realization : realizationList) {</span>
+<span class="fc" id="L136">                columns.addAll(realization.getAllColumns());</span>
+<span class="fc" id="L137">                dimensions.addAll(realization.getAllDimensions());</span>
+<span class="fc" id="L138">                measures.addAll(realization.getMeasures());</span>
+
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                if (realization.isReady())</span>
+<span class="fc" id="L141">                    isReady = true;</span>
+
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">                if (dateRangeStart == 0 || realization.getDateRangeStart() &lt; dateRangeStart)</span>
+<span class="fc" id="L144">                    dateRangeStart = realization.getDateRangeStart();</span>
+
+<span class="pc bpc" id="L146" title="2 of 4 branches missed.">                if (dateRangeStart == Long.MAX_VALUE || realization.getDateRangeEnd() &gt; dateRangeEnd)</span>
+<span class="nc" id="L147">                    dateRangeEnd = realization.getDateRangeEnd();</span>
+<span class="fc" id="L148">            }</span>
+
+<span class="fc" id="L150">            allDimensions = Lists.newArrayList(dimensions);</span>
+<span class="fc" id="L151">            allColumns = columns;</span>
+<span class="fc" id="L152">            allColumnDescs = asColumnDescs(allColumns);</span>
+<span class="fc" id="L153">            allMeasures = Lists.newArrayList(measures);</span>
+
+<span class="fc" id="L155">            Collections.sort(realizationList, new Comparator&lt;IRealization&gt;() {</span>
+                @Override
+                public int compare(IRealization o1, IRealization o2) {
+
+<span class="fc" id="L159">                    long i1 = o1.getDateRangeStart();</span>
+<span class="fc" id="L160">                    long i2 = o2.getDateRangeStart();</span>
+<span class="fc" id="L161">                    long comp = i1 - i2;</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                    if (comp != 0) {</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                        return comp &gt; 0 ? 1 : -1;</span>
+                    }
+
+<span class="nc" id="L166">                    i1 = o1.getDateRangeEnd();</span>
+<span class="nc" id="L167">                    i2 = o2.getDateRangeEnd();</span>
+<span class="nc" id="L168">                    comp = i1 - i2;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">                    if (comp != 0) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                        return comp &gt; 0 ? 1 : -1;</span>
+                    }
+
+<span class="nc" id="L173">                    return 0;</span>
+                }
+            });
+
+<span class="fc" id="L177">            this.realizations = realizationList.toArray(new IRealization[realizationList.size()]);</span>
+<span class="fc" id="L178">        }</span>
+<span class="fc" id="L179">    }</span>
+
+    private Set&lt;ColumnDesc&gt; asColumnDescs(Set&lt;TblColRef&gt; columns) {
+<span class="fc" id="L182">        LinkedHashSet&lt;ColumnDesc&gt; result = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        for (TblColRef col : columns) {</span>
+<span class="fc" id="L184">            result.add(col.getColumnDesc());</span>
+<span class="fc" id="L185">        }</span>
+<span class="fc" id="L186">        return result;</span>
+    }
+
+    @Override
+    public CapabilityResult isCapable(SQLDigest digest) {
+<span class="fc" id="L191">        CapabilityResult result = new CapabilityResult();</span>
+<span class="fc" id="L192">        result.cost = Integer.MAX_VALUE;</span>
+
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        for (IRealization realization : getRealizations()) {</span>
+<span class="nc" id="L195">            CapabilityResult child = realization.isCapable(digest);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">            if (child.capable) {</span>
+<span class="nc" id="L197">                result.capable = true;</span>
+<span class="nc" id="L198">                result.cost = Math.min(result.cost, child.cost);</span>
+<span class="nc" id="L199">                result.influences.addAll(child.influences);</span>
+            } else {
+<span class="nc" id="L201">                result.incapableCause = child.incapableCause;</span>
+            }
+        }
+
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if (result.cost &gt; 0)</span>
+<span class="fc" id="L206">            result.cost--; // let hybrid win its children</span>
+
+<span class="fc" id="L208">        return result;</span>
+    }
+
+    @Override
+    public int getCost() {
+<span class="fc" id="L213">        int c = Integer.MAX_VALUE;</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        for (IRealization realization : getRealizations()) {</span>
+<span class="nc" id="L215">            c = Math.min(realization.getCost(), c);</span>
+        }
+<span class="fc" id="L217">        return c;</span>
+    }
+
+    @Override
+    public RealizationType getType() {
+<span class="nc" id="L222">        return RealizationType.HYBRID;</span>
+    }
+
+    @Override
+    public DataModelDesc getModel() {
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (this.getLatestRealization() != null) {</span>
+<span class="nc" id="L228">            return this.getLatestRealization().getModel();</span>
+        }
+        // all included cubes are disabled
+<span class="nc bnc" id="L231" title="All 4 branches missed.">        if (this.getRealizationEntries() != null &amp;&amp; this.getRealizationEntries().size() &gt; 0) {</span>
+<span class="nc" id="L232">            String cubeName = this.getRealizationEntries().get(0).getRealization();</span>
+<span class="nc" id="L233">            CubeInstance cubeInstance = CubeManager.getInstance(config).getCube(cubeName);</span>
+<span class="nc" id="L234">            return cubeInstance.getModel();</span>
+        }
+<span class="nc" id="L236">        return null;</span>
+    }
+
+    @Override
+    public Set&lt;TblColRef&gt; getAllColumns() {
+<span class="nc" id="L241">        init();</span>
+<span class="nc" id="L242">        return allColumns;</span>
+    }
+
+    @Override
+    public Set&lt;ColumnDesc&gt; getAllColumnDescs() {
+<span class="nc" id="L247">        init();</span>
+<span class="nc" id="L248">        return allColumnDescs;</span>
+    }
+
+    @Override
+    public List&lt;MeasureDesc&gt; getMeasures() {
+<span class="nc" id="L253">        init();</span>
+<span class="nc" id="L254">        return allMeasures;</span>
+    }
+
+    @Override
+    public boolean isReady() {
+<span class="nc" id="L259">        return isReady;</span>
+    }
+
+    @Override
+    public String getName() {
+<span class="nc" id="L264">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="nc" id="L268">        this.name = name;</span>
+<span class="nc" id="L269">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L273">        return getCanonicalName();</span>
+    }
+
+    @Override
+    public String getCanonicalName() {
+<span class="nc" id="L278">        return getType() + &quot;[name=&quot; + name + &quot;]&quot;;</span>
+    }
+
+    @Override
+    public KylinConfig getConfig() {
+<span class="nc" id="L283">        return config;</span>
+    }
+
+    public void setConfig(KylinConfig config) {
+<span class="fc" id="L287">        this.config = config;</span>
+<span class="fc" id="L288">    }</span>
+
+    @Override
+    public long getDateRangeStart() {
+<span class="nc" id="L292">        return dateRangeStart;</span>
+    }
+
+    @Override
+    public long getDateRangeEnd() {
+<span class="nc" id="L297">        return dateRangeEnd;</span>
+    }
+
+    @Override
+    public boolean supportsLimitPushDown() {
+<span class="nc" id="L302">        return false;</span>
+    }
+
+    @Override
+    public List&lt;TblColRef&gt; getAllDimensions() {
+<span class="nc" id="L307">        init();</span>
+<span class="nc" id="L308">        return allDimensions;</span>
+    }
+
+    public IRealization[] getRealizations() {
+<span class="fc" id="L312">        init();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        return realizations == null ? new IRealization[0] : realizations;</span>
+    }
+
+    public String getResourcePath() {
+<span class="nc" id="L317">        return concatResourcePath(name);</span>
+    }
+
+    public static String concatResourcePath(String hybridName) {
+<span class="nc" id="L321">        return ResourceStore.HYBRID_RESOURCE_ROOT + &quot;/&quot; + hybridName + &quot;.json&quot;;</span>
+    }
+
+    public void setCost(int cost) {
+<span class="nc" id="L325">        this.cost = cost;</span>
+<span class="nc" id="L326">    }</span>
+
+    public IRealization getLatestRealization() {
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        if (getRealizations().length &gt; 0) {</span>
+<span class="fc" id="L330">            return realizations[realizations.length - 1];</span>
+        }
+<span class="nc" id="L332">        return null;</span>
+    }
+
+    @Override
+    public int getStorageType() {
+<span class="nc" id="L337">        return ID_HYBRID;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

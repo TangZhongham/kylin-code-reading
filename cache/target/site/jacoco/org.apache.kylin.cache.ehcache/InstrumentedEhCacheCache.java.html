@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstrumentedEhCacheCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.ehcache</a> &gt; <span class="el_source">InstrumentedEhCacheCache.java</span></div><h1>InstrumentedEhCacheCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.ehcache;
+
+import static org.apache.kylin.metrics.lib.impl.MetricsSystem.Metrics;
+import static org.apache.kylin.metrics.lib.impl.MetricsSystem.name;
+
+import java.util.concurrent.Callable;
+
+import org.springframework.cache.Cache;
+import org.springframework.cache.ehcache.EhCacheCache;
+import org.springframework.cache.support.SimpleValueWrapper;
+import org.springframework.util.Assert;
+
+import com.codahale.metrics.Gauge;
+
+import net.sf.ehcache.Ehcache;
+import net.sf.ehcache.Element;
+import net.sf.ehcache.Status;
+
+/**
+ * {@link Cache} implementation on top of an {@link Ehcache} instance.
+ *
+ */
+public class InstrumentedEhCacheCache implements Cache {
+
+    private final Ehcache cache;
+
+    /**
+     * Create an {@link EhCacheCache} instance.
+     * @param ehcache backing Ehcache instance
+     */
+<span class="nc" id="L49">    public InstrumentedEhCacheCache(Ehcache ehcache) {</span>
+<span class="nc" id="L50">        Assert.notNull(ehcache, &quot;Ehcache must not be null&quot;);</span>
+<span class="nc" id="L51">        Status status = ehcache.getStatus();</span>
+<span class="nc" id="L52">        Assert.isTrue(Status.STATUS_ALIVE.equals(status),</span>
+<span class="nc" id="L53">                &quot;An 'alive' Ehcache is required - current cache is &quot; + status.toString());</span>
+<span class="nc" id="L54">        this.cache = ehcache;</span>
+
+<span class="nc" id="L56">        final String prefix = name(cache.getClass(), cache.getName());</span>
+<span class="nc" id="L57">        Metrics.register(name(prefix, &quot;hits&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L60">                return cache.getStatistics().cacheHitCount();</span>
+            }
+        });
+
+<span class="nc" id="L64">        Metrics.register(name(prefix, &quot;in-memory-hits&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L67">                return cache.getStatistics().localHeapHitCount();</span>
+            }
+        });
+
+<span class="nc" id="L71">        Metrics.register(name(prefix, &quot;misses&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L74">                return cache.getStatistics().cacheMissCount();</span>
+            }
+        });
+
+<span class="nc" id="L78">        Metrics.register(name(prefix, &quot;in-memory-misses&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L81">                return cache.getStatistics().localHeapMissCount();</span>
+            }
+        });
+
+<span class="nc" id="L85">        Metrics.register(name(prefix, &quot;objects&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L88">                return cache.getStatistics().getSize();</span>
+            }
+        });
+
+<span class="nc" id="L92">        Metrics.register(name(prefix, &quot;in-memory-objects&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L95">                return cache.getStatistics().getLocalHeapSize();</span>
+            }
+        });
+
+<span class="nc" id="L99">        Metrics.register(name(prefix, &quot;mean-get-time&quot;), new Gauge&lt;Double&gt;() {</span>
+            @Override
+            public Double getValue() {
+<span class="nc" id="L102">                return cache.getStatistics().cacheGetOperation().latency().average().value();</span>
+            }
+        });
+
+<span class="nc" id="L106">        Metrics.register(name(prefix, &quot;mean-search-time&quot;), new Gauge&lt;Double&gt;() {</span>
+            @Override
+            public Double getValue() {
+<span class="nc" id="L109">                return cache.getStatistics().cacheSearchOperation().latency().average().value();</span>
+            }
+        });
+
+<span class="nc" id="L113">        Metrics.register(name(prefix, &quot;eviction-count&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L116">                return cache.getStatistics().cacheEvictionOperation().count().value();</span>
+            }
+        });
+
+<span class="nc" id="L120">        Metrics.register(name(prefix, &quot;writer-queue-size&quot;), new Gauge&lt;Long&gt;() {</span>
+            @Override
+            public Long getValue() {
+<span class="nc" id="L123">                return cache.getStatistics().getWriterQueueLength();</span>
+            }
+        });
+<span class="nc" id="L126">    }</span>
+
+    public String getName() {
+<span class="nc" id="L129">        return this.cache.getName();</span>
+    }
+
+    public Ehcache getNativeCache() {
+<span class="nc" id="L133">        return this.cache;</span>
+    }
+
+    public ValueWrapper get(Object key) {
+<span class="nc" id="L137">        Element element = this.cache.get(key);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        return (element != null ? new SimpleValueWrapper(element.getObjectValue()) : null);</span>
+    }
+
+    public void put(Object key, Object value) {
+<span class="nc" id="L142">        this.cache.put(new Element(key, value));</span>
+<span class="nc" id="L143">    }</span>
+
+    public void evict(Object key) {
+<span class="nc" id="L146">        this.cache.remove(key);</span>
+<span class="nc" id="L147">    }</span>
+
+    public void clear() {
+<span class="nc" id="L150">        this.cache.removeAll();</span>
+<span class="nc" id="L151">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T&gt; T get(Object key, Class&lt;T&gt; type) {
+<span class="nc" id="L156">        Element element = lookup(key);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        Object value = (element != null ? element.getObjectValue() : null);</span>
+<span class="nc bnc" id="L158" title="All 6 branches missed.">        if (value != null &amp;&amp; type != null &amp;&amp; !type.isInstance(value)) {</span>
+<span class="nc" id="L159">            throw new IllegalStateException(&quot;Cached value is not of required type [&quot; + type.getName() + &quot;]: &quot; + value);</span>
+        }
+<span class="nc" id="L161">        return (T) value;</span>
+    }
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T&gt; T get(Object key, Callable&lt;T&gt; valueLoader) {
+<span class="nc" id="L167">        Element element = lookup(key);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (element != null) {</span>
+<span class="nc" id="L169">            return (T) element.getObjectValue();</span>
+        } else {
+<span class="nc" id="L171">            this.cache.acquireWriteLockOnKey(key);</span>
+            try {
+<span class="nc" id="L173">                element = lookup(key); // One more attempt with the write lock</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                if (element != null) {</span>
+<span class="nc" id="L175">                    return (T) element.getObjectValue();</span>
+                } else {
+<span class="nc" id="L177">                    return loadValue(key, valueLoader);</span>
+                }
+            } finally {
+<span class="nc" id="L180">                this.cache.releaseWriteLockOnKey(key);</span>
+            }
+        }
+    }
+
+    @Override
+    public ValueWrapper putIfAbsent(Object key, Object value) {
+<span class="nc" id="L187">        Element existingElement = this.cache.putIfAbsent(new Element(key, value));</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        return (existingElement != null ? new SimpleValueWrapper(existingElement.getObjectValue()) : null);</span>
+    }
+
+    private Element lookup(Object key) {
+<span class="nc" id="L192">        return this.cache.get(key);</span>
+    }
+
+    private &lt;T&gt; T loadValue(Object key, Callable&lt;T&gt; valueLoader) {
+        T value;
+        try {
+<span class="nc" id="L198">            value = valueLoader.call();</span>
+<span class="nc" id="L199">        } catch (Throwable ex) {</span>
+<span class="nc" id="L200">            throw new ValueRetrievalException(key, valueLoader, ex);</span>
+<span class="nc" id="L201">        }</span>
+<span class="nc" id="L202">        put(key, value);</span>
+<span class="nc" id="L203">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

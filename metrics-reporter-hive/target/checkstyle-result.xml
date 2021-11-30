@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-hive/src/main/java/org/apache/kylin/metrics/lib/impl/hive/HiveProducer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-hive/src/main/java/org/apache/kylin/metrics/lib/impl/hive/HiveSink.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-hive/src/main/java/org/apache/kylin/metrics/lib/impl/hive/HiveProducerRecord.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-hive/src/main/java/org/apache/kylin/metrics/lib/impl/hive/HiveReservoirReporter.java">
+</file>
+</checkstyle>

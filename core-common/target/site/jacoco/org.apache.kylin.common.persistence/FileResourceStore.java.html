@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileResourceStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">FileResourceStore.java</span></div><h1>FileResourceStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Collection;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class FileResourceStore extends ResourceStore {
+
+<span class="fc" id="L36">    private static final Logger logger = LoggerFactory.getLogger(FileResourceStore.class);</span>
+
+    File root;
+
+<span class="fc" id="L40">    int failPutResourceCountDown = Integer.MAX_VALUE;</span>
+<span class="fc" id="L41">    int failVisitFolderCountDown = Integer.MAX_VALUE;</span>
+
+    public FileResourceStore(KylinConfig kylinConfig) {
+<span class="fc" id="L44">        super(kylinConfig);</span>
+<span class="fc" id="L45">        root = new File(getPath(kylinConfig)).getAbsoluteFile();</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (!root.exists())</span>
+<span class="nc" id="L47">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L48">                    &quot;File not exist by '&quot; + kylinConfig.getMetadataUrl() + &quot;': &quot; + root.getAbsolutePath());</span>
+<span class="fc" id="L49">    }</span>
+
+    protected String getPath(KylinConfig kylinConfig) {
+<span class="fc" id="L52">        return kylinConfig.getMetadataUrl().getIdentifier();</span>
+    }
+
+    @Override
+    protected boolean existsImpl(String resPath) throws IOException {
+<span class="fc" id="L57">        File f = file(resPath);</span>
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">        return f.exists() &amp;&amp; f.isFile(); // directory is not considered a resource</span>
+    }
+
+    @Override
+    protected void visitFolderImpl(String folderPath, boolean recursive, VisitFilter filter, boolean loadContent,
+            Visitor visitor) throws IOException {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (--failVisitFolderCountDown == 0)</span>
+<span class="nc" id="L65">            throw new IOException(&quot;for test&quot;);</span>
+
+<span class="fc" id="L67">        File file = file(folderPath);</span>
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        if (!file.exists() || !file.isDirectory())</span>
+<span class="fc" id="L69">            return;</span>
+
+<span class="fc" id="L71">        String prefix = fixWinPath(file);</span>
+<span class="fc" id="L72">        Collection&lt;File&gt; files = FileUtils.listFiles(file, null, recursive);</span>
+
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (File f : files) {</span>
+
+<span class="fc" id="L76">            String path = fixWinPath(f);</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            if (!path.startsWith(prefix))</span>
+<span class="nc" id="L78">                throw new IllegalStateException(&quot;File path &quot; + path + &quot; is supposed to start with &quot; + prefix);</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            String resPath = folderPath.equals(&quot;/&quot;) ? path.substring(prefix.length())</span>
+<span class="fc" id="L81">                    : folderPath + path.substring(prefix.length());</span>
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (filter.matches(resPath, f.lastModified())) {</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                RawResource raw = loadContent ? new RawResource(resPath, f.lastModified(), new FileInputStream(f))</span>
+<span class="fc" id="L85">                        : new RawResource(resPath, f.lastModified());</span>
+                try {
+<span class="fc" id="L87">                    visitor.visit(raw);</span>
+                } finally {
+<span class="fc" id="L89">                    raw.close();</span>
+                }
+            }
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">    }</span>
+
+    private String fixWinPath(File file) {
+<span class="fc" id="L96">        String path = file.getAbsolutePath();</span>
+<span class="pc bpc" id="L97" title="4 of 6 branches missed.">        if (path.length() &gt; 2 &amp;&amp; path.charAt(1) == ':' &amp;&amp; path.charAt(2) == '\\')</span>
+<span class="nc" id="L98">            path = path.replace('\\', '/');</span>
+<span class="fc" id="L99">        return path;</span>
+    }
+
+    @Override
+    protected RawResource getResourceImpl(String resPath) throws IOException {
+
+<span class="fc" id="L105">        File f = file(resPath);</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        if (f.exists() &amp;&amp; f.isFile()) {</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (f.length() == 0) {</span>
+<span class="nc" id="L108">                logger.warn(&quot;Zero length file: {}. &quot;, f.getAbsolutePath());</span>
+            }
+
+<span class="fc" id="L111">            return new RawResource(resPath, f.lastModified(), new FileInputStream(f));</span>
+        } else {
+<span class="fc" id="L113">            return null;</span>
+        }
+    }
+
+    @Override
+    protected long getResourceTimestampImpl(String resPath) throws IOException {
+
+<span class="fc" id="L120">        File f = file(resPath);</span>
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">        if (f.exists() &amp;&amp; f.isFile())</span>
+<span class="fc" id="L122">            return f.lastModified();</span>
+        else
+<span class="nc" id="L124">            return 0;</span>
+    }
+
+    @Override
+    protected void putResourceImpl(String resPath, ContentWriter content, long ts) throws IOException {
+
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (--failPutResourceCountDown == 0)</span>
+<span class="nc" id="L131">            throw new IOException(&quot;for test&quot;);</span>
+
+<span class="fc" id="L133">        File tmp = File.createTempFile(&quot;kylin-fileresource-&quot;, &quot;.tmp&quot;);</span>
+        try {
+
+<span class="fc" id="L136">            try (FileOutputStream out = new FileOutputStream(tmp); DataOutputStream dout = new DataOutputStream(out)) {</span>
+<span class="fc" id="L137">                content.write(dout);</span>
+<span class="fc" id="L138">                dout.flush();</span>
+            }
+
+<span class="fc" id="L141">            File f = file(resPath);</span>
+<span class="fc" id="L142">            f.getParentFile().mkdirs();</span>
+
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">            if (!tmp.renameTo(f)) {</span>
+<span class="nc" id="L145">                f.delete();</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">                for (int i = 0; f.exists() &amp;&amp; i &lt; 3; i++) {</span>
+                    try {
+<span class="nc" id="L148">                        Thread.sleep(10);</span>
+<span class="nc" id="L149">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L150">                        throw new RuntimeException(e);</span>
+<span class="nc" id="L151">                    }</span>
+<span class="nc" id="L152">                    f.delete();</span>
+                }
+
+<span class="nc" id="L155">                FileUtils.moveFile(tmp, f);</span>
+            }
+
+<span class="fc" id="L158">            f.setLastModified(ts);</span>
+
+        } finally {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (tmp.exists())</span>
+<span class="nc" id="L162">                FileUtils.forceDelete(tmp);</span>
+        }
+<span class="fc" id="L164">    }</span>
+
+    @Override
+    protected long checkAndPutResourceImpl(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, WriteConflictException {
+
+<span class="fc" id="L170">        File f = file(resPath);</span>
+<span class="pc bpc" id="L171" title="1 of 8 branches missed.">        if ((f.exists() &amp;&amp; f.lastModified() != oldTS) || (f.exists() == false &amp;&amp; oldTS != 0))</span>
+<span class="fc" id="L172">            throw new WriteConflictException(</span>
+<span class="fc" id="L173">                    &quot;Overwriting conflict &quot; + resPath + &quot;, expect old TS &quot; + oldTS + &quot;, but found &quot; + f.lastModified());</span>
+
+<span class="fc" id="L175">        putResourceImpl(resPath, ContentWriter.create(content), newTS);</span>
+
+<span class="fc" id="L177">        return f.lastModified();</span>
+    }
+
+    @Override
+    protected void updateTimestampImpl(String resPath, long timestamp) throws IOException {
+<span class="fc" id="L182">        File f = file(resPath);</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (f.exists()) {</span>
+            // note file timestamp may lose precision for last two digits of timestamp
+<span class="fc" id="L185">            boolean success = f.setLastModified(timestamp);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L187">                throw new IOException(</span>
+                        &quot;Update resource timestamp failed, resPath:&quot; + resPath + &quot;, timestamp: &quot; + timestamp);
+            }
+        }
+<span class="fc" id="L191">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath) throws IOException {
+
+<span class="fc" id="L196">        File f = file(resPath);</span>
+        try {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (f.exists())</span>
+<span class="fc" id="L199">                FileUtils.forceDelete(f);</span>
+<span class="nc" id="L200">        } catch (FileNotFoundException e) {</span>
+            // FileNotFoundException is not a problem in case of delete
+<span class="fc" id="L202">        }</span>
+<span class="fc" id="L203">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath, long timestamp) throws IOException {
+<span class="fc" id="L207">        File f = file(resPath);</span>
+        try {
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            if (f.exists()) {</span>
+<span class="fc" id="L210">                long origLastModified = getResourceTimestampImpl(resPath);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                if (checkTimeStampBeforeDelete(origLastModified, timestamp)) {</span>
+<span class="fc" id="L212">                    FileUtils.forceDelete(f);</span>
+                } else {
+<span class="fc" id="L214">                    throw new IOException(&quot;Resource &quot; + resPath + &quot; timestamp not match, [originLastModified: &quot;</span>
+                            + origLastModified + &quot;, timestampToDelete: &quot; + timestamp + &quot;]&quot;);
+                }
+            }
+<span class="nc" id="L218">        } catch (FileNotFoundException e) {</span>
+            // FileNotFoundException is not a problem in case of delete
+<span class="fc" id="L220">        }</span>
+<span class="fc" id="L221">    }</span>
+
+    @Override
+    protected String getReadableResourcePathImpl(String resPath) {
+<span class="nc" id="L225">        return file(resPath).toString();</span>
+    }
+
+    private File file(String resPath) {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (resPath.equals(&quot;/&quot;))</span>
+<span class="fc" id="L230">            return root;</span>
+        else
+<span class="fc" id="L232">            return new File(root, resPath);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L237">        return root.getAbsolutePath();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

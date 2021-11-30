@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidShardUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">CuboidShardUtil.java</span></div><h1>CuboidShardUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.util.Map;
+
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.CubeUpdate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Maps;
+
+<span class="nc" id="L33">public class CuboidShardUtil {</span>
+<span class="nc" id="L34">    protected static final Logger logger = LoggerFactory.getLogger(CuboidShardUtil.class);</span>
+
+    public static void saveCuboidShards(CubeSegment segment, Map&lt;Long, Short&gt; cuboidShards, int totalShards) throws IOException {
+<span class="nc" id="L37">        CubeManager cubeManager = CubeManager.getInstance(segment.getConfig());</span>
+
+<span class="nc" id="L39">        Map&lt;Long, Short&gt; filtered = Maps.newHashMap();</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        for (Map.Entry&lt;Long, Short&gt; entry : cuboidShards.entrySet()) {</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">            if (entry.getValue() &gt; 1) {</span>
+<span class="nc" id="L42">                filtered.put(entry.getKey(), entry.getValue());</span>
+            }
+<span class="nc" id="L44">        }</span>
+        
+        // work on copy instead of cached objects
+<span class="nc" id="L47">        CubeInstance cubeCopy = segment.getCubeInstance().latestCopyForWrite();</span>
+<span class="nc" id="L48">        CubeSegment segCopy = cubeCopy.getSegmentById(segment.getUuid());</span>
+
+<span class="nc" id="L50">        segCopy.setCuboidShardNums(filtered);</span>
+<span class="nc" id="L51">        segCopy.setTotalShards(totalShards);</span>
+
+<span class="nc" id="L53">        CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="nc" id="L54">        update.setToUpdateSegs(segCopy);</span>
+<span class="nc" id="L55">        cubeManager.updateCube(update);</span>
+<span class="nc" id="L56">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

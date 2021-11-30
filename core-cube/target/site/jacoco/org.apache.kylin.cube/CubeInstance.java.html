@@ -1,0 +1,772 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeInstance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">CubeInstance.java</span></div><h1>CubeInstance.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube;
+
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.kylin.cube.cuboid.CuboidModeEnum.CURRENT;
+import static org.apache.kylin.cube.cuboid.CuboidModeEnum.RECOMMEND;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.KylinConfigExt;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.CompressionUtils;
+import org.apache.kylin.common.util.JsonUtil;
+import org.apache.kylin.cube.cuboid.CuboidModeEnum;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.cube.cuboid.TreeCuboidScheduler;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.IBuildable;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.Segments;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.realization.CapabilityResult;
+import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.RealizationStatusEnum;
+import org.apache.kylin.metadata.realization.RealizationType;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.apache.kylin.shaded.com.google.common.base.Objects;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+public class CubeInstance extends RootPersistentEntity implements IRealization, IBuildable {
+<span class="fc" id="L76">    private static final Logger logger = LoggerFactory.getLogger(CubeInstance.class);</span>
+
+    public static final int COST_WEIGHT_MEASURE = 1;
+    public static final int COST_WEIGHT_DIMENSION = 10;
+    public static final int COST_WEIGHT_INNER_JOIN = 100;
+
+    public static CubeInstance create(String cubeName, CubeDesc cubeDesc) {
+<span class="fc" id="L83">        CubeInstance cubeInstance = new CubeInstance();</span>
+
+<span class="fc" id="L85">        cubeInstance.setConfig((KylinConfigExt) cubeDesc.getConfig());</span>
+<span class="fc" id="L86">        cubeInstance.setName(cubeName);</span>
+<span class="fc" id="L87">        cubeInstance.setDisplayName(cubeName);</span>
+<span class="fc" id="L88">        cubeInstance.setDescName(cubeDesc.getName());</span>
+<span class="fc" id="L89">        cubeInstance.setCreateTimeUTC(System.currentTimeMillis());</span>
+<span class="fc" id="L90">        cubeInstance.setSegments(new Segments&lt;CubeSegment&gt;());</span>
+<span class="fc" id="L91">        cubeInstance.setStatus(RealizationStatusEnum.DISABLED);</span>
+<span class="fc" id="L92">        cubeInstance.updateRandomUuid();</span>
+
+<span class="fc" id="L94">        return cubeInstance;</span>
+    }
+
+    @JsonIgnore
+    private KylinConfigExt config;
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;owner&quot;)
+    private String owner;
+    @JsonProperty(&quot;descriptor&quot;)
+    private String descName;
+    @JsonProperty(&quot;display_name&quot;)
+    private String displayName;
+    // DEPRECATED: the cost should be calculated in runtime
+    // Mark cube priority for query
+<span class="fc" id="L109">    @JsonProperty(&quot;cost&quot;)</span>
+    private int cost = 50;
+    @JsonProperty(&quot;status&quot;)
+    private RealizationStatusEnum status;
+
+<span class="fc" id="L114">    @JsonManagedReference</span>
+    @JsonProperty(&quot;segments&quot;)
+    private Segments&lt;CubeSegment&gt; segments = new Segments&lt;CubeSegment&gt;();
+
+    @JsonProperty(&quot;create_time_utc&quot;)
+    private long createTimeUTC;
+
+    @JsonProperty(&quot;cuboid_bytes&quot;)
+    private byte[] cuboidBytes;
+
+    @JsonProperty(&quot;cuboid_bytes_recommend&quot;)
+    private byte[] cuboidBytesRecommend;
+
+    @JsonProperty(&quot;cuboid_last_optimized&quot;)
+    private long cuboidLastOptimized;
+
+<span class="fc" id="L130">    @JsonProperty(&quot;snapshots&quot;)</span>
+<span class="fc" id="L131">    private Map&lt;String, String&gt; snapshots = Maps.newHashMap();</span>
+
+    // cuboid scheduler lazy built
+    transient private CuboidScheduler cuboidScheduler;
+
+    // default constructor for jackson
+<span class="fc" id="L137">    public CubeInstance() {</span>
+<span class="fc" id="L138">    }</span>
+
+    public CubeInstance latestCopyForWrite() {
+<span class="fc" id="L141">        CubeManager mgr = CubeManager.getInstance(config);</span>
+<span class="fc" id="L142">        CubeInstance latest = mgr.getCube(name); // in case this object is out-of-date</span>
+<span class="fc" id="L143">        return mgr.copyForWrite(latest);</span>
+    }
+
+    void init(KylinConfig config) {
+<span class="fc" id="L147">        CubeDesc cubeDesc = CubeDescManager.getInstance(config).getCubeDesc(descName);</span>
+<span class="fc" id="L148">        checkNotNull(cubeDesc, &quot;cube descriptor '%s' (for cube '%s') not found&quot;, descName, name);</span>
+
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (cubeDesc.isBroken()) {</span>
+<span class="nc" id="L151">            setStatus(RealizationStatusEnum.DESCBROKEN);</span>
+<span class="nc" id="L152">            logger.error(&quot;cube descriptor {} (for cube '{}') is broken&quot;, cubeDesc.getResourcePath(), name);</span>
+<span class="nc" id="L153">            logger.error(&quot;Errors: {}&quot;, cubeDesc.getErrorsAsString());</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        } else if (getStatus() == RealizationStatusEnum.DESCBROKEN) {</span>
+<span class="nc" id="L155">            setStatus(RealizationStatusEnum.DISABLED);</span>
+<span class="nc" id="L156">            logger.info(&quot;cube {} changed from DESCBROKEN to DISABLED&quot;, name);</span>
+        }
+
+<span class="fc" id="L159">        setConfig((KylinConfigExt) cubeDesc.getConfig());</span>
+<span class="fc" id="L160">    }</span>
+
+    public CuboidScheduler getCuboidScheduler() {
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        if (cuboidScheduler != null)</span>
+<span class="nc" id="L164">            return cuboidScheduler;</span>
+
+<span class="fc" id="L166">        synchronized (this) {</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">            if (cuboidScheduler == null) {</span>
+<span class="fc" id="L168">                Map&lt;Long, Long&gt; cuboidsWithRowCnt = getCuboids();</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                if (cuboidsWithRowCnt == null) {</span>
+<span class="fc" id="L170">                    cuboidScheduler = getDescriptor().getInitialCuboidScheduler();</span>
+                } else {
+<span class="nc" id="L172">                    cuboidScheduler = new TreeCuboidScheduler(getDescriptor(),</span>
+<span class="nc" id="L173">                            Lists.newArrayList(cuboidsWithRowCnt.keySet()),</span>
+                            new TreeCuboidScheduler.CuboidCostComparator(cuboidsWithRowCnt));
+                }
+            }
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">        return cuboidScheduler;</span>
+    }
+
+    public Segments&lt;CubeSegment&gt; getBuildingSegments() {
+<span class="nc" id="L182">        return segments.getBuildingSegments();</span>
+    }
+
+    public Segments&lt;CubeSegment&gt; getMergingSegments(CubeSegment mergedSegment) {
+<span class="fc" id="L186">        return segments.getMergingSegments(mergedSegment);</span>
+    }
+
+    public CubeSegment getOriginalSegmentToRefresh(CubeSegment refreshedSegment) {
+<span class="nc" id="L190">        return getOriginalSegment(refreshedSegment);</span>
+    }
+
+    public CubeSegment getOriginalSegmentToOptimize(CubeSegment optimizedSegment) {
+<span class="nc" id="L194">        return getOriginalSegment(optimizedSegment);</span>
+    }
+
+    private CubeSegment getOriginalSegment(CubeSegment toSegment) {
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        for (CubeSegment segment : this.getSegments(SegmentStatusEnum.READY)) {</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">            if (!toSegment.equals(segment) //</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">                    &amp;&amp; toSegment.getSegRange().equals(segment.getSegRange())) {</span>
+<span class="nc" id="L201">                return segment;</span>
+            }
+<span class="nc" id="L203">        }</span>
+<span class="nc" id="L204">        return null;</span>
+    }
+
+    public CubeDesc getDescriptor() {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (config == null) {</span>
+<span class="fc" id="L209">            return null;</span>
+        }
+<span class="fc" id="L211">        return CubeDescManager.getInstance(config).getCubeDesc(descName);</span>
+    }
+
+    @Override
+    public DataModelDesc getModel() {
+<span class="fc" id="L216">        CubeDesc cubeDesc = this.getDescriptor();</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">        if (cubeDesc != null) {</span>
+<span class="fc" id="L218">            return cubeDesc.getModel();</span>
+        } else {
+<span class="nc" id="L220">            return null;</span>
+        }
+    }
+
+    public boolean isReady() {
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        return getStatus() == RealizationStatusEnum.READY;</span>
+    }
+
+    // if cube is not online and has no data or any building job, we allow its descriptor to be
+    // in a temporary broken state, so that user can edit and fix it. Broken state is often due to
+    // schema changes at source.
+    public boolean allowBrokenDescriptor() {
+<span class="nc bnc" id="L232" title="All 4 branches missed.">        return (getStatus() == RealizationStatusEnum.DISABLED || getStatus() == RealizationStatusEnum.DESCBROKEN)</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                &amp;&amp; segments.isEmpty();</span>
+    }
+
+    @Override
+    public String resourceName() {
+<span class="fc" id="L238">        return name;</span>
+    }
+
+    public String getResourcePath() {
+<span class="nc" id="L242">        return concatResourcePath(resourceName());</span>
+    }
+
+    public static String concatResourcePath(String cubeName) {
+<span class="nc" id="L246">        return ResourceStore.CUBE_RESOURCE_ROOT + &quot;/&quot; + cubeName + &quot;.json&quot;;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L251">        return getCanonicalName();</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L256">        final int prime = 31;</span>
+<span class="fc" id="L257">        int result = super.hashCode();</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="fc" id="L259">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (this == obj)</span>
+<span class="fc" id="L265">            return true;</span>
+<span class="pc bpc" id="L266" title="1 of 4 branches missed.">        if (obj == null || getClass() != obj.getClass())</span>
+<span class="fc" id="L267">            return false;</span>
+<span class="fc" id="L268">        CubeInstance other = (CubeInstance) obj;</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (name == null) {</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">            if (other.name != null)</span>
+<span class="nc" id="L271">                return false;</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        } else if (!name.equals(other.name))</span>
+<span class="fc" id="L273">            return false;</span>
+<span class="fc" id="L274">        return true;</span>
+    }
+
+    public boolean equalsRaw(Object o) {
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L279">            return true;</span>
+<span class="nc bnc" id="L280" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L281">            return false;</span>
+
+<span class="nc" id="L283">        CubeInstance that = (CubeInstance) o;</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (!java.util.Objects.equals(name, that.name))</span>
+<span class="nc" id="L285">            return false;</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (!java.util.Objects.equals(owner, that.owner))</span>
+<span class="nc" id="L287">            return false;</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (!java.util.Objects.equals(descName, that.descName))</span>
+<span class="nc" id="L289">            return false;</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        if (!java.util.Objects.equals(displayName, that.displayName))</span>
+<span class="nc" id="L291">            return false;</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        if (!java.util.Objects.equals(status, that.status))</span>
+<span class="nc" id="L293">            return false;</span>
+
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        if (!java.util.Objects.equals(segments, that.segments))</span>
+<span class="nc" id="L296">            return false;</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        if (!java.util.Arrays.equals(cuboidBytes, that.cuboidBytes))</span>
+<span class="nc" id="L298">            return false;</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (!java.util.Arrays.equals(cuboidBytesRecommend, that.cuboidBytesRecommend))</span>
+<span class="nc" id="L300">            return false;</span>
+<span class="nc" id="L301">        return java.util.Objects.equals(snapshots, that.snapshots);</span>
+    }
+
+    // ============================================================================
+
+    @Override
+    public KylinConfig getConfig() {
+<span class="fc" id="L308">        return config;</span>
+    }
+
+    void setConfig(KylinConfigExt config) {
+<span class="fc" id="L312">        this.config = config;</span>
+<span class="fc" id="L313">    }</span>
+
+    public String getRootFactTable() {
+<span class="nc" id="L316">        return getModel().getRootFactTable().getTableIdentity();</span>
+    }
+
+    @Override
+    public String getName() {
+<span class="fc" id="L321">        return name;</span>
+    }
+
+    @Override
+    public String getCanonicalName() {
+<span class="fc" id="L326">        return getType() + &quot;[name=&quot; + name + &quot;]&quot;;</span>
+    }
+
+    @Override
+    public List&lt;MeasureDesc&gt; getMeasures() {
+<span class="nc" id="L331">        return getDescriptor().getMeasures();</span>
+    }
+
+    public void setName(String name) {
+<span class="fc" id="L335">        this.name = name;</span>
+<span class="fc" id="L336">    }</span>
+
+    public String getOwner() {
+<span class="fc" id="L339">        return owner;</span>
+    }
+
+    public void setOwner(String owner) {
+<span class="fc" id="L343">        this.owner = owner;</span>
+<span class="fc" id="L344">    }</span>
+
+    public String getDescName() {
+<span class="fc" id="L347">        return descName;</span>
+    }
+
+    public void setDescName(String descName) {
+<span class="fc" id="L351">        this.descName = descName;</span>
+<span class="fc" id="L352">    }</span>
+
+    public String getDisplayName() {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">        if (StringUtils.isBlank(displayName)) {</span>
+<span class="nc" id="L356">            displayName = name;</span>
+        }
+<span class="nc" id="L358">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L362">        this.displayName = displayName;</span>
+<span class="fc" id="L363">    }</span>
+
+    @Override
+    public int getCost() {
+<span class="pc bpc" id="L367" title="1 of 2 branches missed.">        if (getDescriptor() == null) {</span>
+            //in case not initialized
+<span class="fc" id="L369">            return 0;</span>
+        }
+<span class="nc" id="L371">        int countedDimensionNum = getRowKeyColumnCount();</span>
+<span class="nc" id="L372">        int c = countedDimensionNum * COST_WEIGHT_DIMENSION + getMeasures().size() * COST_WEIGHT_MEASURE;</span>
+<span class="nc" id="L373">        DataModelDesc model = getModel();</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        if (model == null) {</span>
+            //in case broken cube
+<span class="nc" id="L376">            return 0;</span>
+        }
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        for (JoinTableDesc join : model.getJoinTables()) {</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">            if (join.getJoin().isInnerJoin())</span>
+<span class="nc" id="L380">                c += CubeInstance.COST_WEIGHT_INNER_JOIN;</span>
+        }
+<span class="nc" id="L382">        return c;</span>
+    }
+
+    public void setCost(int cost) {
+<span class="fc" id="L386">        this.cost = cost;</span>
+<span class="fc" id="L387">    }</span>
+
+    public RealizationStatusEnum getStatus() {
+<span class="fc" id="L390">        return status;</span>
+    }
+
+    public void setStatus(RealizationStatusEnum status) {
+<span class="fc" id="L394">        this.status = status;</span>
+<span class="fc" id="L395">    }</span>
+
+    public CubeSegment getFirstSegment() {
+<span class="fc" id="L398">        return segments.getFirstSegment();</span>
+    }
+
+    public CubeSegment getLatestReadySegment() {
+<span class="nc" id="L402">        return segments.getLatestReadySegment();</span>
+    }
+
+    public CubeSegment getLatestBuiltSegment() {
+<span class="nc" id="L406">        return segments.getLatestBuiltSegment();</span>
+    }
+
+    public Segments&lt;CubeSegment&gt; getSegments() {
+<span class="fc" id="L410">        return segments;</span>
+    }
+
+    public Segments&lt;CubeSegment&gt; getSegments(SegmentStatusEnum status) {
+<span class="fc" id="L414">        return segments.getSegments(status);</span>
+    }
+
+    public CubeSegment getSegment(String name, SegmentStatusEnum status) {
+<span class="nc" id="L418">        return segments.getSegment(name, status);</span>
+    }
+
+    public void setSegments(Segments segments) {
+<span class="fc" id="L422">        this.segments = new Segments&lt;&gt;(segments);</span>
+<span class="fc" id="L423">    }</span>
+
+    public CubeSegment getSegmentById(String segmentId) {
+<span class="fc bfc" id="L426" title="All 2 branches covered.">        for (CubeSegment segment : segments) {</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">            if (Objects.equal(segment.getUuid(), segmentId)) {</span>
+<span class="fc" id="L428">                return segment;</span>
+            }
+<span class="fc" id="L430">        }</span>
+<span class="fc" id="L431">        return null;</span>
+    }
+
+    public CubeSegment[] regetSegments(CubeSegment... segs) {
+<span class="nc" id="L435">        CubeSegment[] r = new CubeSegment[segs.length];</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">        for (int i = 0; i &lt; segs.length; i++) {</span>
+<span class="nc" id="L437">            r[i] = getSegmentById(segs[i].getUuid());</span>
+        }
+<span class="nc" id="L439">        return r;</span>
+    }
+
+    public long getCreateTimeUTC() {
+<span class="nc" id="L443">        return createTimeUTC;</span>
+    }
+
+    public void setCreateTimeUTC(long createTimeUTC) {
+<span class="fc" id="L447">        this.createTimeUTC = createTimeUTC;</span>
+<span class="fc" id="L448">    }</span>
+
+    public void clearCuboids() {
+<span class="nc" id="L451">        cuboidBytes = null;</span>
+<span class="nc" id="L452">        cuboidBytesRecommend = null;</span>
+<span class="nc" id="L453">        cuboidLastOptimized = 0L;</span>
+<span class="nc" id="L454">    }</span>
+
+    public Set&lt;Long&gt; getCuboidsByMode(String cuboidModeName) {
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        return getCuboidsByMode(cuboidModeName == null ? null : CuboidModeEnum.getByModeName(cuboidModeName));</span>
+    }
+
+    public Set&lt;Long&gt; getCuboidsByMode(CuboidModeEnum cuboidMode) {
+<span class="nc bnc" id="L461" title="All 4 branches missed.">        if (cuboidMode == null || cuboidMode == CURRENT) {</span>
+<span class="nc" id="L462">            return getCuboidScheduler().getAllCuboidIds();</span>
+        }
+<span class="nc" id="L464">        Set&lt;Long&gt; cuboidsRecommend = getCuboidsRecommend();</span>
+<span class="nc bnc" id="L465" title="All 4 branches missed.">        if (cuboidsRecommend == null || cuboidMode == RECOMMEND) {</span>
+<span class="nc" id="L466">            return cuboidsRecommend;</span>
+        }
+<span class="nc" id="L468">        Set&lt;Long&gt; currentCuboids = getCuboidScheduler().getAllCuboidIds();</span>
+<span class="nc bnc" id="L469" title="All 4 branches missed.">        switch (cuboidMode) {</span>
+        case RECOMMEND_EXISTING:
+<span class="nc" id="L471">            cuboidsRecommend.retainAll(currentCuboids);</span>
+<span class="nc" id="L472">            return cuboidsRecommend;</span>
+        case RECOMMEND_MISSING:
+<span class="nc" id="L474">            cuboidsRecommend.removeAll(currentCuboids);</span>
+<span class="nc" id="L475">            return cuboidsRecommend;</span>
+        case RECOMMEND_MISSING_WITH_BASE:
+<span class="nc" id="L477">            cuboidsRecommend.removeAll(currentCuboids);</span>
+<span class="nc" id="L478">            cuboidsRecommend.add(getCuboidScheduler().getBaseCuboidId());</span>
+<span class="nc" id="L479">            return cuboidsRecommend;</span>
+        default:
+<span class="nc" id="L481">            return null;</span>
+        }
+    }
+
+    public Map&lt;Long, Long&gt; getCuboids() {
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        if (cuboidBytes == null)</span>
+<span class="fc" id="L487">            return null;</span>
+        byte[] uncompressed;
+        try {
+<span class="fc" id="L490">            uncompressed = CompressionUtils.decompress(cuboidBytes);</span>
+<span class="fc" id="L491">            String str = new String(uncompressed, StandardCharsets.UTF_8);</span>
+<span class="fc" id="L492">            TypeReference&lt;Map&lt;Long, Long&gt;&gt; typeRef = new TypeReference&lt;Map&lt;Long, Long&gt;&gt;() {</span>
+            };
+<span class="fc" id="L494">            Map&lt;Long, Long&gt; cuboids = JsonUtil.readValue(str, typeRef);</span>
+<span class="pc bpc" id="L495" title="1 of 2 branches missed.">            return cuboids.isEmpty() ? null : cuboids;</span>
+<span class="nc" id="L496">        } catch (Exception e) {</span>
+<span class="nc" id="L497">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public void setCuboids(Map&lt;Long, Long&gt; cuboids) {
+<span class="nc bnc" id="L502" title="All 2 branches missed.">        if (cuboids == null)</span>
+<span class="nc" id="L503">            return;</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">        if (cuboids.isEmpty()) {</span>
+<span class="nc" id="L505">            cuboidBytes = null;</span>
+<span class="nc" id="L506">            return;</span>
+        }
+
+        try {
+<span class="nc" id="L510">            String str = JsonUtil.writeValueAsString(cuboids);</span>
+<span class="nc" id="L511">            byte[] compressed = CompressionUtils.compress(str.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L512">            cuboidBytes = compressed;</span>
+<span class="nc" id="L513">        } catch (IOException e) {</span>
+<span class="nc" id="L514">            throw new RuntimeException(e);</span>
+<span class="nc" id="L515">        }</span>
+<span class="nc" id="L516">    }</span>
+
+    public Set&lt;Long&gt; getCuboidsRecommend() {
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        if (cuboidBytesRecommend == null)</span>
+<span class="nc" id="L520">            return null;</span>
+        byte[] uncompressed;
+        try {
+<span class="nc" id="L523">            uncompressed = CompressionUtils.decompress(cuboidBytesRecommend);</span>
+<span class="nc" id="L524">            String str = new String(uncompressed, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L525">            TypeReference&lt;Set&lt;Long&gt;&gt; typeRef = new TypeReference&lt;Set&lt;Long&gt;&gt;() {</span>
+            };
+<span class="nc" id="L527">            Set&lt;Long&gt; cuboids = JsonUtil.readValue(str, typeRef);</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">            return cuboids.isEmpty() ? null : cuboids;</span>
+<span class="nc" id="L529">        } catch (Exception e) {</span>
+<span class="nc" id="L530">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public void setCuboidsRecommend(Set&lt;Long&gt; cuboids) {
+<span class="nc bnc" id="L535" title="All 2 branches missed.">        if (cuboids == null)</span>
+<span class="nc" id="L536">            return;</span>
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (cuboids.isEmpty()) {</span>
+<span class="nc" id="L538">            cuboidBytesRecommend = null;</span>
+<span class="nc" id="L539">            return;</span>
+        }
+        try {
+<span class="nc" id="L542">            String str = JsonUtil.writeValueAsString(cuboids);</span>
+<span class="nc" id="L543">            byte[] compressed = CompressionUtils.compress(str.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L544">            cuboidBytesRecommend = compressed;</span>
+<span class="nc" id="L545">        } catch (IOException e) {</span>
+<span class="nc" id="L546">            throw new RuntimeException(e);</span>
+<span class="nc" id="L547">        }</span>
+<span class="nc" id="L548">    }</span>
+
+    public long getCuboidLastOptimized() {
+<span class="nc" id="L551">        return cuboidLastOptimized;</span>
+    }
+
+    public void setCuboidLastOptimized(long lastOptimized) {
+<span class="nc" id="L555">        this.cuboidLastOptimized = lastOptimized;</span>
+<span class="nc" id="L556">    }</span>
+
+    /**
+     * Get cuboid level count except base cuboid
+     *
+     * @return
+     */
+    public int getBuildLevel() {
+<span class="nc" id="L564">        return getCuboidScheduler().getCuboidsByLayer().size() - 1;</span>
+    }
+
+    @Override
+    public CapabilityResult isCapable(SQLDigest digest) {
+<span class="nc" id="L569">        CapabilityResult result = CubeCapabilityChecker.check(this, digest);</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">        if (result.capable) {</span>
+<span class="nc" id="L571">            result.cost = getCost(digest);</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">            for (CapabilityInfluence i : result.influences) {</span>
+<span class="nc" id="L573">                double suggestCost = i.suggestCostMultiplier();</span>
+<span class="nc bnc" id="L574" title="All 2 branches missed.">                result.cost *= (suggestCost == 0) ? 1.0 : suggestCost;</span>
+<span class="nc" id="L575">            }</span>
+        } else {
+<span class="nc" id="L577">            result.cost = -1;</span>
+        }
+<span class="nc" id="L579">        return result;</span>
+    }
+
+    public int getCost(SQLDigest digest) {
+<span class="nc" id="L583">        int calculatedCost = cost;</span>
+
+        //the number of dimensions is not as accurate as number of row key cols
+<span class="nc" id="L586">        calculatedCost += getRowKeyColumnCount() * COST_WEIGHT_DIMENSION + getMeasures().size() * COST_WEIGHT_MEASURE;</span>
+
+<span class="nc bnc" id="L588" title="All 2 branches missed.">        for (JoinTableDesc joinTable : this.getModel().getJoinTables()) {</span>
+            // more tables, more cost
+<span class="nc bnc" id="L590" title="All 2 branches missed.">            if (joinTable.getJoin().isInnerJoin()) {</span>
+                // inner join cost is bigger than left join, as it will filter some records
+<span class="nc" id="L592">                calculatedCost += COST_WEIGHT_INNER_JOIN;</span>
+            }
+        }
+
+<span class="nc" id="L596">        return calculatedCost;</span>
+    }
+
+    @Override
+    public RealizationType getType() {
+<span class="fc" id="L601">        return RealizationType.CUBE;</span>
+    }
+
+    @Override
+    public Set&lt;TblColRef&gt; getAllColumns() {
+<span class="fc" id="L606">        return getDescriptor().listAllColumns();</span>
+    }
+
+    @Override
+    public Set&lt;ColumnDesc&gt; getAllColumnDescs() {
+<span class="nc" id="L611">        return getDescriptor().listAllColumnDescs();</span>
+    }
+
+    @Override
+    public long getDateRangeStart() {
+<span class="nc" id="L616">        return segments.getTSStart();</span>
+    }
+
+    @Override
+    public long getDateRangeEnd() {
+<span class="nc" id="L621">        return segments.getTSEnd();</span>
+    }
+
+    @Override
+    public boolean supportsLimitPushDown() {
+<span class="nc" id="L626">        return getDescriptor().supportsLimitPushDown();</span>
+    }
+
+    public int getRowKeyColumnCount() {
+<span class="nc" id="L630">        return getDescriptor().getRowkey().getRowKeyColumns().length;</span>
+    }
+
+    @Override
+    public List&lt;TblColRef&gt; getAllDimensions() {
+<span class="nc" id="L635">        return Lists.newArrayList(getDescriptor().listDimensionColumnsIncludingDerived());</span>
+    }
+
+    public boolean needAutoMerge() {
+<span class="pc bpc" id="L639" title="1 of 2 branches missed.">        if (!this.getDescriptor().getModel().getPartitionDesc().isPartitioned())</span>
+<span class="nc" id="L640">            return false;</span>
+
+<span class="pc bpc" id="L642" title="2 of 4 branches missed.">        return this.getConfig().isAutoMergeEnabled() &amp;&amp; this.getDescriptor().getAutoMergeTimeRanges() != null</span>
+<span class="pc bpc" id="L643" title="2 of 4 branches missed.">                &amp;&amp; this.getDescriptor().getAutoMergeTimeRanges().length &gt; 0 &amp;&amp; this.getStatus() == RealizationStatusEnum.READY;</span>
+    }
+
+    public SegmentRange autoMergeCubeSegments() throws IOException {
+<span class="fc" id="L647">        return segments.autoMergeCubeSegments(needAutoMerge(), getName(), getDescriptor().getAutoMergeTimeRanges(),</span>
+<span class="fc" id="L648">                getDescriptor().getVolatileRange());</span>
+    }
+
+    public Segments calculateToBeSegments(CubeSegment newSegment) {
+<span class="fc" id="L652">        return segments.calculateToBeSegments(newSegment);</span>
+    }
+
+    public CubeSegment getLastSegment() {
+<span class="fc" id="L656">        List&lt;CubeSegment&gt; existing = getSegments();</span>
+<span class="fc bfc" id="L657" title="All 2 branches covered.">        if (existing.isEmpty()) {</span>
+<span class="fc" id="L658">            return null;</span>
+        } else {
+<span class="fc" id="L660">            return existing.get(existing.size() - 1);</span>
+        }
+    }
+
+    // For JSON serialization of this attribute, use CubeInstanceResponse
+    public long getSizeKB() {
+<span class="nc" id="L666">        long sizeKb = 0L;</span>
+
+<span class="nc bnc" id="L668" title="All 2 branches missed.">        for (CubeSegment cubeSegment : this.getSegments(SegmentStatusEnum.READY)) {</span>
+<span class="nc" id="L669">            sizeKb += cubeSegment.getSizeKB();</span>
+<span class="nc" id="L670">        }</span>
+
+<span class="nc" id="L672">        return sizeKb;</span>
+    }
+
+    // For JSON serialization of this attribute, use CubeInstanceResponse
+    public long getInputRecordCount() {
+<span class="nc" id="L677">        long sizeRecordCount = 0L;</span>
+
+<span class="nc bnc" id="L679" title="All 2 branches missed.">        for (CubeSegment cubeSegment : this.getSegments(SegmentStatusEnum.READY)) {</span>
+<span class="nc" id="L680">            sizeRecordCount += cubeSegment.getInputRecords();</span>
+<span class="nc" id="L681">        }</span>
+
+<span class="nc" id="L683">        return sizeRecordCount;</span>
+    }
+
+    // For JSON serialization of this attribute, use CubeInstanceResponse
+    public long getInputRecordSizeBytes() {
+<span class="nc" id="L688">        long sizeRecordSize = 0L;</span>
+
+<span class="nc bnc" id="L690" title="All 2 branches missed.">        for (CubeSegment cubeSegment : this.getSegments(SegmentStatusEnum.READY)) {</span>
+<span class="nc" id="L691">            sizeRecordSize += cubeSegment.getInputRecordsSize();</span>
+<span class="nc" id="L692">        }</span>
+
+<span class="nc" id="L694">        return sizeRecordSize;</span>
+    }
+
+    public String getProject() {
+<span class="fc" id="L698">        return getDescriptor().getProject();</span>
+    }
+
+    public ProjectInstance getProjectInstance() {
+<span class="nc" id="L702">        return ProjectManager.getInstance(getConfig()).getProject(getProject());</span>
+    }
+
+    @Override
+    public int getSourceType() {
+<span class="nc" id="L707">        return getModel().getRootFactTable().getTableDesc().getSourceType();</span>
+    }
+
+    @Override
+    public int getStorageType() {
+<span class="fc" id="L712">        return getDescriptor().getStorageType();</span>
+    }
+
+    @Override
+    public int getEngineType() {
+<span class="fc" id="L717">        return getDescriptor().getEngineType();</span>
+    }
+
+    public Map&lt;String, String&gt; getSnapshots() {
+<span class="pc bpc" id="L721" title="1 of 2 branches missed.">        if (snapshots == null)</span>
+<span class="nc" id="L722">            snapshots = Maps.newHashMap();</span>
+<span class="fc" id="L723">        return snapshots;</span>
+    }
+
+    public void resetSnapshots() {
+<span class="nc" id="L727">        snapshots = Maps.newHashMap();</span>
+<span class="nc" id="L728">    }</span>
+
+    public String getSnapshotResPath(String tableName) {
+<span class="nc" id="L731">        return getSnapshots().get(tableName);</span>
+    }
+
+    public void putSnapshotResPath(String table, String snapshotResPath) {
+<span class="nc" id="L735">        getSnapshots().put(table, snapshotResPath);</span>
+<span class="nc" id="L736">    }</span>
+
+    public static CubeInstance getCopyOf(CubeInstance other) {
+<span class="fc" id="L739">        CubeInstance ret = new CubeInstance();</span>
+<span class="fc" id="L740">        ret.setName(other.getName());</span>
+<span class="fc" id="L741">        ret.setOwner(other.getOwner());</span>
+<span class="fc" id="L742">        ret.setDescName(other.getDescName());</span>
+<span class="fc" id="L743">        ret.setCost(other.getCost());</span>
+<span class="fc" id="L744">        ret.setStatus(other.getStatus());</span>
+<span class="fc" id="L745">        ret.setSegments(other.getSegments());</span>
+<span class="fc" id="L746">        ret.setCreateTimeUTC(System.currentTimeMillis());</span>
+<span class="pc bpc" id="L747" title="1 of 2 branches missed.">        if (other.cuboidBytes != null) {</span>
+<span class="fc" id="L748">            ret.cuboidBytes = Arrays.copyOf(other.cuboidBytes, other.cuboidBytes.length);</span>
+        }
+<span class="pc bpc" id="L750" title="1 of 2 branches missed.">        if (other.cuboidBytesRecommend != null) {</span>
+<span class="nc" id="L751">            ret.cuboidBytesRecommend = Arrays.copyOf(other.cuboidBytesRecommend, other.cuboidBytesRecommend.length);</span>
+        }
+<span class="fc" id="L753">        ret.cuboidLastOptimized = other.cuboidLastOptimized;</span>
+<span class="fc" id="L754">        ret.getSnapshots().putAll(other.getSnapshots());</span>
+
+<span class="fc" id="L756">        ret.setConfig((KylinConfigExt) other.getConfig());</span>
+<span class="fc" id="L757">        ret.updateRandomUuid();</span>
+<span class="fc" id="L758">        return ret;</span>
+    }
+
+    public static CubeSegment findSegmentWithJobId(String jobID, CubeInstance cubeInstance) {
+<span class="nc bnc" id="L762" title="All 2 branches missed.">        for (CubeSegment segment : cubeInstance.getSegments()) {</span>
+<span class="nc" id="L763">            String lastBuildJobID = segment.getLastBuildJobID();</span>
+<span class="nc bnc" id="L764" title="All 4 branches missed.">            if (lastBuildJobID != null &amp;&amp; lastBuildJobID.equalsIgnoreCase(jobID)) {</span>
+<span class="nc" id="L765">                return segment;</span>
+            }
+<span class="nc" id="L767">        }</span>
+<span class="nc" id="L768">        throw new IllegalStateException(&quot;No segment's last build job ID equals &quot; + jobID);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

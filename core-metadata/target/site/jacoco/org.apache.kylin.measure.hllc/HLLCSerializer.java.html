@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HLLCSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.hllc</a> &gt; <span class="el_source">HLLCSerializer.java</span></div><h1>HLLCSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.hllc;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
+/**
+ * @author yangli9
+ * 
+ */
+public class HLLCSerializer extends DataTypeSerializer&lt;HLLCounter&gt; {
+
+    private int precision;
+
+<span class="nc" id="L35">    public HLLCSerializer(DataType type) {</span>
+<span class="nc" id="L36">        this.precision = type.getPrecision();</span>
+<span class="nc" id="L37">    }</span>
+
+    @Override
+    public void serialize(HLLCounter value, ByteBuffer out) {
+        try {
+<span class="nc" id="L42">            value.writeRegisters(out);</span>
+<span class="nc" id="L43">        } catch (IOException e) {</span>
+<span class="nc" id="L44">            throw new RuntimeException(e);</span>
+<span class="nc" id="L45">        }</span>
+<span class="nc" id="L46">    }</span>
+
+    private HLLCounter current() {
+<span class="nc" id="L49">        HLLCounter hllc = (HLLCounter) current.get();</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        if (hllc == null) {</span>
+<span class="nc" id="L51">            hllc = new HLLCounter(precision);</span>
+<span class="nc" id="L52">            current.set(hllc);</span>
+        }
+<span class="nc" id="L54">        return hllc;</span>
+    }
+
+    @Override
+    public HLLCounter deserialize(ByteBuffer in) {
+<span class="nc" id="L59">        HLLCounter hllc = new HLLCounter(precision);</span>
+        try {
+<span class="nc" id="L61">            hllc.readRegisters(in);</span>
+<span class="nc" id="L62">        } catch (IOException e) {</span>
+<span class="nc" id="L63">            throw new RuntimeException(e);</span>
+<span class="nc" id="L64">        }</span>
+<span class="nc" id="L65">        return hllc;</span>
+    }
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="nc" id="L70">        return current().peekLength(in);</span>
+    }
+
+    @Override
+    public int maxLength() {
+<span class="nc" id="L75">        return current().maxLength();</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+<span class="nc" id="L80">        return current().maxLength();</span>
+    }
+
+    @Override
+    protected double getStorageBytesEstimate(double averageNumOfElementsInCounter) {
+<span class="nc" id="L85">        int registerIndexSize = current().getRegisterIndexSize();</span>
+<span class="nc" id="L86">        int m = 1 &lt;&lt; precision;</span>
+<span class="nc bnc" id="L87" title="All 4 branches missed.">        if (!current().isDense((int) averageNumOfElementsInCounter)</span>
+                || averageNumOfElementsInCounter &lt; (m - 5d) / (1d + registerIndexSize)) {
+            // 5 = 1 + 4 for scheme and size
+            // size * (getRegisterIndexSize + 1)
+<span class="nc" id="L91">            return 5 + averageNumOfElementsInCounter * (registerIndexSize + 1);</span>
+        }
+<span class="nc" id="L93">        return getStorageBytesEstimate();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

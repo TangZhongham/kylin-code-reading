@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OneMoreByteVLongDimEnc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">OneMoreByteVLongDimEnc.java</span></div><h1>OneMoreByteVLongDimEnc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.dimension;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
+/**
+ * not being used yet, prepared for future
+ */
+public class OneMoreByteVLongDimEnc extends DimensionEncoding implements Serializable{
+    private static final long serialVersionUID = 1L;
+
+<span class="fc" id="L39">    private static Logger logger = LoggerFactory.getLogger(OneMoreByteVLongDimEnc.class);</span>
+
+<span class="fc" id="L41">    private static final long[] CAP = { 0, 0x7fL, 0x7fffL, 0x7fffffL, 0x7fffffffL, 0x7fffffffffL, 0x7fffffffffffL, 0x7fffffffffffffL, 0x7fffffffffffffffL };</span>
+<span class="fc" id="L42">    private static final long[] MASK = { 0, 0xffL, 0xffffL, 0xffffffL, 0xffffffffL, 0xffffffffffL, 0xffffffffffffL, 0xffffffffffffffL, 0xffffffffffffffffL };</span>
+<span class="fc" id="L43">    private static final long[] TAIL = { 0, 0x80L, 0x8000L, 0x800000L, 0x80000000L, 0x8000000000L, 0x800000000000L, 0x80000000000000L, 0x8000000000000000L };</span>
+    static {
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (int i = 1; i &lt; TAIL.length; ++i) {</span>
+<span class="fc" id="L46">            long head = ~MASK[i];</span>
+<span class="fc" id="L47">            TAIL[i] = head | TAIL[i];</span>
+        }
+<span class="fc" id="L49">    }</span>
+    public static final String ENCODING_NAME = &quot;one_more_byte_vlong&quot;;
+
+<span class="nc" id="L52">    public static class Factory extends DimensionEncodingFactory {</span>
+        @Override
+        public String getSupportedEncodingName() {
+<span class="nc" id="L55">            return ENCODING_NAME;</span>
+        }
+
+        @Override
+        public DimensionEncoding createDimensionEncoding(String encodingName, String[] args) {
+<span class="nc" id="L60">            return new OneMoreByteVLongDimEnc(Integer.parseInt(args[0]));</span>
+        }
+
+        @Override
+        public boolean isValidDimensionEncoding(String encodingName, String[] args) {
+            try {
+<span class="nc" id="L66">                int length = Integer.parseInt(args[0]);</span>
+<span class="nc bnc" id="L67" title="All 4 branches missed.">                return length &gt;= 1 &amp;&amp; length &lt; CAP.length;</span>
+<span class="nc" id="L68">            } catch (Exception e) {</span>
+<span class="nc" id="L69">                return false;</span>
+            }
+        }
+    };
+
+    // ============================================================================
+
+    private int fixedLen;
+    private int byteLen;
+
+<span class="pc" id="L79">    transient private int avoidVerbose = 0;</span>
+
+    //no-arg constructor is required for Externalizable
+<span class="nc" id="L82">    public OneMoreByteVLongDimEnc() {</span>
+<span class="nc" id="L83">    }</span>
+
+<span class="fc" id="L85">    public OneMoreByteVLongDimEnc(int len) {</span>
+<span class="fc bfc" id="L86" title="All 4 branches covered.">        if (len &lt;= 0 || len &gt;= CAP.length)</span>
+<span class="fc" id="L87">            throw new IllegalArgumentException();</span>
+
+<span class="fc" id="L89">        this.fixedLen = len;</span>
+<span class="fc" id="L90">        this.byteLen = fixedLen + 1;//one additional byte to indicate null</span>
+<span class="fc" id="L91">    }</span>
+
+    @Override
+    public int getLengthOfEncoding() {
+<span class="fc" id="L95">        return byteLen;</span>
+    }
+
+    @Override
+    public void encode(String valueStr, byte[] output, int outputOffset) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (valueStr == null) {</span>
+<span class="fc" id="L101">            Arrays.fill(output, outputOffset, outputOffset + byteLen, NULL);</span>
+<span class="fc" id="L102">            return;</span>
+        }
+
+<span class="fc" id="L105">        long integer = Long.parseLong(valueStr);</span>
+<span class="fc bfc" id="L106" title="All 4 branches covered.">        if (integer &gt; CAP[fixedLen] || integer &lt; TAIL[fixedLen]) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (avoidVerbose++ % 10000 == 0) {</span>
+<span class="fc" id="L108">                logger.warn(&quot;Expect at most &quot; + fixedLen + &quot; bytes, but got &quot; + valueStr + &quot;, will truncate, hit times:&quot; + avoidVerbose);</span>
+            }
+        }
+
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        BytesUtil.writeByte(integer &gt;= 0 ? (byte) 1 : (byte) 0, output, outputOffset, 1);</span>
+<span class="fc" id="L113">        BytesUtil.writeSignedLong(integer, output, outputOffset + 1, fixedLen);</span>
+<span class="fc" id="L114">    }</span>
+
+    @Override
+    public String decode(byte[] bytes, int offset, int len) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (isNull(bytes, offset, len)) {</span>
+<span class="fc" id="L119">            return null;</span>
+        }
+
+<span class="fc" id="L122">        long integer = BytesUtil.readSignedLong(bytes, offset + 1, len - 1);</span>
+<span class="fc" id="L123">        return String.valueOf(integer);</span>
+    }
+
+    @Override
+    public DataTypeSerializer&lt;Object&gt; asDataTypeSerializer() {
+<span class="fc" id="L128">        return new VLongSerializer();</span>
+    }
+
+<span class="fc" id="L131">    public class VLongSerializer extends DataTypeSerializer&lt;Object&gt; {</span>
+
+        private byte[] currentBuf() {
+<span class="fc" id="L134">            byte[] buf = (byte[]) current.get();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (buf == null) {</span>
+<span class="fc" id="L136">                buf = new byte[byteLen];</span>
+<span class="fc" id="L137">                current.set(buf);</span>
+            }
+<span class="fc" id="L139">            return buf;</span>
+        }
+
+        @Override
+        public void serialize(Object value, ByteBuffer out) {
+<span class="fc" id="L144">            byte[] buf = currentBuf();</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            String valueStr = value == null ? null : value.toString();</span>
+<span class="fc" id="L146">            encode(valueStr, buf, 0);</span>
+<span class="fc" id="L147">            out.put(buf);</span>
+<span class="fc" id="L148">        }</span>
+
+        @Override
+        public Object deserialize(ByteBuffer in) {
+<span class="fc" id="L152">            byte[] buf = currentBuf();</span>
+<span class="fc" id="L153">            in.get(buf);</span>
+<span class="fc" id="L154">            return decode(buf, 0, buf.length);</span>
+        }
+
+        @Override
+        public int peekLength(ByteBuffer in) {
+<span class="nc" id="L159">            return byteLen;</span>
+        }
+
+        @Override
+        public int maxLength() {
+<span class="nc" id="L164">            return byteLen;</span>
+        }
+
+        @Override
+        public int getStorageBytesEstimate() {
+<span class="nc" id="L169">            return byteLen;</span>
+        }
+
+        @Override
+        public Object valueOf(String str) {
+<span class="nc" id="L174">            return str;</span>
+        }
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+<span class="nc" id="L180">        out.writeShort(fixedLen);</span>
+<span class="nc" id="L181">    }</span>
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+<span class="nc" id="L185">        fixedLen = in.readShort();</span>
+<span class="nc" id="L186">    }</span>
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L191">            return true;</span>
+<span class="nc bnc" id="L192" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L193">            return false;</span>
+
+<span class="nc" id="L195">        OneMoreByteVLongDimEnc that = (OneMoreByteVLongDimEnc) o;</span>
+
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        return fixedLen == that.fixedLen;</span>
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L203">        return fixedLen;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

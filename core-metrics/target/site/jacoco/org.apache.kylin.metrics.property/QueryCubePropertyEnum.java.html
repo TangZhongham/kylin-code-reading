@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryCubePropertyEnum.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metrics</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.property</a> &gt; <span class="el_source">QueryCubePropertyEnum.java</span></div><h1>QueryCubePropertyEnum.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metrics.property;
+
+import java.util.Locale;
+
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+
+/**
+ * Definition of Metrics dimension and measure for Query Advanced
+ */
+<span class="fc" id="L28">public enum QueryCubePropertyEnum {</span>
+
+<span class="fc" id="L30">    PROJECT(&quot;PROJECT&quot;),</span>
+<span class="fc" id="L31">    CUBE(&quot;CUBE_NAME&quot;),</span>
+<span class="fc" id="L32">    SEGMENT(&quot;SEGMENT_NAME&quot;),</span>
+<span class="fc" id="L33">    CUBOID_SOURCE(&quot;CUBOID_SOURCE&quot;),</span>
+<span class="fc" id="L34">    CUBOID_TARGET(&quot;CUBOID_TARGET&quot;),</span>
+<span class="fc" id="L35">    IF_MATCH(&quot;IF_MATCH&quot;),</span>
+<span class="fc" id="L36">    FILTER_MASK(&quot;FILTER_MASK&quot;),</span>
+<span class="fc" id="L37">    IF_SUCCESS(&quot;IF_SUCCESS&quot;),</span>
+
+<span class="fc" id="L39">    TIME_SUM(&quot;STORAGE_CALL_TIME_SUM&quot;),</span>
+<span class="fc" id="L40">    TIME_MAX(&quot;STORAGE_CALL_TIME_MAX&quot;),</span>
+<span class="fc" id="L41">    WEIGHT_PER_HIT(&quot;WEIGHT_PER_HIT&quot;),</span>
+<span class="fc" id="L42">    CALL_COUNT(&quot;STORAGE_CALL_COUNT&quot;),</span>
+<span class="fc" id="L43">    SKIP_COUNT(&quot;STORAGE_COUNT_SKIP&quot;),</span>
+<span class="fc" id="L44">    SCAN_COUNT(&quot;STORAGE_COUNT_SCAN&quot;),</span>
+<span class="fc" id="L45">    RETURN_COUNT(&quot;STORAGE_COUNT_RETURN&quot;),</span>
+<span class="fc" id="L46">    AGGR_FILTER_COUNT(&quot;STORAGE_COUNT_AGGREGATE_FILTER&quot;),</span>
+<span class="fc" id="L47">    AGGR_COUNT(&quot;STORAGE_COUNT_AGGREGATE&quot;);</span>
+
+    private final String propertyName;
+
+<span class="fc" id="L51">    QueryCubePropertyEnum(String name) {</span>
+<span class="fc" id="L52">        this.propertyName = name;</span>
+<span class="fc" id="L53">    }</span>
+
+    public static QueryCubePropertyEnum getByName(String name) {
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        if (Strings.isNullOrEmpty(name)) {</span>
+<span class="nc" id="L57">            return null;</span>
+        }
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        for (QueryCubePropertyEnum property : QueryCubePropertyEnum.values()) {</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (property.propertyName.equals(name.toUpperCase(Locale.ROOT))) {</span>
+<span class="fc" id="L61">                return property;</span>
+            }
+        }
+
+<span class="nc" id="L65">        return null;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L70">        return propertyName;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

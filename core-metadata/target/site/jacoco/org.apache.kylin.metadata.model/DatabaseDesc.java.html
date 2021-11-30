@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DatabaseDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">DatabaseDesc.java</span></div><h1>DatabaseDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * @author xjiang
+ */
+@SuppressWarnings(&quot;serial&quot;)
+<span class="fc" id="L32">public class DatabaseDesc implements Serializable {</span>
+    private String name;
+
+    /**
+     * @return the name
+     */
+    public String getName() {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        return name == null ? &quot;null&quot; : name.toUpperCase(Locale.ROOT);</span>
+    }
+
+    /**
+     * @param name
+     *            the name to set
+     */
+    public void setName(String name) {
+<span class="fc" id="L47">        this.name = name;</span>
+<span class="fc" id="L48">    }</span>
+
+    /*
+     * (non-Javadoc)
+     * 
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString() {
+
+<span class="fc" id="L58">        return &quot;DatabaseDesc [name=&quot; + name + &quot;]&quot;;</span>
+    }
+
+    public static HashMap&lt;String, Integer&gt; extractDatabaseOccurenceCounts(Collection&lt;TableDesc&gt; tables) {
+<span class="nc" id="L62">        HashMap&lt;String, Integer&gt; databaseCounts = new HashMap&lt;String, Integer&gt;();</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        for (TableDesc tableDesc : tables) {</span>
+<span class="nc" id="L64">            String databaseName = tableDesc.getDatabase();</span>
+<span class="nc" id="L65">            Integer counter = databaseCounts.get(databaseName);</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            if (counter != null)</span>
+<span class="nc" id="L67">                databaseCounts.put(databaseName, counter + 1);</span>
+            else
+<span class="nc" id="L69">                databaseCounts.put(databaseName, 1);</span>
+<span class="nc" id="L70">        }</span>
+<span class="nc" id="L71">        return databaseCounts;</span>
+    }
+
+    public static HashSet&lt;String&gt; extractDatabaseNames(List&lt;TableDesc&gt; tables) {
+<span class="nc" id="L75">        HashSet&lt;String&gt; databaseNames = new HashSet&lt;String&gt;();</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        for (TableDesc tableDesc : tables) {</span>
+<span class="nc" id="L77">            databaseNames.add(tableDesc.getDatabase());</span>
+<span class="nc" id="L78">        }</span>
+<span class="nc" id="L79">        return databaseNames;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

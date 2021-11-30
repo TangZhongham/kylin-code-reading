@@ -1,0 +1,3407 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KylinConfigBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common</a> &gt; <span class="el_source">KylinConfigBase.java</span></div><h1>KylinConfigBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Properties;
+import java.util.SortedSet;
+import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.text.StrSubstitutor;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.annotation.ConfigTag;
+import org.apache.kylin.common.lock.DistributedLockFactory;
+import org.apache.kylin.common.persistence.HDFSResourceStore;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.CliCommandExecutor;
+import org.apache.kylin.common.util.FileUtils;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ * An abstract class to encapsulate access to a set of 'properties'.
+ * Subclass can override methods in this class to extend the content of the 'properties',
+ * with some override values for example.
+ */
+public abstract class KylinConfigBase implements Serializable {
+    private static final long serialVersionUID = 1L;
+<span class="fc" id="L64">    private static final Logger logger = LoggerFactory.getLogger(KylinConfigBase.class);</span>
+
+    private static final String FALSE = &quot;false&quot;;
+    private static final String TRUE = &quot;true&quot;;
+    private static final String DEFAULT = &quot;default&quot;;
+    private static final String KYLIN_ENGINE_MR_JOB_JAR = &quot;kylin.engine.mr.job-jar&quot;;
+    private static final String KYLIN_ENGINE_PARQUET_JOB_JAR = &quot;kylin.engine.parquet.job-jar&quot;;
+    private static final String KYLIN_STORAGE_HBASE_COPROCESSOR_LOCAL_JAR = &quot;kylin.storage.hbase.coprocessor-local-jar&quot;;
+    private static final String FILE_SCHEME = &quot;file:&quot;;
+    private static final String MAPRFS_SCHEME = &quot;maprfs:&quot;;
+
+    /*
+     * DON'T DEFINE CONSTANTS FOR PROPERTY KEYS!
+     *
+     * For 1), no external need to access property keys, all accesses are by public methods.
+     * For 2), it's cumbersome to maintain constants at top and code at bottom.
+     * For 3), key literals usually appear only once.
+     */
+<span class="fc" id="L82">    private static final Pattern COPROCESSOR_JAR_NAME_PATTERN = Pattern.compile(&quot;kylin-coprocessor-(.+)\\.jar&quot;);</span>
+<span class="fc" id="L83">    private static final Pattern JOB_JAR_NAME_PATTERN = Pattern.compile(&quot;kylin-job-(.+)\\.jar&quot;);</span>
+<span class="fc" id="L84">    private static final Pattern PARQUET_JOB_JAR_NAME_PATTERN = Pattern.compile(&quot;kylin-parquet-job-(.+)\\.jar&quot;);</span>
+    // backward compatibility check happens when properties is loaded or updated
+<span class="fc" id="L86">    static BackwardCompatibilityConfig BCC = new BackwardCompatibilityConfig();</span>
+<span class="fc" id="L87">    volatile Properties properties = new Properties();</span>
+
+    // ============================================================================
+    private String cachedHdfsWorkingDirectory;
+    private String cachedBigCellDirectory;
+
+    public KylinConfigBase() {
+<span class="fc" id="L94">        this(new Properties());</span>
+<span class="fc" id="L95">    }</span>
+
+<span class="fc" id="L97">    public KylinConfigBase(Properties props) {</span>
+<span class="fc" id="L98">        this.properties = BCC.check(props);</span>
+<span class="fc" id="L99">    }</span>
+
+<span class="fc" id="L101">    protected KylinConfigBase(Properties props, boolean force) {</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        this.properties = force ? props : BCC.check(props);</span>
+<span class="fc" id="L103">    }</span>
+
+    public static String getKylinHome() {
+<span class="fc" id="L106">        String kylinHome = getKylinHomeWithoutWarn();</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (StringUtils.isEmpty(kylinHome)) {</span>
+<span class="fc" id="L108">            logger.warn(&quot;KYLIN_HOME was not set&quot;);</span>
+        }
+<span class="fc" id="L110">        return kylinHome;</span>
+    }
+
+    public static String getKylinHomeWithoutWarn() {
+<span class="fc" id="L114">        String kylinHome = System.getenv(&quot;KYLIN_HOME&quot;);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (StringUtils.isEmpty(kylinHome)) {</span>
+<span class="fc" id="L116">            kylinHome = System.getProperty(&quot;KYLIN_HOME&quot;);</span>
+        }
+<span class="fc" id="L118">        return kylinHome;</span>
+    }
+
+    public static String getSparkHome() {
+<span class="nc" id="L122">        String sparkHome = System.getenv(&quot;SPARK_HOME&quot;);</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(sparkHome)) {</span>
+<span class="nc" id="L124">            logger.info(&quot;SPARK_HOME was set to {}&quot;, sparkHome);</span>
+<span class="nc" id="L125">            return sparkHome;</span>
+        }
+
+<span class="nc" id="L128">        sparkHome = System.getProperty(&quot;SPARK_HOME&quot;);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(sparkHome)) {</span>
+<span class="nc" id="L130">            logger.info(&quot;SPARK_HOME was set to {}&quot;, sparkHome);</span>
+<span class="nc" id="L131">            return sparkHome;</span>
+        }
+
+<span class="nc" id="L134">        return getKylinHome() + File.separator + &quot;spark&quot;;</span>
+    }
+
+    public static String getFlinkHome() {
+<span class="nc" id="L138">        String flinkHome = System.getenv(&quot;FLINK_HOME&quot;);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(flinkHome)) {</span>
+<span class="nc" id="L140">            logger.info(&quot;FLINK_HOME was set to {}&quot;, flinkHome);</span>
+<span class="nc" id="L141">            return flinkHome;</span>
+        }
+
+<span class="nc" id="L144">        flinkHome = System.getProperty(&quot;FLINK_HOME&quot;);</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(flinkHome)) {</span>
+<span class="nc" id="L146">            logger.info(&quot;FLINK_HOME was set to {}&quot;, flinkHome);</span>
+<span class="nc" id="L147">            return flinkHome;</span>
+        }
+
+<span class="nc" id="L150">        return getKylinHome() + File.separator + &quot;flink&quot;;</span>
+    }
+
+    public static String getTempDir() {
+<span class="nc" id="L154">        return System.getProperty(&quot;java.io.tmpdir&quot;);</span>
+    }
+
+    private static String getFileName(String homePath, Pattern pattern) {
+<span class="nc" id="L158">        File home = new File(homePath);</span>
+<span class="nc" id="L159">        SortedSet&lt;String&gt; files = Sets.newTreeSet();</span>
+<span class="nc bnc" id="L160" title="All 4 branches missed.">        if (home.exists() &amp;&amp; home.isDirectory()) {</span>
+<span class="nc" id="L161">            File[] listFiles = home.listFiles();</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            if (listFiles != null) {</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                for (File file : listFiles) {</span>
+<span class="nc" id="L164">                    final Matcher matcher = pattern.matcher(file.getName());</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                    if (matcher.matches()) {</span>
+<span class="nc" id="L166">                        files.add(file.getAbsolutePath());</span>
+                    }
+                }
+            }
+        }
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (files.isEmpty()) {</span>
+<span class="nc" id="L172">            throw new RuntimeException(&quot;cannot find &quot; + pattern.toString() + &quot; in &quot; + homePath);</span>
+        } else {
+<span class="nc" id="L174">            return files.last();</span>
+        }
+    }
+
+    protected final String getOptional(String prop) {
+<span class="fc" id="L179">        return getOptional(prop, null);</span>
+    }
+
+    protected String getOptional(String prop, String dft) {
+
+<span class="fc" id="L184">        final String property = System.getProperty(prop);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        return property != null ? getSubstitutor().replace(property, System.getenv())</span>
+<span class="fc" id="L186">                : getSubstitutor().replace(properties.getProperty(prop, dft), System.getenv());</span>
+    }
+
+    protected Properties getAllProperties() {
+<span class="fc" id="L190">        return getProperties(null);</span>
+    }
+
+    /**
+     * @param propertyKeys the collection of the properties; if null will return all properties
+     * @return properties which contained in propertyKeys
+     */
+    protected Properties getProperties(Collection&lt;String&gt; propertyKeys) {
+<span class="fc" id="L198">        final StrSubstitutor sub = getSubstitutor();</span>
+
+<span class="fc" id="L200">        Properties filteredProperties = new Properties();</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        for (Entry&lt;Object, Object&gt; entry : this.properties.entrySet()) {</span>
+<span class="pc bpc" id="L202" title="3 of 4 branches missed.">            if (propertyKeys == null || propertyKeys.contains(entry.getKey())) {</span>
+<span class="fc" id="L203">                filteredProperties.put(entry.getKey(), sub.replace((String) entry.getValue()));</span>
+            }
+<span class="fc" id="L205">        }</span>
+<span class="fc" id="L206">        return filteredProperties;</span>
+    }
+
+    protected StrSubstitutor getSubstitutor() {
+        // env &gt; properties
+<span class="fc" id="L211">        final Map&lt;String, Object&gt; all = Maps.newHashMap();</span>
+<span class="fc" id="L212">        all.putAll((Map) properties);</span>
+<span class="fc" id="L213">        all.putAll(System.getenv());</span>
+
+<span class="fc" id="L215">        return new StrSubstitutor(all);</span>
+    }
+
+    protected Properties getRawAllProperties() {
+<span class="fc" id="L219">        return properties;</span>
+    }
+
+    protected final Map&lt;String, String&gt; getPropertiesByPrefix(String prefix) {
+<span class="fc" id="L223">        Map&lt;String, String&gt; result = Maps.newLinkedHashMap();</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (Entry&lt;Object, Object&gt; entry : getAllProperties().entrySet()) {</span>
+<span class="fc" id="L225">            String key = (String) entry.getKey();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            if (key.startsWith(prefix)) {</span>
+<span class="fc" id="L227">                result.put(key.substring(prefix.length()), (String) entry.getValue());</span>
+            }
+<span class="fc" id="L229">        }</span>
+<span class="fc" id="L230">        return result;</span>
+    }
+
+    final protected String[] getOptionalStringArray(String prop, String[] dft) {
+<span class="nc" id="L234">        final String property = getOptional(prop);</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (!StringUtils.isBlank(property)) {</span>
+<span class="nc" id="L236">            return property.split(&quot;\\s*,\\s*&quot;);</span>
+        } else {
+<span class="nc" id="L238">            return dft;</span>
+        }
+    }
+
+    final protected int[] getOptionalIntArray(String prop, String[] dft) {
+<span class="nc" id="L243">        String[] strArray = getOptionalStringArray(prop, dft);</span>
+<span class="nc" id="L244">        int[] intArray = new int[strArray.length];</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        for (int i = 0; i &lt; strArray.length; i++) {</span>
+<span class="nc" id="L246">            intArray[i] = Integer.parseInt(strArray[i]);</span>
+        }
+<span class="nc" id="L248">        return intArray;</span>
+    }
+
+    final protected String getRequired(String prop) {
+<span class="nc" id="L252">        String r = getOptional(prop);</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (StringUtils.isEmpty(r)) {</span>
+<span class="nc" id="L254">            throw new IllegalArgumentException(&quot;missing '&quot; + prop + &quot;' in conf/kylin.properties&quot;);</span>
+        }
+<span class="nc" id="L256">        return r;</span>
+    }
+
+    /**
+     * Use with care, properties should be read-only. This is for testing only.
+     */
+    final public void setProperty(String key, String value) {
+<span class="fc" id="L263">        logger.info(&quot;Kylin Config was updated with {} : {}&quot;, key, value);</span>
+<span class="fc" id="L264">        properties.setProperty(BCC.check(key), value);</span>
+<span class="fc" id="L265">    }</span>
+
+    final protected void reloadKylinConfig(Properties properties) {
+<span class="fc" id="L268">        this.properties = BCC.check(properties);</span>
+<span class="fc" id="L269">        setProperty(&quot;kylin.metadata.url.identifier&quot;, getMetadataUrlPrefix());</span>
+<span class="fc" id="L270">        setProperty(&quot;kylin.log.spark-executor-properties-file&quot;, getLogSparkExecutorPropertiesFile());</span>
+<span class="fc" id="L271">    }</span>
+
+    private Map&lt;Integer, String&gt; convertKeyToInteger(Map&lt;String, String&gt; map) {
+<span class="nc" id="L274">        Map&lt;Integer, String&gt; result = Maps.newLinkedHashMap();</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        for (Entry&lt;String, String&gt; entry : map.entrySet()) {</span>
+<span class="nc" id="L276">            result.put(Integer.valueOf(entry.getKey()), entry.getValue());</span>
+<span class="nc" id="L277">        }</span>
+<span class="nc" id="L278">        return result;</span>
+    }
+
+    public String toString() {
+<span class="nc" id="L282">        return getMetadataUrl().toString();</span>
+    }
+
+    // ============================================================================
+    // ENV
+    // ============================================================================
+
+    public boolean isDevEnv() {
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">        return &quot;DEV&quot;.equals(getOptional(&quot;kylin.env&quot;, &quot;DEV&quot;))</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">                || &quot;UT&quot;.equals(getOptional(&quot;kylin.env&quot;, &quot;DEV&quot;))</span>
+<span class="pc bnc" id="L292" title="All 2 branches missed.">                || &quot;LOCAL&quot;.equals(getOptional(&quot;kylin.env&quot;, &quot;DEV&quot;));</span>
+    }
+
+    public String getDeployEnv() {
+<span class="nc" id="L296">        return getOptional(&quot;kylin.env&quot;, &quot;DEV&quot;);</span>
+    }
+
+    public String getHdfsWorkingDirectory() {
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">        if (cachedHdfsWorkingDirectory != null)</span>
+<span class="nc" id="L301">            return cachedHdfsWorkingDirectory;</span>
+
+<span class="fc" id="L303">        String root = getOptional(&quot;kylin.env.hdfs-working-dir&quot;, &quot;/kylin&quot;);</span>
+
+<span class="fc" id="L305">        Path path = new Path(root);</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (!path.isAbsolute())</span>
+<span class="nc" id="L307">            throw new IllegalArgumentException(&quot;kylin.env.hdfs-working-dir must be absolute, but got &quot; + root);</span>
+
+        try {
+<span class="fc" id="L310">            FileSystem fs = path.getFileSystem(HadoopUtil.getCurrentConfiguration());</span>
+<span class="fc" id="L311">            path = fs.makeQualified(path);</span>
+<span class="nc" id="L312">        } catch (IOException e) {</span>
+<span class="nc" id="L313">            throw new RuntimeException(e);</span>
+<span class="fc" id="L314">        }</span>
+
+        // append metadata-url prefix
+<span class="fc" id="L317">        String metaId = getMetadataUrlPrefix().replace(':', '-');</span>
+        //transform relative path for local metadata
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">        if (metaId.startsWith(&quot;../&quot;)) {</span>
+<span class="fc" id="L320">            metaId = metaId.replace(&quot;../&quot;, &quot;&quot;);</span>
+<span class="fc" id="L321">            metaId = metaId.replace('/', '-');</span>
+        }
+
+<span class="fc" id="L324">        root = new Path(path, metaId).toString();</span>
+
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">        if (!root.endsWith(&quot;/&quot;))</span>
+<span class="fc" id="L327">            root += &quot;/&quot;;</span>
+
+<span class="fc" id="L329">        cachedHdfsWorkingDirectory = root;</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        if (cachedHdfsWorkingDirectory.startsWith(FILE_SCHEME)) {</span>
+<span class="fc" id="L331">            cachedHdfsWorkingDirectory = cachedHdfsWorkingDirectory.replace(FILE_SCHEME, &quot;file://&quot;);</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        } else if (cachedHdfsWorkingDirectory.startsWith(MAPRFS_SCHEME)) {</span>
+<span class="nc" id="L333">            cachedHdfsWorkingDirectory = cachedHdfsWorkingDirectory.replace(MAPRFS_SCHEME, &quot;maprfs://&quot;);</span>
+        }
+<span class="fc" id="L335">        return cachedHdfsWorkingDirectory;</span>
+    }
+
+    public String getMetastoreBigCellHdfsDirectory() {
+
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        if (cachedBigCellDirectory != null)</span>
+<span class="nc" id="L341">            return cachedBigCellDirectory;</span>
+
+<span class="nc" id="L343">        String root = getOptional(&quot;kylin.env.hdfs-metastore-bigcell-dir&quot;);</span>
+
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if (root == null) {</span>
+<span class="nc" id="L346">            return getJdbcHdfsWorkingDirectory();</span>
+        }
+
+<span class="nc" id="L349">        Path path = new Path(root);</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        if (!path.isAbsolute())</span>
+<span class="nc" id="L351">            throw new IllegalArgumentException(</span>
+                    &quot;kylin.env.hdfs-metastore-bigcell-dir must be absolute, but got &quot; + root);
+
+        // make sure path is qualified
+        try {
+<span class="nc" id="L356">            FileSystem fs = HadoopUtil.getReadFileSystem();</span>
+<span class="nc" id="L357">            path = fs.makeQualified(path);</span>
+<span class="nc" id="L358">        } catch (IOException e) {</span>
+<span class="nc" id="L359">            throw new RuntimeException(e);</span>
+<span class="nc" id="L360">        }</span>
+
+<span class="nc" id="L362">        root = new Path(path, StringUtils.replaceChars(getMetadataUrlPrefix(), ':', '-')).toString();</span>
+
+<span class="nc bnc" id="L364" title="All 2 branches missed.">        if (!root.endsWith(&quot;/&quot;))</span>
+<span class="nc" id="L365">            root += &quot;/&quot;;</span>
+
+<span class="nc" id="L367">        cachedBigCellDirectory = root;</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        if (cachedBigCellDirectory.startsWith(FILE_SCHEME)) {</span>
+<span class="nc" id="L369">            cachedBigCellDirectory = cachedBigCellDirectory.replace(FILE_SCHEME, &quot;file://&quot;);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        } else if (cachedBigCellDirectory.startsWith(MAPRFS_SCHEME)) {</span>
+<span class="nc" id="L371">            cachedBigCellDirectory = cachedBigCellDirectory.replace(MAPRFS_SCHEME, &quot;maprfs://&quot;);</span>
+        }
+
+<span class="nc" id="L374">        return cachedBigCellDirectory;</span>
+    }
+
+    public String getReadHdfsWorkingDirectory() {
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(getHBaseClusterFs())) {</span>
+<span class="nc" id="L379">            Path workingDir = new Path(getHdfsWorkingDirectory());</span>
+<span class="nc" id="L380">            return new Path(getHBaseClusterFs(), Path.getPathWithoutSchemeAndAuthority(workingDir)).toString() + &quot;/&quot;;</span>
+        }
+
+<span class="nc" id="L383">        return getHdfsWorkingDirectory();</span>
+    }
+
+    private String getJdbcHdfsWorkingDirectory() {
+<span class="nc bnc" id="L387" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(getJdbcFileSystem())) {</span>
+<span class="nc" id="L388">            Path workingDir = new Path(getReadHdfsWorkingDirectory());</span>
+<span class="nc" id="L389">            return new Path(getJdbcFileSystem(), Path.getPathWithoutSchemeAndAuthority(workingDir)).toString() + &quot;/&quot;;</span>
+        }
+
+<span class="nc" id="L392">        return getReadHdfsWorkingDirectory();</span>
+    }
+
+    private String getJdbcFileSystem() {
+<span class="nc" id="L396">        return getOptional(&quot;kylin.storage.columnar.jdbc.file-system&quot;, &quot;&quot;);</span>
+    }
+
+    public String getHdfsWorkingDirectory(String project) {
+<span class="pc bpc" id="L400" title="2 of 4 branches missed.">        if (isProjectIsolationEnabled() &amp;&amp; project != null) {</span>
+<span class="nc" id="L401">            return new Path(getHdfsWorkingDirectory(), project).toString() + &quot;/&quot;;</span>
+        } else {
+<span class="fc" id="L403">            return getHdfsWorkingDirectory();</span>
+        }
+    }
+
+    public String getZookeeperBasePath() {
+<span class="fc" id="L408">        return getOptional(&quot;kylin.env.zookeeper-base-path&quot;, &quot;/kylin&quot;);</span>
+    }
+
+    /**
+     * A comma separated list of host:port pairs, each corresponding to a ZooKeeper server
+     */
+    public String getZookeeperConnectString() {
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">        if (isZKLocal()) {</span>
+<span class="nc" id="L416">            return &quot;localhost:12181&quot;;</span>
+        } else {
+<span class="fc" id="L418">            return getOptional(&quot;kylin.env.zookeeper-connect-string&quot;);</span>
+        }
+    }
+
+    public int getZKBaseSleepTimeMs() {
+<span class="fc" id="L423">        return Integer.parseInt(getOptional(&quot;kylin.env.zookeeper-base-sleep-time&quot;, &quot;3000&quot;));</span>
+    }
+
+    public int getZKMaxRetries() {
+<span class="fc" id="L427">        return Integer.parseInt(getOptional(&quot;kylin.env.zookeeper-max-retries&quot;, &quot;3&quot;));</span>
+    }
+
+    public int getZKMonitorInterval() {
+<span class="nc" id="L431">        return Integer.parseInt(getOptional(&quot;kylin.job.zookeeper-monitor-interval&quot;, &quot;30&quot;));</span>
+    }
+
+    public boolean isZookeeperAclEnabled() {
+<span class="nc" id="L435">        return Boolean.parseBoolean(getOptional(&quot;kylin.env.zookeeper-acl-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isZKLocal() {
+<span class="fc" id="L439">        return Boolean.parseBoolean(getOptional(&quot;kylin.env.zookeeper-is-local&quot;, FALSE));</span>
+    }
+
+    public String getZKAuths() {
+<span class="nc" id="L443">        return getOptional(&quot;kylin.env.zookeeper.zk-auth&quot;, &quot;digest:ADMIN:KYLIN&quot;);</span>
+    }
+
+    public String getZKAcls() {
+<span class="nc" id="L447">        return getOptional(&quot;kylin.env.zookeeper.zk-acl&quot;, &quot;world:anyone:rwcda&quot;);</span>
+    }
+
+    public String[] getRestServersWithMode() {
+<span class="nc" id="L451">        return getOptionalStringArray(&quot;kylin.server.cluster-servers-with-mode&quot;, new String[0]);</span>
+    }
+    // ============================================================================
+    // METADATA
+    // ============================================================================
+
+    public StorageURL getMetadataUrl() {
+<span class="fc" id="L458">        return StorageURL.valueOf(getOptional(&quot;kylin.metadata.url&quot;, &quot;kylin_metadata@hbase&quot;));</span>
+    }
+
+    // for test only
+    public void setMetadataUrl(String metadataUrl) {
+<span class="fc" id="L463">        setProperty(&quot;kylin.metadata.url&quot;, metadataUrl);</span>
+<span class="fc" id="L464">    }</span>
+
+    public int getCacheSyncRetrys() {
+<span class="nc" id="L467">        return Integer.parseInt(getOptional(&quot;kylin.metadata.sync-retries&quot;, &quot;3&quot;));</span>
+    }
+
+    public String getCacheSyncErrorHandler() {
+<span class="nc" id="L471">        return getOptional(&quot;kylin.metadata.sync-error-handler&quot;);</span>
+    }
+
+    public String getMetadataUrlPrefix() {
+<span class="fc" id="L475">        return getMetadataUrl().getIdentifier();</span>
+    }
+
+    public Map&lt;String, String&gt; getResourceStoreImpls() {
+<span class="fc" id="L479">        Map&lt;String, String&gt; r = Maps.newLinkedHashMap();</span>
+        // ref constants in ISourceAware
+<span class="fc" id="L481">        r.put(&quot;&quot;, &quot;org.apache.kylin.common.persistence.FileResourceStore&quot;);</span>
+<span class="fc" id="L482">        r.put(&quot;hbase&quot;, &quot;org.apache.kylin.storage.hbase.HBaseResourceStore&quot;);</span>
+<span class="fc" id="L483">        r.put(&quot;hdfs&quot;, &quot;org.apache.kylin.common.persistence.HDFSResourceStore&quot;);</span>
+<span class="fc" id="L484">        r.put(&quot;ifile&quot;, &quot;org.apache.kylin.common.persistence.IdentifierFileResourceStore&quot;);</span>
+<span class="fc" id="L485">        r.put(&quot;jdbc&quot;, &quot;org.apache.kylin.common.persistence.JDBCResourceStore&quot;);</span>
+<span class="fc" id="L486">        r.putAll(getPropertiesByPrefix(&quot;kylin.metadata.resource-store-provider.&quot;)); // note the naming convention -- http://kylin.apache.org/development/coding_naming_convention.html</span>
+<span class="fc" id="L487">        return r;</span>
+    }
+
+    public boolean isResourceStoreReconnectEnabled() {
+<span class="fc" id="L491">        return Boolean.parseBoolean(getOptional(&quot;kylin.resourcestore.reconnect-enabled&quot;, FALSE));</span>
+    }
+
+    public int getResourceStoreReconnectBaseMs() {
+<span class="fc" id="L495">        return Integer.parseInt(getOptional(&quot;kylin.resourcestore.reconnect-base-ms&quot;, &quot;1000&quot;));</span>
+    }
+
+    public int getResourceStoreReconnectMaxMs() {
+<span class="fc" id="L499">        return Integer.parseInt(getOptional(&quot;kylin.resourcestore.reconnect-max-ms&quot;, &quot;60000&quot;));</span>
+    }
+
+    public int getResourceStoreReconnectTimeoutMs() {
+<span class="nc" id="L503">        return Integer.parseInt(getOptional(&quot;kylin.resourcestore.reconnect-timeout-ms&quot;, &quot;3600000&quot;));</span>
+    }
+
+    public String getResourceStoreConnectionExceptions() {
+<span class="nc" id="L507">        return getOptional(&quot;kylin.resourcestore.connection-exceptions&quot;, &quot;&quot;);</span>
+    }
+
+    public String getDataModelImpl() {
+<span class="nc" id="L511">        return getOptional(&quot;kylin.metadata.data-model-impl&quot;, null);</span>
+    }
+
+    public String getDataModelManagerImpl() {
+<span class="nc" id="L515">        return getOptional(&quot;kylin.metadata.data-model-manager-impl&quot;, null);</span>
+    }
+
+    public String[] getRealizationProviders() {
+<span class="nc" id="L519">        return getOptionalStringArray(&quot;kylin.metadata.realization-providers&quot;, //</span>
+                new String[]{&quot;org.apache.kylin.cube.CubeManager&quot;, &quot;org.apache.kylin.storage.hybrid.HybridManager&quot;});
+    }
+
+    public String[] getCubeDimensionCustomEncodingFactories() {
+<span class="nc" id="L524">        return getOptionalStringArray(&quot;kylin.metadata.custom-dimension-encodings&quot;, new String[0]);</span>
+    }
+
+    public Map&lt;String, String&gt; getCubeCustomMeasureTypes() {
+<span class="nc" id="L528">        return getPropertiesByPrefix(&quot;kylin.metadata.custom-measure-types.&quot;);</span>
+    }
+
+    public DistributedLockFactory getDistributedLockFactory() {
+<span class="nc" id="L532">        String clsName = getOptional(&quot;kylin.metadata.distributed-lock-impl&quot;,</span>
+                &quot;org.apache.kylin.job.lock.zookeeper.ZookeeperDistributedLock$Factory&quot;);
+<span class="nc" id="L534">        return (DistributedLockFactory) ClassUtil.newInstance(clsName);</span>
+    }
+
+    public String getHBaseMappingAdapter() {
+<span class="nc" id="L538">        return getOptional(&quot;kylin.metadata.hbasemapping-adapter&quot;);</span>
+    }
+
+    public boolean isCheckCopyOnWrite() {
+<span class="nc" id="L542">        return Boolean.parseBoolean(getOptional(&quot;kylin.metadata.check-copy-on-write&quot;, FALSE));</span>
+    }
+
+    public String getHbaseClientScannerTimeoutPeriod() {
+<span class="nc" id="L546">        return getOptional(&quot;kylin.metadata.hbase-client-scanner-timeout-period&quot;, &quot;10000&quot;);</span>
+    }
+
+    public String getHbaseRpcTimeout() {
+<span class="nc" id="L550">        return getOptional(&quot;kylin.metadata.hbase-rpc-timeout&quot;, &quot;5000&quot;);</span>
+    }
+
+    public String getHbaseClientRetriesNumber() {
+<span class="nc" id="L554">        return getOptional(&quot;kylin.metadata.hbase-client-retries-number&quot;, &quot;1&quot;);</span>
+    }
+
+    public boolean isModelSchemaUpdaterCheckerEnabled() {
+<span class="nc" id="L558">        return Boolean.parseBoolean(getOptional(&quot;kylin.metadata.model-schema-updater-checker-enabled&quot;, &quot;false&quot;));</span>
+    }
+
+    public boolean isAbleChangeStringToDateTime() {
+<span class="nc" id="L562">        return Boolean.parseBoolean(getOptional(&quot;kylin.metadata.able-change-string-to-datetime&quot;, &quot;false&quot;));</span>
+    }
+
+    // ============================================================================
+    // DICTIONARY &amp; SNAPSHOT
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isUseForestTrieDictionary() {
+<span class="nc" id="L571">        return Boolean.parseBoolean(getOptional(&quot;kylin.dictionary.use-forest-trie&quot;, TRUE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getTrieDictionaryForestMaxTrieSizeMB() {
+<span class="nc" id="L576">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.forest-trie-max-mb&quot;, &quot;500&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getCachedDictMaxEntrySize() {
+<span class="nc" id="L581">        return Long.parseLong(getOptional(&quot;kylin.dictionary.max-cache-entry&quot;, &quot;3000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getCachedDictMaxSize() {
+<span class="nc" id="L586">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.max-cache-size&quot;, &quot;-1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isGrowingDictEnabled() {
+<span class="nc" id="L591">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.dictionary.growing-enabled&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isDictResuable() {
+<span class="nc" id="L596">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.dictionary.resuable&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getCachedDictionaryMaxEntrySize() {
+<span class="nc" id="L601">        return Long.parseLong(getOptional(&quot;kylin.dictionary.cached-dict-max-cache-entry&quot;, &quot;50000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getAppendDictEntrySize() {
+<span class="nc" id="L606">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.append-entry-size&quot;, &quot;10000000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getAppendDictMaxVersions() {
+<span class="nc" id="L611">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.append-max-versions&quot;, &quot;3&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getAppendDictVersionTTL() {
+<span class="nc" id="L616">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.append-version-ttl&quot;, &quot;259200000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getCachedSnapshotMaxEntrySize() {
+<span class="nc" id="L621">        return Integer.parseInt(getOptional(&quot;kylin.snapshot.max-cache-entry&quot;, &quot;500&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getTableSnapshotMaxMB() {
+<span class="nc" id="L626">        return Integer.parseInt(getOptional(&quot;kylin.snapshot.max-mb&quot;, &quot;300&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getExtTableSnapshotShardingMB() {
+<span class="nc" id="L631">        return Integer.parseInt(getOptional(&quot;kylin.snapshot.ext.shard-mb&quot;, &quot;500&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getExtTableSnapshotLocalCachePath() {
+<span class="nc" id="L636">        return getOptional(&quot;kylin.snapshot.ext.local.cache.path&quot;, &quot;lookup_cache&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public double getExtTableSnapshotLocalCacheMaxSizeGB() {
+<span class="nc" id="L641">        return Double.parseDouble(getOptional(&quot;kylin.snapshot.ext.local.cache.max-size-gb&quot;, &quot;200&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getExtTableSnapshotLocalCacheCheckVolatileRange() {
+<span class="nc" id="L646">        return Long.parseLong(getOptional(&quot;kylin.snapshot.ext.local.cache.check.volatile&quot;, &quot;3600000&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.DEPRECATED, ConfigTag.Tag.CUBE_LEVEL})
+    public boolean isShrunkenDictFromGlobalEnabled() {
+<span class="nc" id="L651">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.dictionary.shrunken-from-global-enabled&quot;, TRUE));</span>
+    }
+
+
+    // ============================================================================
+    // Hive Global Dictionary
+    //
+    // ============================================================================
+
+    /**
+     * @return if mr-hive dict not enabled, return empty array
+     * else return array contains &quot;{TABLE_NAME}_{COLUMN_NAME}&quot;
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String[] getMrHiveDictColumns() {
+<span class="nc" id="L666">        String columnStr = getOptional(&quot;kylin.dictionary.mr-hive.columns&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L667" title="All 2 branches missed.">        if (!columnStr.equals(&quot;&quot;)) {</span>
+<span class="nc" id="L668">            return columnStr.split(&quot;,&quot;);</span>
+        }
+<span class="nc" id="L670">        return new String[0];</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getMrHiveDictDB() {
+<span class="nc" id="L675">        return getOptional(&quot;kylin.dictionary.mr-hive.database&quot;, getHiveDatabaseForIntermediateTable());</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getMrHiveDictTableSuffix() {
+<span class="nc" id="L680">        return getOptional(&quot;kylin.dictionary.mr-hive.table.suffix&quot;, &quot;_global_dict&quot;);</span>
+    }
+
+
+    // ============================================================================
+    // CUBE
+    // ============================================================================
+
+    public String getCuboidScheduler() {
+<span class="nc" id="L689">        return getOptional(&quot;kylin.cube.cuboid-scheduler&quot;, &quot;org.apache.kylin.cube.cuboid.DefaultCuboidScheduler&quot;);</span>
+    }
+
+    public boolean isRowKeyEncodingAutoConvert() {
+<span class="nc" id="L693">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.kylin.cube.rowkey-encoding-auto-convert&quot;, &quot;true&quot;));</span>
+    }
+    
+    public String getSegmentAdvisor() {
+<span class="nc" id="L697">        return getOptional(&quot;kylin.cube.segment-advisor&quot;, &quot;org.apache.kylin.cube.CubeSegmentAdvisor&quot;);</span>
+    }
+
+    public boolean enableJobCuboidSizeOptimize() {
+<span class="nc" id="L701">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.size-estimate-enable-optimize&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.DEPRECATED, ConfigTag.Tag.NOT_CLEAR})
+    public double getJobCuboidSizeRatio() {
+<span class="nc" id="L706">        return Double.parseDouble(getOptional(&quot;kylin.cube.size-estimate-ratio&quot;, &quot;0.25&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.DEPRECATED, ConfigTag.Tag.NOT_CLEAR})
+    public double getJobCuboidSizeMemHungryRatio() {
+<span class="nc" id="L711">        return Double.parseDouble(getOptional(&quot;kylin.cube.size-estimate-memhungry-ratio&quot;, &quot;0.05&quot;));</span>
+    }
+
+    public double getJobCuboidSizeCountDistinctRatio() {
+<span class="nc" id="L715">        return Double.parseDouble(getOptional(&quot;kylin.cube.size-estimate-countdistinct-ratio&quot;, &quot;0.5&quot;));</span>
+    }
+
+    public double getJobCuboidSizeTopNRatio() {
+<span class="nc" id="L719">        return Double.parseDouble(getOptional(&quot;kylin.cube.size-estimate-topn-ratio&quot;, &quot;0.5&quot;));</span>
+    }
+
+    public String getCubeAlgorithm() {
+<span class="nc" id="L723">        return getOptional(&quot;kylin.cube.algorithm&quot;, &quot;auto&quot;);</span>
+    }
+
+    public double getCubeAlgorithmAutoThreshold() {
+<span class="nc" id="L727">        return Double.parseDouble(getOptional(&quot;kylin.cube.algorithm.layer-or-inmem-threshold&quot;, &quot;7&quot;));</span>
+    }
+
+    public boolean isAutoInmemToOptimize() {
+<span class="nc" id="L731">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.algorithm.inmem-auto-optimize&quot;, TRUE));</span>
+    }
+
+    public int getCubeAlgorithmAutoMapperLimit() {
+<span class="nc" id="L735">        return Integer.parseInt(getOptional(&quot;kylin.cube.algorithm.inmem-split-limit&quot;, &quot;500&quot;));</span>
+    }
+
+    public int getCubeAlgorithmInMemConcurrentThreads() {
+<span class="nc" id="L739">        return Integer.parseInt(getOptional(&quot;kylin.cube.algorithm.inmem-concurrent-threads&quot;, &quot;1&quot;));</span>
+    }
+
+    public boolean isIgnoreCubeSignatureInconsistency() {
+<span class="nc" id="L743">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.ignore-signature-inconsistency&quot;, FALSE));</span>
+    }
+
+    public long getCubeAggrGroupMaxCombination() {
+<span class="nc" id="L747">        return Long.parseLong(getOptional(&quot;kylin.cube.aggrgroup.max-combination&quot;, &quot;32768&quot;));</span>
+    }
+
+    public boolean getCubeAggrGroupIsMandatoryOnlyValid() {
+<span class="nc" id="L751">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.aggrgroup.is-mandatory-only-valid&quot;, FALSE));</span>
+    }
+
+    public int getCubeRowkeyMaxSize() {
+<span class="nc" id="L755">        return Integer.parseInt(getOptional(&quot;kylin.cube.rowkey.max-size&quot;, &quot;63&quot;));</span>
+    }
+
+    public int getDimensionEncodingMaxLength() {
+<span class="nc" id="L759">        return Integer.parseInt(getOptional(&quot;kylin.metadata.dimension-encoding-max-length&quot;, &quot;256&quot;));</span>
+    }
+
+    public int getMaxBuildingSegments() {
+<span class="nc" id="L763">        return Integer.parseInt(getOptional(&quot;kylin.cube.max-building-segments&quot;, &quot;10&quot;));</span>
+    }
+
+    public long getMaxSegmentMergeSpan() {
+<span class="nc" id="L767">        return Long.parseLong(getOptional(&quot;kylin.cube.max-segment-merge.span&quot;, &quot;-1&quot;));</span>
+    }
+
+    public boolean allowCubeAppearInMultipleProjects() {
+<span class="nc" id="L771">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.allow-appear-in-multiple-projects&quot;, FALSE));</span>
+    }
+
+    public int getGTScanRequestSerializationLevel() {
+<span class="nc" id="L775">        return Integer.parseInt(getOptional(&quot;kylin.cube.gtscanrequest-serialization-level&quot;, &quot;1&quot;));</span>
+    }
+
+    public boolean isAutoMergeEnabled() {
+<span class="nc" id="L779">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.is-automerge-enabled&quot;, TRUE));</span>
+    }
+
+    public String[] getCubeMetadataExtraValidators() {
+<span class="nc" id="L783">        return getOptionalStringArray(&quot;kylin.cube.metadata-extra-validators&quot;, new String[0]);</span>
+    }
+
+    // ============================================================================
+    // Cube Planner
+    // ============================================================================
+
+    public boolean isCubePlannerEnabled() {
+<span class="nc" id="L791">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.cubeplanner.enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isCubePlannerEnabledForExistingCube() {
+<span class="nc" id="L795">        return Boolean.parseBoolean(getOptional(&quot;kylin.cube.cubeplanner.enabled-for-existing-cube&quot;, TRUE));</span>
+    }
+
+    public double getCubePlannerExpansionRateThreshold() {
+<span class="nc" id="L799">        return Double.parseDouble(getOptional(&quot;kylin.cube.cubeplanner.expansion-threshold&quot;, &quot;15.0&quot;));</span>
+    }
+
+    public int getCubePlannerRecommendCuboidCacheMaxSize() {
+<span class="nc" id="L803">        return Integer.parseInt(getOptional(&quot;kylin.cube.cubeplanner.recommend-cache-max-size&quot;, &quot;200&quot;));</span>
+    }
+
+    public double getCubePlannerQueryUncertaintyRatio() {
+<span class="nc" id="L807">        return Double.parseDouble(getOptional(&quot;kylin.cube.cubeplanner.query-uncertainty-ratio&quot;, &quot;0.1&quot;));</span>
+    }
+
+    public double getCubePlannerBPUSMinBenefitRatio() {
+<span class="nc" id="L811">        return Double.parseDouble(getOptional(&quot;kylin.cube.cubeplanner.bpus-min-benefit-ratio&quot;, &quot;0.01&quot;));</span>
+    }
+
+    public int getCubePlannerAgreedyAlgorithmAutoThreshold() {
+<span class="nc" id="L815">        return Integer.parseInt(getOptional(&quot;kylin.cube.cubeplanner.algorithm-threshold-greedy&quot;, &quot;8&quot;));</span>
+    }
+
+    public int getCubePlannerGeneticAlgorithmAutoThreshold() {
+<span class="nc" id="L819">        return Integer.parseInt(getOptional(&quot;kylin.cube.cubeplanner.algorithm-threshold-genetic&quot;, &quot;23&quot;));</span>
+    }
+
+    /**
+     * Columnar storage, like apache parquet, often use encode and compression to make data smaller,
+     *  and this will affect CuboidRecommendAlgorithm.
+     */
+    public double getStorageCompressionRatio() {
+<span class="nc" id="L827">        return Double.parseDouble(getOptional(&quot;kylin.cube.cubeplanner.storage.compression.ratio&quot;, &quot;0.2&quot;));</span>
+    }
+
+    /**
+     * get assigned server array, which a empty string array in default
+     * @return
+     */
+    public String[] getAssignedServers() {
+<span class="nc" id="L835">        return getOptionalStringArray(&quot;kylin.cube.schedule.assigned-servers&quot;, new String[] {});</span>
+    }
+
+    /**
+     * Determine if the target node is in the assigned node
+     * @param targetServers target task servers
+     * @return
+     */
+    public boolean isOnAssignedServer(String... targetServers) {
+
+<span class="nc" id="L845">        String[] servers = this.getAssignedServers();</span>
+<span class="nc bnc" id="L846" title="All 4 branches missed.">        if (null == servers || servers.length == 0) {</span>
+<span class="nc" id="L847">            return true;</span>
+        }
+
+<span class="nc bnc" id="L850" title="All 2 branches missed.">        for (String s : servers) {</span>
+<span class="nc bnc" id="L851" title="All 2 branches missed.">            for (String ts : targetServers) {</span>
+<span class="nc bnc" id="L852" title="All 2 branches missed.">                if (s.equalsIgnoreCase(ts)) {</span>
+<span class="nc" id="L853">                    return true;</span>
+                }
+            }
+        }
+<span class="nc" id="L857">        return false;</span>
+    }
+
+    // ============================================================================
+    // JOB
+    // ============================================================================
+
+    public CliCommandExecutor getCliCommandExecutor() {
+<span class="nc" id="L865">        CliCommandExecutor exec = new CliCommandExecutor();</span>
+<span class="nc bnc" id="L866" title="All 2 branches missed.">        if (getRunAsRemoteCommand()) {</span>
+<span class="nc" id="L867">            exec.setRunAtRemote(getRemoteHadoopCliHostname(), getRemoteHadoopCliPort(), getRemoteHadoopCliUsername(),</span>
+<span class="nc" id="L868">                    getRemoteHadoopCliPassword());</span>
+        }
+<span class="nc" id="L870">        return exec;</span>
+    }
+
+    public String getKylinJobLogDir() {
+<span class="nc" id="L874">        return getOptional(&quot;kylin.job.log-dir&quot;, &quot;/tmp/kylin/logs&quot;);</span>
+    }
+
+    public String getKylinLogDir() {
+<span class="nc" id="L878">        String kylinHome = getKylinHome();</span>
+<span class="nc bnc" id="L879" title="All 2 branches missed.">        if (kylinHome == null) {</span>
+<span class="nc" id="L880">            kylinHome = System.getProperty(&quot;KYLIN_HOME&quot;);</span>
+        }
+<span class="nc" id="L882">        return kylinHome + File.separator + &quot;logs&quot;;</span>
+    }
+
+    public boolean getRunAsRemoteCommand() {
+<span class="fc" id="L886">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.use-remote-cli&quot;));</span>
+    }
+
+    public int getRemoteHadoopCliPort() {
+<span class="fc" id="L890">        return Integer.parseInt(getOptional(&quot;kylin.job.remote-cli-port&quot;, &quot;22&quot;));</span>
+    }
+
+    public String getRemoteHadoopCliHostname() {
+<span class="fc" id="L894">        return getOptional(&quot;kylin.job.remote-cli-hostname&quot;);</span>
+    }
+
+    public String getRemoteHadoopCliUsername() {
+<span class="fc" id="L898">        return getOptional(&quot;kylin.job.remote-cli-username&quot;);</span>
+    }
+
+    public String getRemoteHadoopCliPassword() {
+<span class="fc" id="L902">        return getOptional(&quot;kylin.job.remote-cli-password&quot;);</span>
+    }
+
+    public String getCliWorkingDir() {
+<span class="nc" id="L906">        return getOptional(&quot;kylin.job.remote-cli-working-dir&quot;);</span>
+    }
+
+    public boolean isEmptySegmentAllowed() {
+<span class="nc" id="L910">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.allow-empty-segment&quot;, TRUE));</span>
+    }
+
+    public int getMaxConcurrentJobLimit() {
+<span class="nc" id="L914">        return Integer.parseInt(getOptional(&quot;kylin.job.max-concurrent-jobs&quot;, &quot;10&quot;));</span>
+    }
+
+    public int getCubingInMemSamplingPercent() {
+<span class="nc" id="L918">        int percent = Integer.parseInt(this.getOptional(&quot;kylin.job.sampling-percentage&quot;, &quot;100&quot;));</span>
+<span class="nc" id="L919">        percent = Math.max(percent, 1);</span>
+<span class="nc" id="L920">        percent = Math.min(percent, 100);</span>
+<span class="nc" id="L921">        return percent;</span>
+    }
+
+    public String getHiveDependencyFilterList() {
+<span class="nc" id="L925">        return this.getOptional(&quot;kylin.job.dependency-filter-list&quot;, &quot;[^,]*hive-exec[^,]*?\\.jar&quot; + &quot;|&quot;</span>
+                + &quot;[^,]*hive-metastore[^,]*?\\.jar&quot; + &quot;|&quot; + &quot;[^,]*hive-hcatalog-core[^,]*?\\.jar&quot;);
+    }
+
+    public boolean isMailEnabled() {
+<span class="nc" id="L930">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.notification-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isStarttlsEnabled() {
+<span class="nc" id="L934">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.notification-mail-enable-starttls&quot;, FALSE));</span>
+    }
+
+    public String getSmtpPort() {
+<span class="nc" id="L938">        return getOptional(&quot;kylin.job.notification-mail-port&quot;, &quot;25&quot;);</span>
+    }
+
+    public String getMailHost() {
+<span class="nc" id="L942">        return getOptional(&quot;kylin.job.notification-mail-host&quot;, &quot;&quot;);</span>
+    }
+
+    public String getMailUsername() {
+<span class="nc" id="L946">        return getOptional(&quot;kylin.job.notification-mail-username&quot;, &quot;&quot;);</span>
+    }
+
+    public String getMailPassword() {
+<span class="nc" id="L950">        return getOptional(&quot;kylin.job.notification-mail-password&quot;, &quot;&quot;);</span>
+    }
+
+    public String getMailSender() {
+<span class="nc" id="L954">        return getOptional(&quot;kylin.job.notification-mail-sender&quot;, &quot;&quot;);</span>
+    }
+
+    public String[] getAdminDls() {
+<span class="nc" id="L958">        return getOptionalStringArray(&quot;kylin.job.notification-admin-emails&quot;, null);</span>
+    }
+
+    public int getJobRetry() {
+<span class="nc" id="L962">        return Integer.parseInt(getOptional(&quot;kylin.job.retry&quot;, &quot;0&quot;));</span>
+    }
+
+    // retry interval in milliseconds
+    public int getJobRetryInterval() {
+<span class="nc" id="L967">        return Integer.parseInt(getOptional(&quot;kylin.job.retry-interval&quot;, &quot;30000&quot;));</span>
+    }
+
+    public String[] getJobRetryExceptions() {
+<span class="nc" id="L971">        return getOptionalStringArray(&quot;kylin.job.retry-exception-classes&quot;, new String[0]);</span>
+    }
+
+    public int getCubeStatsHLLPrecision() {
+<span class="nc" id="L975">        return Integer.parseInt(getOptional(&quot;kylin.job.sampling-hll-precision&quot;, &quot;14&quot;));</span>
+    }
+
+    public Map&lt;Integer, String&gt; getSchedulers() {
+<span class="nc" id="L979">        Map&lt;Integer, String&gt; r = Maps.newLinkedHashMap();</span>
+<span class="nc" id="L980">        r.put(0, &quot;org.apache.kylin.job.impl.threadpool.DefaultScheduler&quot;);</span>
+<span class="nc" id="L981">        r.put(2, &quot;org.apache.kylin.job.impl.threadpool.DistributedScheduler&quot;);</span>
+<span class="nc" id="L982">        r.put(77, &quot;org.apache.kylin.job.impl.threadpool.NoopScheduler&quot;);</span>
+<span class="nc" id="L983">        r.putAll(convertKeyToInteger(getPropertiesByPrefix(&quot;kylin.job.scheduler.provider.&quot;)));</span>
+<span class="nc" id="L984">        return r;</span>
+    }
+
+    public Integer getSchedulerType() {
+<span class="nc" id="L988">        return Integer.parseInt(getOptional(&quot;kylin.job.scheduler.default&quot;, &quot;0&quot;));</span>
+    }
+
+    public boolean getSchedulerPriorityConsidered() {
+<span class="nc" id="L992">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.scheduler.priority-considered&quot;, FALSE));</span>
+    }
+
+    public Integer getSchedulerPriorityBarFetchFromQueue() {
+<span class="nc" id="L996">        return Integer.parseInt(getOptional(&quot;kylin.job.scheduler.priority-bar-fetch-from-queue&quot;, &quot;20&quot;));</span>
+    }
+
+    public Integer getSchedulerPollIntervalSecond() {
+<span class="nc" id="L1000">        return Integer.parseInt(getOptional(&quot;kylin.job.scheduler.poll-interval-second&quot;, &quot;30&quot;));</span>
+    }
+
+    public boolean isSchedulerSafeMode() {
+<span class="nc" id="L1004">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.scheduler.safemode&quot;, &quot;false&quot;));</span>
+    }
+
+    public List&lt;String&gt; getSafeModeRunnableProjects() {
+<span class="nc" id="L1008">        return Arrays.asList(getOptionalStringArray(&quot;kylin.job.scheduler.safemode.runnable-projects&quot;, new String[0]));</span>
+    }
+
+    public Integer getErrorRecordThreshold() {
+<span class="nc" id="L1012">        return Integer.parseInt(getOptional(&quot;kylin.job.error-record-threshold&quot;, &quot;0&quot;));</span>
+    }
+
+    public boolean isAdvancedFlatTableUsed() {
+<span class="nc" id="L1016">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.use-advanced-flat-table&quot;, FALSE));</span>
+    }
+
+    public String getAdvancedFlatTableClass() {
+<span class="nc" id="L1020">        return getOptional(&quot;kylin.job.advanced-flat-table.class&quot;);</span>
+    }
+
+    public String getJobTrackingURLPattern() {
+<span class="nc" id="L1024">        return getOptional(&quot;kylin.job.tracking-url-pattern&quot;, &quot;&quot;);</span>
+    }
+
+    public int getJobMetadataPersistRetry() {
+<span class="nc" id="L1028">        return Integer.parseInt(this.getOptional(&quot;kylin.job.metadata-persist-retry&quot;, &quot;5&quot;));</span>
+    }
+
+    public boolean isJobAutoReadyCubeEnabled() {
+<span class="nc" id="L1032">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.cube-auto-ready-enabled&quot;, TRUE));</span>
+    }
+
+    public String getCubeInMemBuilderClass() {
+<span class="nc" id="L1036">        return getOptional(&quot;kylin.job.cube-inmem-builder-class&quot;, &quot;org.apache.kylin.cube.inmemcubing.DoggedCubeBuilder&quot;);</span>
+    }
+
+    public int getJobOutputMaxSize() {
+<span class="nc" id="L1040">        return Integer.parseInt(getOptional(&quot;kylin.job.execute-output.max-size&quot;, &quot;10485760&quot;));</span>
+    }
+
+    // ============================================================================
+    // SOURCE.HIVE
+    // ============================================================================
+
+    public int getDefaultSource() {
+<span class="nc" id="L1048">        return Integer.parseInt(getOptional(&quot;kylin.source.default&quot;, &quot;0&quot;));</span>
+    }
+
+    public Map&lt;Integer, String&gt; getSourceEngines() {
+<span class="nc" id="L1052">        Map&lt;Integer, String&gt; r = Maps.newLinkedHashMap();</span>
+        // ref constants in ISourceAware
+<span class="nc" id="L1054">        r.put(0, &quot;org.apache.kylin.source.hive.HiveSource&quot;);</span>
+//        r.put(1, &quot;org.apache.kylin.source.kafka.KafkaSource&quot;);
+//        r.put(8, &quot;org.apache.kylin.source.jdbc.JdbcSource&quot;);
+<span class="nc" id="L1057">        r.put(9, &quot;org.apache.kylin.engine.spark.source.CsvSource&quot;);</span>
+//        r.put(16, &quot;org.apache.kylin.source.jdbc.extensible.JdbcSource&quot;);
+//        r.put(20, &quot;org.apache.kylin.stream.source.kafka.KafkaBatchSourceAdaptor&quot;);
+//        r.put(21, &quot;org.apache.kylin.stream.source.kafka.KafkaBatchSourceAdaptor&quot;);
+<span class="nc" id="L1061">        r.putAll(convertKeyToInteger(getPropertiesByPrefix(&quot;kylin.source.provider.&quot;)));</span>
+<span class="nc" id="L1062">        return r;</span>
+    }
+
+    /**
+     * whether to enable quote identifier in create flat table in Kylin, how to quote is chosen by
+     * @see KylinConfigBase#getFactTableDialect
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean enableHiveDdlQuote() {
+<span class="nc" id="L1071">        return Boolean.parseBoolean(getOptional(&quot;kylin.source.hive.quote-enabled&quot;, TRUE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getFactTableDialect() {
+<span class="nc" id="L1076">        return getOptional(&quot;kylin.fact.table.dialect&quot;, &quot;hive&quot;);</span>
+    }
+
+    /**
+     * was for route to hive, not used any more
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHiveUrl() {
+<span class="nc" id="L1084">        return getOptional(&quot;kylin.source.hive.connection-url&quot;, &quot;&quot;);</span>
+    }
+
+    /**
+     * was for route to hive, not used any more
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHiveUser() {
+<span class="nc" id="L1092">        return getOptional(&quot;kylin.source.hive.connection-user&quot;, &quot;&quot;);</span>
+    }
+
+    /**
+     * was for route to hive, not used any more
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHivePassword() {
+<span class="nc" id="L1100">        return getOptional(&quot;kylin.source.hive.connection-password&quot;, &quot;&quot;);</span>
+    }
+
+    public Map&lt;String, String&gt; getHiveConfigOverride() {
+<span class="fc" id="L1104">        return getPropertiesByPrefix(&quot;kylin.source.hive.config-override.&quot;);</span>
+    }
+
+    public String getOverrideHiveTableLocation(String table) {
+<span class="nc" id="L1108">        return getOptional(&quot;kylin.source.hive.table-location.&quot; + table.toUpperCase(Locale.ROOT));</span>
+    }
+
+    public boolean isHiveKeepFlatTable() {
+<span class="nc" id="L1112">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.source.hive.keep-flat-table&quot;, FALSE));</span>
+    }
+
+    public String getHiveDatabaseForIntermediateTable() {
+<span class="nc" id="L1116">        return CliCommandExecutor.checkHiveProperty(this.getOptional(&quot;kylin.source.hive.database-for-flat-table&quot;, DEFAULT));</span>
+    }
+
+    public String getFlatTableStorageFormat() {
+<span class="nc" id="L1120">        return this.getOptional(&quot;kylin.source.hive.flat-table-storage-format&quot;, &quot;SEQUENCEFILE&quot;);</span>
+    }
+
+    public String getFlatTableFieldDelimiter() {
+<span class="nc" id="L1124">        return this.getOptional(&quot;kylin.source.hive.flat-table-field-delimiter&quot;, &quot;\u001F&quot;);</span>
+    }
+
+    public boolean isHiveRedistributeEnabled() {
+<span class="nc" id="L1128">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.source.hive.redistribute-flat-table&quot;, TRUE));</span>
+    }
+
+    public String getHiveClientMode() {
+<span class="fc" id="L1132">        return getOptional(&quot;kylin.source.hive.client&quot;, &quot;cli&quot;);</span>
+    }
+
+    public String getHiveBeelineShell() {
+<span class="fc" id="L1136">        return getOptional(&quot;kylin.source.hive.beeline-shell&quot;, &quot;beeline&quot;);</span>
+    }
+
+    public String getHiveBeelineParams() {
+<span class="fc" id="L1140">        return getOptional(&quot;kylin.source.hive.beeline-params&quot;, &quot;&quot;);</span>
+    }
+
+    public boolean getEnableSparkSqlForTableOps() {
+<span class="fc" id="L1144">        return Boolean.parseBoolean(getOptional(&quot;kylin.source.hive.enable-sparksql-for-table-ops&quot;, FALSE));</span>
+    }
+
+    public String getSparkSqlBeelineShell() {
+<span class="fc" id="L1148">        return getOptional(&quot;kylin.source.hive.sparksql-beeline-shell&quot;, &quot;&quot;);</span>
+    }
+
+    public String getSparkSqlBeelineParams() {
+<span class="fc" id="L1152">        return getOptional(&quot;kylin.source.hive.sparksql-beeline-params&quot;, &quot;&quot;);</span>
+    }
+
+    public boolean getHiveTableDirCreateFirst() {
+<span class="nc" id="L1156">        return Boolean.parseBoolean(getOptional(&quot;kylin.source.hive.table-dir-create-first&quot;, FALSE));</span>
+    }
+
+    public String getFlatHiveTableClusterByDictColumn() {
+<span class="nc" id="L1160">        return getOptional(&quot;kylin.source.hive.flat-table-cluster-by-dict-column&quot;);</span>
+    }
+
+    public int getHiveRedistributeColumnCount() {
+<span class="nc" id="L1164">        return Integer.parseInt(getOptional(&quot;kylin.source.hive.redistribute-column-count&quot;, &quot;3&quot;));</span>
+    }
+
+    public int getDefaultVarcharPrecision() {
+<span class="nc" id="L1168">        int v = Integer.parseInt(getOptional(&quot;kylin.source.hive.default-varchar-precision&quot;, &quot;256&quot;));</span>
+<span class="nc bnc" id="L1169" title="All 2 branches missed.">        if (v &lt; 1) {</span>
+<span class="nc" id="L1170">            return 256;</span>
+<span class="nc bnc" id="L1171" title="All 2 branches missed.">        } else if (v &gt; 65535) {</span>
+<span class="nc" id="L1172">            return 65535;</span>
+        } else {
+<span class="nc" id="L1174">            return v;</span>
+        }
+    }
+
+    public int getDefaultCharPrecision() {
+        //at most 255 according to https://cwiki.apache.org/confluence/display/Hive/LanguageManual+Types#LanguageManualTypes-CharcharChar
+<span class="nc" id="L1180">        int v = Integer.parseInt(getOptional(&quot;kylin.source.hive.default-char-precision&quot;, &quot;255&quot;));</span>
+<span class="nc bnc" id="L1181" title="All 2 branches missed.">        if (v &lt; 1) {</span>
+<span class="nc" id="L1182">            return 255;</span>
+<span class="nc bnc" id="L1183" title="All 2 branches missed.">        } else if (v &gt; 255) {</span>
+<span class="nc" id="L1184">            return 255;</span>
+        } else {
+<span class="nc" id="L1186">            return v;</span>
+        }
+    }
+
+    public int getDefaultDecimalPrecision() {
+<span class="nc" id="L1191">        int v = Integer.parseInt(getOptional(&quot;kylin.source.hive.default-decimal-precision&quot;, &quot;19&quot;));</span>
+<span class="nc bnc" id="L1192" title="All 2 branches missed.">        if (v &lt; 1) {</span>
+<span class="nc" id="L1193">            return 19;</span>
+        } else {
+<span class="nc" id="L1195">            return v;</span>
+        }
+    }
+
+    public int getDefaultDecimalScale() {
+<span class="nc" id="L1200">        int v = Integer.parseInt(getOptional(&quot;kylin.source.hive.default-decimal-scale&quot;, &quot;4&quot;));</span>
+<span class="nc bnc" id="L1201" title="All 2 branches missed.">        if (v &lt; 1) {</span>
+<span class="nc" id="L1202">            return 4;</span>
+        } else {
+<span class="nc" id="L1204">            return v;</span>
+        }
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHiveIntermediateTablePrefix() {
+<span class="nc" id="L1210">        return getOptional(&quot;kylin.source.hive.intermediate-table-prefix&quot;, &quot;kylin_intermediate_&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHiveMetaDataType() {
+<span class="nc" id="L1215">        return getOptional(&quot;kylin.source.hive.metadata-type&quot;, &quot;hcatalog&quot;);</span>
+    }
+
+    // ============================================================================
+    // SOURCE.KAFKA
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public Map&lt;String, String&gt; getKafkaConfigOverride() {
+<span class="nc" id="L1224">        return getPropertiesByPrefix(&quot;kylin.source.kafka.config-override.&quot;);</span>
+    }
+
+    // ============================================================================
+    // SOURCE.JDBC
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getJdbcSourceConnectionUrl() {
+<span class="nc" id="L1233">        return getOptional(&quot;kylin.source.jdbc.connection-url&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getJdbcSourceDriver() {
+<span class="nc" id="L1238">        return getOptional(&quot;kylin.source.jdbc.driver&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getJdbcSourceDialect() {
+<span class="nc" id="L1243">        return getOptional(&quot;kylin.source.jdbc.dialect&quot;, DEFAULT);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getJdbcSourceUser() {
+<span class="nc" id="L1248">        return getOptional(&quot;kylin.source.jdbc.user&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getJdbcSourcePass() {
+<span class="nc" id="L1253">        return getOptional(&quot;kylin.source.jdbc.pass&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getSqoopHome() {
+<span class="nc" id="L1258">        return getOptional(&quot;kylin.source.jdbc.sqoop-home&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public int getSqoopMapperNum() {
+<span class="nc" id="L1263">        return Integer.parseInt(getOptional(&quot;kylin.source.jdbc.sqoop-mapper-num&quot;, &quot;4&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getSqoopNullString() {
+<span class="nc" id="L1268">        return getOptional(&quot;kylin.source.jdbc.sqoop-null-string&quot;, &quot;\\\\N&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getSqoopNullNonString() {
+<span class="nc" id="L1273">        return getOptional(&quot;kylin.source.jdbc.sqoop-null-non-string&quot;, &quot;\\\\N&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public Map&lt;String, String&gt; getSqoopConfigOverride() {
+<span class="nc" id="L1278">        return getPropertiesByPrefix(&quot;kylin.source.jdbc.sqoop-config-override.&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_IMPLEMENTED)
+    public String getJdbcSourceFieldDelimiter() {
+<span class="nc" id="L1283">        return getOptional(&quot;kylin.source.jdbc.field-delimiter&quot;, &quot;|&quot;);</span>
+    }
+
+    // ============================================================================
+    // STORAGE.HBASE
+    // ============================================================================
+
+    public Map&lt;Integer, String&gt; getStorageEngines() {
+<span class="nc" id="L1291">        Map&lt;Integer, String&gt; r = Maps.newLinkedHashMap();</span>
+        // ref constants in IStorageAware
+//        r.put(0, &quot;org.apache.kylin.storage.hbase.HBaseStorage&quot;);
+<span class="nc" id="L1294">        r.put(1, &quot;org.apache.kylin.storage.hybrid.HybridStorage&quot;);</span>
+//        r.put(2, &quot;org.apache.kylin.storage.hbase.HBaseStorage&quot;);
+//        r.put(3, &quot;org.apache.kylin.storage.stream.StreamStorage&quot;);
+<span class="nc" id="L1297">        r.put(4, &quot;org.apache.kylin.engine.spark.storage.ParquetDataStorage&quot;);</span>
+<span class="nc" id="L1298">        r.putAll(convertKeyToInteger(getPropertiesByPrefix(&quot;kylin.storage.provider.&quot;)));</span>
+<span class="nc" id="L1299">        return r;</span>
+    }
+
+    public int getDefaultStorageEngine() {
+<span class="nc" id="L1303">        return Integer.parseInt(getOptional(&quot;kylin.storage.default&quot;, &quot;4&quot;));</span>
+    }
+
+    public StorageURL getStorageUrl() {
+<span class="nc" id="L1307">        String url = getOptional(&quot;kylin.storage.url&quot;, &quot;default@hbase&quot;);</span>
+
+        // for backward compatibility
+<span class="nc bnc" id="L1310" title="All 2 branches missed.">        if (&quot;hbase&quot;.equals(url))</span>
+<span class="nc" id="L1311">            url = &quot;default@hbase&quot;;</span>
+
+<span class="nc" id="L1313">        return StorageURL.valueOf(url);</span>
+    }
+
+    public StorageURL getSecondaryStorageUrl() {
+<span class="nc" id="L1317">        String url = getOptional(&quot;kylin.secondary.storage.url&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L1318" title="All 2 branches missed.">        if (StringUtils.isEmpty(url)) {</span>
+<span class="nc" id="L1319">            return null;</span>
+        }
+<span class="nc" id="L1321">        return StorageURL.valueOf(url);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHBaseTableNamePrefix() {
+<span class="nc" id="L1326">        return getOptional(&quot;kylin.storage.hbase.table-name-prefix&quot;, &quot;KYLIN_&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHBaseStorageNameSpace() {
+<span class="nc" id="L1331">        return getOptional(&quot;kylin.storage.hbase.namespace&quot;, DEFAULT);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHBaseClusterFs() {
+<span class="nc" id="L1336">        return getOptional(&quot;kylin.storage.hbase.cluster-fs&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHBaseClusterHDFSConfigFile() {
+<span class="nc" id="L1341">        return getOptional(&quot;kylin.storage.hbase.cluster-hdfs-config-file&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getCoprocessorLocalJar() {
+<span class="nc" id="L1346">        final String coprocessorJar = getOptional(KYLIN_STORAGE_HBASE_COPROCESSOR_LOCAL_JAR);</span>
+<span class="nc bnc" id="L1347" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(coprocessorJar)) {</span>
+<span class="nc" id="L1348">            return coprocessorJar;</span>
+        }
+<span class="nc" id="L1350">        String kylinHome = getKylinHome();</span>
+<span class="nc bnc" id="L1351" title="All 2 branches missed.">        if (StringUtils.isEmpty(kylinHome)) {</span>
+<span class="nc" id="L1352">            throw new RuntimeException(&quot;getCoprocessorLocalJar needs KYLIN_HOME&quot;);</span>
+        }
+<span class="nc" id="L1354">        return getFileName(kylinHome + File.separator + &quot;lib&quot;, COPROCESSOR_JAR_NAME_PATTERN);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public void overrideCoprocessorLocalJar(String path) {
+<span class="nc" id="L1359">        logger.info(&quot;override {} to {}&quot;, KYLIN_STORAGE_HBASE_COPROCESSOR_LOCAL_JAR, path);</span>
+<span class="nc" id="L1360">        System.setProperty(KYLIN_STORAGE_HBASE_COPROCESSOR_LOCAL_JAR, path);</span>
+<span class="nc" id="L1361">    }</span>
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseRegionCountMin() {
+<span class="nc" id="L1365">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.min-region-count&quot;, &quot;1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseRegionCountMax() {
+<span class="nc" id="L1370">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.max-region-count&quot;, &quot;500&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public float getHBaseHFileSizeGB() {
+<span class="nc" id="L1375">        return Float.parseFloat(getOptional(&quot;kylin.storage.hbase.hfile-size-gb&quot;, &quot;2.0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean getQueryRunLocalCoprocessor() {
+<span class="nc" id="L1380">        return Boolean.parseBoolean(getOptional(&quot;kylin.storage.hbase.run-local-coprocessor&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public double getQueryCoprocessorMemGB() {
+<span class="nc" id="L1385">        return Double.parseDouble(this.getOptional(&quot;kylin.storage.hbase.coprocessor-mem-gb&quot;, &quot;3.0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean getQueryCoprocessorSpillEnabled() {
+<span class="nc" id="L1390">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.storage.partition.aggr-spill-enabled&quot;, TRUE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getPartitionMaxScanBytes() {
+<span class="nc" id="L1395">        long value = Long.parseLong(</span>
+<span class="nc" id="L1396">                this.getOptional(&quot;kylin.storage.partition.max-scan-bytes&quot;, String.valueOf(3L * 1024 * 1024 * 1024)));</span>
+<span class="nc bnc" id="L1397" title="All 2 branches missed.">        return value &gt; 0 ? value : Long.MAX_VALUE;</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getQueryCoprocessorTimeoutSeconds() {
+<span class="nc" id="L1402">        return Integer.parseInt(this.getOptional(&quot;kylin.storage.hbase.coprocessor-timeout-seconds&quot;, &quot;0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getQueryScanFuzzyKeyMax() {
+<span class="nc" id="L1407">        return Integer.parseInt(this.getOptional(&quot;kylin.storage.hbase.max-fuzzykey-scan&quot;, &quot;200&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getQueryScanFuzzyKeySplitMax() {
+<span class="nc" id="L1412">        return Integer.parseInt(this.getOptional(&quot;kylin.storage.hbase.max-fuzzykey-scan-split&quot;, &quot;1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getQueryStorageVisitScanRangeMax() {
+<span class="nc" id="L1417">        return Integer.parseInt(this.getOptional(&quot;kylin.storage.hbase.max-visit-scanrange&quot;, &quot;1000000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getDefaultIGTStorage() {
+<span class="nc" id="L1422">        return getOptional(&quot;kylin.storage.hbase.gtstorage&quot;,</span>
+                &quot;org.apache.kylin.storage.hbase.cube.v2.CubeHBaseEndpointRPC&quot;);
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseScanCacheRows() {
+<span class="nc" id="L1428">        return Integer.parseInt(this.getOptional(&quot;kylin.storage.hbase.scan-cache-rows&quot;, &quot;1024&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public float getKylinHBaseRegionCut() {
+<span class="nc" id="L1433">        return Float.parseFloat(getOptional(&quot;kylin.storage.hbase.region-cut-gb&quot;, &quot;5.0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseScanMaxResultSize() {
+<span class="nc" id="L1438">        return Integer.parseInt(this.getOptional(&quot;kylin.storage.hbase.max-scan-result-bytes&quot;, &quot;&quot; + (5 * 1024 * 1024))); // 5 MB</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHbaseDefaultCompressionCodec() {
+<span class="nc" id="L1443">        return getOptional(&quot;kylin.storage.hbase.compression-codec&quot;, &quot;none&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHbaseDefaultEncoding() {
+<span class="nc" id="L1448">        return getOptional(&quot;kylin.storage.hbase.rowkey-encoding&quot;, &quot;FAST_DIFF&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHbaseDefaultBlockSize() {
+<span class="nc" id="L1453">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.block-size-bytes&quot;, &quot;1048576&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHbaseSmallFamilyBlockSize() {
+<span class="nc" id="L1458">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.small-family-block-size-bytes&quot;, &quot;65536&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getKylinOwner() {
+<span class="fc" id="L1463">        return this.getOptional(&quot;kylin.storage.hbase.owner-tag&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean getCompressionResult() {
+<span class="nc" id="L1468">        return Boolean.parseBoolean(getOptional(&quot;kylin.storage.hbase.endpoint-compress-result&quot;, TRUE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseMaxConnectionThreads() {
+<span class="nc" id="L1473">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.max-hconnection-threads&quot;, &quot;2048&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseCoreConnectionThreads() {
+<span class="nc" id="L1478">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.core-hconnection-threads&quot;, &quot;2048&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getHBaseConnectionThreadPoolAliveSeconds() {
+<span class="nc" id="L1483">        return Long.parseLong(getOptional(&quot;kylin.storage.hbase.hconnection-threads-alive-seconds&quot;, &quot;60&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getHBaseReplicationScope() {
+<span class="nc" id="L1488">        return Integer.parseInt(getOptional(&quot;kylin.storage.hbase.replication-scope&quot;, &quot;0&quot;));</span>
+    }
+
+    public boolean cleanStorageAfterDelOperation() {
+<span class="nc" id="L1492">        return Boolean.parseBoolean(getOptional(&quot;kylin.storage.clean-after-delete-operation&quot;, FALSE));</span>
+    }
+
+    // ============================================================================
+    // ENGINE.MR
+    // ============================================================================
+
+    public Map&lt;Integer, String&gt; getJobEngines() {
+<span class="nc" id="L1500">        Map&lt;Integer, String&gt; r = Maps.newLinkedHashMap();</span>
+        // ref constants in IEngineAware
+//        r.put(0, &quot;org.apache.kylin.engine.mr.MRBatchCubingEngine&quot;); //IEngineAware.ID_MR_V1
+//        r.put(2, &quot;org.apache.kylin.engine.mr.MRBatchCubingEngine2&quot;); //IEngineAware.ID_MR_V2
+//        r.put(4, &quot;org.apache.kylin.engine.spark.SparkBatchCubingEngine2&quot;); //IEngineAware.ID_SPARK
+<span class="nc" id="L1505">        r.put(6, &quot;org.apache.kylin.engine.spark.SparkBatchCubingEngineParquet&quot;); //IEngineAware.ID_SPARK_II</span>
+//        r.put(5, &quot;org.apache.kylin.engine.flink.FlinkBatchCubingEngine2&quot;); //IEngineAware.ID_FLINK
+<span class="nc" id="L1507">        r.putAll(convertKeyToInteger(getPropertiesByPrefix(&quot;kylin.engine.provider.&quot;)));</span>
+<span class="nc" id="L1508">        return r;</span>
+    }
+
+    public int getDefaultCubeEngine() {
+<span class="nc" id="L1512">        return Integer.parseInt(getOptional(&quot;kylin.engine.default&quot;, &quot;6&quot;));</span>
+    }
+
+    public String getKylinJobJarPath() {
+<span class="nc" id="L1516">        final String jobJar = getOptional(KYLIN_ENGINE_MR_JOB_JAR);</span>
+<span class="nc bnc" id="L1517" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(jobJar)) {</span>
+<span class="nc" id="L1518">            return jobJar;</span>
+        }
+<span class="nc" id="L1520">        String kylinHome = getKylinHome();</span>
+<span class="nc bnc" id="L1521" title="All 2 branches missed.">        if (StringUtils.isEmpty(kylinHome)) {</span>
+<span class="nc" id="L1522">            return &quot;&quot;;</span>
+        }
+<span class="nc" id="L1524">        return getFileName(kylinHome + File.separator + &quot;lib&quot;, JOB_JAR_NAME_PATTERN);</span>
+    }
+
+    public void overrideMRJobJarPath(String path) {
+<span class="nc" id="L1528">        logger.info(&quot;override {} to {}&quot;, KYLIN_ENGINE_MR_JOB_JAR, path);</span>
+<span class="nc" id="L1529">        System.setProperty(KYLIN_ENGINE_MR_JOB_JAR, path);</span>
+<span class="nc" id="L1530">    }</span>
+
+    public String getKylinJobMRLibDir() {
+<span class="nc" id="L1533">        return getOptional(&quot;kylin.engine.mr.lib-dir&quot;, &quot;&quot;);</span>
+    }
+
+    public Map&lt;String, String&gt; getMRConfigOverride() {
+<span class="fc" id="L1537">        return getPropertiesByPrefix(&quot;kylin.engine.mr.config-override.&quot;);</span>
+    }
+
+    // used for some mem-hungry step
+    public Map&lt;String, String&gt; getMemHungryConfigOverride() {
+<span class="nc" id="L1542">        return getPropertiesByPrefix(&quot;kylin.engine.mr.mem-hungry-config-override.&quot;);</span>
+    }
+
+    public Map&lt;String, String&gt; getUHCMRConfigOverride() {
+<span class="nc" id="L1546">        return getPropertiesByPrefix(&quot;kylin.engine.mr.uhc-config-override.&quot;);</span>
+    }
+
+    public Map&lt;String, String&gt; getBaseCuboidMRConfigOverride() {
+<span class="nc" id="L1550">        return getPropertiesByPrefix(&quot;kylin.engine.mr.base-cuboid-config-override.&quot;);</span>
+    }
+
+    public Map&lt;String, String&gt; getSparkConfigOverride() {
+<span class="nc" id="L1554">        return getPropertiesByPrefix(&quot;kylin.engine.spark-conf.&quot;);</span>
+    }
+
+    public Map&lt;String, String&gt; getFlinkConfigOverride() {
+<span class="nc" id="L1558">        return getPropertiesByPrefix(&quot;kylin.engine.flink-conf.&quot;);</span>
+    }
+
+    public String getSparkEngineConfigOverrideWithSpecificName(String configName) {
+<span class="nc" id="L1562">        Map&lt;String, String&gt; config = getPropertiesByPrefix(&quot;kylin.engine.spark-conf.&quot; + configName);</span>
+<span class="nc bnc" id="L1563" title="All 2 branches missed.">        if (config.size() != 0) {</span>
+<span class="nc" id="L1564">            return String.valueOf(config.values().iterator().next());</span>
+        }
+<span class="nc" id="L1566">        return null;</span>
+    }
+
+    public String getSparderConfigOverrideWithSpecificName(String configName) {
+<span class="nc" id="L1570">        Map&lt;String, String&gt; config = getPropertiesByPrefix(&quot;kylin.query.spark-conf.&quot; + configName);</span>
+<span class="nc bnc" id="L1571" title="All 2 branches missed.">        if (config.size() != 0) {</span>
+<span class="nc" id="L1572">            return String.valueOf(config.values().iterator().next());</span>
+        }
+<span class="nc" id="L1574">        return null;</span>
+    }
+
+    public Map&lt;String, String&gt; getFlinkConfigOverrideWithSpecificName(String configName) {
+<span class="nc" id="L1578">        return getPropertiesByPrefix(&quot;kylin.engine.flink-conf-&quot; + configName + &quot;.&quot;);</span>
+    }
+
+    public double getDefaultHadoopJobReducerInputMB() {
+<span class="nc" id="L1582">        return Double.parseDouble(getOptional(&quot;kylin.engine.mr.reduce-input-mb&quot;, &quot;500&quot;));</span>
+    }
+
+    public double getDefaultHadoopJobReducerCountRatio() {
+<span class="nc" id="L1586">        return Double.parseDouble(getOptional(&quot;kylin.engine.mr.reduce-count-ratio&quot;, &quot;1.0&quot;));</span>
+    }
+
+    public int getHadoopJobMinReducerNumber() {
+<span class="nc" id="L1590">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.min-reducer-number&quot;, &quot;1&quot;));</span>
+    }
+
+    public int getHadoopJobMaxReducerNumber() {
+<span class="nc" id="L1594">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.max-reducer-number&quot;, &quot;500&quot;));</span>
+    }
+
+    public int getHadoopJobMapperInputRows() {
+<span class="nc" id="L1598">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.mapper-input-rows&quot;, &quot;1000000&quot;));</span>
+    }
+
+    public int getCuboidStatsCalculatorMaxNumber() {
+        // set 1 to disable multi-thread statistics calculation
+<span class="nc" id="L1603">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.max-cuboid-stats-calculator-number&quot;, &quot;1&quot;));</span>
+    }
+
+    public int getCuboidNumberPerStatsCalculator() {
+<span class="nc" id="L1607">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.cuboid-number-per-stats-calculator&quot;, &quot;100&quot;));</span>
+    }
+
+    public int getHadoopJobPerReducerHLLCuboidNumber() {
+<span class="nc" id="L1611">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.per-reducer-hll-cuboid-number&quot;, &quot;100&quot;));</span>
+    }
+
+    public int getHadoopJobHLLMaxReducerNumber() {
+        // by default multi-reducer hll calculation is disabled
+<span class="nc" id="L1616">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.hll-max-reducer-number&quot;, &quot;1&quot;));</span>
+    }
+
+    //UHC: ultra high cardinality columns, contain the ShardByColumns and the GlobalDictionaryColumns
+    public int getUHCReducerCount() {
+<span class="nc" id="L1621">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.uhc-reducer-count&quot;, &quot;3&quot;));</span>
+    }
+
+    public boolean isBuildUHCDictWithMREnabled() {
+<span class="nc" id="L1625">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.mr.build-uhc-dict-in-additional-step&quot;, FALSE));</span>
+    }
+
+    public boolean isBuildDictInReducerEnabled() {
+<span class="nc" id="L1629">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.mr.build-dict-in-reducer&quot;, TRUE));</span>
+    }
+
+    public String getYarnStatusCheckUrl() {
+<span class="nc" id="L1633">        return getOptional(&quot;kylin.engine.mr.yarn-check-status-url&quot;, null);</span>
+    }
+
+    public int getYarnStatusCheckIntervalSeconds() {
+<span class="nc" id="L1637">        return Integer.parseInt(getOptional(&quot;kylin.engine.mr.yarn-check-interval-seconds&quot;, &quot;10&quot;));</span>
+    }
+
+    public boolean isUseLocalClasspathEnabled() {
+<span class="nc" id="L1641">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.mr.use-local-classpath&quot;, TRUE));</span>
+    }
+
+    /**
+     * different version hive use different UNION style
+     * https://cwiki.apache.org/confluence/display/Hive/LanguageManual+Union
+     */
+    public String getHiveUnionStyle() {
+<span class="nc" id="L1649">        return getOptional(&quot;kylin.hive.union.style&quot;, &quot;UNION&quot;);</span>
+    }
+
+    // ============================================================================
+    // ENGINE.SPARK (DEPRECATED)
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHadoopConfDir() {
+<span class="nc" id="L1658">        return getOptional(&quot;kylin.env.hadoop-conf-dir&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getSparkAdditionalJars() {
+<span class="nc" id="L1663">        return getOptional(&quot;kylin.engine.spark.additional-jars&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getFlinkAdditionalJars() {
+<span class="nc" id="L1668">        return getOptional(&quot;kylin.engine.flink.additional-jars&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public float getSparkRDDPartitionCutMB() {
+<span class="nc" id="L1673">        return Float.parseFloat(getOptional(&quot;kylin.engine.spark.rdd-partition-cut-mb&quot;, &quot;10.0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public float getFlinkPartitionCutMB() {
+<span class="nc" id="L1678">        return Float.parseFloat(getOptional(&quot;kylin.engine.flink.partition-cut-mb&quot;, &quot;10.0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getSparkMinPartition() {
+<span class="nc" id="L1683">        return Integer.parseInt(getOptional(&quot;kylin.engine.spark.min-partition&quot;, &quot;1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getFlinkMinPartition() {
+<span class="nc" id="L1688">        return Integer.parseInt(getOptional(&quot;kylin.engine.flink.min-partition&quot;, &quot;1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getSparkMaxPartition() {
+<span class="nc" id="L1693">        return Integer.parseInt(getOptional(&quot;kylin.engine.spark.max-partition&quot;, &quot;5000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getFlinkMaxPartition() {
+<span class="nc" id="L1698">        return Integer.parseInt(getOptional(&quot;kylin.engine.flink.max-partition&quot;, &quot;5000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getSparkStorageLevel() {
+<span class="nc" id="L1703">        return getOptional(&quot;kylin.engine.spark.storage-level&quot;, &quot;MEMORY_AND_DISK_SER&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isSparkSanityCheckEnabled() {
+<span class="nc" id="L1708">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark.sanity-check-enabled&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isSparkFactDistinctEnable() {
+<span class="nc" id="L1713">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark-fact-distinct&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isSparkUHCDictionaryEnable() {
+<span class="nc" id="L1718">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark-udc-dictionary&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isSparkCardinalityEnabled() {
+<span class="nc" id="L1723">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark-cardinality&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getSparkOutputMaxSize() {
+<span class="nc" id="L1728">        return Integer.valueOf(getOptional(&quot;kylin.engine.spark.output.max-size&quot;, &quot;10485760&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isSparkDimensionDictionaryEnabled() {
+<span class="nc" id="L1733">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark-dimension-dictionary&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isFlinkSanityCheckEnabled() {
+<span class="nc" id="L1738">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.flink.sanity-check-enabled&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isSparCreateHiveTableViaSparkEnable() {
+<span class="nc" id="L1743">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark-create-table-enabled&quot;, &quot;false&quot;));</span>
+    }
+
+    // ============================================================================
+    // ENGINE.LIVY
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isLivyEnabled() {
+<span class="nc" id="L1752">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.livy-conf.livy-enabled&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getLivyRestApiBacktick() {
+<span class="nc" id="L1757">        return getOptional(&quot;kylin.engine.livy.backtick.quote&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getLivyUrl() {
+<span class="nc" id="L1762">        return getOptional(&quot;kylin.engine.livy-conf.livy-url&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public Map&lt;String, String&gt; getLivyKey() {
+<span class="nc" id="L1767">        return getPropertiesByPrefix(&quot;kylin.engine.livy-conf.livy-key.&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public Map&lt;String, String&gt; getLivyArr() {
+<span class="nc" id="L1772">        return getPropertiesByPrefix(&quot;kylin.engine.livy-conf.livy-arr.&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public Map&lt;String, String&gt; getLivyMap() {
+<span class="nc" id="L1777">        return getPropertiesByPrefix(&quot;kylin.engine.livy-conf.livy-map.&quot;);</span>
+    }
+
+    // ============================================================================
+    // QUERY
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isDictionaryEnumeratorEnabled() {
+<span class="nc" id="L1786">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.enable-dict-enumerator&quot;, FALSE));</span>
+    }
+
+    public boolean isEnumerableRulesEnabled() {
+<span class="nc" id="L1790">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.calcite.enumerable-rules-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isReduceExpressionsRulesEnabled() {
+<span class="nc" id="L1794">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.calcite.reduce-rules-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isConvertCreateTableToWith() {
+<span class="nc" id="L1798">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.convert-create-table-to-with&quot;, FALSE));</span>
+    }
+
+    /**
+     * Extras calcite properties to config Calcite connection
+     */
+    public Properties getCalciteExtrasProperties() {
+<span class="fc" id="L1805">        Properties properties = new Properties();</span>
+<span class="fc" id="L1806">        Map&lt;String, String&gt; map = getPropertiesByPrefix(&quot;kylin.query.calcite.extras-props.&quot;);</span>
+<span class="fc" id="L1807">        properties.putAll(map);</span>
+<span class="fc" id="L1808">        return properties;</span>
+    }
+
+    /**
+     * Rule is usually singleton as static field, the configuration of this property is like:
+     * RuleClassName1#FieldName1,RuleClassName2#FieldName2,...
+     */
+    public List&lt;String&gt; getCalciteAddRule() {
+<span class="nc" id="L1816">        String rules = getOptional(&quot;kylin.query.calcite.add-rule&quot;);</span>
+<span class="nc bnc" id="L1817" title="All 2 branches missed.">        if (rules == null) {</span>
+<span class="nc" id="L1818">            return Lists.newArrayList();</span>
+        }
+<span class="nc" id="L1820">        return Lists.newArrayList(rules.split(&quot;,&quot;));</span>
+    }
+
+    /**
+     * Rule is usually singleton as static field, the configuration of this property is like:
+     * RuleClassName1#FieldName1,RuleClassName2#FieldName2,...
+     */
+    public List&lt;String&gt; getCalciteRemoveRule() {
+<span class="nc" id="L1828">        String rules = getOptional(&quot;kylin.query.calcite.remove-rule&quot;);</span>
+<span class="nc bnc" id="L1829" title="All 2 branches missed.">        if (rules == null) {</span>
+<span class="nc" id="L1830">            return Lists.newArrayList();</span>
+        }
+<span class="nc" id="L1832">        return Lists.newArrayList(rules.split(&quot;,&quot;));</span>
+    }
+
+    // check KYLIN-3358, need deploy coprocessor if enabled
+    // finally should be deprecated
+    public boolean isDynamicColumnEnabled() {
+<span class="nc" id="L1838">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.enable-dynamic-column&quot;, FALSE));</span>
+    }
+
+    //check KYLIN-1684, in most cases keep the default value
+    public boolean isSkippingEmptySegments() {
+<span class="nc" id="L1843">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.skip-empty-segments&quot;, TRUE));</span>
+    }
+
+    public boolean isDisableCubeNoAggSQL() {
+<span class="nc" id="L1847">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.disable-cube-noagg-sql&quot;, FALSE));</span>
+    }
+
+    public boolean isStreamAggregateEnabled() {
+<span class="nc" id="L1851">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.stream-aggregate-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isProjectIsolationEnabled() {
+<span class="fc" id="L1855">        return Boolean.parseBoolean(getOptional(&quot;kylin.storage.project-isolation-enable&quot;, TRUE));</span>
+    }
+
+    @Deprecated //Limit is good even it's large. This config is meaning less since we already have scan threshold
+    public int getStoragePushDownLimitMax() {
+<span class="nc" id="L1860">        return Integer.parseInt(getOptional(&quot;kylin.query.max-limit-pushdown&quot;, &quot;10000&quot;));</span>
+    }
+
+    // Select star on large table is too slow for BI, add limit by default if missing
+    // https://issues.apache.org/jira/browse/KYLIN-2649
+    public int getForceLimit() {
+<span class="nc" id="L1866">        return Integer.parseInt(getOptional(&quot;kylin.query.force-limit&quot;, &quot;-1&quot;));</span>
+    }
+
+    @Deprecated
+    public int getScanThreshold() {
+<span class="nc" id="L1871">        return Integer.parseInt(getOptional(&quot;kylin.query.scan-threshold&quot;, &quot;10000000&quot;));</span>
+    }
+
+    public boolean isLazyQueryEnabled() {
+<span class="nc" id="L1875">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.lazy-query-enabled&quot;, FALSE));</span>
+    }
+
+    public long getLazyQueryWaitingTimeoutMilliSeconds() {
+<span class="nc" id="L1879">        return Long.parseLong(getOptional(&quot;kylin.query.lazy-query-waiting-timeout-milliseconds&quot;, &quot;60000&quot;));</span>
+    }
+
+    public int getQueryConcurrentRunningThresholdForProject() {
+        // by default there's no limitation
+<span class="nc" id="L1884">        return Integer.parseInt(getOptional(&quot;kylin.query.project-concurrent-running-threshold&quot;, &quot;0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getQueryMaxScanBytes() {
+<span class="nc" id="L1889">        long value = Long.parseLong(getOptional(&quot;kylin.query.max-scan-bytes&quot;, &quot;0&quot;));</span>
+<span class="nc bnc" id="L1890" title="All 2 branches missed.">        return value &gt; 0 ? value : Long.MAX_VALUE;</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getQueryMaxReturnRows() {
+<span class="nc" id="L1895">        return Integer.parseInt(this.getOptional(&quot;kylin.query.max-return-rows&quot;, &quot;5000000&quot;));</span>
+    }
+
+    public int getTranslatedInClauseMaxSize() {
+<span class="nc" id="L1899">        return Integer.parseInt(getOptional(&quot;kylin.query.translated-in-clause-max-size&quot;, String.valueOf(1024 * 1024)));</span>
+    }
+
+    public int getLargeQueryThreshold() {
+<span class="nc" id="L1903">        return Integer.parseInt(getOptional(&quot;kylin.query.large-query-threshold&quot;, String.valueOf(1000000)));</span>
+    }
+
+    public int getDerivedInThreshold() {
+<span class="nc" id="L1907">        return Integer.parseInt(getOptional(&quot;kylin.query.derived-filter-translation-threshold&quot;, &quot;20&quot;));</span>
+    }
+
+    public int getBadQueryStackTraceDepth() {
+<span class="nc" id="L1911">        return Integer.parseInt(getOptional(&quot;kylin.query.badquery-stacktrace-depth&quot;, &quot;10&quot;));</span>
+    }
+
+    public int getBadQueryHistoryNum() {
+<span class="nc" id="L1915">        return Integer.parseInt(getOptional(&quot;kylin.query.badquery-history-number&quot;, &quot;50&quot;));</span>
+    }
+
+    public int getBadQueryDefaultAlertingSeconds() {
+<span class="nc" id="L1919">        return Integer.parseInt(getOptional(&quot;kylin.query.badquery-alerting-seconds&quot;, &quot;90&quot;));</span>
+    }
+
+    public double getBadQueryDefaultAlertingCoefficient() {
+<span class="nc" id="L1923">        return Double.parseDouble(getOptional(&quot;kylin.query.timeout-seconds-coefficient&quot;, &quot;0.5&quot;));</span>
+    }
+
+    public int getBadQueryDefaultDetectIntervalSeconds() {
+<span class="nc" id="L1927">        int time = (int) (getQueryTimeoutSeconds() * getBadQueryDefaultAlertingCoefficient()); // half of query timeout</span>
+<span class="nc bnc" id="L1928" title="All 2 branches missed.">        if (time == 0) {</span>
+<span class="nc" id="L1929">            time = 60; // 60 sec</span>
+        }
+<span class="nc" id="L1931">        return time;</span>
+    }
+
+    public boolean getBadQueryPersistentEnabled() {
+<span class="nc" id="L1935">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.badquery-persistent-enabled&quot;, TRUE));</span>
+    }
+
+    public String[] getQueryTransformers() {
+<span class="nc" id="L1939">        return getOptionalStringArray(&quot;kylin.query.transformers&quot;, new String[0]);</span>
+    }
+
+    public String[] getQueryInterceptors() {
+<span class="nc" id="L1943">        return getOptionalStringArray(&quot;kylin.query.interceptors&quot;, new String[0]);</span>
+    }
+
+    public long getQueryDurationCacheThreshold() {
+<span class="nc" id="L1947">        return Long.parseLong(this.getOptional(&quot;kylin.query.cache-threshold-duration&quot;, String.valueOf(2000)));</span>
+    }
+
+    public long getQueryScanCountCacheThreshold() {
+<span class="nc" id="L1951">        return Long.parseLong(this.getOptional(&quot;kylin.query.cache-threshold-scan-count&quot;, String.valueOf(10 * 1024)));</span>
+    }
+
+    public long getQueryScanBytesCacheThreshold() {
+<span class="nc" id="L1955">        return Long.parseLong(this.getOptional(&quot;kylin.query.cache-threshold-scan-bytes&quot;, String.valueOf(1024 * 1024)));</span>
+    }
+
+    public boolean isQuerySecureEnabled() {
+<span class="nc" id="L1959">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.security-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isQueryCacheEnabled() {
+<span class="nc" id="L1963">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.cache-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isQueryIgnoreUnknownFunction() {
+<span class="nc" id="L1967">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.ignore-unknown-function&quot;, FALSE));</span>
+    }
+
+    public boolean isMemcachedEnabled() {
+<span class="nc bnc" id="L1971" title="All 2 branches missed.">        return !StringUtil.isEmpty(getMemCachedHosts());</span>
+    }
+
+    public String getMemCachedHosts() {
+<span class="nc" id="L1975">        return getOptional(&quot;kylin.cache.memcached.hosts&quot;, null);</span>
+    }
+
+    public boolean isQuerySegmentCacheEnabled() {
+<span class="nc" id="L1979">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.segment-cache-enabled&quot;, FALSE));</span>
+    }
+
+    public int getQuerySegmentCacheTimeout() {
+<span class="nc" id="L1983">        return Integer.parseInt(getOptional(&quot;kylin.query.segment-cache-timeout&quot;, &quot;2000&quot;));</span>
+    }
+
+    // define the maximum size for each segment in one query that can be cached, in megabytes
+    public int getQuerySegmentCacheMaxSize() {
+<span class="nc" id="L1988">        return Integer.parseInt(getOptional(&quot;kylin.query.segment-cache-max-size&quot;, &quot;200&quot;));</span>
+    }
+
+    public String getQueryAccessController() {
+<span class="nc" id="L1992">        return getOptional(&quot;kylin.query.access-controller&quot;, null);</span>
+    }
+
+    public int getQueryMaxCacheStatementNum() {
+<span class="nc" id="L1996">        return Integer.parseInt(this.getOptional(&quot;kylin.query.statement-cache-max-num&quot;, String.valueOf(50000)));</span>
+    }
+
+    public int getQueryMaxCacheStatementInstancePerKey() {
+<span class="nc" id="L2000">        return Integer.parseInt(this.getOptional(&quot;kylin.query.statement-cache-max-num-per-key&quot;, String.valueOf(50)));</span>
+    }
+
+    public boolean isQueryPreparedStatementCacheEnable() {
+<span class="nc" id="L2004">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.statement-cache-enabled&quot;, TRUE));</span>
+    }
+
+    public int getDimCountDistinctMaxCardinality() {
+<span class="nc" id="L2008">        return Integer.parseInt(getOptional(&quot;kylin.query.max-dimension-count-distinct&quot;, &quot;5000000&quot;));</span>
+    }
+
+    public Map&lt;String, String&gt; getUDFs() {
+<span class="nc" id="L2012">        Map&lt;String, String&gt; udfMap = Maps.newLinkedHashMap();</span>
+<span class="nc" id="L2013">        udfMap.put(&quot;version&quot;, &quot;org.apache.kylin.query.udf.VersionUDF&quot;);</span>
+<span class="nc" id="L2014">        udfMap.put(&quot;concat&quot;, &quot;org.apache.kylin.query.udf.ConcatUDF&quot;);</span>
+<span class="nc" id="L2015">        udfMap.put(&quot;massin&quot;, &quot;org.apache.kylin.query.udf.MassInUDF&quot;);</span>
+<span class="nc" id="L2016">        Map&lt;String, String&gt; overrideUdfMap = getPropertiesByPrefix(&quot;kylin.query.udf.&quot;);</span>
+<span class="nc" id="L2017">        udfMap.putAll(overrideUdfMap);</span>
+<span class="nc" id="L2018">        return udfMap;</span>
+    }
+
+    public int getQueryTimeoutSeconds() {
+<span class="nc" id="L2022">        int time = Integer.parseInt(this.getOptional(&quot;kylin.query.timeout-seconds&quot;, &quot;0&quot;));</span>
+<span class="nc bnc" id="L2023" title="All 4 branches missed.">        if (time != 0 &amp;&amp; time &lt;= 60) {</span>
+<span class="nc" id="L2024">            logger.warn(&quot;query timeout seconds less than 60 sec, set to 60 sec.&quot;);</span>
+<span class="nc" id="L2025">            time = 60;</span>
+        }
+<span class="nc" id="L2027">        return time;</span>
+    }
+
+    public boolean isPushDownEnabled() {
+<span class="nc bnc" id="L2031" title="All 2 branches missed.">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.pushdown.enabled&quot;, FALSE))</span>
+<span class="nc bnc" id="L2032" title="All 2 branches missed.">                || StringUtils.isNotEmpty(getPushDownRunnerClassName());</span>
+    }
+
+    public boolean isPushDownUpdateEnabled() {
+<span class="nc" id="L2036">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.pushdown.update-enabled&quot;, FALSE));</span>
+    }
+
+    public String getSchemaFactory() {
+<span class="nc" id="L2040">        return this.getOptional(&quot;kylin.query.schema-factory&quot;, &quot;org.apache.kylin.query.schema.OLAPSchemaFactory&quot;);</span>
+    }
+
+    public String getPushDownRunnerClassName() {
+<span class="nc" id="L2044">        return getOptional(&quot;kylin.query.pushdown.runner-class-name&quot;, &quot;&quot;);</span>
+    }
+
+    public List&lt;String&gt; getPushDownRunnerIds() {
+<span class="nc" id="L2048">        List&lt;String&gt; ids = Lists.newArrayList();</span>
+<span class="nc" id="L2049">        String idsStr = getOptional(&quot;kylin.query.pushdown.runner.ids&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L2050" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(idsStr)) {</span>
+<span class="nc bnc" id="L2051" title="All 2 branches missed.">            for (String id : idsStr.split(&quot;,&quot;)) {</span>
+<span class="nc" id="L2052">                ids.add(id);</span>
+            }
+        }
+<span class="nc" id="L2055">        return ids;</span>
+    }
+
+    public String[] getPushDownConverterClassNames() {
+<span class="nc" id="L2059">        return getOptionalStringArray(&quot;kylin.query.pushdown.converter-class-names&quot;,</span>
+                new String[]{&quot;org.apache.kylin.source.adhocquery.HivePushDownConverter&quot;});
+    }
+
+    public boolean isPushdownQueryCacheEnabled() {
+<span class="nc" id="L2064">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.pushdown.cache-enabled&quot;, FALSE));</span>
+    }
+
+    public String getJdbcUrl(String id) {
+<span class="nc bnc" id="L2068" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2069">            return getOptional(&quot;kylin.query.pushdown.jdbc.url&quot;, &quot;&quot;);</span>
+        } else {
+<span class="nc" id="L2071">            return getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.url&quot;, &quot;&quot;);</span>
+        }
+    }
+
+    public String getJdbcDriverClass(String id) {
+<span class="nc bnc" id="L2076" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2077">            return getOptional(&quot;kylin.query.pushdown.jdbc.driver&quot;, &quot;&quot;);</span>
+        } else {
+<span class="nc" id="L2079">            return getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.driver&quot;, &quot;&quot;);</span>
+        }
+    }
+
+    public String getJdbcUsername(String id) {
+<span class="nc bnc" id="L2084" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2085">            return getOptional(&quot;kylin.query.pushdown.jdbc.username&quot;, &quot;&quot;);</span>
+        } else {
+<span class="nc" id="L2087">            return getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.username&quot;, &quot;&quot;);</span>
+        }
+    }
+
+    public String getJdbcPassword(String id) {
+<span class="nc bnc" id="L2092" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2093">            return getOptional(&quot;kylin.query.pushdown.jdbc.password&quot;, &quot;&quot;);</span>
+        } else {
+<span class="nc" id="L2095">            return getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.password&quot;, &quot;&quot;);</span>
+        }
+    }
+
+    public int getPoolMaxTotal(String id) {
+<span class="nc bnc" id="L2100" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2101">            return Integer.parseInt(</span>
+<span class="nc" id="L2102">                    this.getOptional(&quot;kylin.query.pushdown.jdbc.pool-max-total&quot;, &quot;8&quot;)</span>
+            );
+        } else {
+<span class="nc" id="L2105">            return Integer.parseInt(</span>
+<span class="nc" id="L2106">                    this.getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.pool-max-total&quot;, &quot;8&quot;)</span>
+            );
+        }
+    }
+
+    public int getPoolMaxIdle(String id) {
+<span class="nc bnc" id="L2112" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2113">            return Integer.parseInt(</span>
+<span class="nc" id="L2114">                    this.getOptional(&quot;kylin.query.pushdown.jdbc.pool-max-idle&quot;, &quot;8&quot;)</span>
+            );
+        } else {
+<span class="nc" id="L2117">            return Integer.parseInt(</span>
+<span class="nc" id="L2118">                    this.getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.pool-max-idle&quot;, &quot;8&quot;)</span>
+            );
+        }
+    }
+
+    public int getPoolMinIdle(String id) {
+<span class="nc bnc" id="L2124" title="All 2 branches missed.">        if (null == id) {</span>
+<span class="nc" id="L2125">            return Integer.parseInt(</span>
+<span class="nc" id="L2126">                    this.getOptional(&quot;kylin.query.pushdown.jdbc.pool-min-idle&quot;, &quot;0&quot;)</span>
+            );
+        } else {
+<span class="nc" id="L2129">            return Integer.parseInt(</span>
+<span class="nc" id="L2130">                    this.getOptional(&quot;kylin.query.pushdown.&quot; + id + &quot;.jdbc.pool-min-idle&quot;, &quot;0&quot;)</span>
+            );
+        }
+    }
+
+    public boolean isTableACLEnabled() {
+<span class="nc" id="L2136">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.security.table-acl-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isEscapeDefaultKeywordEnabled() {
+<span class="nc" id="L2140">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.escape-default-keyword&quot;, FALSE));</span>
+    }
+
+    public String getQueryRealizationFilter() {
+<span class="nc" id="L2144">        return getOptional(&quot;kylin.query.realization-filter&quot;, null);</span>
+    }
+
+    public String getSQLResponseSignatureClass() {
+<span class="nc" id="L2148">        return this.getOptional(&quot;kylin.query.signature-class&quot;,</span>
+                &quot;org.apache.kylin.rest.signature.FactTableRealizationSetCalculator&quot;);
+    }
+
+    public boolean isQueryCacheSignatureEnabled() {
+<span class="nc" id="L2153">        return Boolean.parseBoolean(</span>
+<span class="nc" id="L2154">                this.getOptional(&quot;kylin.query.cache-signature-enabled&quot;, String.valueOf(isMemcachedEnabled())));</span>
+    }
+
+    public int getFlatFilterMaxChildrenSize() {
+<span class="nc" id="L2158">        return Integer.parseInt(this.getOptional(&quot;kylin.query.flat-filter-max-children&quot;, &quot;500000&quot;));</span>
+    }
+
+    // ============================================================================
+    // SERVER
+    // ============================================================================
+
+    public String getServerMode() {
+<span class="fc" id="L2166">        return this.getOptional(&quot;kylin.server.mode&quot;, &quot;all&quot;);</span>
+    }
+
+    public String[] getRestServers() {
+<span class="nc" id="L2170">        return getOptionalStringArray(&quot;kylin.server.cluster-servers&quot;, new String[0]);</span>
+    }
+
+    public String getServerRestAddress() {
+<span class="fc" id="L2174">        return getOptional(&quot;kylin.server.host-address&quot;, &quot;localhost:7070&quot;);</span>
+    }
+
+    public boolean getServerSelfDiscoveryEnabled() {
+<span class="nc" id="L2178">        return Boolean.parseBoolean(getOptional(&quot;kylin.server.self-discovery-enabled&quot;, FALSE));</span>
+    }
+
+    public String getClusterName() {
+<span class="fc" id="L2182">        String key = &quot;kylin.server.cluster-name&quot;;</span>
+<span class="fc" id="L2183">        String clusterName = this.getOptional(key, getMetadataUrlPrefix());</span>
+<span class="fc" id="L2184">        setProperty(key, clusterName);</span>
+<span class="fc" id="L2185">        return clusterName;</span>
+    }
+
+    public String getInitTasks() {
+<span class="nc" id="L2189">        return getOptional(&quot;kylin.server.init-tasks&quot;);</span>
+    }
+
+    public int getWorkersPerServer() {
+        //for sequence sql use
+<span class="nc" id="L2194">        return Integer.parseInt(getOptional(&quot;kylin.server.sequence-sql.workers-per-server&quot;, &quot;1&quot;));</span>
+    }
+
+    public long getSequenceExpireTime() {
+<span class="nc" id="L2198">        return Long.parseLong(this.getOptional(&quot;kylin.server.sequence-sql.expire-time&quot;, &quot;86400000&quot;));//default a day</span>
+    }
+
+    public boolean getQueryMetricsEnabled() {
+<span class="nc" id="L2202">        return Boolean.parseBoolean(getOptional(&quot;kylin.server.query-metrics-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean getQueryMetrics2Enabled() {
+<span class="nc" id="L2206">        return Boolean.parseBoolean(getOptional(&quot;kylin.server.query-metrics2-enabled&quot;, FALSE));</span>
+    }
+
+    public int[] getQueryMetricsPercentilesIntervals() {
+<span class="nc" id="L2210">        String[] dft = {&quot;60&quot;, &quot;300&quot;, &quot;3600&quot;};</span>
+<span class="nc" id="L2211">        return getOptionalIntArray(&quot;kylin.server.query-metrics-percentiles-intervals&quot;, dft);</span>
+    }
+
+    public int getServerUserCacheExpireSeconds() {
+<span class="nc" id="L2215">        return Integer.parseInt(this.getOptional(&quot;kylin.server.auth-user-cache.expire-seconds&quot;, &quot;300&quot;));</span>
+    }
+
+    public int getServerUserCacheMaxEntries() {
+<span class="nc" id="L2219">        return Integer.parseInt(this.getOptional(&quot;kylin.server.auth-user-cache.max-entries&quot;, &quot;100&quot;));</span>
+    }
+
+    public String getSecurityProfile() {
+<span class="nc" id="L2223">        return getOptional(&quot;kylin.security.profile&quot;, &quot;testing&quot;);</span>
+    }
+
+    public String getExternalAclProvider() {
+<span class="nc" id="L2227">        return getOptional(&quot;kylin.server.external-acl-provider&quot;, &quot;&quot;);</span>
+    }
+
+    public String getLDAPUserSearchBase() {
+<span class="nc" id="L2231">        return getOptional(&quot;kylin.security.ldap.user-search-base&quot;, &quot;&quot;);</span>
+    }
+
+    public String getLDAPGroupSearchBase() {
+<span class="nc" id="L2235">        return getOptional(&quot;kylin.security.ldap.user-group-search-base&quot;, &quot;&quot;);</span>
+    }
+
+    public String getLDAPAdminRole() {
+<span class="nc" id="L2239">        return getOptional(&quot;kylin.security.acl.admin-role&quot;, &quot;&quot;);</span>
+    }
+
+    public boolean createAdminWhenAbsent() {
+<span class="nc" id="L2243">        return Boolean.parseBoolean(getOptional(&quot;kylin.security.create-admin-when-absent&quot;, FALSE));</span>
+    }
+
+    // ============================================================================
+    // WEB
+    // ============================================================================
+
+    public String getTimeZone() {
+<span class="nc" id="L2251">        String timezone = getOptional(&quot;kylin.web.timezone&quot;);</span>
+<span class="nc bnc" id="L2252" title="All 2 branches missed.">        if (StringUtils.isBlank(timezone)) {</span>
+<span class="nc" id="L2253">            timezone = TimeZone.getDefault().getID();</span>
+        }
+<span class="nc" id="L2255">        return timezone;</span>
+    }
+
+    public boolean isWebCrossDomainEnabled() {
+<span class="nc" id="L2259">        return Boolean.parseBoolean(getOptional(&quot;kylin.web.cross-domain-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isAdminUserExportAllowed() {
+<span class="nc" id="L2263">        return Boolean.parseBoolean(getOptional(&quot;kylin.web.export-allow-admin&quot;, TRUE));</span>
+    }
+
+    public boolean isNoneAdminUserExportAllowed() {
+<span class="nc" id="L2267">        return Boolean.parseBoolean(getOptional(&quot;kylin.web.export-allow-other&quot;, TRUE));</span>
+    }
+
+    public boolean isWebDashboardEnabled() {
+<span class="nc" id="L2271">        return Boolean.parseBoolean(getOptional(&quot;kylin.web.dashboard-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isWebConfigEnabled() {
+<span class="nc" id="L2275">        return Boolean.parseBoolean(getOptional(&quot;kylin.web.set-config-enable&quot;, FALSE));</span>
+    }
+
+    /**
+     * @see #isWebConfigEnabled
+     */
+    public String getPropertiesWhiteListForModification() {
+<span class="nc" id="L2282">        return getOptional(&quot;kylin.web.properties.whitelist&quot;, &quot;kylin.query.cache-enabled&quot;);</span>
+    }
+
+    public String getPropertiesWhiteList() {
+<span class="nc" id="L2286">        return getOptional(&quot;kylin.web.properties.whitelist&quot;, &quot;kylin.web.timezone,kylin.query.cache-enabled,kylin.env,&quot;</span>
+                + &quot;kylin.web.hive-limit,kylin.storage.default,&quot;
+                + &quot;kylin.engine.default,kylin.web.link-hadoop,kylin.web.link-diagnostic,&quot;
+                + &quot;kylin.web.contact-mail,kylin.web.help.length,kylin.web.help.0,kylin.web.help.1,kylin.web.help.2,&quot;
+                + &quot;kylin.web.help.3,&quot;
+                + &quot;kylin.web.help,kylin.web.hide-measures,kylin.web.link-streaming-guide,kylin.server.external-acl-provider,&quot;
+                + &quot;kylin.security.profile,kylin.security.additional-profiles,&quot;
+                + &quot;kylin.htrace.show-gui-trace-toggle,kylin.web.export-allow-admin,kylin.web.export-allow-other,&quot;
+                + &quot;kylin.cube.cubeplanner.enabled,kylin.web.dashboard-enabled,kylin.tool.auto-migrate-cube.enabled,&quot;
+                + &quot;kylin.job.scheduler.default,kylin.web.default-time-filter&quot;);
+    }
+
+    // ============================================================================
+    // RESTCLIENT
+    // ============================================================================
+
+    public int getRestClientDefaultMaxPerRoute() {
+<span class="fc" id="L2303">        return Integer.parseInt(this.getOptional(&quot;kylin.restclient.connection.default-max-per-route&quot;, &quot;20&quot;));</span>
+    }
+
+    public int getRestClientMaxTotal() {
+<span class="fc" id="L2307">        return Integer.parseInt(this.getOptional(&quot;kylin.restclient.connection.max-total&quot;, &quot;200&quot;));</span>
+    }
+
+    // ============================================================================
+    // Metrics
+    // ============================================================================
+
+    public String getCoadhaleMetricsReportClassesNames() {
+<span class="nc" id="L2315">        return getOptional(&quot;kylin.metrics.reporter-classes&quot;,</span>
+                &quot;org.apache.kylin.common.metrics.metrics2.JsonFileMetricsReporter,org.apache.kylin.common.metrics.metrics2.JmxMetricsReporter&quot;);
+    }
+
+    public String getMetricsFileLocation() {
+<span class="nc" id="L2320">        return getOptional(&quot;kylin.metrics.file-location&quot;, &quot;/tmp/report.json&quot;);</span>
+    }
+
+    public Long getMetricsReporterFrequency() {
+<span class="nc" id="L2324">        return Long.parseLong(getOptional(&quot;kylin.metrics.file-frequency&quot;, &quot;5000&quot;));</span>
+    }
+
+    public String getPerfLoggerClassName() {
+<span class="nc" id="L2328">        return getOptional(&quot;kylin.metrics.perflogger-class&quot;, &quot;org.apache.kylin.common.metrics.perflog.PerfLogger&quot;);</span>
+    }
+
+    public boolean isShowingGuiTraceToggle() {
+<span class="nc" id="L2332">        return Boolean.parseBoolean(getOptional(&quot;kylin.htrace.show-gui-trace-toggle&quot;, FALSE));</span>
+    }
+
+    public boolean isHtraceTracingEveryQuery() {
+<span class="nc" id="L2336">        return Boolean.parseBoolean(getOptional(&quot;kylin.htrace.trace-every-query&quot;, FALSE));</span>
+    }
+
+    public String getKylinMetricsEventTimeZone() {
+<span class="nc" id="L2340">        return getOptional(&quot;kylin.metrics.event-time-zone&quot;, getTimeZone()).toUpperCase(Locale.ROOT);</span>
+    }
+    
+    public boolean isKylinMetricsMonitorEnabled() {
+<span class="nc" id="L2344">        return Boolean.parseBoolean(getOptional(&quot;kylin.metrics.monitor-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isKylinMetricsReporterForQueryEnabled() {
+<span class="nc" id="L2348">        return Boolean.parseBoolean(getOptional(&quot;kylin.metrics.reporter-query-enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isKylinMetricsReporterForJobEnabled() {
+<span class="nc" id="L2352">        return Boolean.parseBoolean(getOptional(&quot;kylin.metrics.reporter-job-enabled&quot;, FALSE));</span>
+    }
+
+    public String getKylinMetricsPrefix() {
+<span class="nc" id="L2356">        return getOptional(&quot;kylin.metrics.prefix&quot;, &quot;KYLIN&quot;).toUpperCase(Locale.ROOT);</span>
+    }
+
+    public String getKylinMetricsActiveReservoirDefaultClass() {
+<span class="nc" id="L2360">        return getOptional(&quot;kylin.metrics.active-reservoir-default-class&quot;,</span>
+                &quot;org.apache.kylin.metrics.lib.impl.StubReservoir&quot;);
+    }
+
+    public String getKylinSystemCubeSinkDefaultClass() {
+<span class="nc" id="L2365">        return getOptional(&quot;kylin.metrics.system-cube-sink-default-class&quot;,</span>
+                &quot;org.apache.kylin.metrics.lib.impl.hive.HiveSink&quot;);
+    }
+
+    public String getKylinMetricsSubjectSuffix() {
+<span class="nc" id="L2370">        return getOptional(&quot;kylin.metrics.subject-suffix&quot;, getDeployEnv());</span>
+    }
+
+    public String getKylinMetricsSubjectJob() {
+<span class="nc" id="L2374">        return getOptional(&quot;kylin.metrics.subject-job&quot;, &quot;METRICS_JOB&quot;) + &quot;_&quot; + getKylinMetricsSubjectSuffix();</span>
+    }
+
+    public String getKylinMetricsSubjectJobException() {
+<span class="nc" id="L2378">        return getOptional(&quot;kylin.metrics.subject-job-exception&quot;, &quot;METRICS_JOB_EXCEPTION&quot;) + &quot;_&quot;</span>
+<span class="nc" id="L2379">                + getKylinMetricsSubjectSuffix();</span>
+    }
+
+    public String getKylinMetricsSubjectQueryExecution() {
+<span class="nc" id="L2383">        return getOptional(&quot;kylin.metrics.subject-query-execution&quot;, &quot;METRICS_QUERY_EXECUTION&quot;) + &quot;_&quot; + getKylinMetricsSubjectSuffix();</span>
+    }
+
+    public String getKylinMetricsSubjectQuerySparkJob() {
+<span class="nc" id="L2387">        return getOptional(&quot;kylin.metrics.subject-query-spark-job&quot;, &quot;METRICS_QUERY_SPARK_JOB&quot;) + &quot;_&quot;</span>
+<span class="nc" id="L2388">                + getKylinMetricsSubjectSuffix();</span>
+    }
+
+    public String getKylinMetricsSubjectQuerySparkStage() {
+<span class="nc" id="L2392">        return getOptional(&quot;kylin.metrics.subject-query-spark-stage&quot;, &quot;METRICS_QUERY_SPARK_STAGE&quot;) + &quot;_&quot;</span>
+<span class="nc" id="L2393">                + getKylinMetricsSubjectSuffix();</span>
+    }
+
+    public int getKylinMetricsCacheExpireSeconds() {
+<span class="nc" id="L2397">        return Integer.parseInt(this.getOptional(&quot;kylin.metrics.query-cache.expire-seconds&quot;, &quot;300&quot;));</span>
+    }
+
+    public int getKylinMetricsCacheMaxEntries() {
+<span class="nc" id="L2401">        return Integer.parseInt(this.getOptional(&quot;kylin.metrics.query-cache.max-entries&quot;, &quot;10000&quot;));</span>
+    }
+
+    public Map&lt;String, String&gt; getKylinMetricsConf() {
+<span class="nc" id="L2405">        return getPropertiesByPrefix(&quot;kylin.metrics.&quot;);</span>
+    }
+
+    public int printSampleEventRatio() {
+<span class="nc" id="L2409">        String val = getOptional(&quot;kylin.metrics.kafka-sample-ratio&quot;, &quot;10000&quot;);</span>
+<span class="nc" id="L2410">        return Integer.parseInt(val);</span>
+    }
+
+    // ============================================================================
+    // tool
+    // ============================================================================
+    public boolean isAllowAutoMigrateCube() {
+<span class="nc" id="L2417">        return Boolean.parseBoolean(getOptional(&quot;kylin.tool.auto-migrate-cube.enabled&quot;, FALSE));</span>
+    }
+
+    public boolean isAutoMigrateCubeCopyAcl() {
+<span class="nc" id="L2421">        return Boolean.parseBoolean(getOptional(&quot;kylin.tool.auto-migrate-cube.copy-acl&quot;, TRUE));</span>
+    }
+
+    public boolean isAutoMigrateCubePurge() {
+<span class="nc" id="L2425">        return Boolean.parseBoolean(getOptional(&quot;kylin.tool.auto-migrate-cube.purge-src-cube&quot;, TRUE));</span>
+    }
+
+    public String getAutoMigrateCubeSrcConfig() {
+<span class="nc" id="L2429">        return getOptional(&quot;kylin.tool.auto-migrate-cube.src-config&quot;, &quot;&quot;);</span>
+    }
+
+    public String getAutoMigrateCubeDestConfig() {
+<span class="nc" id="L2433">        return getOptional(&quot;kylin.tool.auto-migrate-cube.dest-config&quot;, &quot;&quot;);</span>
+    }
+
+    // ============================================================================
+    // Jdbc metadata resource store
+    // ============================================================================
+
+    public String getMetadataDialect() {
+<span class="nc" id="L2441">        return getOptional(&quot;kylin.metadata.jdbc.dialect&quot;, &quot;mysql&quot;);</span>
+    }
+
+    public boolean isJsonAlwaysSmallCell() {
+<span class="nc" id="L2445">        return Boolean.parseBoolean(getOptional(&quot;kylin.metadata.jdbc.json-always-small-cell&quot;, TRUE));</span>
+    }
+
+    public int getSmallCellMetadataWarningThreshold() {
+<span class="nc" id="L2449">        return Integer.parseInt(</span>
+<span class="nc" id="L2450">                getOptional(&quot;kylin.metadata.jdbc.small-cell-meta-size-warning-threshold&quot;, String.valueOf(100 &lt;&lt; 20))); //100mb</span>
+    }
+
+    public int getSmallCellMetadataErrorThreshold() {
+<span class="nc" id="L2454">        return Integer.parseInt(</span>
+<span class="nc" id="L2455">                getOptional(&quot;kylin.metadata.jdbc.small-cell-meta-size-error-threshold&quot;, String.valueOf(1 &lt;&lt; 30))); // 1gb</span>
+    }
+
+    public int getJdbcResourceStoreMaxCellSize() {
+<span class="nc" id="L2459">        return Integer.parseInt(getOptional(&quot;kylin.metadata.jdbc.max-cell-size&quot;, &quot;1048576&quot;)); // 1mb</span>
+    }
+
+    public String getJdbcSourceAdaptor() {
+<span class="nc" id="L2463">        return getOptional(&quot;kylin.source.jdbc.adaptor&quot;);</span>
+    }
+
+    public boolean isLimitPushDownEnabled() {
+<span class="nc" id="L2467">        return Boolean.parseBoolean(getOptional(&quot;kylin.storage.limit-push-down-enabled&quot;, TRUE));</span>
+    }
+
+    // ============================================================================
+    // Realtime streaming
+    // ============================================================================
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingStoreClass() {
+<span class="nc" id="L2476">        return getOptional(&quot;kylin.stream.store.class&quot;,</span>
+                &quot;org.apache.kylin.stream.core.storage.columnar.ColumnarSegmentStore&quot;);
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingBasicCuboidJobDFSBlockSize() {
+<span class="nc" id="L2482">        return getOptional(&quot;kylin.stream.job.dfs.block.size&quot;, String.valueOf(16 * 1024 * 1024));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingIndexPath() {
+<span class="nc" id="L2487">        return getOptional(&quot;kylin.stream.index.path&quot;, &quot;stream_index&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingCubeConsumerTasksNum() {
+<span class="nc" id="L2492">        return Integer.parseInt(getOptional(&quot;kylin.stream.cube-num-of-consumer-tasks&quot;, &quot;3&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingCubeWindowInSecs() {
+<span class="nc" id="L2497">        return Integer.parseInt(getOptional(&quot;kylin.stream.cube.window&quot;, &quot;3600&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingCubeDurationInSecs() {
+<span class="nc" id="L2502">        return Integer.parseInt(getOptional(&quot;kylin.stream.cube.duration&quot;, &quot;7200&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingCubeMaxDurationInSecs() {
+<span class="nc" id="L2507">        return Integer.parseInt(getOptional(&quot;kylin.stream.cube.duration.max&quot;, &quot;43200&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingCheckPointFileMaxNum() {
+<span class="nc" id="L2512">        return Integer.parseInt(getOptional(&quot;kylin.stream.checkpoint.file.max.num&quot;, &quot;5&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingCheckPointIntervalsInSecs() {
+<span class="nc" id="L2517">        return Integer.parseInt(getOptional(&quot;kylin.stream.index.checkpoint.intervals&quot;, &quot;300&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingIndexMaxRows() {
+<span class="nc" id="L2522">        return Integer.parseInt(getOptional(&quot;kylin.stream.index.maxrows&quot;, &quot;50000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingMaxImmutableSegments() {
+<span class="nc" id="L2527">        return Integer.parseInt(getOptional(&quot;kylin.stream.immutable.segments.max.num&quot;, &quot;100&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isStreamingConsumeFromLatestOffsets() {
+<span class="nc" id="L2532">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.consume.offsets.latest&quot;, &quot;true&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingNode() {
+<span class="nc" id="L2537">        return getOptional(&quot;kylin.stream.node&quot;, null);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public Map&lt;String, String&gt; getStreamingNodeProperties() {
+<span class="nc" id="L2542">        return getPropertiesByPrefix(&quot;kylin.stream.node&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingMetadataStoreType() {
+<span class="nc" id="L2547">        return getOptional(&quot;kylin.stream.metadata.store.type&quot;, &quot;zk&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingSegmentRetentionPolicy() {
+<span class="nc" id="L2552">        return getOptional(&quot;kylin.stream.segment.retention.policy&quot;, &quot;fullBuild&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingAssigner() {
+<span class="nc" id="L2557">        return getOptional(&quot;kylin.stream.assigner&quot;, &quot;DefaultAssigner&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getCoordinatorHttpClientTimeout() {
+<span class="nc" id="L2562">        return Integer.parseInt(getOptional(&quot;kylin.stream.coordinator.client.timeout.millsecond&quot;, &quot;5000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getReceiverHttpClientTimeout() {
+<span class="nc" id="L2567">        return Integer.parseInt(getOptional(&quot;kylin.stream.receiver.client.timeout.millsecond&quot;, &quot;5000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingReceiverHttpMaxThreads() {
+<span class="nc" id="L2572">        return Integer.parseInt(getOptional(&quot;kylin.stream.receiver.http.max.threads&quot;, &quot;200&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingReceiverHttpMinThreads() {
+<span class="nc" id="L2577">        return Integer.parseInt(getOptional(&quot;kylin.stream.receiver.http.min.threads&quot;, &quot;10&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingReceiverQueryCoreThreads() {
+<span class="nc" id="L2582">        return Integer.parseInt(getOptional(&quot;kylin.stream.receiver.query-core-threads&quot;, &quot;50&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingReceiverQueryMaxThreads() {
+<span class="nc" id="L2587">        return Integer.parseInt(getOptional(&quot;kylin.stream.receiver.query-max-threads&quot;, &quot;200&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingReceiverUseThreadsPerQuery() {
+<span class="nc" id="L2592">        return Integer.parseInt(getOptional(&quot;kylin.stream.receiver.use-threads-per-query&quot;, &quot;8&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingRPCHttpConnTimeout() {
+<span class="nc" id="L2597">        return Integer.parseInt(getOptional(&quot;kylin.stream.rpc.http.connect.timeout&quot;, &quot;10000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingRPCHttpReadTimeout() {
+<span class="nc" id="L2602">        return Integer.parseInt(getOptional(&quot;kylin.stream.rpc.http.read.timeout&quot;, &quot;60000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isStreamingBuildAdditionalCuboids() {
+<span class="nc" id="L2607">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.build.additional.cuboids&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public Map&lt;String, String&gt; getStreamingSegmentRetentionPolicyProperties(String policyName) {
+<span class="nc" id="L2612">        return getPropertiesByPrefix(&quot;kylin.stream.segment.retention.policy.&quot; + policyName + &quot;.&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingMaxFragmentsInSegment() {
+<span class="nc" id="L2617">        return Integer.parseInt(getOptional(&quot;kylin.stream.segment-max-fragments&quot;, &quot;50&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingMinFragmentsInSegment() {
+<span class="nc" id="L2622">        return Integer.parseInt(getOptional(&quot;kylin.stream.segment-min-fragments&quot;, &quot;15&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public int getStreamingMaxFragmentSizeInMb() {
+<span class="nc" id="L2627">        return Integer.parseInt(getOptional(&quot;kylin.stream.max-fragment-size-mb&quot;, &quot;300&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isStreamingFragmentsAutoMergeEnabled() {
+<span class="nc" id="L2632">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.fragments-auto-merge-enable&quot;, &quot;true&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isStreamingConcurrentScanEnabled() {
+<span class="nc" id="L2637">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.segment.concurrent.scan&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isStreamingStandAloneMode() {
+<span class="nc" id="L2642">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.stand-alone.mode&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isNewCoordinatorEnabled() {
+<span class="nc" id="L2647">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.new.coordinator-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getLocalStorageImpl() {
+<span class="nc" id="L2652">        return getOptional(&quot;kylin.stream.settled.storage&quot;, null);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamMetrics() {
+<span class="nc" id="L2657">        return getOptional(&quot;kylin.stream.metrics.option&quot;, &quot;&quot;);</span>
+    }
+
+    /**
+     * whether to print encode integer value for count distinct string value, only for debug/test purpose
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isPrintRealtimeDictEnabled() {
+<span class="nc" id="L2665">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.print-realtime-dict-enabled&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public long getStreamMetricsInterval() {
+<span class="nc" id="L2670">        return Long.parseLong(getOptional(&quot;kylin.stream.metrics.interval&quot;, &quot;5&quot;));</span>
+    }
+
+    /**
+     * whether realtime query should add timezone offset by kylin's web-timezone, please refer to KYLIN-4010 for detail
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getStreamingDerivedTimeTimezone() {
+<span class="nc" id="L2678">        return (getOptional(&quot;kylin.stream.event.timezone&quot;, &quot;&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public boolean isAutoResubmitDiscardJob() {
+<span class="nc" id="L2683">        return Boolean.parseBoolean(getOptional(&quot;kylin.stream.auto-resubmit-after-discard-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public String getHiveDatabaseLambdaCube() {
+<span class="nc" id="L2688">        return this.getOptional(&quot;kylin.stream.hive.database-for-lambda-cube&quot;, DEFAULT);</span>
+    }
+
+    // ============================================================================
+    // Health Check CLI
+    // ============================================================================
+
+    public int getWarningSegmentNum() {
+<span class="nc" id="L2696">        return Integer.parseInt(getOptional(&quot;kylin.tool.health-check.warning-segment-num&quot;, &quot;-1&quot;));</span>
+    }
+
+    public int getWarningCubeExpansionRate() {
+<span class="nc" id="L2700">        return Integer.parseInt(getOptional(&quot;kylin.tool.health-check.warning-cube-expansion-rate&quot;, &quot;5&quot;));</span>
+    }
+
+    public int getExpansionCheckMinCubeSizeInGb() {
+<span class="nc" id="L2704">        return Integer.parseInt(getOptional(&quot;kylin.tool.health-check.expansion-check.min-cube-size-gb&quot;, &quot;500&quot;));</span>
+    }
+
+    public int getStaleCubeThresholdInDays() {
+<span class="nc" id="L2708">        return Integer.parseInt(getOptional(&quot;kylin.tool.health-check.stale-cube-threshold-days&quot;, &quot;100&quot;));</span>
+    }
+
+    public int getStaleJobThresholdInDays() {
+<span class="nc" id="L2712">        return Integer.parseInt(getOptional(&quot;kylin.tool.health-check.stale-job-threshold-days&quot;, &quot;30&quot;));</span>
+    }
+
+
+    // ============================================================================
+    // Kylin 4.X Build Engine
+    // ============================================================================
+
+    public String getKylinParquetJobJarPath() {
+<span class="nc" id="L2721">        final String jobJar = getOptional(KYLIN_ENGINE_PARQUET_JOB_JAR);</span>
+<span class="nc bnc" id="L2722" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(jobJar)) {</span>
+<span class="nc" id="L2723">            return jobJar;</span>
+        }
+<span class="nc" id="L2725">        String kylinHome = getKylinHome();</span>
+<span class="nc bnc" id="L2726" title="All 2 branches missed.">        if (StringUtils.isEmpty(kylinHome)) {</span>
+<span class="nc" id="L2727">            return &quot;&quot;;</span>
+        }
+<span class="nc" id="L2729">        return getFileName(kylinHome + File.separator + &quot;lib&quot;, PARQUET_JOB_JAR_NAME_PATTERN);</span>
+    }
+
+    /**
+     * Use https://github.com/spektom/spark-flamegraph for Spark profile
+     */
+    @ConfigTag(ConfigTag.Tag.DEBUG_HACK)
+    public String getSparkSubmitCmd() {
+<span class="nc" id="L2737">        return getOptional(&quot;kylin.engine.spark-cmd&quot;, null);</span>
+    }
+
+    public void overrideKylinParquetJobJarPath(String path) {
+<span class="nc" id="L2741">        logger.info(&quot;override {} to {}&quot;, KYLIN_ENGINE_PARQUET_JOB_JAR, path);</span>
+<span class="nc" id="L2742">        System.setProperty(KYLIN_ENGINE_PARQUET_JOB_JAR, path);</span>
+<span class="nc" id="L2743">    }</span>
+
+    @ConfigTag(ConfigTag.Tag.DEBUG_HACK)
+    public String getSparkBuildClassName() {
+<span class="nc" id="L2747">        return getOptional(&quot;kylin.engine.spark.build-class-name&quot;, &quot;org.apache.kylin.engine.spark.job.CubeBuildJob&quot;);</span>
+    }
+
+    public StorageURL getJobTmpMetaStoreUrl(String project, String jobId) {
+<span class="nc" id="L2751">        Map&lt;String, String&gt; params = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L2752">        params.put(&quot;path&quot;, getJobTmpDir(project) + getNestedPath(jobId) + &quot;meta&quot;);</span>
+<span class="nc" id="L2753">        return new StorageURL(getMetadataUrlPrefix(), HDFSResourceStore.HDFS_SCHEME, params);</span>
+    }
+
+    public Path getJobTmpShareDir(String project, String jobId) {
+<span class="nc" id="L2757">        String path = getJobTmpDir(project) + jobId + &quot;/share/&quot;;</span>
+<span class="nc" id="L2758">        return new Path(path);</span>
+    }
+
+    /**
+     * a_b =&gt; a/b/
+     */
+    private String getNestedPath(String id) {
+<span class="nc" id="L2765">        String[] ids = id.split(&quot;_&quot;);</span>
+<span class="nc" id="L2766">        StringBuilder builder = new StringBuilder();</span>
+<span class="nc bnc" id="L2767" title="All 2 branches missed.">        for (String subId : ids) {</span>
+<span class="nc" id="L2768">            builder.append(subId).append(&quot;/&quot;);</span>
+        }
+<span class="nc" id="L2770">        return builder.toString();</span>
+    }
+
+    public String getJobTmpDir(String project) {
+<span class="nc" id="L2774">        return getHdfsWorkingDirectory() + project + &quot;/job_tmp/&quot;;</span>
+    }
+
+    public String getSparkLogDir(String project) {
+<span class="nc" id="L2778">        return getHdfsWorkingDirectory() + project + &quot;/spark_logs/driver/&quot;;</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public int getPersistFlatTableThreshold() {
+<span class="nc" id="L2783">        return Integer.parseInt(getOptional(&quot;kylin.engine.persist-flattable-threshold&quot;, &quot;1&quot;));</span>
+    }
+
+    public Path getJobTmpFlatTableDir(String project, String jobId) {
+<span class="nc" id="L2787">        String path = getJobTmpDir(project) + jobId + &quot;/flat_table/&quot;;</span>
+<span class="nc" id="L2788">        return new Path(path);</span>
+    }
+
+    public boolean isSnapshotParallelBuildEnabled() {
+<span class="nc" id="L2792">        return Boolean.parseBoolean(getOptional(&quot;kylin.snapshot.parallel-build-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    public boolean isUTEnv() {
+<span class="nc" id="L2796">        return &quot;UT&quot;.equals(getDeployEnv());</span>
+    }
+
+    public boolean isLocalEnv() {
+<span class="nc" id="L2800">        return &quot;LOCAL&quot;.equals(getDeployEnv());</span>
+    }
+
+    public int snapshotParallelBuildTimeoutSeconds() {
+<span class="nc" id="L2804">        return Integer.parseInt(getOptional(&quot;kylin.snapshot.parallel-build-timeout-seconds&quot;, &quot;3600&quot;));</span>
+    }
+
+    public String getStorageProvider() {
+<span class="nc" id="L2808">        return getOptional(&quot;kylin.storage.provider&quot;, &quot;org.apache.kylin.common.storage.DefaultStorageProvider&quot;);</span>
+    }
+
+    /**
+     * parquet shard size, in MB
+     */
+    public int getParquetStorageShardSizeMB() {
+<span class="nc" id="L2815">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.shard-size-mb&quot;, &quot;128&quot;));</span>
+    }
+
+    public long getParquetStorageShardSizeRowCount() {
+<span class="nc" id="L2819">        return Long.valueOf(getOptional(&quot;kylin.storage.columnar.shard-rowcount&quot;, &quot;2500000&quot;));</span>
+    }
+
+    public long getParquetStorageCountDistinctShardSizeRowCount() {
+<span class="nc" id="L2823">        return Long.valueOf(getOptional(&quot;kylin.storage.columnar.shard-countdistinct-rowcount&quot;, &quot;1000000&quot;));</span>
+    }
+
+    public int getParquetStorageRepartitionThresholdSize() {
+<span class="nc" id="L2827">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.repartition-threshold-size-mb&quot;, &quot;128&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public int getParquetStorageShardMin() {
+<span class="nc" id="L2832">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.shard-min&quot;, &quot;1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public int getParquetStorageShardMax() {
+<span class="nc" id="L2837">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.shard-max&quot;, &quot;1000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public int getParquetStorageBlockSize() {
+<span class="nc" id="L2842">        int defaultBlockSize = 5 * getParquetStorageShardSizeMB() * 1024 * 1024; //default (5 * shard_size)</span>
+<span class="nc bnc" id="L2843" title="All 2 branches missed.">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.hdfs-blocksize-bytes&quot;,</span>
+<span class="nc" id="L2844">                String.valueOf(defaultBlockSize &lt; 0 ? Integer.MAX_VALUE : defaultBlockSize)));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public int getParquetSpliceShardExpandFactor() {
+<span class="nc" id="L2849">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.shard-expand-factor&quot;, &quot;10&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public int getParquetDfsReplication() {
+<span class="nc" id="L2854">        return Integer.valueOf(getOptional(&quot;kylin.storage.columnar.dfs-replication&quot;, &quot;3&quot;));</span>
+    }
+
+    /**
+     * Read-Write separation deployment for Kylin 4
+     * Please check https://cwiki.apache.org/confluence/display/KYLIN/Read-Write+Separation+Deployment+for+Kylin+4.0
+     */
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public String getBuildConf() {
+<span class="nc" id="L2863">        return getOptional(&quot;kylin.engine.submit-hadoop-conf-dir&quot;, &quot;&quot;);</span>
+    }
+
+    public boolean isJobLogPrintEnabled() {
+<span class="nc" id="L2867">        return Boolean.parseBoolean(getOptional(&quot;kylin.job.log-print-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEBUG_HACK)
+    public String getClusterInfoFetcherClassName() {
+<span class="nc" id="L2872">        return getOptional(&quot;kylin.engine.spark.cluster-info-fetcher-class-name&quot;,</span>
+                &quot;org.apache.kylin.cluster.YarnInfoFetcher&quot;);
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEBUG_HACK)
+    public String getSparkMergeClassName() {
+<span class="nc" id="L2878">        return getOptional(&quot;kylin.engine.spark.merge-class-name&quot;, &quot;org.apache.kylin.engine.spark.job.CubeMergeJob&quot;);</span>
+    }
+
+    public int getSparkEngineMaxRetryTime() {
+<span class="nc" id="L2882">        return Integer.parseInt(getOptional(&quot;kylin.engine.max-retry-time&quot;, &quot;3&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getSnapshotShardSizeMB() {
+<span class="nc" id="L2887">        return Integer.parseInt(getOptional(&quot;kylin.snapshot.shard-size-mb&quot;, &quot;128&quot;));</span>
+    }
+
+    /**
+     * If we should calculate cuboid statistics for each segment, which is needed for cube planner phase two
+     */
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public boolean isSegmentStatisticsEnabled() {
+<span class="nc" id="L2895">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.engine.segment-statistics-enabled&quot;, &quot;false&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public String getParentDatasetStorageLevel() {
+<span class="nc" id="L2900">        return getOptional(&quot;kylin.engine.spark.cache-parent-dataset-storage-level&quot;, &quot;NONE&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getMaxParentDatasetPersistCount() {
+<span class="nc" id="L2905">        return Integer.parseInt(getOptional(&quot;kylin.engine.spark.cache-parent-dataset-count&quot;, &quot;1&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public boolean isBuildBaseCuboid() {
+<span class="nc" id="L2910">        return Boolean.valueOf(getOptional(&quot;kylin.engine.build-base-cuboid-enabled&quot;, TRUE));</span>
+    }
+
+    public boolean isTrackingUrlIpAddressEnabled() {
+<span class="nc" id="L2914">        return Boolean.valueOf(this.getOptional(&quot;kylin.job.tracking-url-ip-address-enabled&quot;, TRUE));</span>
+    }
+
+    // ============================================================================
+    // Kylin 4.X Spark resources automatic adjustment strategy configuration
+    // ============================================================================
+
+    /**
+     * &lt;pre&gt;
+     * For a CubeBuildJob and CubeMergeJob, it is important to allocate enough and proper resources(cpu/memory), including following config entries mainly:
+     *   - spark.driver.memory
+     *   - spark.executor.memory
+     *   - spark.executor.cores
+     *   - spark.executor.memoryOverhead
+     *   - spark.executor.instances
+     *   - spark.sql.shuffle.partitions
+     *
+     *  When `kylin.spark-conf.auto.prior` is set to true, Kylin will try to adjust above config entries according to:
+     *    - Count of cuboids to be built
+     *    - (Max)Size of fact table
+     *    - Available resources from current resource manager 's queue
+     *
+     *  But user still can choose to override some config via `kylin.engine.spark-conf.XXX` in Cube level .
+     *  Check detail at https://cwiki.apache.org/confluence/display/KYLIN/How+to+improve+cube+building+and+query+performance
+     * &lt;/pre&gt;
+     *
+     */
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public boolean isAutoSetSparkConf() {
+<span class="nc" id="L2943">        return Boolean.parseBoolean(getOptional(&quot;kylin.spark-conf.auto.prior&quot;, &quot;true&quot;));</span>
+    }
+
+    public Boolean getSparkEngineTaskImpactInstanceEnabled() {
+<span class="nc" id="L2947">        return Boolean.parseBoolean(getOptional(&quot;kylin.engine.spark.task-impact-instance-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    public int getSparkEngineTaskCoreFactor() {
+<span class="nc" id="L2951">        return Integer.parseInt(getOptional(&quot;kylin.engine.spark.task-core-factor&quot;, &quot;3&quot;));</span>
+    }
+
+    public int getSparkEngineDriverMemoryBase() {
+<span class="nc" id="L2955">        return Integer.parseInt(getOptional(&quot;kylin.engine.driver-memory-base&quot;, &quot;1024&quot;));</span>
+    }
+
+    public int[] getSparkEngineDriverMemoryStrategy() {
+<span class="nc" id="L2959">        String[] dft = {&quot;2&quot;, &quot;20&quot;, &quot;100&quot;};</span>
+<span class="nc" id="L2960">        return getOptionalIntArray(&quot;kylin.engine.driver-memory-strategy&quot;, dft);</span>
+    }
+
+    public int getSparkEngineDriverMemoryMaximum() {
+<span class="nc" id="L2964">        return Integer.parseInt(getOptional(&quot;kylin.engine.driver-memory-maximum&quot;, &quot;4096&quot;));</span>
+    }
+
+    public double getSparkEngineRetryMemoryGradient() {
+<span class="nc" id="L2968">        return Double.parseDouble(getOptional(&quot;kylin.engine.retry-memory-gradient&quot;, &quot;1.5&quot;));</span>
+    }
+
+    public double getSparkEngineRetryOverheadMemoryGradient() {
+<span class="nc" id="L2972">        return Double.parseDouble(getOptional(&quot;kylin.engine.retry-overheadMemory-gradient&quot;, &quot;0.2&quot;));</span>
+    }
+
+    public Double getMaxAllocationResourceProportion() {
+<span class="nc" id="L2976">        return Double.parseDouble(getOptional(&quot;kylin.engine.max-allocation-proportion&quot;, &quot;0.9&quot;));</span>
+    }
+
+    public int getSparkEngineBaseExecutorInstances() {
+<span class="nc" id="L2980">        return Integer.parseInt(getOptional(&quot;kylin.engine.base-executor-instance&quot;, &quot;5&quot;));</span>
+    }
+
+    public String getSparkEngineRequiredTotalCores() {
+<span class="nc" id="L2984">        return getOptional(&quot;kylin.engine.spark.required-cores&quot;, &quot;1&quot;);</span>
+    }
+
+    public String getSparkEngineExecutorInstanceStrategy() {
+<span class="nc" id="L2988">        return getOptional(&quot;kylin.engine.executor-instance-strategy&quot;, &quot;100,2,500,3,1000,4&quot;);</span>
+    }
+
+
+    // ============================================================================
+    // Kylin 4.X Global dictionary
+    // Wiki : https://cwiki.apache.org/confluence/display/KYLIN/Global+Dictionary+on+Spark
+    // ============================================================================
+
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getGlobalDictV2MinHashPartitions() {
+<span class="nc" id="L3000">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.globalV2-min-hash-partitions&quot;, &quot;10&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getGlobalDictV2ThresholdBucketSize() {
+<span class="nc" id="L3005">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.globalV2-threshold-bucket-size&quot;, &quot;500000&quot;));</span>
+    }
+
+    public int getDictionarySliceEvicationThreshold() {
+<span class="nc" id="L3009">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.slice.eviction.threshold&quot;, &quot;5&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public double getGlobalDictV2InitLoadFactor() {
+<span class="nc" id="L3014">        return Double.parseDouble(getOptional(&quot;kylin.dictionary.globalV2-init-load-factor&quot;, &quot;0.5&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public double getGlobalDictV2BucketOverheadFactor() {
+<span class="nc" id="L3019">        return Double.parseDouble(getOptional(&quot;kylin.dictionary.globalV2-bucket-overhead-factor&quot;, &quot;1.5&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public int getGlobalDictV2MaxVersions() {
+<span class="nc" id="L3024">        return Integer.parseInt(getOptional(&quot;kylin.dictionary.globalV2-max-versions&quot;, &quot;3&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public long getGlobalDictV2VersionTTL() {
+<span class="nc" id="L3029">        return Long.parseLong(getOptional(&quot;kylin.dictionary.globalV2-version-ttl&quot;, &quot;259200000&quot;));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public boolean isCheckGlobalDictV2() {
+<span class="nc" id="L3034">        return Boolean.parseBoolean(getOptional(&quot;kylin.dictionary.globalV2-check-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    /**
+     * Detect dataset skew in dictionary encode step.
+     */
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public boolean detectDataSkewInDictEncodingEnabled() {
+<span class="nc" id="L3042">        return Boolean.valueOf(getOptional(&quot;kylin.dictionary.detect-data-skew-sample-enabled&quot;, FALSE));</span>
+    }
+
+    /**
+     * In some data skew cases, the repartition step during dictionary encoding will be slow.
+     * We can choose to sample from the dataset to detect skewed. This configuration is used to set the sample rate.
+     */
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public double sampleRateInEncodingSkewDetection() {
+<span class="nc" id="L3051">        return Double.valueOf(getOptional(&quot;kylin.dictionary.detect-data-skew-sample-rate&quot;, &quot;0.1&quot;));</span>
+    }
+
+    /*
+     * In KYLIN4, dictionaries are hashed into several buckets, column data are repartitioned by the same hash algorithm
+     * during encoding step too. In data skew cases, the repartition step will be very slow. Kylin will automatically
+     * sample from the source to detect skewed data and repartition these skewed data to random partitions.
+     * This configuration is used to set the skew data threshold, valued from 0 to 1.
+     * e.g.
+     *   if you set this value to 0.05, for each value that takes up more than 5% percent of the total will be regarded
+     *   as skew data, as a result the skewed data will be no more than 20 records
+     * */
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public double skewPercentageThreshHold() {
+<span class="nc" id="L3065">        return Double.valueOf(getOptional(&quot;kylin.dictionary.detect-data-skew-percentage-threshold&quot;, &quot;0.05&quot;));</span>
+    }
+
+    /***
+     * Global dictionary will be split into several buckets. To encode a column to int value more
+     * efficiently, source dataset will be repartitioned by the to-be encoded column to the same
+     * amount of partitions as the dictionary's bucket size.
+     *
+     * It sometimes bring side effect, because repartitioning by a single column is more likely to cause
+     * serious data skew, causing one task takes the majority of time in first layer's cuboid building.
+     *
+     * When faced with this case, you can try repartitioning encoded dataset by all
+     * RowKey columns to avoid data skew. The repartition size is default to max bucket
+     * size of all dictionaries, but you can also set to other flexible value by this option:
+     * 'kylin.engine.spark.dataset.repartition.num.after.encoding'
+     */
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public boolean rePartitionEncodedDatasetWithRowKey() {
+<span class="nc" id="L3083">        return Boolean.valueOf(getOptional(&quot;kylin.engine.spark.repartition.dataset.after.encode-enabled&quot;, FALSE));</span>
+    }
+
+    @ConfigTag({ConfigTag.Tag.CUBE_LEVEL})
+    public int getRepartitionNumAfterEncode() {
+<span class="nc" id="L3088">        return Integer.valueOf(getOptional(&quot;kylin.engine.spark.repartition.dataset.after.encode.num&quot;, &quot;0&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public String getSparkStandaloneMasterWebUI() {
+<span class="nc" id="L3093">        return getOptional(&quot;kylin.engine.spark.standalone.master.httpUrl&quot;, &quot;&quot;);</span>
+    }
+
+
+    // ============================================================================
+    // Kylin 4.X Query Engine (SparderContext)
+    // ============================================================================
+
+    /**
+     * Set the sparder app name, default value is: 'sparder_on_${hostname}-${port}'
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public String getSparderAppName() {
+<span class="nc" id="L3106">        String customSparderAppName = getOptional(&quot;kylin.query.sparder-context.app-name&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L3107" title="All 2 branches missed.">        if (StringUtils.isEmpty(customSparderAppName)) {</span>
+<span class="nc" id="L3108">            customSparderAppName =</span>
+<span class="nc" id="L3109">                    &quot;sparder_on_&quot; + getServerRestAddress().replaceAll(&quot;:&quot;, &quot;-&quot;);</span>
+        }
+<span class="nc" id="L3111">        return customSparderAppName;</span>
+    }
+
+    /**
+     * driver memory that can be used by join(mostly BHJ)
+     */
+    @ConfigTag(ConfigTag.Tag.DEPRECATED)
+    public double getJoinMemoryFraction() {
+<span class="nc" id="L3119">        return Double.parseDouble(getOptional(&quot;kylin.query.spark-engine.join-memory-fraction&quot;, &quot;0.3&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.DEBUG_HACK)
+    public boolean isSparkEngineEnabled() {
+<span class="nc" id="L3124">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.spark-engine.enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    public String getLogSparkDriverPropertiesFile() {
+<span class="nc" id="L3128">        return getLogPropertyFile(&quot;spark-driver-log4j.properties&quot;);</span>
+    }
+
+    public String getLogSparkExecutorPropertiesFile() {
+<span class="fc" id="L3132">        return getLogPropertyFile(&quot;spark-executor-log4j.properties&quot;);</span>
+    }
+
+    private String getLogPropertyFile(String filename) {
+<span class="pc bpc" id="L3136" title="1 of 2 branches missed.">        if (isDevEnv()) {</span>
+<span class="fc" id="L3137">            return Paths.get(getKylinHomeWithoutWarn(),</span>
+<span class="fc" id="L3138">                    &quot;build&quot;, &quot;conf&quot;).toString() + File.separator + filename;</span>
+        } else {
+<span class="nc" id="L3140">            return Paths.get(getKylinHomeWithoutWarn(),</span>
+<span class="nc" id="L3141">                    &quot;conf&quot;).toString() + File.separator + filename;</span>
+        }
+    }
+
+    /**
+     * &lt;pre&gt;
+     * SparderContext will try to set `spark.sql.shuffle.partitions` for each query according to bytes to scan
+     * 1. set to -1 to let it auto decided by query engine, to be specific, it is
+     *   ${total bytes of all files after pruned by FilePruner} / KylinConfigBase#getQueryPartitionSplitSizeMB
+     * 2. other positive integer to set a fixed value.
+     * &lt;/pre&gt;
+     *
+     * @see KylinConfigBase#getQueryPartitionSplitSizeMB
+     */
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getSparkSqlShufflePartitions() {
+<span class="nc" id="L3157">        return Integer.parseInt(getOptional(&quot;kylin.query.spark-engine.spark-sql-shuffle-partitions&quot;,</span>
+                &quot;-1&quot;));
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getQueryPartitionSplitSizeMB() {
+<span class="nc" id="L3163">        return Integer.parseInt(getOptional(&quot;kylin.query.spark-engine.partition-split-size-mb&quot;,</span>
+                &quot;64&quot;));
+    }
+
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public boolean isAutoSetPushDownPartitions() {
+<span class="nc" id="L3169">        return Boolean</span>
+<span class="nc" id="L3170">                .parseBoolean(this.getOptional(&quot;kylin.query.pushdown.auto-set-shuffle-partitions-enabled&quot;, &quot;true&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public int getBaseShufflePartitionSize() {
+<span class="nc" id="L3175">        return Integer.parseInt(this.getOptional(&quot;kylin.query.pushdown.base-shuffle-partition-size&quot;, &quot;48&quot;));</span>
+    }
+
+    /**
+     * The max size in mb handled per task when using shard by column,
+     * if the sharding size exceeds this value, it will fall back to non-sharding read RDD
+     */
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public int getMaxShardingSizeMBPerTask() {
+<span class="nc" id="L3184">        return Integer.parseInt(getOptional(&quot;kylin.query.spark-engine.max-sharding-size-mb&quot;,</span>
+                &quot;64&quot;));
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public boolean isShardingJoinOptEnabled() {
+<span class="nc" id="L3190">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.spark-engine.expose-sharding-trait&quot;,</span>
+                &quot;true&quot;));
+    }
+
+    /**
+     * Set proper resources(cpu and memory) for SparderContext
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public Map&lt;String, String&gt; getQuerySparkConf() {
+<span class="nc" id="L3199">        return getPropertiesByPrefix(&quot;kylin.query.spark-conf.&quot;);</span>
+    }
+
+    public String getIntersectFilterOrSeparator() {
+<span class="nc" id="L3203">        return getOptional(&quot;kylin.query.intersect.separator&quot;, &quot;|&quot;);</span>
+    }
+
+    public int getDefaultTimeFilter() {
+<span class="nc" id="L3207">        return Integer.parseInt(getOptional(&quot;kylin.web.default-time-filter&quot;, &quot;2&quot;));</span>
+    }
+
+    /**
+     * the maximum number of returned values for intersect_value function
+     */
+    public int getBitmapValuesUpperBound() {
+<span class="nc" id="L3214">        return Integer.parseInt(getOptional(&quot;kylin.query.bitmap-upper-bound&quot;, &quot;10000000&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.CUBE_LEVEL)
+    public boolean needReplaceAggWhenExactlyMatched() {
+<span class="nc" id="L3219">        return Boolean.parseBoolean(getOptional(&quot;kylin.query.need-replace-exactly-agg&quot;, &quot;true&quot;));</span>
+    }
+
+    /**
+     * Used to upload user-defined log4j configuration
+     *
+     * @param isLocal run spark local mode or not
+     */
+    public String sparkUploadFiles(boolean isLocal, boolean isYarnCluster) {
+        try {
+<span class="nc" id="L3229">            String path = &quot;&quot;;</span>
+<span class="nc bnc" id="L3230" title="All 2 branches missed.">            if (!isLocal) {</span>
+<span class="nc" id="L3231">                String executorLogPath = &quot;&quot;;</span>
+<span class="nc" id="L3232">                String driverLogPath = &quot;&quot;;</span>
+<span class="nc" id="L3233">                File executorLogFile = FileUtils.findFile(KylinConfigBase.getKylinHome() + &quot;/conf&quot;,</span>
+                        &quot;spark-executor-log4j.properties&quot;);
+<span class="nc bnc" id="L3235" title="All 2 branches missed.">                if (executorLogFile != null) {</span>
+<span class="nc" id="L3236">                    executorLogPath = executorLogFile.getCanonicalPath();</span>
+                }
+<span class="nc" id="L3238">                path = executorLogPath;</span>
+<span class="nc bnc" id="L3239" title="All 2 branches missed.">                if (isYarnCluster) {</span>
+<span class="nc" id="L3240">                    File driverLogFile = FileUtils.findFile(KylinConfigBase.getKylinHome() + &quot;/conf&quot;,</span>
+                            &quot;spark-driver-log4j.properties&quot;);
+<span class="nc bnc" id="L3242" title="All 2 branches missed.">                    if (driverLogFile != null) {</span>
+<span class="nc" id="L3243">                        driverLogPath = driverLogFile.getCanonicalPath();</span>
+                    }
+<span class="nc" id="L3245">                    path = executorLogPath + &quot;,&quot; + driverLogPath;</span>
+                }
+            }
+
+<span class="nc" id="L3249">            return getOptional(&quot;kylin.query.engine.sparder-additional-files&quot;, path);</span>
+<span class="nc" id="L3250">        } catch (IOException e) {</span>
+<span class="nc" id="L3251">            return &quot;&quot;;</span>
+        }
+    }
+
+    /**
+     * Used to upload user-defined log4j configuration
+     */
+    public String sparkUploadFiles() {
+<span class="nc" id="L3259">        return sparkUploadFiles(false, false);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String sparderJars() {
+        try {
+<span class="nc" id="L3265">            File storageFile = FileUtils.findFile(KylinConfigBase.getKylinHome() + &quot;/lib&quot;, &quot;newten-job.jar&quot;);</span>
+<span class="nc" id="L3266">            String path1 = &quot;&quot;;</span>
+<span class="nc bnc" id="L3267" title="All 2 branches missed.">            if (storageFile != null) {</span>
+<span class="nc" id="L3268">                path1 = storageFile.getCanonicalPath();</span>
+            }
+
+<span class="nc" id="L3271">            return getOptional(&quot;kylin.query.engine.sparder-additional-jars&quot;, path1);</span>
+<span class="nc" id="L3272">        } catch (IOException e) {</span>
+<span class="nc" id="L3273">            return &quot;&quot;;</span>
+        }
+    }
+
+    public String getJobOutputStorePath(String project, String jobId) {
+<span class="nc" id="L3278">        return getSparkLogDir(project) + getNestedPath(jobId) + &quot;execute_output.json&quot;;</span>
+    }
+
+    /**
+     * &lt;pre&gt;
+     * The fair scheduler of Apache Spark supports grouping jobs into pools, and setting different scheduling options (e.g. weight) for each pool. This can be useful to create a “high-priority” pool for more important query jobs.
+     *
+     * Query engine of Kylin 4 support set pool for query at project level and thread level, and it has built-in pools:($KYLIN_HOME/conf/fairscheduler.xml)
+     *
+     *   - lightweight_tasks are query which not require all available cpu cores
+     *   - heavy_tasks are query which require all available cpu cores
+     *   - query_pushdown are query which not answered by cube
+     *
+     * Please check following link for detail.
+     *   - http://spark.apache.org/docs/latest/job-scheduling.html#scheduling-within-an-application
+     *   - https://cwiki.apache.org/confluence/display/KYLIN/Use+different+spark+pool+for+different+query
+     * &lt;/pre&gt;
+     */
+    @ConfigTag({ConfigTag.Tag.PROJECT_LEVEL, ConfigTag.Tag.THREAD_LEVEL})
+    public String getProjectQuerySparkPool() {
+<span class="nc" id="L3298">        return getOptional(&quot;kylin.query.spark.pool&quot;, null);</span>
+    }
+
+    /**
+     * Whether or not to start SparderContext when query server start, set to false if your
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public boolean isAutoStartSparder() {
+<span class="nc" id="L3306">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.query.auto-sparder-context-enabled&quot;, &quot;false&quot;));</span>
+    }
+
+    /**
+     * whether to enable sparder monitor function
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public boolean isSparderCanaryEnabled() {
+<span class="nc" id="L3314">        return Boolean.parseBoolean(this.getOptional(&quot;kylin.canary.sparder-context-canary-enabled&quot;, TRUE));</span>
+    }
+
+    /**
+     * Sparder is considered unavailable when the check task is unresponsive for more than this time
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public int getSparderCanaryErrorResponseMs() {
+<span class="nc" id="L3322">        return Integer.parseInt(this.getOptional(&quot;kylin.canary.sparder-context-error-response-ms&quot;, &quot;3000&quot;));</span>
+    }
+
+    /**
+     * The maximum number of restart sparder when sparder is not available
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public int getThresholdToRestartSparder() {
+<span class="nc" id="L3330">        return Integer.parseInt(this.getOptional(&quot;kylin.canary.sparder-context-threshold-to-restart-spark&quot;, &quot;3&quot;));</span>
+    }
+
+    /**
+     * Time period between two sparder health checks
+     */
+    @ConfigTag(ConfigTag.Tag.GLOBAL_LEVEL)
+    public int getSparderCanaryPeriodMinutes() {
+<span class="nc" id="L3338">        return Integer.parseInt(this.getOptional(&quot;kylin.canary.sparder-context-period-min&quot;, &quot;3&quot;));</span>
+    }
+
+
+    // ============================================================================
+    // Spark with Kerberos
+    // ============================================================================
+
+    public Boolean isKerberosEnabled() {
+<span class="nc" id="L3347">        return Boolean.valueOf(getOptional(&quot;kylin.kerberos.enabled&quot;, FALSE));</span>
+    }
+
+    public String getKerberosKeytab() {
+<span class="nc" id="L3351">        return getOptional(&quot;kylin.kerberos.keytab&quot;, &quot;&quot;);</span>
+    }
+
+    public String getKerberosKeytabPath() {
+<span class="nc" id="L3355">        return KylinConfig.getKylinConfDir() + File.separator + getKerberosKeytab();</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String getKerberosZKPrincipal() {
+<span class="nc" id="L3360">        return getOptional(&quot;kylin.kerberos.zookeeper.server.principal&quot;, &quot;zookeeper/hadoop&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public Long getKerberosTicketRefreshInterval() {
+<span class="nc" id="L3365">        return Long.valueOf(getOptional(&quot;kylin.kerberos.ticket.refresh.interval.minutes&quot;, &quot;720&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public Long getKerberosMonitorInterval() {
+<span class="nc" id="L3370">        return Long.valueOf(getOptional(&quot;kylin.kerberos.monitor.interval.minutes&quot;, &quot;10&quot;));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String getKerberosPlatform() {
+<span class="nc" id="L3375">        return getOptional(&quot;kylin.kerberos.platform&quot;, &quot;&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public Boolean getPlatformZKEnable() {
+<span class="nc" id="L3380">        return Boolean.valueOf(getOptional(&quot;kylin.platform.zk.kerberos.enable&quot;, FALSE));</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String getKerberosKrb5Conf() {
+<span class="nc" id="L3385">        return getOptional(&quot;kylin.kerberos.krb5.conf&quot;, &quot;krb5.conf&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String getKerberosKrb5ConfPath() {
+<span class="nc" id="L3390">        return KylinConfig.getKylinConfDir() + File.separator + getKerberosKrb5Conf();</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String getKerberosJaasConf() {
+<span class="nc" id="L3395">        return getOptional(&quot;kylin.kerberos.jaas.conf&quot;, &quot;jaas.conf&quot;);</span>
+    }
+
+    @ConfigTag(ConfigTag.Tag.NOT_CLEAR)
+    public String getKerberosJaasConfPath() {
+<span class="nc" id="L3400">        return KylinConfig.getKylinConfDir() + File.separator + getKerberosJaasConf();</span>
+    }
+
+    public String getKerberosPrincipal() {
+<span class="nc" id="L3404">        return getOptional(&quot;kylin.kerberos.principal&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

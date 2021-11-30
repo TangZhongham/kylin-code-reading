@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SortedIteratorMergerWithLimit.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">SortedIteratorMergerWithLimit.java</span></div><h1>SortedIteratorMergerWithLimit.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.lang.reflect.InvocationTargetException;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.PriorityQueue;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+/**
+ * the limit here correspond to the the limit in sql
+ * if the SQL ends with &quot;limit N&quot;, then each shard will return N &quot;smallest&quot; records
+ * The query sever side will use a heap to pick right records.
+ * 
+ * There're two usage of SortedIteratorMergerWithLimit in kylin
+ * One at GTRecord level and the other at Tuple Level
+ * The first is to deal with cuboid shards among the same segment
+ * and the second is to deal with multiple segments
+ * 
+ * Let's use single-segment as an example:
+ * suppose we have a &quot;limit 2&quot; in SQL, and we have three shards in the segment
+ * the first returns (1,2), the second returns (1,3) and the third returns (2,3)
+ * each subset is guaranteed to be sorted. (that's why it's called &quot;SortedIterator Merger&quot;)
+ * SortedIteratorMergerWithLimit will merge these three subsets and return (1,1,2,2)
+ * 
+ */
+public class SortedIteratorMergerWithLimit&lt;E extends Cloneable&gt; extends SortedIteratorMerger&lt;E&gt; {
+    private int limit;
+
+    public SortedIteratorMergerWithLimit(Iterator&lt;Iterator&lt;E&gt;&gt; shardSubsets, int limit, Comparator&lt;E&gt; comparator) {
+<span class="fc" id="L50">        super(shardSubsets, comparator);</span>
+<span class="fc" id="L51">        this.limit = limit;</span>
+<span class="fc" id="L52">        this.comparator = comparator;</span>
+<span class="fc" id="L53">    }</span>
+
+    @Override
+    public Iterator&lt;E&gt; getIterator() {
+<span class="fc" id="L57">        return new MergedIteratorWithLimit(limit, comparator);</span>
+    }
+
+    class MergedIteratorWithLimit implements Iterator&lt;E&gt; {
+
+        private PriorityQueue&lt;PeekingImpl&lt;E&gt;&gt; heap;
+        private final Comparator&lt;E&gt; comparator;
+
+<span class="fc" id="L65">        private boolean nextFetched = false;</span>
+<span class="fc" id="L66">        private E fetched = null;</span>
+<span class="fc" id="L67">        private E last = null;</span>
+
+        private int limit;
+<span class="fc" id="L70">        private int limitProgress = 0;</span>
+
+<span class="fc" id="L72">        private PeekingImpl&lt;E&gt; lastSource = null;</span>
+
+<span class="fc" id="L74">        public MergedIteratorWithLimit(int limit, Comparator&lt;E&gt; comparator) {</span>
+<span class="fc" id="L75">            this.limit = limit;</span>
+<span class="fc" id="L76">            this.comparator = comparator;</span>
+<span class="fc" id="L77">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            if (heap == null) {</span>
+<span class="fc" id="L82">                heap = getHeap();</span>
+            }
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            if (nextFetched) {</span>
+<span class="nc" id="L85">                return true;</span>
+            }
+
+<span class="fc bfc" id="L88" title="All 4 branches covered.">            if (lastSource != null &amp;&amp; lastSource.hasNext()) {</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                if (lastSource.hasNext()) {</span>
+<span class="fc" id="L90">                    heap.offer(lastSource);</span>
+                } else {
+<span class="nc" id="L92">                    lastSource = null;</span>
+                }
+            }
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (!heap.isEmpty()) {</span>
+<span class="fc" id="L97">                PeekingImpl&lt;E&gt; first = heap.poll();</span>
+<span class="fc" id="L98">                E current = first.next();</span>
+                try {
+                    //clone is protected on Object, have to use reflection to call the overwritten clone method in subclasses
+<span class="fc" id="L101">                    current = (E) current.getClass().getMethod(&quot;clone&quot;).invoke(current);</span>
+<span class="nc" id="L102">                } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {</span>
+<span class="nc" id="L103">                    throw new RuntimeException(e);</span>
+<span class="fc" id="L104">                }</span>
+
+<span class="fc" id="L106">                lastSource = first;</span>
+
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                Preconditions.checkState(current != null);</span>
+
+<span class="fc bfc" id="L110" title="All 4 branches covered.">                if (last == null || comparator.compare(current, last) != 0) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                    if (++limitProgress &gt; limit) {</span>
+<span class="fc" id="L112">                        return false;</span>
+                    }
+                }
+<span class="fc" id="L115">                nextFetched = true;</span>
+<span class="fc" id="L116">                fetched = current;</span>
+
+<span class="fc" id="L118">                return true;</span>
+            } else {
+<span class="fc" id="L120">                return false;</span>
+            }
+        }
+
+        @Override
+        public E next() {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">            if (!nextFetched) {</span>
+<span class="nc" id="L127">                throw new NoSuchElementException(&quot;Should hasNext() before next()&quot;);</span>
+            }
+
+            //TODO: remove this check when validated
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (last != null) {</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (comparator.compare(last, fetched) &gt; 0)</span>
+<span class="fc" id="L133">                    throw new IllegalStateException(&quot;Not sorted! last: &quot; + last + &quot; fetched: &quot; + fetched);</span>
+            }
+
+<span class="fc" id="L136">            last = fetched;</span>
+<span class="fc" id="L137">            nextFetched = false;</span>
+
+<span class="fc" id="L139">            return fetched;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc" id="L144">            throw new UnsupportedOperationException();</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

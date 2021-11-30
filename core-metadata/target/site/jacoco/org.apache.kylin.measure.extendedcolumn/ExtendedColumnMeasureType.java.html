@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExtendedColumnMeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.extendedcolumn</a> &gt; <span class="el_source">ExtendedColumnMeasureType.java</span></div><h1>ExtendedColumnMeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.measure.extendedcolumn;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.CapabilityResult;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class ExtendedColumnMeasureType extends MeasureType&lt;ByteArray&gt; {
+
+<span class="fc" id="L49">    private static final Logger logger = LoggerFactory.getLogger(ExtendedColumnMeasureType.class);</span>
+
+    public static final String FUNC_EXTENDED_COLUMN = &quot;EXTENDED_COLUMN&quot;;
+    public static final String DATATYPE_EXTENDED_COLUMN = &quot;extendedcolumn&quot;;
+    private final DataType dataType;
+
+<span class="fc" id="L55">    public static class Factory extends MeasureTypeFactory&lt;ByteArray&gt; {</span>
+
+        @Override
+        public MeasureType&lt;ByteArray&gt; createMeasureType(String funcName, DataType dataType) {
+<span class="fc" id="L59">            return new ExtendedColumnMeasureType(dataType);</span>
+        }
+
+        @Override
+        public String getAggrFunctionName() {
+<span class="fc" id="L64">            return FUNC_EXTENDED_COLUMN;</span>
+        }
+
+        @Override
+        public String getAggrDataTypeName() {
+<span class="fc" id="L69">            return DATATYPE_EXTENDED_COLUMN;</span>
+        }
+
+        @Override
+        public Class&lt;? extends DataTypeSerializer&lt;ByteArray&gt;&gt; getAggrDataTypeSerializer() {
+<span class="fc" id="L74">            return ExtendedColumnSerializer.class;</span>
+        }
+    }
+
+<span class="fc" id="L78">    public ExtendedColumnMeasureType(DataType dataType) {</span>
+<span class="fc" id="L79">        this.dataType = dataType;</span>
+<span class="fc" id="L80">    }</span>
+
+    public static List&lt;TblColRef&gt; getExtendedColumnHosts(FunctionDesc functionDesc) {
+<span class="nc" id="L83">        List&lt;TblColRef&gt; ret = Lists.newArrayList();</span>
+<span class="nc" id="L84">        List&lt;TblColRef&gt; params = functionDesc.getParameter().getColRefs();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        for (int i = 0; i &lt; params.size() - 1; i++) {</span>
+<span class="nc" id="L86">            ret.add(params.get(i));</span>
+        }
+<span class="nc" id="L88">        return ret;</span>
+    }
+
+    public static TblColRef getExtendedColumn(FunctionDesc functionDesc) {
+<span class="nc" id="L92">        List&lt;TblColRef&gt; params = functionDesc.getParameter().getColRefs();</span>
+<span class="nc" id="L93">        return params.get(params.size() - 1);</span>
+    }
+
+    @Override
+    public void adjustSqlDigest(List&lt;MeasureDesc&gt; measureDescs, SQLDigest sqlDigest) {
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        for (MeasureDesc measureDesc : measureDescs) {</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            if (!sqlDigest.involvedMeasure.contains(measureDesc)) {</span>
+<span class="nc" id="L100">                continue;</span>
+            }
+<span class="nc" id="L102">            FunctionDesc extendColumnFunc = measureDesc.getFunction();</span>
+<span class="nc" id="L103">            List&lt;TblColRef&gt; hosts = getExtendedColumnHosts(extendColumnFunc);</span>
+<span class="nc" id="L104">            TblColRef extended = getExtendedColumn(extendColumnFunc);</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (!sqlDigest.groupbyColumns.contains(extended)) {</span>
+<span class="nc" id="L107">                continue;</span>
+            }
+
+<span class="nc" id="L110">            sqlDigest.aggregations.add(extendColumnFunc);</span>
+<span class="nc" id="L111">            sqlDigest.groupbyColumns.remove(extended);</span>
+<span class="nc" id="L112">            sqlDigest.groupbyColumns.addAll(hosts);</span>
+<span class="nc" id="L113">            sqlDigest.metricColumns.add(extended);</span>
+<span class="nc" id="L114">        }</span>
+<span class="nc" id="L115">    }</span>
+
+    @Override
+    public CapabilityResult.CapabilityInfluence influenceCapabilityCheck(Collection&lt;TblColRef&gt; unmatchedDimensions,
+            Collection&lt;FunctionDesc&gt; unmatchedAggregations, SQLDigest digest, final MeasureDesc measureDesc) {
+<span class="nc" id="L120">        TblColRef extendedCol = getExtendedColumn(measureDesc.getFunction());</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (!unmatchedDimensions.contains(extendedCol)) {</span>
+<span class="nc" id="L123">            return null;</span>
+        }
+
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (digest.filterColumns.contains(extendedCol)) {</span>
+<span class="nc" id="L127">            return null;</span>
+        }
+
+<span class="nc" id="L130">        unmatchedDimensions.remove(extendedCol);</span>
+
+<span class="nc" id="L132">        return new CapabilityResult.CapabilityInfluence() {</span>
+            @Override
+            public double suggestCostMultiplier() {
+<span class="nc" id="L135">                return 0.9;</span>
+            }
+
+            @Override
+            public MeasureDesc getInvolvedMeasure() {
+<span class="nc" id="L140">                return measureDesc;</span>
+            }
+        };
+    }
+
+    public boolean needAdvancedTupleFilling() {
+<span class="nc" id="L146">        return true;</span>
+    }
+
+    public IAdvMeasureFiller getAdvancedTupleFiller(FunctionDesc function, TupleInfo returnTupleInfo,
+            Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L151">        final TblColRef extended = getExtendedColumn(function);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        final int extendedColumnInTupleIdx = returnTupleInfo.hasColumn(extended)</span>
+<span class="nc" id="L153">                ? returnTupleInfo.getColumnIndex(extended) : -1;</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (extendedColumnInTupleIdx == -1) {</span>
+<span class="nc" id="L156">            throw new RuntimeException(&quot;Extended column is not required in returnTupleInfo&quot;);</span>
+        }
+
+<span class="nc" id="L159">        return new IAdvMeasureFiller() {</span>
+            private String value;
+
+            @Override
+            public void reload(Object measureValue) {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">                if (measureValue == null) {</span>
+<span class="nc" id="L165">                    value = null;</span>
+<span class="nc" id="L166">                    return;</span>
+                }
+
+<span class="nc" id="L169">                ByteArray byteArray = (ByteArray) measureValue;</span>
+                //the array in ByteArray is guaranteed to be completed owned by the ByteArray
+<span class="nc" id="L171">                value = Bytes.toString(byteArray.array());</span>
+<span class="nc" id="L172">            }</span>
+
+            @Override
+            public int getNumOfRows() {
+<span class="nc" id="L176">                return 1;</span>
+            }
+
+            @Override
+            public void fillTuple(Tuple tuple, int row) {
+<span class="nc" id="L181">                tuple.setDimensionValue(extendedColumnInTupleIdx, value);</span>
+<span class="nc" id="L182">            }</span>
+        };
+    }
+
+    @Override
+    public MeasureIngester&lt;ByteArray&gt; newIngester() {
+
+<span class="fc" id="L189">        return new MeasureIngester&lt;ByteArray&gt;() {</span>
+
+            public String truncateWhenUTF8(String s, int maxBytes) {
+<span class="fc" id="L192">                int b = 0;</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                for (int i = 0; i &lt; s.length(); i++) {</span>
+<span class="fc" id="L194">                    char c = s.charAt(i);</span>
+
+                    // ranges from http://en.wikipedia.org/wiki/UTF-8
+<span class="fc" id="L197">                    int skip = 0;</span>
+                    int more;
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                    if (c &lt;= 0x007f) {</span>
+<span class="fc" id="L200">                        more = 1;</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                    } else if (c &lt;= 0x07FF) {</span>
+<span class="nc" id="L202">                        more = 2;</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">                    } else if (c &lt;= 0xd7ff) {</span>
+<span class="nc" id="L204">                        more = 3;</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                    } else if (c &lt;= 0xDFFF) {</span>
+                        // surrogate area, consume next char as well
+<span class="nc" id="L207">                        more = 4;</span>
+<span class="nc" id="L208">                        skip = 1;</span>
+                    } else {
+<span class="nc" id="L210">                        more = 3;</span>
+                    }
+
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                    if (b + more &gt; maxBytes) {</span>
+<span class="fc" id="L214">                        return s.substring(0, i);</span>
+                    }
+<span class="fc" id="L216">                    b += more;</span>
+<span class="fc" id="L217">                    i += skip;</span>
+                }
+<span class="nc" id="L219">                return s;</span>
+            }
+
+            @Override
+            public ByteArray valueOf(String[] values, MeasureDesc measureDesc,
+                    Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                if (values.length &lt;= 1)</span>
+<span class="nc" id="L226">                    throw new IllegalArgumentException();</span>
+
+<span class="fc" id="L228">                String literal = values[values.length - 1];</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                if (literal == null) {</span>
+<span class="fc" id="L230">                    return new ByteArray();</span>
+                }
+
+<span class="fc" id="L233">                byte[] bytes = Bytes.toBytes(literal);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                if (bytes.length &lt;= dataType.getPrecision()) {</span>
+<span class="fc" id="L235">                    return new ByteArray(bytes);</span>
+                } else {
+<span class="fc" id="L237">                    return new ByteArray(</span>
+<span class="fc" id="L238">                            truncateWhenUTF8(literal, dataType.getPrecision()).getBytes(StandardCharsets.UTF_8));</span>
+                }
+            }
+
+            @Override
+            public void reset() {
+
+<span class="nc" id="L245">            }</span>
+        };
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    @Override
+    public MeasureAggregator&lt;ByteArray&gt; newAggregator() {
+<span class="fc" id="L252">        return new MeasureAggregator&lt;ByteArray&gt;() {</span>
+<span class="fc" id="L253">            private ByteArray byteArray = null;</span>
+<span class="fc" id="L254">            private boolean warned = false;</span>
+
+            @Override
+            public void reset() {
+<span class="nc" id="L258">                byteArray = null;</span>
+<span class="nc" id="L259">            }</span>
+
+            @Override
+            public void aggregate(ByteArray value) {
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">                if (byteArray == null) {</span>
+<span class="fc" id="L264">                    byteArray = value;</span>
+                } else {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">                    if (!byteArray.equals(value)) {</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">                        if (!warned) {</span>
+<span class="nc" id="L268">                            logger.warn(&quot;Extended column must be unique given same host column&quot;);</span>
+<span class="nc" id="L269">                            warned = true;</span>
+                        }
+                    }
+                }
+<span class="fc" id="L273">            }</span>
+
+            @Override
+            public ByteArray aggregate(ByteArray value1, ByteArray value2) {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                if (value1 == null) {</span>
+<span class="nc" id="L278">                    return value2;</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">                } else if (value2 == null) {</span>
+<span class="nc" id="L280">                    return value1;</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">                } else if (!value1.equals(value2)) {</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">                    if (!warned) {</span>
+<span class="nc" id="L283">                        logger.warn(&quot;Extended column must be unique given same host column&quot;);</span>
+<span class="nc" id="L284">                        warned = true;</span>
+                    }
+                }
+<span class="nc" id="L287">                return value1;</span>
+            }
+
+            @Override
+            public ByteArray getState() {
+<span class="nc" id="L292">                return byteArray;</span>
+            }
+
+            @Override
+            public int getMemBytesEstimate() {
+<span class="fc" id="L297">                return dataType.getPrecision() / 2;</span>
+            }
+        };
+    }
+
+    @Override
+    public boolean needRewrite() {
+<span class="fc" id="L304">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

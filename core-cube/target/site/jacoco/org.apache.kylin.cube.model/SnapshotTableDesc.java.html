@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotTableDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">SnapshotTableDesc.java</span></div><h1>SnapshotTableDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.model;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.Objects;
+
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L28">public class</span>
+SnapshotTableDesc implements java.io.Serializable{
+    @JsonProperty(&quot;table_name&quot;)
+    private String tableName;
+
+<span class="fc" id="L33">    @JsonProperty(&quot;storage_type&quot;)</span>
+    private String storageType = &quot;metaStore&quot;;
+
+<span class="fc" id="L36">    @JsonProperty(&quot;local_cache_enable&quot;)</span>
+    private boolean enableLocalCache = true;
+
+<span class="fc" id="L39">    @JsonProperty(&quot;global&quot;)</span>
+    private boolean global = false;
+
+    public String getTableName() {
+<span class="nc" id="L43">        return tableName;</span>
+    }
+
+    public void setTableName(String tableName) {
+<span class="nc" id="L47">        this.tableName = tableName;</span>
+<span class="nc" id="L48">    }</span>
+
+    public String getStorageType() {
+<span class="nc" id="L51">        return storageType;</span>
+    }
+
+    public void setStorageType(String storageType) {
+<span class="nc" id="L55">        this.storageType = storageType;</span>
+<span class="nc" id="L56">    }</span>
+
+    public boolean isGlobal() {
+<span class="nc" id="L59">        return global;</span>
+    }
+
+    public void setGlobal(boolean global) {
+<span class="nc" id="L63">        this.global = global;</span>
+<span class="nc" id="L64">    }</span>
+
+//    public boolean isExtSnapshotTable() {
+//        return !SnapshotTable.STORAGE_TYPE_METASTORE.equals(storageType);
+//    }
+//
+//    public boolean isEnableLocalCache() {
+//        return enableLocalCache;
+//    }
+//
+//    public void setEnableLocalCache(boolean enableLocalCache) {
+//        this.enableLocalCache = enableLocalCache;
+//    }
+
+    public static SnapshotTableDesc getCopyOf(SnapshotTableDesc other) {
+<span class="nc" id="L79">        SnapshotTableDesc copy = new SnapshotTableDesc();</span>
+<span class="nc" id="L80">        copy.tableName = other.tableName;</span>
+<span class="nc" id="L81">        copy.storageType = other.storageType;</span>
+<span class="nc" id="L82">        copy.enableLocalCache = other.enableLocalCache;</span>
+<span class="nc" id="L83">        copy.global = other.global;</span>
+<span class="nc" id="L84">        return copy;</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (this == o) return true;</span>
+<span class="nc bnc" id="L90" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass()) return false;</span>
+<span class="nc" id="L91">        SnapshotTableDesc that = (SnapshotTableDesc) o;</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">        return enableLocalCache == that.enableLocalCache &amp;&amp;</span>
+                global == that.global &amp;&amp;
+<span class="nc bnc" id="L94" title="All 2 branches missed.">                Objects.equals(tableName, that.tableName) &amp;&amp;</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">                Objects.equals(storageType, that.storageType);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L100">        return Objects.hash(tableName, storageType, enableLocalCache, global);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubingExecutableUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.steps</a> &gt; <span class="el_source">CubingExecutableUtil.java</span></div><h1>CubingExecutableUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.engine.mr.steps;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import javax.annotation.Nullable;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.job.execution.ExecutableContext;
+
+import com.google.common.base.Function;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+
+<span class="nc" id="L38">public class CubingExecutableUtil {</span>
+
+    public static final String CUBE_NAME = &quot;cubeName&quot;;
+    public static final String DISPALY_NAME = &quot;displayName&quot;;
+    public static final String SEGMENT_NAME = &quot;segmentName&quot;;
+    public static final String SEGMENT_ID = &quot;segmentId&quot;;
+    public static final String MERGING_SEGMENT_IDS = &quot;mergingSegmentIds&quot;;
+    public static final String STATISTICS_PATH = &quot;statisticsPath&quot;;
+    public static final String CUBING_JOB_ID = &quot;cubingJobId&quot;;
+    public static final String MERGED_STATISTICS_PATH = &quot;mergedStatisticsPath&quot;;
+    public static final String INDEX_PATH = &quot;indexPath&quot;;
+    public static final String DICTIONARIES_PATH = &quot;dictsPath&quot;;
+
+    public static void setStatisticsPath(String path, Map&lt;String, String&gt; params) {
+<span class="nc" id="L52">        params.put(STATISTICS_PATH, path);</span>
+<span class="nc" id="L53">    }</span>
+
+    public static String getStatisticsPath(Map&lt;String, String&gt; params) {
+<span class="nc" id="L56">        return params.get(STATISTICS_PATH);</span>
+    }
+
+    public static void setCubeName(String cubeName, Map&lt;String, String&gt; params) {
+<span class="nc" id="L60">        params.put(CUBE_NAME, cubeName);</span>
+<span class="nc" id="L61">    }</span>
+
+    public static String getCubeName(Map&lt;String, String&gt; params) {
+<span class="nc" id="L64">        return params.get(CUBE_NAME);</span>
+    }
+
+    public static void setSegmentName(String segmentName, Map&lt;String, String&gt; params) {
+<span class="nc" id="L68">        params.put(SEGMENT_NAME, segmentName);</span>
+<span class="nc" id="L69">    }</span>
+
+    public static String getSegmentName(Map&lt;String, String&gt; params) {
+<span class="nc" id="L72">        return params.get(SEGMENT_NAME);</span>
+    }
+
+    public static void setSegmentId(String segmentId, Map&lt;String, String&gt; params) {
+<span class="nc" id="L76">        params.put(SEGMENT_ID, segmentId);</span>
+<span class="nc" id="L77">    }</span>
+
+    public static String getSegmentId(Map&lt;String, String&gt; params) {
+<span class="nc" id="L80">        return params.get(SEGMENT_ID);</span>
+    }
+
+    public static void setMergingSegmentIds(List&lt;String&gt; ids, Map&lt;String, String&gt; params) {
+<span class="nc" id="L84">        params.put(MERGING_SEGMENT_IDS, StringUtils.join(ids, &quot;,&quot;));</span>
+<span class="nc" id="L85">    }</span>
+
+    public static CubeSegment findSegment(ExecutableContext context, String cubeName, String segmentId) {
+<span class="nc" id="L88">        final CubeManager mgr = CubeManager.getInstance(context.getConfig());</span>
+<span class="nc" id="L89">        final CubeInstance cube = mgr.getCube(cubeName);</span>
+
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (cube == null) {</span>
+<span class="nc" id="L92">            String cubeList = StringUtils</span>
+<span class="nc" id="L93">                    .join(Iterables.transform(mgr.listAllCubes(), new Function&lt;CubeInstance, String&gt;() {</span>
+                        @Nullable
+                        @Override
+                        public String apply(@Nullable CubeInstance input) {
+<span class="nc" id="L97">                            return input.getName();</span>
+                        }
+<span class="nc" id="L99">                    }).iterator(), &quot;,&quot;);</span>
+
+<span class="nc" id="L101">            throw new IllegalStateException(&quot;target cube name: &quot; + cubeName + &quot; cube list: &quot; + cubeList);</span>
+        }
+
+<span class="nc" id="L104">        final CubeSegment newSegment = cube.getSegmentById(segmentId);</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (newSegment == null) {</span>
+<span class="nc" id="L107">            String segmentList = StringUtils</span>
+<span class="nc" id="L108">                    .join(Iterables.transform(cube.getSegments(), new Function&lt;CubeSegment, String&gt;() {</span>
+                        @Nullable
+                        @Override
+                        public String apply(@Nullable CubeSegment input) {
+<span class="nc" id="L112">                            return input.getUuid();</span>
+                        }
+<span class="nc" id="L114">                    }).iterator(), &quot;,&quot;);</span>
+
+<span class="nc" id="L116">            throw new IllegalStateException(&quot;target segment id: &quot; + segmentId + &quot; segment list: &quot; + segmentList);</span>
+        }
+<span class="nc" id="L118">        return newSegment;</span>
+    }
+
+    public static List&lt;String&gt; getMergingSegmentIds(Map&lt;String, String&gt; params) {
+<span class="nc" id="L122">        final String ids = params.get(MERGING_SEGMENT_IDS);</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (ids != null) {</span>
+<span class="nc" id="L124">            final String[] splitted = StringUtils.split(ids, &quot;,&quot;);</span>
+<span class="nc" id="L125">            ArrayList&lt;String&gt; result = Lists.newArrayListWithExpectedSize(splitted.length);</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            for (String id : splitted) {</span>
+<span class="nc" id="L127">                result.add(id);</span>
+            }
+<span class="nc" id="L129">            return result;</span>
+        } else {
+<span class="nc" id="L131">            return Collections.emptyList();</span>
+        }
+    }
+
+    public static void setCubingJobId(String id, Map&lt;String, String&gt; params) {
+<span class="nc" id="L136">        params.put(CUBING_JOB_ID, id);</span>
+<span class="nc" id="L137">    }</span>
+
+    public static String getCubingJobId(Map&lt;String, String&gt; params) {
+<span class="nc" id="L140">        return params.get(CUBING_JOB_ID);</span>
+    }
+
+    public static void setMergedStatisticsPath(String path, Map&lt;String, String&gt; params) {
+<span class="nc" id="L144">        params.put(MERGED_STATISTICS_PATH, path);</span>
+<span class="nc" id="L145">    }</span>
+
+    public static String getMergedStatisticsPath(Map&lt;String, String&gt; params) {
+<span class="nc" id="L148">        return params.get(MERGED_STATISTICS_PATH);</span>
+    }
+
+    public static void setDictsPath(String path, Map&lt;String, String&gt; params) {
+<span class="nc" id="L152">        params.put(DICTIONARIES_PATH, path);</span>
+<span class="nc" id="L153">    }</span>
+
+    public static String getDictsPath(Map&lt;String, String&gt; params) {
+<span class="nc" id="L156">        return params.get(DICTIONARIES_PATH);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

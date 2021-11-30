@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RowKeyColumnIO.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.kv</a> &gt; <span class="el_source">RowKeyColumnIO.java</span></div><h1>RowKeyColumnIO.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.kv;
+
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.dimension.DictionaryDimEnc;
+import org.apache.kylin.dimension.DimensionEncoding;
+import org.apache.kylin.dimension.IDimensionEncodingMap;
+import org.apache.kylin.metadata.model.TblColRef;
+
+/**
+ * Read/Write column values from/into bytes
+ *
+ * @author yangli9
+ */
+public class RowKeyColumnIO implements java.io.Serializable {
+
+    //private static final Logger logger = LoggerFactory.getLogger(RowKeyColumnIO.class);
+
+    private final IDimensionEncodingMap dimEncMap;
+
+<span class="nc" id="L38">    public RowKeyColumnIO(IDimensionEncodingMap dimEncMap) {</span>
+<span class="nc" id="L39">        this.dimEncMap = dimEncMap;</span>
+<span class="nc" id="L40">    }</span>
+
+    public int getColumnLength(TblColRef col) {
+<span class="nc" id="L43">        return dimEncMap.get(col).getLengthOfEncoding();</span>
+    }
+
+    public Dictionary&lt;String&gt; getDictionary(TblColRef col) {
+<span class="nc" id="L47">        return dimEncMap.getDictionary(col);</span>
+    }
+
+    public void writeColumn(TblColRef col, String value, int roundingFlag, byte defaultValue, byte[] output, int outputOffset) {
+<span class="nc" id="L51">        DimensionEncoding dimEnc = dimEncMap.get(col);</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (dimEnc instanceof DictionaryDimEnc)</span>
+<span class="nc" id="L53">            dimEnc = ((DictionaryDimEnc) dimEnc).copy(roundingFlag, defaultValue);</span>
+
+<span class="nc" id="L55">        dimEnc.encode(value, output, outputOffset);</span>
+<span class="nc" id="L56">    }</span>
+
+    public String readColumnString(TblColRef col, byte[] bytes, int offset, int length) {
+<span class="nc" id="L59">        DimensionEncoding dimEnc = dimEncMap.get(col);</span>
+<span class="nc" id="L60">        return dimEnc.decode(bytes, offset, length);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

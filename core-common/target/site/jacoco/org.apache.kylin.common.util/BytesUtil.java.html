@@ -1,0 +1,497 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BytesUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">BytesUtil.java</span></div><h1>BytesUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.util;
+
+import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
+import java.util.Locale;
+
+import org.apache.kylin.shaded.com.google.common.primitives.Shorts;
+
+public class BytesUtil {
+
+<span class="nc" id="L29">    private BytesUtil() {</span>
+<span class="nc" id="L30">        throw new IllegalStateException(&quot;Class BytesUtil is an utility class !&quot;);</span>
+    }
+
+<span class="fc" id="L33">    public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];</span>
+
+    public static void writeByte(byte num, byte[] bytes, int offset, int size) {
+<span class="nc bnc" id="L36" title="All 2 branches missed.">        for (int i = offset + size - 1; i &gt;= offset; i--) {</span>
+<span class="nc" id="L37">            bytes[i] = num;</span>
+<span class="nc" id="L38">            num &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L40">    }</span>
+
+    public static void writeShort(short num, byte[] bytes, int offset, int size) {
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        for (int i = offset + size - 1; i &gt;= offset; i--) {</span>
+<span class="nc" id="L44">            bytes[i] = (byte) num;</span>
+<span class="nc" id="L45">            num &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L47">    }</span>
+
+    public static byte[] writeShort(short num) {
+<span class="nc" id="L50">        byte[] output = new byte[Shorts.BYTES];</span>
+<span class="nc" id="L51">        writeShort(num, output, 0, output.length);</span>
+<span class="nc" id="L52">        return output;</span>
+    }
+
+    public static long readShort(byte[] bytes, int offset, int size) {
+<span class="nc" id="L56">        short num = 0;</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        for (int i = offset, n = offset + size; i &lt; n; i++) {</span>
+<span class="nc" id="L58">            num &lt;&lt;= 8;</span>
+<span class="nc" id="L59">            num |= (short) bytes[i] &amp; 0xFF;</span>
+        }
+<span class="nc" id="L61">        return num;</span>
+    }
+
+    public static short readShort(byte[] bytes) {
+<span class="nc" id="L65">        return (short) readShort(bytes, 0, Shorts.BYTES);</span>
+    }
+
+    public static void writeUnsigned(int num, byte[] bytes, int offset, int size) {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (int i = offset + size - 1; i &gt;= offset; i--) {</span>
+<span class="fc" id="L70">            bytes[i] = (byte) num;</span>
+<span class="fc" id="L71">            num &gt;&gt;&gt;= 8;</span>
+        }
+<span class="fc" id="L73">    }</span>
+
+    public static int readUnsigned(byte[] bytes, int offset, int size) {
+<span class="nc" id="L76">        int integer = 0;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        for (int i = offset, n = offset + size; i &lt; n; i++) {</span>
+<span class="nc" id="L78">            integer &lt;&lt;= 8;</span>
+<span class="nc" id="L79">            integer |= (int) bytes[i] &amp; 0xFF;</span>
+        }
+<span class="nc" id="L81">        return integer;</span>
+    }
+
+    public static void writeUnsigned(int num, int size, ByteBuffer out) {
+<span class="fc" id="L85">        int mask = 0xff &lt;&lt; ((size - 1) * 8);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (int i = size; i &gt; 0; i--) {</span>
+<span class="fc" id="L87">            int v = (num &amp; mask) &gt;&gt; (i - 1) * 8;</span>
+<span class="fc" id="L88">            out.put((byte) v);</span>
+<span class="fc" id="L89">            mask = mask &gt;&gt; 8;</span>
+        }
+<span class="fc" id="L91">    }</span>
+
+    public static int readUnsigned(ByteBuffer in, int size) {
+<span class="fc" id="L94">        int integer = 0;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L96">            integer = integer &lt;&lt; 8;</span>
+<span class="fc" id="L97">            integer |= (in.get() &amp; 0xff);</span>
+        }
+
+<span class="fc" id="L100">        return integer;</span>
+    }
+
+    public static int readUnsigned(ByteArray in, int offset, int size) {
+<span class="nc" id="L104">        int integer = 0;</span>
+<span class="nc" id="L105">        offset += in.offset();</span>
+<span class="nc" id="L106">        byte[] bytes = in.array();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (int i = offset, n = offset + size; i &lt; n; i++) {</span>
+<span class="nc" id="L108">            integer &lt;&lt;= 8;</span>
+<span class="nc" id="L109">            integer |= (int) bytes[i] &amp; 0xFF;</span>
+        }
+<span class="nc" id="L111">        return integer;</span>
+    }
+
+    public static void writeSignedLong(long num, byte[] bytes, int offset, int size) {
+<span class="nc" id="L115">        writeLong(num, bytes, offset, size);</span>
+<span class="nc" id="L116">    }</span>
+
+    public static long readSignedLong(byte[] bytes, int offset, int size) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        long integer = (bytes[offset] &amp; 0x80) == 0 ? 0 : -1;</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        for (int i = offset, n = offset + size; i &lt; n; i++) {</span>
+<span class="nc" id="L121">            integer &lt;&lt;= 8;</span>
+<span class="nc" id="L122">            integer |= (int) bytes[i] &amp; 0xFF;</span>
+        }
+<span class="nc" id="L124">        return integer;</span>
+    }
+
+    public static void writeLong(long num, byte[] bytes, int offset, int size) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        for (int i = offset + size - 1; i &gt;= offset; i--) {</span>
+<span class="nc" id="L129">            bytes[i] = (byte) num;</span>
+<span class="nc" id="L130">            num &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L132">    }</span>
+
+    public static long readLong(byte[] bytes, int offset, int size) {
+<span class="nc" id="L135">        long integer = 0;</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        for (int i = offset, n = offset + size; i &lt; n; i++) {</span>
+<span class="nc" id="L137">            integer &lt;&lt;= 8;</span>
+<span class="nc" id="L138">            integer |= (long) bytes[i] &amp; 0xFF;</span>
+        }
+<span class="nc" id="L140">        return integer;</span>
+    }
+
+    public static void writeLong(long num, ByteBuffer out) {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        for (int i = 0; i &lt; 8; i++) {</span>
+<span class="nc" id="L145">            out.put((byte) num);</span>
+<span class="nc" id="L146">            num &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L148">    }</span>
+
+    public static long readLong(ByteBuffer in) {
+<span class="nc" id="L151">        long integer = 0;</span>
+<span class="nc" id="L152">        long mask = 0xff;</span>
+<span class="nc" id="L153">        int shift = 0;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        for (int i = 0; i &lt; 8; i++) {</span>
+<span class="nc" id="L155">            integer |= (in.get() &lt;&lt; shift) &amp; mask;</span>
+<span class="nc" id="L156">            mask = mask &lt;&lt; 8;</span>
+<span class="nc" id="L157">            shift += 8;</span>
+        }
+<span class="nc" id="L159">        return integer;</span>
+    }
+
+    /**
+     * No. bytes needed to store a value as big as the given
+     */
+    public static int sizeForValue(long maxValue) {
+<span class="nc" id="L166">        int size = 0;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        while (maxValue &gt; 0) {</span>
+<span class="nc" id="L168">            size++;</span>
+<span class="nc" id="L169">            maxValue &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L171">        return size;</span>
+    }
+
+    public static int compareByteUnsigned(byte b1, byte b2) {
+<span class="nc" id="L175">        int i1 = (int) b1 &amp; 0xFF;</span>
+<span class="nc" id="L176">        int i2 = (int) b2 &amp; 0xFF;</span>
+<span class="nc" id="L177">        return i1 - i2;</span>
+    }
+
+    public static byte[] subarray(byte[] bytes, int start, int end) {
+<span class="nc" id="L181">        byte[] r = new byte[end - start];</span>
+<span class="nc" id="L182">        System.arraycopy(bytes, start, r, 0, r.length);</span>
+<span class="nc" id="L183">        return r;</span>
+    }
+
+    public static byte[] mergeBytes(byte[] bytes1, byte[] bytes2) {
+<span class="nc bnc" id="L187" title="All 4 branches missed.">        if (bytes1 == null &amp;&amp; bytes2 == null) {</span>
+<span class="nc" id="L188">            throw new NullPointerException();</span>
+        }
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (bytes1 == null) {</span>
+<span class="nc" id="L191">            return bytes2;</span>
+        }
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (bytes2 == null) {</span>
+<span class="nc" id="L194">            return bytes1;</span>
+        }
+<span class="nc" id="L196">        byte[] bytes = new byte[bytes1.length + bytes2.length];</span>
+<span class="nc" id="L197">        System.arraycopy(bytes1, 0, bytes, 0, bytes1.length);</span>
+<span class="nc" id="L198">        System.arraycopy(bytes2, 0, bytes, bytes1.length, bytes2.length);</span>
+<span class="nc" id="L199">        return bytes;</span>
+    }
+
+    public static int compareBytes(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length) {
+<span class="nc" id="L203">        int r = 0;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        for (int i = 0; i &lt; length; i++) {</span>
+<span class="nc" id="L205">            r = src[srcOffset + i] - dst[dstOffset + i];</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            if (r != 0)</span>
+<span class="nc" id="L207">                break;</span>
+        }
+<span class="nc" id="L209">        return r;</span>
+    }
+
+    public static boolean isPositiveShort(int i) {
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        return (i &amp; 0xFFFF8000) == 0;</span>
+    }
+
+    // from WritableUtils
+    // ============================================================================
+
+    public static void writeVInt(int i, ByteBuffer out) {
+
+<span class="fc" id="L221">        writeVLong(i, out);</span>
+
+<span class="fc" id="L223">    }</span>
+
+    public static void writeVLong(long i, ByteBuffer out) {
+
+<span class="pc bpc" id="L227" title="2 of 4 branches missed.">        if (i &gt;= -112 &amp;&amp; i &lt;= 127) {</span>
+<span class="fc" id="L228">            out.put((byte) i);</span>
+<span class="fc" id="L229">            return;</span>
+        }
+
+<span class="nc" id="L232">        int len = -112;</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (i &lt; 0) {</span>
+<span class="nc" id="L234">            i ^= -1L; // take one's complement'</span>
+<span class="nc" id="L235">            len = -120;</span>
+        }
+
+<span class="nc" id="L238">        long tmp = i;</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        while (tmp != 0) {</span>
+<span class="nc" id="L240">            tmp = tmp &gt;&gt; 8;</span>
+<span class="nc" id="L241">            len--;</span>
+        }
+
+<span class="nc" id="L244">        out.put((byte) len);</span>
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        len = (len &lt; -120) ? -(len + 120) : -(len + 112);</span>
+
+<span class="nc bnc" id="L248" title="All 2 branches missed.">        for (int idx = len; idx != 0; idx--) {</span>
+<span class="nc" id="L249">            int shiftbits = (idx - 1) * 8;</span>
+<span class="nc" id="L250">            long mask = 0xFFL &lt;&lt; shiftbits;</span>
+<span class="nc" id="L251">            out.put((byte) ((i &amp; mask) &gt;&gt; shiftbits));</span>
+        }
+<span class="nc" id="L253">    }</span>
+
+    public static long readVLong(ByteBuffer in) {
+<span class="fc" id="L256">        byte firstByte = in.get();</span>
+<span class="fc" id="L257">        int len = decodeVIntSize(firstByte);</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        if (len == 1) {</span>
+<span class="fc" id="L259">            return firstByte;</span>
+        }
+<span class="nc" id="L261">        long i = 0;</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (int idx = 0; idx &lt; len - 1; idx++) {</span>
+<span class="nc" id="L263">            byte b = in.get();</span>
+<span class="nc" id="L264">            i = i &lt;&lt; 8;</span>
+<span class="nc" id="L265">            i = i | (b &amp; 0xFF);</span>
+        }
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        return (isNegativeVInt(firstByte) ? (i ^ -1L) : i);</span>
+    }
+
+    public static int readVInt(ByteBuffer in) {
+<span class="fc" id="L271">        long n = readVLong(in);</span>
+<span class="pc bpc" id="L272" title="2 of 4 branches missed.">        if ((n &gt; Integer.MAX_VALUE) || (n &lt; Integer.MIN_VALUE)) {</span>
+<span class="nc" id="L273">            throw new IllegalArgumentException(&quot;value too long to fit in integer&quot;);</span>
+        }
+<span class="fc" id="L275">        return (int) n;</span>
+    }
+
+    private static boolean isNegativeVInt(byte value) {
+<span class="nc bnc" id="L279" title="All 6 branches missed.">        return value &lt; -120 || (value &gt;= -112 &amp;&amp; value &lt; 0);</span>
+    }
+
+    private static int decodeVIntSize(byte value) {
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (value &gt;= -112) {</span>
+<span class="fc" id="L284">            return 1;</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        } else if (value &lt; -120) {</span>
+<span class="nc" id="L286">            return -119 - value;</span>
+        }
+<span class="nc" id="L288">        return -111 - value;</span>
+    }
+
+    public static void writeUTFString(String str, ByteBuffer out) {
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        byte[] bytes = str == null ? null : Bytes.toBytes(str);</span>
+<span class="nc" id="L293">        writeByteArray(bytes, out);</span>
+<span class="nc" id="L294">    }</span>
+
+    public static String readUTFString(ByteBuffer in) {
+<span class="nc" id="L297">        byte[] bytes = readByteArray(in);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        return bytes == null ? null : Bytes.toString(bytes);</span>
+    }
+
+    public static void writeAsciiString(String str, ByteBuffer out) {
+<span class="nc bnc" id="L302" title="All 2 branches missed.">        if (str == null) {</span>
+<span class="nc" id="L303">            BytesUtil.writeVInt(-1, out);</span>
+<span class="nc" id="L304">            return;</span>
+        }
+<span class="nc" id="L306">        int len = str.length();</span>
+<span class="nc" id="L307">        BytesUtil.writeVInt(len, out);</span>
+
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L310">            out.put((byte) str.charAt(i));</span>
+        }
+<span class="nc" id="L312">    }</span>
+
+    public static String readAsciiString(ByteBuffer in) {
+<span class="nc" id="L315">        int len = BytesUtil.readVInt(in);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (len &lt; 0) {</span>
+<span class="nc" id="L317">            return null;</span>
+        }
+        String result;
+        try {
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            if (in.hasArray()) {</span>
+<span class="nc" id="L322">                int pos = in.position();</span>
+<span class="nc" id="L323">                result = new String(in.array(), pos, len, &quot;ISO-8859-1&quot;);</span>
+<span class="nc" id="L324">                in.position(pos + len);</span>
+<span class="nc" id="L325">            } else {</span>
+<span class="nc" id="L326">                byte[] tmp = new byte[len];</span>
+<span class="nc" id="L327">                in.get(tmp);</span>
+<span class="nc" id="L328">                result = new String(tmp, &quot;ISO-8859-1&quot;);</span>
+            }
+<span class="nc" id="L330">        } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L331">            throw new RuntimeException(e); // never happen</span>
+<span class="nc" id="L332">        }</span>
+<span class="nc" id="L333">        return result;</span>
+    }
+
+    public static void writeAsciiStringArray(String[] strs, ByteBuffer out) {
+<span class="nc" id="L337">        writeVInt(strs.length, out);</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        for (int i = 0; i &lt; strs.length; i++)</span>
+<span class="nc" id="L339">            writeAsciiString(strs[i], out);</span>
+<span class="nc" id="L340">    }</span>
+
+    public static String[] readAsciiStringArray(ByteBuffer in) {
+<span class="nc" id="L343">        int len = readVInt(in);</span>
+<span class="nc" id="L344">        String[] strs = new String[len];</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        for (int i = 0; i &lt; len; i++)</span>
+<span class="nc" id="L346">            strs[i] = readAsciiString(in);</span>
+<span class="nc" id="L347">        return strs;</span>
+    }
+
+    public static void writeIntArray(int[] array, ByteBuffer out) {
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">        if (array == null) {</span>
+<span class="nc" id="L352">            writeVInt(-1, out);</span>
+<span class="nc" id="L353">            return;</span>
+        }
+<span class="fc" id="L355">        writeVInt(array.length, out);</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        for (int i = 0; i &lt; array.length; ++i) {</span>
+<span class="fc" id="L357">            writeVInt(array[i], out);</span>
+        }
+<span class="fc" id="L359">    }</span>
+
+    public static int[] readIntArray(ByteBuffer in) {
+<span class="fc" id="L362">        int len = readVInt(in);</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">        if (len &lt; 0)</span>
+<span class="nc" id="L364">            return null;</span>
+<span class="fc" id="L365">        int[] array = new int[len];</span>
+
+<span class="fc bfc" id="L367" title="All 2 branches covered.">        for (int i = 0; i &lt; len; ++i) {</span>
+<span class="fc" id="L368">            array[i] = readVInt(in);</span>
+        }
+<span class="fc" id="L370">        return array;</span>
+    }
+
+    public static void writeByteArray(byte[] array, ByteBuffer out) {
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        if (array == null) {</span>
+<span class="nc" id="L375">            writeVInt(-1, out);</span>
+<span class="nc" id="L376">            return;</span>
+        }
+<span class="nc" id="L378">        writeVInt(array.length, out);</span>
+<span class="nc" id="L379">        out.put(array);</span>
+<span class="nc" id="L380">    }</span>
+
+    public static void writeByteArray(byte[] array, int offset, int length, ByteBuffer out) {
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        if (array == null) {</span>
+<span class="nc" id="L384">            writeVInt(-1, out);</span>
+<span class="nc" id="L385">            return;</span>
+        }
+<span class="nc" id="L387">        writeVInt(length, out);</span>
+<span class="nc" id="L388">        out.put(array, offset, length);</span>
+<span class="nc" id="L389">    }</span>
+
+    public static byte[] readByteArray(ByteBuffer in) {
+<span class="nc" id="L392">        int len = readVInt(in);</span>
+<span class="nc bnc" id="L393" title="All 2 branches missed.">        if (len &lt; 0)</span>
+<span class="nc" id="L394">            return null;</span>
+
+<span class="nc" id="L396">        byte[] array = new byte[len];</span>
+<span class="nc" id="L397">        in.get(array);</span>
+<span class="nc" id="L398">        return array;</span>
+    }
+
+    public static int peekByteArrayLength(ByteBuffer in) {
+<span class="nc" id="L402">        int start = in.position();</span>
+<span class="nc" id="L403">        int arrayLen = readVInt(in);</span>
+<span class="nc" id="L404">        int sizeLen = in.position() - start;</span>
+<span class="nc" id="L405">        in.position(start);</span>
+
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (arrayLen &lt; 0)</span>
+<span class="nc" id="L408">            return sizeLen;</span>
+        else
+<span class="nc" id="L410">            return sizeLen + arrayLen;</span>
+    }
+
+    public static void writeBooleanArray(boolean[] array, ByteBuffer out) {
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">        if (array == null) {</span>
+<span class="nc" id="L415">            writeVInt(-1, out);</span>
+<span class="nc" id="L416">            return;</span>
+        }
+<span class="fc" id="L418">        writeVInt(array.length, out);</span>
+<span class="fc" id="L419">        byte b_true = (byte) 1;</span>
+<span class="fc" id="L420">        byte b_false = (byte) 0;</span>
+
+<span class="fc bfc" id="L422" title="All 2 branches covered.">        for (int i = 0; i &lt; array.length; i++) {</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            if (array[i])</span>
+<span class="fc" id="L424">                out.put(b_true);</span>
+            else
+<span class="fc" id="L426">                out.put(b_false);</span>
+        }
+<span class="fc" id="L428">    }</span>
+
+    public static boolean[] readBooleanArray(ByteBuffer in) {
+<span class="fc" id="L431">        int len = readVInt(in);</span>
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (len &lt; 0)</span>
+<span class="nc" id="L433">            return null;</span>
+
+<span class="fc" id="L435">        boolean[] array = new boolean[len];</span>
+<span class="fc" id="L436">        byte b_true = (byte) 1;</span>
+<span class="fc bfc" id="L437" title="All 2 branches covered.">        for (int i = 0; i &lt; array.length; i++) {</span>
+<span class="fc" id="L438">            byte temp = in.get();</span>
+<span class="fc bfc" id="L439" title="All 2 branches covered.">            if (temp == b_true)</span>
+<span class="fc" id="L440">                array[i] = true;</span>
+            else
+<span class="fc" id="L442">                array[i] = false;</span>
+        }
+<span class="fc" id="L444">        return array;</span>
+    }
+
+    public static String toReadableText(byte[] array) {
+<span class="nc bnc" id="L448" title="All 2 branches missed.">        if (array == null)</span>
+<span class="nc" id="L449">            return null;</span>
+<span class="nc" id="L450">        return toHex(array);</span>
+    }
+
+    /**
+     * this method only works for hex strings
+     */
+    public static byte[] fromReadableText(String text) {
+<span class="fc" id="L457">        String[] tokens = text.split(&quot;\\\\x&quot;);</span>
+<span class="fc" id="L458">        byte[] ret = new byte[tokens.length - 1];</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        for (int i = 1; i &lt; tokens.length; ++i) {</span>
+<span class="fc" id="L460">            int x = Bytes.toBinaryFromHex((byte) tokens[i].charAt(0));</span>
+<span class="fc" id="L461">            x = x &lt;&lt; 4;</span>
+<span class="fc" id="L462">            int y = Bytes.toBinaryFromHex((byte) tokens[i].charAt(1));</span>
+<span class="fc" id="L463">            ret[i - 1] = (byte) (x + y);</span>
+        }
+<span class="fc" id="L465">        return ret;</span>
+    }
+
+    public static String toHex(byte[] array) {
+<span class="fc" id="L469">        return toHex(array, 0, array.length);</span>
+    }
+
+    public static String toHex(byte[] array, int offset, int length) {
+<span class="fc" id="L473">        StringBuilder sb = new StringBuilder(length * 4);</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        for (int i = 0; i &lt; length; i++) {</span>
+<span class="fc" id="L475">            int b = array[offset + i];</span>
+<span class="fc" id="L476">            sb.append(String.format(Locale.ROOT, &quot;\\x%02X&quot;, b &amp; 0xFF));</span>
+        }
+<span class="fc" id="L478">        return sb.toString();</span>
+    }
+
+    /**
+     *
+     * @param hex String value of a byte array in hex, e.g, &quot;\\x00\\x0A&quot;;
+     * @return the byte array that the hex represented.
+     */
+    public static byte[] fromHex(String hex) {
+<span class="nc" id="L487">        byte[] b = new byte[hex.length() / 4];</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">        for (int i = 0; i &lt; b.length; i++) {</span>
+<span class="nc" id="L489">            int index = i * 4;</span>
+<span class="nc" id="L490">            int v = Integer.parseInt(hex.substring(index + 2, index + 4), 16);</span>
+<span class="nc" id="L491">            b[i] = (byte) v;</span>
+        }
+<span class="nc" id="L493">        return b;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

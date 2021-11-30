@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemoryBudgetController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">MemoryBudgetController.java</span></div><h1>MemoryBudgetController.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+public class MemoryBudgetController {
+
+    private static final boolean debug = false;
+
+    public interface MemoryConsumer {
+        // return number MB released
+        int freeUp(int mb);
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class NotEnoughBudgetException extends IllegalStateException {
+
+        public NotEnoughBudgetException() {
+<span class="nc" id="L43">            super();</span>
+<span class="nc" id="L44">        }</span>
+
+        public NotEnoughBudgetException(Throwable cause) {
+<span class="nc" id="L47">            super(cause);</span>
+<span class="nc" id="L48">        }</span>
+    }
+
+    private static class ConsumerEntry {
+        final MemoryConsumer consumer;
+        int reservedMB;
+
+<span class="nc" id="L55">        ConsumerEntry(MemoryConsumer consumer) {</span>
+<span class="nc" id="L56">            this.consumer = consumer;</span>
+<span class="nc" id="L57">        }</span>
+    }
+
+<span class="nc" id="L60">    public static final MemoryBudgetController ZERO_BUDGET = new MemoryBudgetController(0);</span>
+    public static final int ONE_MB = 1024 * 1024;
+    public static final long ONE_GB = 1024 * 1024 * 1024L;
+
+<span class="nc" id="L64">    private static final Logger logger = LoggerFactory.getLogger(MemoryBudgetController.class);</span>
+
+    // all budget numbers are in MB
+    private final int totalBudgetMB;
+<span class="nc" id="L68">    private final ConcurrentMap&lt;MemoryConsumer, ConsumerEntry&gt; booking = new ConcurrentHashMap&lt;MemoryConsumer, ConsumerEntry&gt;();</span>
+    private int totalReservedMB;
+<span class="nc" id="L70">    private final ReentrantLock lock = new ReentrantLock();</span>
+
+<span class="nc" id="L72">    public MemoryBudgetController(int totalBudgetMB) {</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        Preconditions.checkArgument(totalBudgetMB &gt;= 0);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        Preconditions.checkState(totalBudgetMB &lt;= getSystemAvailMB());</span>
+<span class="nc" id="L75">        this.totalBudgetMB = totalBudgetMB;</span>
+<span class="nc" id="L76">        this.totalReservedMB = 0;</span>
+<span class="nc" id="L77">    }</span>
+
+    public int getTotalBudgetMB() {
+<span class="nc" id="L80">        return totalBudgetMB;</span>
+    }
+
+    public int getTotalReservedMB() {
+<span class="nc" id="L84">        lock.lock();</span>
+        try {
+<span class="nc" id="L86">            return totalReservedMB;</span>
+        } finally {
+<span class="nc" id="L88">            lock.unlock();</span>
+        }
+    }
+
+    public int getRemainingBudgetMB() {
+<span class="nc" id="L93">        lock.lock();</span>
+        try {
+<span class="nc" id="L95">            return totalBudgetMB - totalReservedMB;</span>
+        } finally {
+<span class="nc" id="L97">            lock.unlock();</span>
+        }
+    }
+
+    public void reserveInsist(MemoryConsumer consumer, int requestMB) {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (requestMB &gt; totalBudgetMB)</span>
+<span class="nc" id="L103">            throw new NotEnoughBudgetException();</span>
+
+<span class="nc" id="L105">        long waitStart = 0;</span>
+        while (true) {
+            try {
+<span class="nc" id="L108">                reserve(consumer, requestMB);</span>
+                if (debug &amp;&amp; waitStart &gt; 0)
+                    logger.debug(consumer + &quot; waited &quot; + (System.currentTimeMillis() - waitStart) + &quot; ms on the &quot; + requestMB + &quot; MB request&quot;);
+<span class="nc" id="L111">                return;</span>
+<span class="nc" id="L112">            } catch (NotEnoughBudgetException ex) {</span>
+                // retry
+            }
+
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (waitStart == 0)</span>
+<span class="nc" id="L117">                waitStart = System.currentTimeMillis();</span>
+
+<span class="nc" id="L119">            synchronized (lock) {</span>
+                try {
+<span class="nc" id="L121">                    lock.wait();</span>
+<span class="nc" id="L122">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L123">                    Thread.currentThread().interrupt();</span>
+<span class="nc" id="L124">                    throw new NotEnoughBudgetException(e);</span>
+<span class="nc" id="L125">                }</span>
+<span class="nc" id="L126">            }</span>
+        }
+    }
+
+    /** reserve without wait, fail with NotEnoughBudgetException immediately if no mem */
+    public void reserve(MemoryConsumer consumer, int requestMB) {
+<span class="nc bnc" id="L132" title="All 4 branches missed.">        if (totalBudgetMB == 0 &amp;&amp; requestMB &gt; 0)</span>
+<span class="nc" id="L133">            throw new NotEnoughBudgetException();</span>
+
+<span class="nc" id="L135">        boolean ok = false;</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        while (!ok) {</span>
+<span class="nc" id="L137">            int gap = calculateGap(consumer, requestMB);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">            if (gap &gt; 0) {</span>
+                // to void deadlock, don't hold lock when invoking consumer.freeUp()
+<span class="nc" id="L140">                tryFreeUp(gap);</span>
+            }
+<span class="nc" id="L142">            ok = updateBooking(consumer, requestMB);</span>
+<span class="nc" id="L143">        }</span>
+<span class="nc" id="L144">    }</span>
+
+    private int calculateGap(MemoryConsumer consumer, int requestMB) {
+<span class="nc" id="L147">        lock.lock();</span>
+        try {
+<span class="nc" id="L149">            ConsumerEntry entry = booking.get(consumer);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            int curMB = entry == null ? 0 : entry.reservedMB;</span>
+<span class="nc" id="L151">            int delta = requestMB - curMB;</span>
+<span class="nc" id="L152">            return delta - (totalBudgetMB - totalReservedMB);</span>
+        } finally {
+<span class="nc" id="L154">            lock.unlock();</span>
+        }
+    }
+
+    private void tryFreeUp(int gap) {
+        // note don't hold lock when calling consumer.freeUp(), that method holding lock for itself and may cause deadlock
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        for (ConsumerEntry entry : booking.values()) {</span>
+<span class="nc" id="L161">            int mb = entry.consumer.freeUp(gap);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            if (mb &gt; 0) {</span>
+<span class="nc" id="L163">                lock.lock();</span>
+                try {
+<span class="nc" id="L165">                    updateBookingWithDelta(entry.consumer, -mb);</span>
+                } finally {
+<span class="nc" id="L167">                    lock.unlock();</span>
+                }
+<span class="nc" id="L169">                gap -= mb;</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                if (gap &lt;= 0)</span>
+<span class="nc" id="L171">                    break;</span>
+            }
+<span class="nc" id="L173">        }</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (gap &gt; 0)</span>
+<span class="nc" id="L175">            throw new NotEnoughBudgetException();</span>
+
+        if (debug) {
+            if (getSystemAvailMB() &lt; getRemainingBudgetMB()) {
+                logger.debug(&quot;Remaining budget is &quot; + getRemainingBudgetMB() + &quot; MB free, but system only has &quot; + getSystemAvailMB() + &quot; MB free. If this persists, some memory calculation must be wrong.&quot;);
+            }
+        }
+<span class="nc" id="L182">    }</span>
+
+    private boolean updateBooking(MemoryConsumer consumer, int requestMB) {
+<span class="nc" id="L185">        lock.lock();</span>
+        try {
+<span class="nc" id="L187">            ConsumerEntry entry = booking.get(consumer);</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            if (entry == null) {</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                if (requestMB == 0)</span>
+<span class="nc" id="L190">                    return true;</span>
+
+<span class="nc" id="L192">                entry = new ConsumerEntry(consumer);</span>
+<span class="nc" id="L193">                booking.put(consumer, entry);</span>
+            }
+
+<span class="nc" id="L196">            int delta = requestMB - entry.reservedMB;</span>
+<span class="nc" id="L197">            return updateBookingWithDelta(consumer, delta);</span>
+        } finally {
+<span class="nc" id="L199">            lock.unlock();</span>
+        }
+    }
+
+    // lock MUST be obtained before entering
+    private boolean updateBookingWithDelta(MemoryConsumer consumer, int delta) {
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (delta == 0)</span>
+<span class="nc" id="L206">            return true;</span>
+
+<span class="nc" id="L208">        ConsumerEntry entry = booking.get(consumer);</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (entry == null) {</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (delta &lt;= 0)</span>
+<span class="nc" id="L211">                return true;</span>
+
+<span class="nc" id="L213">            entry = new ConsumerEntry(consumer);</span>
+<span class="nc" id="L214">            booking.put(consumer, entry);</span>
+        }
+
+        // double check gap again, it may be changed by other concurrent requests
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (delta &gt; 0) {</span>
+<span class="nc" id="L219">            int gap = delta - (totalBudgetMB - totalReservedMB);</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            if (gap &gt; 0)</span>
+<span class="nc" id="L221">                return false;</span>
+        }
+
+<span class="nc" id="L224">        totalReservedMB += delta;</span>
+<span class="nc" id="L225">        entry.reservedMB += delta;</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (entry.reservedMB == 0) {</span>
+<span class="nc" id="L227">            booking.remove(entry.consumer);</span>
+        }
+        if (debug) {
+            logger.debug(entry.consumer + &quot; reserved &quot; + entry.reservedMB + &quot; MB, total reserved &quot; + totalReservedMB + &quot; MB, remaining budget &quot; + getRemainingBudgetMB() + &quot; MB&quot;);
+        }
+
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (delta &lt; 0) {</span>
+<span class="nc" id="L234">            synchronized (lock) {</span>
+<span class="nc" id="L235">                lock.notifyAll();</span>
+<span class="nc" id="L236">            }</span>
+        }
+
+<span class="nc" id="L239">        return true;</span>
+    }
+
+    public static int gcAndGetSystemAvailMB() {
+<span class="nc" id="L243">        final int tolerance = 1;</span>
+        try {
+<span class="nc" id="L245">            int lastMB = -1;</span>
+            while (true) {
+<span class="nc" id="L247">                Runtime.getRuntime().gc();</span>
+<span class="nc" id="L248">                Thread.sleep(1000);</span>
+<span class="nc" id="L249">                int thisMB = getSystemAvailMB();</span>
+
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                if (lastMB &lt; 0) {</span>
+<span class="nc" id="L252">                    lastMB = thisMB;</span>
+<span class="nc" id="L253">                    continue;</span>
+                }
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                if (lastMB - thisMB &lt; tolerance) {</span>
+<span class="nc" id="L256">                    return thisMB;</span>
+                }
+<span class="nc" id="L258">                lastMB = thisMB;</span>
+<span class="nc" id="L259">            }</span>
+<span class="nc" id="L260">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L261">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L262">            logger.error(&quot;&quot;, e);</span>
+<span class="nc" id="L263">            return getSystemAvailMB();</span>
+        }
+    }
+
+    public static long getSystemAvailBytes() {
+<span class="nc" id="L268">        Runtime runtime = Runtime.getRuntime();</span>
+<span class="nc" id="L269">        long totalMemory = runtime.totalMemory(); // current heap allocated to the VM process</span>
+<span class="nc" id="L270">        long freeMemory = runtime.freeMemory(); // out of the current heap, how much is free</span>
+<span class="nc" id="L271">        long maxMemory = runtime.maxMemory(); // Max heap VM can use e.g. Xmx setting</span>
+<span class="nc" id="L272">        long usedMemory = totalMemory - freeMemory; // how much of the current heap the VM is using</span>
+<span class="nc" id="L273">        long availableMemory = maxMemory - usedMemory; // available memory i.e. Maximum heap size minus the current amount used</span>
+<span class="nc" id="L274">        return availableMemory;</span>
+    }
+
+    public static int getSystemAvailMB() {
+<span class="nc" id="L278">        return (int) (getSystemAvailBytes() / ONE_MB);</span>
+    }
+
+    // protective estimate of memory usage, prefer overestimate rather than underestimate
+<span class="nc" id="L282">    public static class MemoryWaterLevel {</span>
+<span class="nc" id="L283">        int lowAvail = Integer.MAX_VALUE;</span>
+<span class="nc" id="L284">        int highAvail = Integer.MIN_VALUE;</span>
+
+        public void markHigh() {
+            // get avail mem without gc
+<span class="nc" id="L288">            int mb = MemoryBudgetController.getSystemAvailMB();</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">            if (mb &lt; lowAvail) {</span>
+<span class="nc" id="L290">                lowAvail = mb;</span>
+<span class="nc" id="L291">                logger.warn(&quot;Lower system avail &quot; + lowAvail + &quot; MB in markHigh()&quot;);</span>
+            }
+<span class="nc" id="L293">        }</span>
+
+        public void markLow() {
+            // get avail mem after gc
+<span class="nc" id="L297">            int mb = MemoryBudgetController.gcAndGetSystemAvailMB();</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">            if (mb &gt; highAvail) {</span>
+<span class="nc" id="L299">                highAvail = mb;</span>
+<span class="nc" id="L300">                logger.warn(&quot;Higher system avail &quot; + highAvail + &quot; MB in markLow()&quot;);</span>
+            }
+<span class="nc" id="L302">        }</span>
+
+        public int getEstimateMB() {
+<span class="nc" id="L305">            return highAvail - lowAvail;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

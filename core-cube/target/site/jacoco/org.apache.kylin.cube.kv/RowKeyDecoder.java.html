@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RowKeyDecoder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.kv</a> &gt; <span class="el_source">RowKeyDecoder.java</span></div><h1>RowKeyDecoder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.kv;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.common.RowKeySplitter;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+/**
+ * 
+ * @author xjiang
+ * 
+ */
+public class RowKeyDecoder {
+
+    private final CubeDesc cubeDesc;
+    private final RowKeyColumnIO colIO;
+    private final RowKeySplitter rowKeySplitter;
+
+    private Cuboid cuboid;
+    private List&lt;String&gt; values;
+
+<span class="nc" id="L46">    public RowKeyDecoder(CubeSegment cubeSegment) {</span>
+<span class="nc" id="L47">        this.cubeDesc = cubeSegment.getCubeDesc();</span>
+<span class="nc" id="L48">        this.rowKeySplitter = new RowKeySplitter(cubeSegment);</span>
+<span class="nc" id="L49">        this.colIO = new RowKeyColumnIO(cubeSegment.getDimensionEncodingMap());</span>
+<span class="nc" id="L50">        this.values = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L51">    }</span>
+
+    public long decode(byte[] bytes) throws IOException {
+<span class="nc" id="L54">        this.values.clear();</span>
+
+<span class="nc" id="L56">        long cuboidId = rowKeySplitter.split(bytes);</span>
+<span class="nc" id="L57">        initCuboid(cuboidId);</span>
+
+<span class="nc" id="L59">        ByteArray[] splits = rowKeySplitter.getSplitBuffers();</span>
+
+<span class="nc" id="L61">        int offset = rowKeySplitter.getBodySplitOffset(); // skip shard and cuboid id part</span>
+
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        for (int i = 0; i &lt; this.cuboid.getColumns().size(); i++) {</span>
+<span class="nc" id="L64">            TblColRef col = this.cuboid.getColumns().get(i);</span>
+<span class="nc" id="L65">            collectValue(col, splits[offset].array(), splits[offset].offset(), splits[offset].length());</span>
+<span class="nc" id="L66">            offset++;</span>
+        }
+
+<span class="nc" id="L69">        return cuboidId;</span>
+    }
+
+    private void initCuboid(long cuboidID) {
+<span class="nc bnc" id="L73" title="All 4 branches missed.">        if (this.cuboid != null &amp;&amp; this.cuboid.getId() == cuboidID) {</span>
+<span class="nc" id="L74">            return;</span>
+        }
+<span class="nc" id="L76">        this.cuboid = Cuboid.findForMandatory(cubeDesc, cuboidID);</span>
+<span class="nc" id="L77">    }</span>
+
+    private void collectValue(TblColRef col, byte[] valueBytes, int offset, int length) throws IOException {
+<span class="nc" id="L80">        String strValue = colIO.readColumnString(col, valueBytes, offset, length);</span>
+<span class="nc" id="L81">        values.add(strValue);</span>
+<span class="nc" id="L82">    }</span>
+
+    public RowKeySplitter getRowKeySplitter() {
+<span class="nc" id="L85">        return rowKeySplitter;</span>
+    }
+
+    public void setCuboid(Cuboid cuboid) {
+<span class="nc" id="L89">        this.cuboid = cuboid;</span>
+<span class="nc" id="L90">    }</span>
+
+    public List&lt;TblColRef&gt; getColumns() {
+<span class="nc" id="L93">        return cuboid.getColumns();</span>
+    }
+
+    public List&lt;String&gt; getValues() {
+<span class="nc" id="L97">        return values;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L102">        StringBuilder buf = new StringBuilder();</span>
+<span class="nc" id="L103">        buf.append(cuboid.getId());</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        for (Object value : values) {</span>
+<span class="nc" id="L105">            buf.append(&quot;,&quot;);</span>
+<span class="nc" id="L106">            buf.append(value);</span>
+<span class="nc" id="L107">        }</span>
+<span class="nc" id="L108">        return buf.toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

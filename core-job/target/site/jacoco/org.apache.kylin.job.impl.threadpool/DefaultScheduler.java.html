@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.impl.threadpool</a> &gt; <span class="el_source">DefaultScheduler.java</span></div><h1>DefaultScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.impl.threadpool;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.kylin.common.util.ServerMode;
+import org.apache.kylin.common.util.SetThreadName;
+import org.apache.kylin.job.Scheduler;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.exception.SchedulerException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.Executable;
+import org.apache.kylin.job.execution.ExecutableManager;
+import org.apache.kylin.job.lock.JobLock;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+public class DefaultScheduler implements Scheduler&lt;AbstractExecutable&gt; {
+
+    private static DefaultScheduler INSTANCE;
+
+    public synchronized static DefaultScheduler getInstance() {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (INSTANCE == null) {</span>
+<span class="fc" id="L50">            INSTANCE = createInstance();</span>
+        }
+<span class="fc" id="L52">        return INSTANCE;</span>
+    }
+
+    public static synchronized DefaultScheduler createInstance() {
+<span class="fc" id="L56">        destroyInstance();</span>
+<span class="fc" id="L57">        INSTANCE = new DefaultScheduler();</span>
+<span class="fc" id="L58">        return INSTANCE;</span>
+    }
+
+    public static synchronized void destroyInstance() {
+<span class="fc" id="L62">        DefaultScheduler tmp = INSTANCE;</span>
+<span class="fc" id="L63">        INSTANCE = null;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (tmp != null) {</span>
+            try {
+<span class="fc" id="L66">                tmp.shutdown();</span>
+<span class="nc" id="L67">            } catch (SchedulerException e) {</span>
+<span class="nc" id="L68">                logger.error(&quot;error stop DefaultScheduler&quot;, e);</span>
+<span class="nc" id="L69">                throw new RuntimeException(e);</span>
+<span class="fc" id="L70">            }</span>
+        }
+<span class="fc" id="L72">    }</span>
+
+    // ============================================================================
+
+    private JobLock jobLock;
+    private FetcherRunner fetcher;
+    private ScheduledExecutorService fetcherPool;
+    private ExecutorService jobPool;
+    private DefaultContext context;
+
+<span class="fc" id="L82">    private static final Logger logger = LoggerFactory.getLogger(DefaultScheduler.class);</span>
+<span class="fc" id="L83">    private volatile boolean initialized = false;</span>
+<span class="fc" id="L84">    private volatile boolean hasStarted = false;</span>
+    private JobEngineConfig jobEngineConfig;
+
+<span class="fc" id="L87">    public DefaultScheduler() {</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (INSTANCE != null) {</span>
+<span class="nc" id="L89">            throw new IllegalStateException(&quot;DefaultScheduler has been initiated.&quot;);</span>
+        }
+<span class="fc" id="L91">    }</span>
+
+    public ExecutableManager getExecutableManager() {
+<span class="fc" id="L94">        return ExecutableManager.getInstance(jobEngineConfig.getConfig());</span>
+    }
+
+    public FetcherRunner getFetcherRunner() {
+<span class="nc" id="L98">        return fetcher;</span>
+    }
+
+    private class JobRunner implements Runnable {
+
+        private final AbstractExecutable executable;
+
+<span class="fc" id="L105">        public JobRunner(AbstractExecutable executable) {</span>
+<span class="fc" id="L106">            this.executable = executable;</span>
+<span class="fc" id="L107">        }</span>
+
+        @Override
+        public void run() {
+<span class="fc" id="L111">            try (SetThreadName ignored = new SetThreadName(&quot;Scheduler %s Job %s&quot;,</span>
+<span class="fc" id="L112">                    System.identityHashCode(DefaultScheduler.this), executable.getId())) {</span>
+<span class="fc" id="L113">                executable.execute(context);</span>
+<span class="fc" id="L114">            } catch (ExecuteException e) {</span>
+<span class="fc" id="L115">                logger.error(&quot;ExecuteException job:&quot; + executable.getId(), e);</span>
+<span class="nc" id="L116">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                if (AbstractExecutable.isMetaDataPersistException(e, 5)) {</span>
+                    // Job fail due to PersistException
+<span class="nc" id="L119">                    ExecutableManager.getInstance(jobEngineConfig.getConfig())</span>
+<span class="nc" id="L120">                            .forceKillJobWithRetry(executable.getId());</span>
+                }
+<span class="nc" id="L122">                logger.error(&quot;unknown error execute job:&quot; + executable.getId(), e);</span>
+            } finally {
+<span class="fc" id="L124">                context.removeRunningJob(executable);</span>
+            }
+
+            // trigger the next step asap
+<span class="fc" id="L128">            fetcherPool.schedule(fetcher, 0, TimeUnit.SECONDS);</span>
+<span class="fc" id="L129">        }</span>
+    }
+
+    @Override
+    public synchronized void init(JobEngineConfig jobEngineConfig, JobLock lock) throws SchedulerException {
+<span class="fc" id="L134">        jobLock = lock;</span>
+
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (!ServerMode.SERVER_MODE.canServeJobBuild()) {</span>
+<span class="nc" id="L137">            logger.info(</span>
+<span class="nc" id="L138">                    &quot;server mode: &quot; + jobEngineConfig.getConfig().getServerMode() + &quot;, no need to run job scheduler&quot;);</span>
+<span class="nc" id="L139">            return;</span>
+        }
+<span class="fc" id="L141">        logger.info(&quot;Initializing Job Engine ....&quot;);</span>
+
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (!initialized) {</span>
+<span class="fc" id="L144">            initialized = true;</span>
+        } else {
+<span class="nc" id="L146">            return;</span>
+        }
+
+<span class="fc" id="L149">        this.jobEngineConfig = jobEngineConfig;</span>
+
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (jobLock.lockJobEngine() == false) {</span>
+<span class="nc" id="L152">            throw new IllegalStateException(&quot;Cannot start job scheduler due to lack of job lock&quot;);</span>
+        }
+
+        //load all executable, set them to a consistent status
+<span class="fc" id="L156">        fetcherPool = Executors.newScheduledThreadPool(1);</span>
+<span class="fc" id="L157">        int corePoolSize = jobEngineConfig.getMaxConcurrentJobLimit();</span>
+<span class="fc" id="L158">        jobPool = new ThreadPoolExecutor(corePoolSize, corePoolSize, Long.MAX_VALUE, TimeUnit.DAYS,</span>
+                new SynchronousQueue&lt;Runnable&gt;());
+<span class="fc" id="L160">        context = new DefaultContext(Maps.&lt;String, Executable&gt; newConcurrentMap(), jobEngineConfig.getConfig());</span>
+
+<span class="fc" id="L162">        logger.info(&quot;Starting resume all running jobs.&quot;);</span>
+<span class="fc" id="L163">        ExecutableManager executableManager = getExecutableManager();</span>
+<span class="fc" id="L164">        executableManager.resumeAllRunningJobs();</span>
+<span class="fc" id="L165">        logger.info(&quot;Finishing resume all running jobs.&quot;);</span>
+
+<span class="fc" id="L167">        int pollSecond = jobEngineConfig.getPollIntervalSecond();</span>
+
+<span class="fc" id="L169">        logger.info(&quot;Fetching jobs every {} seconds&quot;, pollSecond);</span>
+<span class="fc" id="L170">        JobExecutor jobExecutor = new JobExecutor() {</span>
+            @Override
+            public void execute(AbstractExecutable executable) {
+<span class="fc" id="L173">                jobPool.execute(new JobRunner(executable));</span>
+<span class="fc" id="L174">            }</span>
+        };
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        fetcher = jobEngineConfig.getJobPriorityConsidered()</span>
+                ? new PriorityFetcherRunner(jobEngineConfig, context, jobExecutor)
+                : new DefaultFetcherRunner(jobEngineConfig, context, jobExecutor);
+<span class="fc" id="L179">        logger.info(&quot;Creating fetcher pool instance:&quot; + System.identityHashCode(fetcher));</span>
+<span class="fc" id="L180">        fetcherPool.scheduleAtFixedRate(fetcher, pollSecond / 10, pollSecond, TimeUnit.SECONDS);</span>
+<span class="fc" id="L181">        hasStarted = true;</span>
+<span class="fc" id="L182">    }</span>
+
+    @Override
+    public void shutdown() throws SchedulerException {
+<span class="fc" id="L186">        logger.info(&quot;Shutting down DefaultScheduler ....&quot;);</span>
+<span class="fc" id="L187">        jobLock.unlockJobEngine();</span>
+<span class="fc" id="L188">        initialized = false;</span>
+<span class="fc" id="L189">        hasStarted = false;</span>
+        try {
+<span class="fc" id="L191">            fetcherPool.shutdownNow();//interrupt</span>
+<span class="fc" id="L192">            fetcherPool.awaitTermination(1, TimeUnit.MINUTES);</span>
+<span class="fc" id="L193">        } catch (InterruptedException e) {</span>
+            //ignore it
+<span class="fc" id="L195">            logger.warn(&quot;InterruptedException is caught when shutting down job fetcher.&quot;, e);</span>
+<span class="fc" id="L196">        }</span>
+        try {
+<span class="fc" id="L198">            jobPool.shutdownNow();//interrupt</span>
+<span class="fc" id="L199">            jobPool.awaitTermination(1, TimeUnit.MINUTES);</span>
+<span class="nc" id="L200">        } catch (InterruptedException e) {</span>
+            //ignore it
+<span class="nc" id="L202">            logger.warn(&quot;InterruptedException is caught when shutting down job pool.&quot;, e);</span>
+<span class="fc" id="L203">        }</span>
+<span class="fc" id="L204">    }</span>
+
+    @Override
+    public boolean hasStarted() {
+<span class="fc" id="L208">        return this.hasStarted;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

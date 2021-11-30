@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TableACL.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.acl</a> &gt; <span class="el_source">TableACL.java</span></div><h1>TableACL.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.acl;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.CaseInsensitiveStringSet;
+import org.apache.kylin.metadata.MetadataConstants;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableSet;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE,
+        getterVisibility = JsonAutoDetect.Visibility.NONE,
+        isGetterVisibility = JsonAutoDetect.Visibility.NONE,
+        setterVisibility = JsonAutoDetect.Visibility.NONE)
+<span class="fc" id="L44">public class TableACL extends RootPersistentEntity {</span>
+
+    //user1 : [DB.TABLE1, DB.TABLE2], means that user1 can not query DB.TABLE1, DB.TABLE2
+<span class="fc" id="L47">    @JsonProperty()</span>
+    private TableACLEntry userTableBlackList = new TableACLEntry();
+<span class="fc" id="L49">    @JsonProperty()</span>
+    private TableACLEntry groupTableBlackList = new TableACLEntry();
+
+    private String project;
+    
+    void init(String project) {
+<span class="nc" id="L55">        this.project = project;</span>
+<span class="nc" id="L56">    }</span>
+    
+    @Override
+    public String resourceName() {
+<span class="nc" id="L60">        return project;</span>
+    }
+    
+    public Set&lt;String&gt; getTableBlackList(String username, Set&lt;String&gt; groups) {
+<span class="fc" id="L64">        Set&lt;String&gt; tableBlackList = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L65">        tableBlackList.addAll(userTableBlackList.getTableBlackList(username));</span>
+        //if user is in group, add group's black list
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (String group : groups) {</span>
+<span class="fc" id="L68">            tableBlackList.addAll(groupTableBlackList.getTableBlackList(group));</span>
+<span class="fc" id="L69">        }</span>
+<span class="fc" id="L70">        return tableBlackList;</span>
+    }
+
+    private TableACLEntry currentEntry(String type) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (type.equalsIgnoreCase(MetadataConstants.TYPE_USER)) {</span>
+<span class="fc" id="L75">            return userTableBlackList;</span>
+        } else {
+<span class="fc" id="L77">            return groupTableBlackList;</span>
+        }
+    }
+
+    //get Identifiers(users or groups) that can not query the table
+    public List&lt;String&gt; getNoAccessList(String table, String type) {
+<span class="nc" id="L83">        return currentEntry(type).getNoAccessList(table);</span>
+    }
+
+    public List&lt;String&gt; getCanAccessList(String table, Set&lt;String&gt; allIdentifiers, String type) {
+<span class="nc" id="L87">        return currentEntry(type).getCanAccessList(table, allIdentifiers);</span>
+    }
+
+    public Set&lt;String&gt; getBlockedTablesByUser(String username, String type) {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        return currentEntry(type).get(username) == null ? Sets.&lt;String&gt;newHashSet()</span>
+<span class="nc" id="L92">                : currentEntry(type).get(username).getTables();</span>
+    }
+
+    public TableACL add(String name, String table, String type) {
+<span class="fc" id="L96">        currentEntry(type).add(name, table);</span>
+<span class="fc" id="L97">        return this;</span>
+    }
+
+    public TableACL delete(String name, String table, String type) {
+<span class="fc" id="L101">        currentEntry(type).delete(name, table);</span>
+<span class="fc" id="L102">        return this;</span>
+    }
+
+    public TableACL delete(String name, String type) {
+<span class="fc" id="L106">        currentEntry(type).delete(name);</span>
+<span class="fc" id="L107">        return this;</span>
+    }
+
+    TableACL deleteByTbl(String table) {
+<span class="fc" id="L111">        userTableBlackList.deleteByTbl(table);</span>
+<span class="fc" id="L112">        groupTableBlackList.deleteByTbl(table);</span>
+<span class="fc" id="L113">        return this;</span>
+    }
+
+    public boolean contains(String name, String type) {
+<span class="nc" id="L117">        return currentEntry(type).containsKey(name);</span>
+    }
+
+    public int size() {
+<span class="fc" id="L121">        return userTableBlackList.size() + groupTableBlackList.size();</span>
+    }
+
+    public int size(String type) {
+<span class="fc" id="L125">        return currentEntry(type).size();</span>
+    }
+
+    @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE,
+            getterVisibility = JsonAutoDetect.Visibility.NONE,
+            isGetterVisibility = JsonAutoDetect.Visibility.NONE,
+            setterVisibility = JsonAutoDetect.Visibility.NONE)
+    private static class TableACLEntry extends HashMap&lt;String, TableBlackList&gt; {
+        private void add(String name, String table) {
+<span class="fc" id="L134">            TableBlackList tableBlackList = super.get(name);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (tableBlackList == null) {</span>
+<span class="fc" id="L136">                tableBlackList = new TableBlackList();</span>
+<span class="fc" id="L137">                super.put(name, tableBlackList);</span>
+            }
+
+            //before add, check exists
+<span class="fc" id="L141">            validateACLNotExists(name, table, tableBlackList);</span>
+<span class="fc" id="L142">            tableBlackList.addTbl(table);</span>
+<span class="fc" id="L143">        }</span>
+
+        private void delete(String name, String table) {
+<span class="fc" id="L146">            validateACLExists(name, table);</span>
+<span class="fc" id="L147">            TableBlackList tableBlackList = super.get(name);</span>
+<span class="fc" id="L148">            tableBlackList.removeTbl(table);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            if (tableBlackList.isEmpty()) {</span>
+<span class="fc" id="L150">                super.remove(name);</span>
+            }
+<span class="fc" id="L152">        }</span>
+
+        private void delete(String username) {
+<span class="fc" id="L155">            validateACLExists(username);</span>
+<span class="fc" id="L156">            super.remove(username);</span>
+<span class="fc" id="L157">        }</span>
+
+        private void deleteByTbl(String table) {
+<span class="fc" id="L160">            Iterator&lt;Map.Entry&lt;String, TableBlackList&gt;&gt; it = super.entrySet().iterator();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc" id="L162">                TableBlackList tableBlackList = it.next().getValue();</span>
+<span class="fc" id="L163">                tableBlackList.removeTbl(table);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                if (tableBlackList.isEmpty()) {</span>
+<span class="fc" id="L165">                    it.remove();</span>
+                }
+<span class="fc" id="L167">            }</span>
+<span class="fc" id="L168">        }</span>
+
+        private Set&lt;String&gt; getTableBlackList(String name) {
+<span class="fc" id="L171">            TableBlackList tableBlackList = super.get(name);</span>
+            //table interceptor will use this, return an empty set than null
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (tableBlackList == null) {</span>
+<span class="fc" id="L174">                tableBlackList = new TableBlackList();</span>
+            }
+<span class="fc" id="L176">            return tableBlackList.getTables();</span>
+        }
+
+        private List&lt;String&gt; getNoAccessList(String table) {
+<span class="nc" id="L180">            List&lt;String&gt; results = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            for (String identifiers : super.keySet()) {</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                if (super.get(identifiers).contains(table)) {</span>
+<span class="nc" id="L183">                    results.add(identifiers);</span>
+                }
+<span class="nc" id="L185">            }</span>
+<span class="nc" id="L186">            return results;</span>
+        }
+
+        private List&lt;String&gt; getCanAccessList(String table, Set&lt;String&gt; allIdentifiers) {
+<span class="nc" id="L190">            List&lt;String&gt; list = Lists.newArrayList(allIdentifiers);</span>
+<span class="nc" id="L191">            List&lt;String&gt; blocked = getNoAccessList(table);</span>
+<span class="nc" id="L192">            list.removeAll(blocked);</span>
+<span class="nc" id="L193">            return list;</span>
+        }
+
+        private void validateACLExists(String username) {
+<span class="pc bpc" id="L197" title="2 of 4 branches missed.">            if (super.get(username) == null || super.get(username).isEmpty()) {</span>
+<span class="nc" id="L198">                throw new RuntimeException(&quot;Operation fail, can not grant user table query permission.User:&quot; + username</span>
+                        + &quot; already has permission!&quot;);
+            }
+<span class="fc" id="L201">        }</span>
+
+        private void validateACLNotExists(String username, String table, TableBlackList tableBlackList) {
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            if (tableBlackList.contains(table)) {</span>
+<span class="fc" id="L205">                throw new RuntimeException(&quot;Operation fail, can not revoke user's table query permission.Table ACL &quot; + table</span>
+                        + &quot;:&quot; + username + &quot; already exists!&quot;);
+            }
+<span class="fc" id="L208">        }</span>
+
+        private void validateACLExists(String name, String table) {
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">            if (super.get(name) == null || (!super.get(name).contains(table))) {</span>
+<span class="fc" id="L212">                throw new RuntimeException(&quot;Operation fail, can not grant user table query permission.Table ACL &quot; + table</span>
+                        + &quot;:&quot; + name + &quot; is not found!&quot;);
+            }
+<span class="fc" id="L215">        }</span>
+    }
+
+    @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE,
+            getterVisibility = JsonAutoDetect.Visibility.NONE,
+            isGetterVisibility = JsonAutoDetect.Visibility.NONE,
+            setterVisibility = JsonAutoDetect.Visibility.NONE)
+<span class="fc" id="L222">    private static class TableBlackList {</span>
+        //user1 : [DB.TABLE1, DB.TABLE2], means that user1 can not query DB.TABLE1, DB.TABLE2
+<span class="fc" id="L224">        @JsonProperty()</span>
+        private CaseInsensitiveStringSet tables = new CaseInsensitiveStringSet();
+
+        private boolean isEmpty() {
+<span class="fc" id="L228">            return tables.isEmpty();</span>
+        }
+
+        private boolean contains(String s) {
+<span class="fc" id="L232">            return tables.contains(s);</span>
+        }
+
+        private void addTbl(String s) {
+<span class="fc" id="L236">            tables.add(s);</span>
+<span class="fc" id="L237">        }</span>
+
+        private void removeTbl(String s) {
+<span class="fc" id="L240">            tables.remove(s);</span>
+<span class="fc" id="L241">        }</span>
+
+        private Set&lt;String&gt; getTables() {
+<span class="fc" id="L244">            return ImmutableSet.copyOf(tables);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

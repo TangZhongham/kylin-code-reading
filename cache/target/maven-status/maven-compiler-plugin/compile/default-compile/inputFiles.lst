@@ -1,0 +1,15 @@
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/ehcache/InstrumentedEhCacheCache.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/CacheConstants.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedChunkingCache.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedCacheConfig.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/net/spy/memcached/protocol/TCPMemcachedNodeImpl.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/KeyHookLookup.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/InstrumentedEhCacheCacheManager.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/net/spy/memcached/RefinedKetamaNodeLocator.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedConnectionFactoryBuilder.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedCache.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/CacheStats.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedConnectionFactory.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedMetrics.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/MemcachedCacheManager.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/RemoteLocalFailOverCacheManager.java

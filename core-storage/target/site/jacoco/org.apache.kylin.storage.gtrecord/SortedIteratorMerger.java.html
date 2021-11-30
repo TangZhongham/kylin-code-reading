@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SortedIteratorMerger.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">SortedIteratorMerger.java</span></div><h1>SortedIteratorMerger.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.PriorityQueue;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+/**
+ * a merger that utilizes the sorted nature of input iterators
+ */
+public class SortedIteratorMerger&lt;E&gt; {
+
+    private Iterator&lt;Iterator&lt;E&gt;&gt; shardSubsets;
+    protected Comparator&lt;E&gt; comparator;
+
+<span class="fc" id="L35">    SortedIteratorMerger(Iterator&lt;Iterator&lt;E&gt;&gt; shardSubsets, Comparator&lt;E&gt; comparator) {</span>
+<span class="fc" id="L36">        this.shardSubsets = shardSubsets;</span>
+<span class="fc" id="L37">        this.comparator = comparator;</span>
+<span class="fc" id="L38">    }</span>
+
+    PriorityQueue&lt;PeekingImpl&lt;E&gt;&gt; getHeap() {
+<span class="fc" id="L41">        final PriorityQueue&lt;PeekingImpl&lt;E&gt;&gt; heap = new PriorityQueue&lt;PeekingImpl&lt;E&gt;&gt;(11,</span>
+<span class="fc" id="L42">                new Comparator&lt;PeekingImpl&lt;E&gt;&gt;() {</span>
+                    @Override
+                    public int compare(PeekingImpl&lt;E&gt; o1, PeekingImpl&lt;E&gt; o2) {
+<span class="fc" id="L45">                        return comparator.compare(o1.peek(), o2.peek());</span>
+                    }
+                });
+
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        while (shardSubsets.hasNext()) {</span>
+<span class="fc" id="L50">            Iterator&lt;E&gt; iterator = shardSubsets.next();</span>
+<span class="fc" id="L51">            PeekingImpl&lt;E&gt; peekingIterator = new PeekingImpl&lt;&gt;(iterator);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (peekingIterator.hasNext()) {</span>
+<span class="fc" id="L53">                heap.offer(peekingIterator);</span>
+            }
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        return heap;</span>
+    }
+
+    public Iterator&lt;E&gt; getIterator() {
+<span class="fc" id="L60">        return new MergedIterator(comparator);</span>
+    }
+
+    private class MergedIterator implements Iterator&lt;E&gt; {
+
+        private PriorityQueue&lt;PeekingImpl&lt;E&gt;&gt; heap;
+        private final Comparator&lt;E&gt; comparator;
+
+<span class="fc" id="L68">        public MergedIterator(Comparator&lt;E&gt; comparator) {</span>
+<span class="fc" id="L69">            this.comparator = comparator;</span>
+<span class="fc" id="L70">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (heap == null) {</span>
+<span class="fc" id="L75">                heap = getHeap();</span>
+            }
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            return !heap.isEmpty();</span>
+        }
+
+        @Override
+        public E next() {
+<span class="fc" id="L82">            PeekingImpl&lt;E&gt; poll = heap.poll();</span>
+<span class="fc" id="L83">            E current = poll.next();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (poll.hasNext()) {</span>
+
+                //TODO: remove this check when validated
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                Preconditions.checkState(comparator.compare(current, poll.peek()) &lt; 0,</span>
+<span class="fc" id="L88">                        &quot;Not sorted! current: &quot; + current + &quot; Next: &quot; + poll.peek());</span>
+
+<span class="fc" id="L90">                heap.offer(poll);</span>
+            }
+<span class="fc" id="L92">            return current;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc" id="L97">            throw new UnsupportedOperationException();</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

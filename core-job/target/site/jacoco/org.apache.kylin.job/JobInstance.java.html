@@ -1,0 +1,537 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JobInstance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job</a> &gt; <span class="el_source">JobInstance.java</span></div><h1>JobInstance.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.cube.model.CubeBuildTypeEnum;
+import org.apache.kylin.job.constant.JobStatusEnum;
+import org.apache.kylin.job.constant.JobStepCmdTypeEnum;
+import org.apache.kylin.job.constant.JobStepStatusEnum;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="nc" id="L42">public class JobInstance extends RootPersistentEntity implements Comparable&lt;JobInstance&gt; {</span>
+
+    public static final String YARN_APP_URL = &quot;yarn_application_tracking_url&quot;;
+    public static final String MR_JOB_ID = &quot;mr_job_id&quot;;
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;projectName&quot;)
+    private String projectName;
+    @JsonProperty(&quot;type&quot;)
+    private CubeBuildTypeEnum type; // java implementation
+    @JsonProperty(&quot;duration&quot;)
+    private long duration;
+    @JsonProperty(&quot;related_cube&quot;)
+    private String relatedCube;
+    @JsonProperty(&quot;display_cube_name&quot;)
+    private String displayCubeName;
+    @JsonProperty(&quot;related_segment&quot;)
+    private String relatedSegment;
+    @JsonProperty(&quot;related_segment_name&quot;)
+    private String relatedSegmentName;
+    @JsonProperty(&quot;exec_start_time&quot;)
+    private long execStartTime;
+    @JsonProperty(&quot;exec_end_time&quot;)
+    private long execEndTime;
+    @JsonProperty(&quot;exec_interrupt_time&quot;)
+    private long execInterruptTime;
+<span class="nc" id="L69">    @JsonProperty(&quot;mr_waiting&quot;)</span>
+    private long mrWaiting = 0;
+    @JsonManagedReference
+    @JsonProperty(&quot;steps&quot;)
+    private List&lt;JobStep&gt; steps;
+    @JsonProperty(&quot;submitter&quot;)
+    private String submitter;
+    @JsonProperty(&quot;job_status&quot;)
+    private JobStatusEnum status;
+    @JsonProperty(&quot;build_instance&quot;)
+    private String buildInstance;
+
+    public JobStep getRunningStep() {
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        for (JobStep step : this.getSteps()) {</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">            if (step.getStatus().equals(JobStepStatusEnum.RUNNING)</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">                    || step.getStatus().equals(JobStepStatusEnum.WAITING)) {</span>
+<span class="nc" id="L85">                return step;</span>
+            }
+<span class="nc" id="L87">        }</span>
+
+<span class="nc" id="L89">        return null;</span>
+    }
+
+    @JsonProperty(&quot;progress&quot;)
+    public double getProgress() {
+<span class="nc" id="L94">        int completedStepCount = 0;</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        for (JobStep step : this.getSteps()) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (step.getStatus().equals(JobStepStatusEnum.FINISHED)) {</span>
+<span class="nc" id="L97">                completedStepCount++;</span>
+            }
+<span class="nc" id="L99">        }</span>
+
+<span class="nc" id="L101">        return 100.0 * completedStepCount / steps.size();</span>
+    }
+
+    public JobStatusEnum getStatus() {
+<span class="nc" id="L105">        return this.status;</span>
+    }
+
+    public void setStatus(JobStatusEnum status) {
+<span class="nc" id="L109">        this.status = status;</span>
+<span class="nc" id="L110">    }</span>
+
+    //    @JsonProperty(&quot;job_status&quot;)
+    //    public JobStatusEnum getStatus() {
+    //
+    //        // JobStatusEnum finalJobStatus;
+    //        int compositResult = 0;
+    //
+    //        // if steps status are all NEW, then job status is NEW
+    //        // if steps status are all FINISHED, then job status is FINISHED
+    //        // if steps status are all PENDING, then job status is PENDING
+    //        // if steps status are FINISHED and PENDING, the job status is PENDING
+    //        // if one of steps status is RUNNING, then job status is RUNNING
+    //        // if one of steps status is ERROR, then job status is ERROR
+    //        // if one of steps status is KILLED, then job status is KILLED
+    //        // default status is RUNNING
+    //
+    //        System.out.println(this.getName());
+    //
+    //        for (JobStep step : this.getSteps()) {
+    //            //System.out.println(&quot;step: &quot; + step.getSequenceID() + &quot;'s status:&quot; + step.getStatus());
+    //            compositResult = compositResult | step.getStatus().getCode();
+    //        }
+    //
+    //        System.out.println();
+    //
+    //        if (compositResult == JobStatusEnum.FINISHED.getCode()) {
+    //            return JobStatusEnum.FINISHED;
+    //        } else if (compositResult == JobStatusEnum.NEW.getCode()) {
+    //            return JobStatusEnum.NEW;
+    //        } else if (compositResult == JobStatusEnum.PENDING.getCode()) {
+    //            return JobStatusEnum.PENDING;
+    //        } else if (compositResult == (JobStatusEnum.FINISHED.getCode() | JobStatusEnum.PENDING.getCode())) {
+    //            return JobStatusEnum.PENDING;
+    //        } else if ((compositResult &amp; JobStatusEnum.ERROR.getCode()) == JobStatusEnum.ERROR.getCode()) {
+    //            return JobStatusEnum.ERROR;
+    //        } else if ((compositResult &amp; JobStatusEnum.DISCARDED.getCode()) == JobStatusEnum.DISCARDED.getCode()) {
+    //            return JobStatusEnum.DISCARDED;
+    //        } else if ((compositResult &amp; JobStatusEnum.RUNNING.getCode()) == JobStatusEnum.RUNNING.getCode()) {
+    //            return JobStatusEnum.RUNNING;
+    //        }
+    //
+    //        return JobStatusEnum.RUNNING;
+    //    }
+
+    public String getName() {
+<span class="nc" id="L156">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="nc" id="L160">        this.name = name;</span>
+<span class="nc" id="L161">    }</span>
+
+    public String getProjectName() {
+<span class="nc" id="L164">        return projectName;</span>
+    }
+
+    public void setProjectName(String projectName) {
+<span class="nc" id="L168">        this.projectName = projectName;</span>
+<span class="nc" id="L169">    }</span>
+
+    public CubeBuildTypeEnum getType() {
+<span class="nc" id="L172">        return type;</span>
+    }
+
+    public void setType(CubeBuildTypeEnum type) {
+<span class="nc" id="L176">        this.type = type;</span>
+<span class="nc" id="L177">    }</span>
+
+    public long getDuration() {
+<span class="nc" id="L180">        return duration;</span>
+    }
+
+    public void setDuration(long duration) {
+<span class="nc" id="L184">        this.duration = duration;</span>
+<span class="nc" id="L185">    }</span>
+
+    public String getRelatedCube() { // if model check, return model name.
+<span class="nc" id="L188">        return relatedCube;</span>
+    }
+
+    public void setRelatedCube(String relatedCube) {
+<span class="nc" id="L192">        this.relatedCube = relatedCube;</span>
+<span class="nc" id="L193">    }</span>
+
+    public String getDisplayCubeName() {
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (StringUtils.isBlank(displayCubeName)) {</span>
+<span class="nc" id="L197">            return relatedCube;</span>
+        } else {
+<span class="nc" id="L199">            return displayCubeName;</span>
+        }
+    }
+
+    public void setDisplayCubeName(String displayCubeName) {
+<span class="nc" id="L204">        this.displayCubeName = displayCubeName;</span>
+<span class="nc" id="L205">    }</span>
+
+    public String getRelatedSegment() {
+<span class="nc" id="L208">        return relatedSegment;</span>
+    }
+
+    public void setRelatedSegment(String relatedSegment) {
+<span class="nc" id="L212">        this.relatedSegment = relatedSegment;</span>
+<span class="nc" id="L213">    }</span>
+
+    public String getRelatedSegmentName() {
+<span class="nc" id="L216">        return relatedSegmentName;</span>
+    }
+
+    public void setRelatedSegmentName(String relatedSegmentName) {
+<span class="nc" id="L220">        this.relatedSegmentName = relatedSegmentName;</span>
+<span class="nc" id="L221">    }</span>
+
+    /**
+     * @return the execStartTime
+     */
+    public long getExecStartTime() {
+<span class="nc" id="L227">        return execStartTime;</span>
+    }
+
+    /**
+     * @param execStartTime the execStartTime to set
+     */
+    public void setExecStartTime(long execStartTime) {
+<span class="nc" id="L234">        this.execStartTime = execStartTime;</span>
+<span class="nc" id="L235">    }</span>
+
+    /**
+     * @return the execEndTime
+     */
+    public long getExecEndTime() {
+<span class="nc" id="L241">        return execEndTime;</span>
+    }
+
+    /**
+     * @return the execInterruptTime
+     */
+    public long getExecInterruptTime() {
+<span class="nc" id="L248">        return execInterruptTime;</span>
+    }
+
+    /**
+     * @param execInterruptTime the execInterruptTime to set
+     */
+    public void setExecInterruptTime(long execInterruptTime) {
+<span class="nc" id="L255">        this.execInterruptTime = execInterruptTime;</span>
+<span class="nc" id="L256">    }</span>
+
+    /**
+     * @param execEndTime the execEndTime to set
+     */
+    public void setExecEndTime(long execEndTime) {
+<span class="nc" id="L262">        this.execEndTime = execEndTime;</span>
+<span class="nc" id="L263">    }</span>
+
+    public long getMrWaiting() {
+<span class="nc" id="L266">        return this.mrWaiting;</span>
+    }
+
+    public void setMrWaiting(long mrWaiting) {
+<span class="nc" id="L270">        this.mrWaiting = mrWaiting;</span>
+<span class="nc" id="L271">    }</span>
+
+    public List&lt;JobStep&gt; getSteps() {
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (steps == null) {</span>
+<span class="nc" id="L275">            steps = Lists.newArrayList();</span>
+        }
+<span class="nc" id="L277">        return steps;</span>
+    }
+
+    public void clearSteps() {
+<span class="nc" id="L281">        getSteps().clear();</span>
+<span class="nc" id="L282">    }</span>
+
+    public void addSteps(Collection&lt;JobStep&gt; steps) {
+<span class="nc" id="L285">        this.getSteps().addAll(steps);</span>
+<span class="nc" id="L286">    }</span>
+
+    public void addStep(JobStep step) {
+<span class="nc" id="L289">        getSteps().add(step);</span>
+<span class="nc" id="L290">    }</span>
+
+    public void addStep(int index, JobStep step) {
+<span class="nc" id="L293">        getSteps().add(index, step);</span>
+<span class="nc" id="L294">    }</span>
+
+    public JobStep findStep(String stepName) {
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        for (JobStep step : getSteps()) {</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">            if (stepName.equals(step.getName())) {</span>
+<span class="nc" id="L299">                return step;</span>
+            }
+<span class="nc" id="L301">        }</span>
+<span class="nc" id="L302">        return null;</span>
+    }
+
+    public String getSubmitter() {
+<span class="nc" id="L306">        return submitter;</span>
+    }
+
+    public void setSubmitter(String submitter) {
+<span class="nc" id="L310">        this.submitter = submitter;</span>
+<span class="nc" id="L311">    }</span>
+
+    public String getBuildInstance() {
+<span class="nc" id="L314">        return buildInstance;</span>
+    }
+
+    public void setBuildInstance(String buildInstance) {
+<span class="nc" id="L318">        this.buildInstance = buildInstance;</span>
+<span class="nc" id="L319">    }</span>
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+<span class="nc" id="L322">    public static class JobStep implements Comparable&lt;JobStep&gt; {</span>
+
+        @JsonBackReference
+        private JobInstance jobInstance;
+
+        @JsonProperty(&quot;id&quot;)
+        private String id;
+
+        @JsonProperty(&quot;name&quot;)
+        private String name;
+
+        @JsonProperty(&quot;sequence_id&quot;)
+        private int sequenceID;
+
+        @JsonProperty(&quot;exec_cmd&quot;)
+        private String execCmd;
+
+        @JsonProperty(&quot;interrupt_cmd&quot;)
+        private String InterruptCmd;
+
+        @JsonProperty(&quot;exec_start_time&quot;)
+        private long execStartTime;
+        @JsonProperty(&quot;exec_end_time&quot;)
+        private long execEndTime;
+        @JsonProperty(&quot;exec_wait_time&quot;)
+        private long execWaitTime;
+
+<span class="nc" id="L349">        @JsonProperty(&quot;step_status&quot;)</span>
+        private JobStepStatusEnum status = JobStepStatusEnum.PENDING;
+
+<span class="nc" id="L352">        @JsonProperty(&quot;cmd_type&quot;)</span>
+        private JobStepCmdTypeEnum cmdType = JobStepCmdTypeEnum.SHELL_CMD_HADOOP;
+
+<span class="nc" id="L355">        @JsonProperty(&quot;info&quot;)</span>
+        private ConcurrentHashMap&lt;String, String&gt; info = new ConcurrentHashMap&lt;String, String&gt;();
+
+<span class="nc" id="L358">        @JsonProperty(&quot;run_async&quot;)</span>
+        private boolean runAsync = false;
+
+        private ConcurrentHashMap&lt;String, String&gt; getInfo() {
+<span class="nc" id="L362">            return info;</span>
+        }
+
+        public void putInfo(String key, String value) {
+<span class="nc" id="L366">            getInfo().put(key, value);</span>
+<span class="nc" id="L367">        }</span>
+
+        public String getInfo(String key) {
+<span class="nc" id="L370">            return getInfo().get(key);</span>
+        }
+
+        public void clearInfo() {
+<span class="nc" id="L374">            getInfo().clear();</span>
+<span class="nc" id="L375">        }</span>
+
+        public String getName() {
+<span class="nc" id="L378">            return name;</span>
+        }
+
+        public void setName(String name) {
+<span class="nc" id="L382">            this.name = name;</span>
+<span class="nc" id="L383">        }</span>
+
+        public int getSequenceID() {
+<span class="nc" id="L386">            return sequenceID;</span>
+        }
+
+        public void setSequenceID(int sequenceID) {
+<span class="nc" id="L390">            this.sequenceID = sequenceID;</span>
+<span class="nc" id="L391">        }</span>
+
+        public String getExecCmd() {
+<span class="nc" id="L394">            return execCmd;</span>
+        }
+
+        public void setExecCmd(String execCmd) {
+<span class="nc" id="L398">            this.execCmd = execCmd;</span>
+<span class="nc" id="L399">        }</span>
+
+        public JobStepStatusEnum getStatus() {
+<span class="nc" id="L402">            return status;</span>
+        }
+
+        public void setStatus(JobStepStatusEnum status) {
+<span class="nc" id="L406">            this.status = status;</span>
+<span class="nc" id="L407">        }</span>
+
+        public String getId() {
+<span class="nc" id="L410">            return id;</span>
+        }
+
+        public void setId(String id) {
+<span class="nc" id="L414">            this.id = id;</span>
+<span class="nc" id="L415">        }</span>
+
+        /**
+         * @return the execStartTime
+         */
+        public long getExecStartTime() {
+<span class="nc" id="L421">            return execStartTime;</span>
+        }
+
+        /**
+         * @param execStartTime the execStartTime to set
+         */
+        public void setExecStartTime(long execStartTime) {
+<span class="nc" id="L428">            this.execStartTime = execStartTime;</span>
+<span class="nc" id="L429">        }</span>
+
+        /**
+         * @return the execEndTime
+         */
+        public long getExecEndTime() {
+<span class="nc" id="L435">            return execEndTime;</span>
+        }
+
+        /**
+         * @param execEndTime the execEndTime to set
+         */
+        public void setExecEndTime(long execEndTime) {
+<span class="nc" id="L442">            this.execEndTime = execEndTime;</span>
+<span class="nc" id="L443">        }</span>
+
+        public long getExecWaitTime() {
+<span class="nc" id="L446">            return execWaitTime;</span>
+        }
+
+        public void setExecWaitTime(long execWaitTime) {
+<span class="nc" id="L450">            this.execWaitTime = execWaitTime;</span>
+<span class="nc" id="L451">        }</span>
+
+        public String getInterruptCmd() {
+<span class="nc" id="L454">            return InterruptCmd;</span>
+        }
+
+        public void setInterruptCmd(String interruptCmd) {
+<span class="nc" id="L458">            InterruptCmd = interruptCmd;</span>
+<span class="nc" id="L459">        }</span>
+
+        public JobStepCmdTypeEnum getCmdType() {
+<span class="nc" id="L462">            return cmdType;</span>
+        }
+
+        public void setCmdType(JobStepCmdTypeEnum cmdType) {
+<span class="nc" id="L466">            this.cmdType = cmdType;</span>
+<span class="nc" id="L467">        }</span>
+
+        /**
+         * @return the runAsync
+         */
+        public boolean isRunAsync() {
+<span class="nc" id="L473">            return runAsync;</span>
+        }
+
+        /**
+         * @param runAsync the runAsync to set
+         */
+        public void setRunAsync(boolean runAsync) {
+<span class="nc" id="L480">            this.runAsync = runAsync;</span>
+<span class="nc" id="L481">        }</span>
+
+
+        /**
+         * @return the jobInstance
+         */
+        public JobInstance getJobInstance() {
+<span class="nc" id="L488">            return jobInstance;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L493">            final int prime = 31;</span>
+<span class="nc" id="L494">            int result = 1;</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">            result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="nc" id="L496">            result = prime * result + sequenceID;</span>
+<span class="nc" id="L497">            return result;</span>
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+<span class="nc bnc" id="L502" title="All 2 branches missed.">            if (this == obj)</span>
+<span class="nc" id="L503">                return true;</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">            if (obj == null)</span>
+<span class="nc" id="L505">                return false;</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">            if (getClass() != obj.getClass())</span>
+<span class="nc" id="L507">                return false;</span>
+<span class="nc" id="L508">            JobStep other = (JobStep) obj;</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">            if (name == null) {</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">                if (other.name != null)</span>
+<span class="nc" id="L511">                    return false;</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">            } else if (!name.equals(other.name))</span>
+<span class="nc" id="L513">                return false;</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">            if (sequenceID != other.sequenceID)</span>
+<span class="nc" id="L515">                return false;</span>
+<span class="nc" id="L516">            return true;</span>
+        }
+
+        @Override
+        public int compareTo(JobStep o) {
+<span class="nc bnc" id="L521" title="All 2 branches missed.">            if (this.sequenceID &lt; o.sequenceID) {</span>
+<span class="nc" id="L522">                return -1;</span>
+<span class="nc bnc" id="L523" title="All 2 branches missed.">            } else if (this.sequenceID &gt; o.sequenceID) {</span>
+<span class="nc" id="L524">                return 1;</span>
+            } else {
+<span class="nc" id="L526">                return 0;</span>
+            }
+        }
+    }
+
+    @Override
+    public int compareTo(JobInstance o) {
+<span class="nc bnc" id="L533" title="All 4 branches missed.">        return o.lastModified &lt; this.lastModified ? -1 : o.lastModified &gt; this.lastModified ? 1 : 0;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

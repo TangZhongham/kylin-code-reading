@@ -1,0 +1,4 @@
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/cardinality/ColumnCardinalityReducerTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/BeelineHIveClientTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/HiveMRInputTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/BeelineOptionsProcessorTest.java

@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FixedLenDimEnc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">FixedLenDimEnc.java</span></div><h1>FixedLenDimEnc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.dimension;
+
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class FixedLenDimEnc extends DimensionEncoding implements Serializable{
+    private static final long serialVersionUID = 1L;
+
+<span class="nc" id="L36">    private static Logger logger = LoggerFactory.getLogger(FixedLenDimEnc.class);</span>
+
+    // row key fixed length place holder
+    public static final byte ROWKEY_PLACE_HOLDER_BYTE = 9;
+
+    public static final String ENCODING_NAME = &quot;fixed_length&quot;;
+
+<span class="nc" id="L43">    public static class Factory extends DimensionEncodingFactory {</span>
+        @Override
+        public String getSupportedEncodingName() {
+<span class="nc" id="L46">            return ENCODING_NAME;</span>
+        }
+
+        @Override
+        public DimensionEncoding createDimensionEncoding(String encodingName, String[] args) {
+<span class="nc" id="L51">            return new FixedLenDimEnc(Integer.parseInt(args[0]));</span>
+        }
+
+        @Override
+        public boolean isValidDimensionEncoding(String encodingName, String[] args) {
+            try {
+<span class="nc" id="L57">                int length = Integer.parseInt(args[0]);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">                return length &gt;= 1;</span>
+<span class="nc" id="L59">            } catch (Exception e) {</span>
+<span class="nc" id="L60">                return false;</span>
+            }
+        }
+    };
+
+    // ============================================================================
+
+    private int fixedLen;
+
+<span class="nc" id="L69">    transient private int avoidVerbose = 0;</span>
+
+    //no-arg constructor is required for Externalizable
+<span class="nc" id="L72">    public FixedLenDimEnc() {</span>
+<span class="nc" id="L73">    }</span>
+
+<span class="nc" id="L75">    public FixedLenDimEnc(int len) {</span>
+<span class="nc" id="L76">        this.fixedLen = len;</span>
+<span class="nc" id="L77">    }</span>
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L82">            return true;</span>
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L84">            return false;</span>
+
+<span class="nc" id="L86">        FixedLenDimEnc that = (FixedLenDimEnc) o;</span>
+
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        return fixedLen == that.fixedLen;</span>
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L94">        return fixedLen;</span>
+    }
+
+    @Override
+    public int getLengthOfEncoding() {
+<span class="nc" id="L99">        return fixedLen;</span>
+    }
+
+    @Override
+    public void encode(String valueStr, byte[] output, int outputOffset) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (valueStr == null) {</span>
+<span class="nc" id="L105">            Arrays.fill(output, outputOffset, outputOffset + fixedLen, NULL);</span>
+<span class="nc" id="L106">            return;</span>
+        }
+
+<span class="nc" id="L109">        byte[] value = Bytes.toBytes(valueStr);</span>
+<span class="nc" id="L110">        int valueLen = value.length;</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (valueLen &gt; fixedLen) {</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if (avoidVerbose++ % 10000 == 0) {</span>
+<span class="nc" id="L113">                logger.warn(&quot;Expect at most &quot; + fixedLen + &quot; bytes, but got &quot; + valueLen + &quot;, will truncate, value string: &quot; + Bytes.toString(value, 0, valueLen) + &quot; times:&quot; + avoidVerbose);</span>
+            }
+        }
+
+<span class="nc" id="L117">        int n = Math.min(valueLen, fixedLen);</span>
+<span class="nc" id="L118">        System.arraycopy(value, 0, output, outputOffset, n);</span>
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (n &lt; fixedLen) {</span>
+<span class="nc" id="L121">            Arrays.fill(output, outputOffset + n, outputOffset + fixedLen, ROWKEY_PLACE_HOLDER_BYTE);</span>
+        }
+<span class="nc" id="L123">    }</span>
+
+    @Override
+    public String decode(byte[] bytes, int offset, int len) {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (isNull(bytes, offset, len)) {</span>
+<span class="nc" id="L128">            return null;</span>
+        }
+
+<span class="nc bnc" id="L131" title="All 4 branches missed.">        while (len &gt; 0 &amp;&amp; bytes[offset + len - 1] == ROWKEY_PLACE_HOLDER_BYTE)</span>
+<span class="nc" id="L132">            len--;</span>
+
+<span class="nc" id="L134">        return Bytes.toString(bytes, offset, len);</span>
+    }
+
+    @Override
+    public DataTypeSerializer&lt;Object&gt; asDataTypeSerializer() {
+<span class="nc" id="L139">        return new FixedLenSerializer();</span>
+    }
+
+<span class="nc" id="L142">    public class FixedLenSerializer extends DataTypeSerializer&lt;Object&gt; {</span>
+
+        private byte[] currentBuf() {
+<span class="nc" id="L145">            byte[] buf = (byte[]) current.get();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (buf == null) {</span>
+<span class="nc" id="L147">                buf = new byte[fixedLen];</span>
+<span class="nc" id="L148">                current.set(buf);</span>
+            }
+<span class="nc" id="L150">            return buf;</span>
+        }
+
+        @Override
+        public void serialize(Object value, ByteBuffer out) {
+<span class="nc" id="L155">            byte[] buf = currentBuf();</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">            String str = value == null ? null : value.toString();</span>
+<span class="nc" id="L157">            encode(str, buf, 0);</span>
+<span class="nc" id="L158">            out.put(buf);</span>
+<span class="nc" id="L159">        }</span>
+
+        @Override
+        public Object deserialize(ByteBuffer in) {
+<span class="nc" id="L163">            byte[] buf = currentBuf();</span>
+<span class="nc" id="L164">            in.get(buf);</span>
+<span class="nc" id="L165">            return decode(buf, 0, buf.length);</span>
+        }
+
+        @Override
+        public int peekLength(ByteBuffer in) {
+<span class="nc" id="L170">            return fixedLen;</span>
+        }
+
+        @Override
+        public int maxLength() {
+<span class="nc" id="L175">            return fixedLen;</span>
+        }
+
+        @Override
+        public int getStorageBytesEstimate() {
+<span class="nc" id="L180">            return fixedLen;</span>
+        }
+
+        @Override
+        public Object valueOf(String str) {
+<span class="nc" id="L185">            return str;</span>
+        }
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+<span class="nc" id="L191">        out.writeShort(fixedLen);</span>
+<span class="nc" id="L192">    }</span>
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+<span class="nc" id="L196">        fixedLen = in.readShort();</span>
+<span class="nc" id="L197">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

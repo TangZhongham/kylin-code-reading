@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveTableMeta.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">HiveTableMeta.java</span></div><h1>HiveTableMeta.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive;
+
+import java.util.List;
+
+public class HiveTableMeta {
+    public static class HiveTableColumnMeta {
+        String name;
+        String dataType;
+        String comment;
+
+<span class="nc" id="L29">        public HiveTableColumnMeta(String name, String dataType, String comment) {</span>
+<span class="nc" id="L30">            this.name = name;</span>
+<span class="nc" id="L31">            this.dataType = dataType;</span>
+<span class="nc" id="L32">            this.comment = comment;</span>
+<span class="nc" id="L33">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L37">            return &quot;HiveTableColumnMeta{&quot; + &quot;name='&quot; + name + '\'' + &quot;, dataType='&quot; + dataType + '\'' + &quot;, comment='&quot; + comment + '\'' + '}';</span>
+        }
+    }
+
+    String tableName;
+    String sdLocation;//sd is short for storage descriptor
+    String sdInputFormat;
+    String sdOutputFormat;
+    String owner;
+    String tableType;
+    int skipHeaderLineCount;
+    int lastAccessTime;
+    long fileSize;
+    long fileNum;
+    boolean isNative;
+    List&lt;HiveTableColumnMeta&gt; allColumns;
+    List&lt;HiveTableColumnMeta&gt; partitionColumns;
+
+<span class="nc" id="L55">    public HiveTableMeta(String tableName, String sdLocation, String sdInputFormat, String sdOutputFormat, String owner, String tableType, int lastAccessTime, long fileSize, long fileNum, int skipHeaderLineCount, boolean isNative, List&lt;HiveTableColumnMeta&gt; allColumns, List&lt;HiveTableColumnMeta&gt; partitionColumns) {</span>
+<span class="nc" id="L56">        this.tableName = tableName;</span>
+<span class="nc" id="L57">        this.sdLocation = sdLocation;</span>
+<span class="nc" id="L58">        this.sdInputFormat = sdInputFormat;</span>
+<span class="nc" id="L59">        this.sdOutputFormat = sdOutputFormat;</span>
+<span class="nc" id="L60">        this.owner = owner;</span>
+<span class="nc" id="L61">        this.tableType = tableType;</span>
+<span class="nc" id="L62">        this.lastAccessTime = lastAccessTime;</span>
+<span class="nc" id="L63">        this.fileSize = fileSize;</span>
+<span class="nc" id="L64">        this.fileNum = fileNum;</span>
+<span class="nc" id="L65">        this.isNative = isNative;</span>
+<span class="nc" id="L66">        this.allColumns = allColumns;</span>
+<span class="nc" id="L67">        this.partitionColumns = partitionColumns;</span>
+<span class="nc" id="L68">        this.skipHeaderLineCount = skipHeaderLineCount;</span>
+<span class="nc" id="L69">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L73">        return &quot;HiveTableMeta{&quot; + &quot;tableName='&quot; + tableName + '\'' + &quot;, sdLocation='&quot; + sdLocation + '\'' + &quot;, sdInputFormat='&quot; + sdInputFormat + '\'' + &quot;, sdOutputFormat='&quot; + sdOutputFormat + '\'' + &quot;, owner='&quot; + owner + '\'' + &quot;, tableType='&quot; + tableType + '\'' + &quot;, lastAccessTime=&quot; + lastAccessTime + &quot;, fileSize=&quot; + fileSize + &quot;, fileNum=&quot; + fileNum + &quot;, isNative=&quot; + isNative + &quot;, allColumns=&quot; + allColumns + &quot;, partitionColumns=&quot; + partitionColumns + '}';</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

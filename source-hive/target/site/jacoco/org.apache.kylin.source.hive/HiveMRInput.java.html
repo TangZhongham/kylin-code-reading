@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveMRInput.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">HiveMRInput.java</span></div><h1>HiveMRInput.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.hive;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.hadoop.mapred.FileSplit;
+import org.apache.hadoop.mapreduce.InputSplit;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hive.hcatalog.data.HCatRecord;
+import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
+import org.apache.hive.hcatalog.mapreduce.HCatSplit;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.engine.mr.IMRInput;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.job.execution.ExecutableManager;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.ISegment;
+import org.apache.kylin.metadata.model.TableDesc;
+
+<span class="nc" id="L39">public class HiveMRInput extends HiveInputBase implements IMRInput {</span>
+
+    @Override
+    public IBatchCubingInputSide getBatchCubingInputSide(IJoinedFlatTableDesc flatDesc) {
+<span class="nc" id="L43">        return new HiveMRBatchCubingInputSide(flatDesc);</span>
+    }
+
+    @Override
+    public IBatchMergeInputSide getBatchMergeInputSide(ISegment seg) {
+<span class="nc" id="L48">        return new IMRBatchMergeInputSide() {</span>
+            @Override
+            public void addStepPhase1_MergeDictionary(DefaultChainedExecutable jobFlow) {
+                // doing nothing
+<span class="nc" id="L52">            }</span>
+        };
+    }
+
+    @Override
+    public IMRTableInputFormat getTableInputFormat(TableDesc table, String uuid) {
+<span class="nc" id="L58">        return new HiveTableInputFormat(getTableNameForHCat(table, uuid));</span>
+    }
+
+    public static class HiveTableInputFormat implements IMRTableInputFormat {
+        final String dbName;
+        final String tableName;
+
+        /**
+         * Construct a HiveTableInputFormat to read hive table.
+         * @param fullQualifiedTableName &quot;databaseName.tableName&quot;
+         */
+<span class="nc" id="L69">        public HiveTableInputFormat(String fullQualifiedTableName) {</span>
+<span class="nc" id="L70">            String[] parts = HadoopUtil.parseHiveTableName(fullQualifiedTableName);</span>
+<span class="nc" id="L71">            dbName = parts[0];</span>
+<span class="nc" id="L72">            tableName = parts[1];</span>
+<span class="nc" id="L73">        }</span>
+
+        @Override
+        public void configureJob(Job job) {
+            try {
+<span class="nc" id="L78">                job.getConfiguration().addResource(&quot;hive-site.xml&quot;);</span>
+
+<span class="nc" id="L80">                HCatInputFormat.setInput(job, dbName, tableName);</span>
+<span class="nc" id="L81">                job.setInputFormatClass(HCatInputFormat.class);</span>
+<span class="nc" id="L82">            } catch (IOException e) {</span>
+<span class="nc" id="L83">                throw new RuntimeException(e);</span>
+<span class="nc" id="L84">            }</span>
+<span class="nc" id="L85">        }</span>
+
+        @Override
+        public List&lt;String[]&gt; parseMapperInput(Object mapperInput) {
+<span class="nc" id="L89">            return Collections.singletonList(HiveTableReader.getRowAsStringArray((HCatRecord) mapperInput));</span>
+        }
+
+        @Override
+        public String getInputSplitSignature(InputSplit inputSplit) {
+<span class="nc" id="L94">            FileSplit baseSplit = (FileSplit) ((HCatSplit) inputSplit).getBaseSplit();</span>
+            //file name(for intermediate table) + start pos + length
+<span class="nc" id="L96">            return baseSplit.getPath().getName() + &quot;_&quot; + baseSplit.getStart() + &quot;_&quot; + baseSplit.getLength();</span>
+        }
+    }
+
+    public static class HiveMRBatchCubingInputSide extends BaseBatchCubingInputSide implements IMRBatchCubingInputSide {
+
+        public HiveMRBatchCubingInputSide(IJoinedFlatTableDesc flatDesc) {
+<span class="nc" id="L103">            super(flatDesc);</span>
+<span class="nc" id="L104">        }</span>
+
+        @Override
+        public IMRTableInputFormat getFlatTableInputFormat() {
+<span class="nc" id="L108">            return new HiveMRInput.HiveTableInputFormat(getIntermediateTableIdentity());</span>
+        }
+    }
+
+    /**
+     * When build job is created by kylin version 2.4.x or below, the step class name is an inner class of {@link HiveMRInput},
+     * to avoid the ClassNotFoundException in {@link ExecutableManager#newExecutable(java.lang.String)} , delegate the OLD class to the new one
+     *
+     * @since 2.5.0
+     * @deprecated For backwards compatibility.
+     */
+    @Deprecated
+<span class="nc" id="L120">    public static class RedistributeFlatHiveTableStep</span>
+            extends org.apache.kylin.source.hive.RedistributeFlatHiveTableStep {
+
+    }
+
+    /**
+     * When build job is created by kylin version 2.4.x or below, the step class name is an inner class of {@link HiveMRInput},
+     * to avoid the ClassNotFoundException in {@link ExecutableManager#newExecutable(java.lang.String)} , delegate the OLD class to the new one
+     *
+     * @since 2.5.0
+     * @deprecated For backwards compatibility.
+     */
+    @Deprecated
+<span class="nc" id="L133">    public static class GarbageCollectionStep extends org.apache.kylin.source.hive.GarbageCollectionStep {</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

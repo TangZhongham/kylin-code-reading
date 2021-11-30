@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DFSFileTableReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">DFSFileTableReader.java</span></div><h1>DFSFileTableReader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr;
+
+import java.io.BufferedReader;
+import java.io.Closeable;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.SequenceFile.Reader;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.StringSplitter;
+import org.apache.kylin.source.IReadableTable.TableReader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Tables are typically CSV or SEQ file.
+ * 
+ * @author yangli9
+ */
+public class DFSFileTableReader implements TableReader {
+
+<span class="nc" id="L56">    private static final Logger logger = LoggerFactory.getLogger(DFSFileTableReader.class);</span>
+    private static final char CSV_QUOTE = '&quot;';
+<span class="nc" id="L58">    private static final String[] DETECT_DELIMS = new String[] { &quot;\177&quot;, &quot;|&quot;, &quot;\t&quot;, &quot;,&quot; };</span>
+
+    private String filePath;
+    private String delim;
+    private List&lt;RowReader&gt; readerList;
+
+    private String curLine;
+    private String[] curColumns;
+<span class="nc" id="L66">    private int expectedColumnNumber = -1; // helps delimiter detection</span>
+
+    public DFSFileTableReader(String filePath, int expectedColumnNumber) throws IOException {
+<span class="nc" id="L69">        this(filePath, DFSFileTable.DELIM_AUTO, expectedColumnNumber);</span>
+<span class="nc" id="L70">    }</span>
+
+<span class="nc" id="L72">    public DFSFileTableReader(String filePath, String delim, int expectedColumnNumber) throws IOException {</span>
+<span class="nc" id="L73">        filePath = HadoopUtil.fixWindowsPath(filePath);</span>
+<span class="nc" id="L74">        this.filePath = filePath;</span>
+<span class="nc" id="L75">        this.delim = delim;</span>
+<span class="nc" id="L76">        this.expectedColumnNumber = expectedColumnNumber;</span>
+<span class="nc" id="L77">        this.readerList = new ArrayList&lt;RowReader&gt;();</span>
+
+<span class="nc" id="L79">        FileSystem fs = HadoopUtil.getFileSystem(filePath);</span>
+
+<span class="nc" id="L81">        ArrayList&lt;FileStatus&gt; allFiles = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L82">        FileStatus status = fs.getFileStatus(new Path(filePath));</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (status.isFile()) {</span>
+<span class="nc" id="L84">            allFiles.add(status);</span>
+        } else {
+<span class="nc" id="L86">            FileStatus[] listStatus = fs.listStatus(new Path(filePath));</span>
+<span class="nc" id="L87">            allFiles.addAll(Arrays.asList(listStatus));</span>
+        }
+
+        try {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">            for (FileStatus f : allFiles) {</span>
+<span class="nc" id="L92">                RowReader rowReader = new SeqRowReader(HadoopUtil.getCurrentConfiguration(), f.getPath().toString());</span>
+<span class="nc" id="L93">                this.readerList.add(rowReader);</span>
+<span class="nc" id="L94">            }</span>
+<span class="nc" id="L95">        } catch (IOException e) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (isExceptionSayingNotSeqFile(e) == false)</span>
+<span class="nc" id="L97">                throw e;</span>
+
+<span class="nc" id="L99">            this.readerList = new ArrayList&lt;RowReader&gt;();</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">            for (FileStatus f : allFiles) {</span>
+<span class="nc" id="L101">                RowReader rowReader = new CsvRowReader(fs, f.getPath().toString());</span>
+<span class="nc" id="L102">                this.readerList.add(rowReader);</span>
+<span class="nc" id="L103">            }</span>
+<span class="nc" id="L104">        }</span>
+<span class="nc" id="L105">    }</span>
+
+    private boolean isExceptionSayingNotSeqFile(IOException e) {
+<span class="nc bnc" id="L108" title="All 4 branches missed.">        if (e.getMessage() != null &amp;&amp; e.getMessage().contains(&quot;not a SequenceFile&quot;))</span>
+<span class="nc" id="L109">            return true;</span>
+
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (e instanceof EOFException) // in case the file is very very small</span>
+<span class="nc" id="L112">            return true;</span>
+
+<span class="nc" id="L114">        return false;</span>
+    }
+
+    @Override
+    public boolean next() throws IOException {
+<span class="nc" id="L119">        int curReaderIndex = -1;</span>
+        RowReader curReader;
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        while (++curReaderIndex &lt; readerList.size()) {</span>
+<span class="nc" id="L123">            curReader = readerList.get(curReaderIndex);</span>
+<span class="nc" id="L124">            curLine = curReader.nextLine();</span>
+<span class="nc" id="L125">            curColumns = null;</span>
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            if (curLine != null) {</span>
+<span class="nc" id="L128">                return true;</span>
+            }
+        }
+
+<span class="nc" id="L132">        return false;</span>
+    }
+
+    public String getLine() {
+<span class="nc" id="L136">        return curLine;</span>
+    }
+
+    @Override
+    public String[] getRow() {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (curColumns == null) {</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if (DFSFileTable.DELIM_AUTO.equals(delim))</span>
+<span class="nc" id="L143">                delim = autoDetectDelim(curLine);</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">            if (delim == null)</span>
+<span class="nc" id="L146">                curColumns = new String[] { curLine };</span>
+            else
+<span class="nc" id="L148">                curColumns = split(curLine, delim);</span>
+        }
+<span class="nc" id="L150">        return curColumns;</span>
+    }
+
+    private String[] split(String line, String delim) {
+        // FIXME CVS line should be parsed considering escapes
+<span class="nc" id="L155">        String[] str = StringSplitter.split(line, delim);</span>
+
+        // un-escape CSV
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (DFSFileTable.DELIM_COMMA.equals(delim)) {</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">            for (int i = 0; i &lt; str.length; i++) {</span>
+<span class="nc" id="L160">                str[i] = unescapeCsv(str[i]);</span>
+            }
+        }
+
+<span class="nc" id="L164">        return str;</span>
+    }
+
+    private String unescapeCsv(String str) {
+<span class="nc bnc" id="L168" title="All 4 branches missed.">        if (str == null || str.length() &lt; 2)</span>
+<span class="nc" id="L169">            return str;</span>
+
+<span class="nc" id="L171">        str = StringEscapeUtils.unescapeCsv(str);</span>
+
+        // unescapeCsv may not remove the outer most quotes
+<span class="nc bnc" id="L174" title="All 4 branches missed.">        if (str.charAt(0) == CSV_QUOTE &amp;&amp; str.charAt(str.length() - 1) == CSV_QUOTE)</span>
+<span class="nc" id="L175">            str = str.substring(1, str.length() - 1);</span>
+
+<span class="nc" id="L177">        return str;</span>
+    }
+
+    @Override
+    public void close() {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        for (RowReader reader : readerList) {</span>
+<span class="nc" id="L183">            IOUtils.closeQuietly(reader);</span>
+<span class="nc" id="L184">        }</span>
+<span class="nc" id="L185">    }</span>
+
+    private String autoDetectDelim(String line) {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (expectedColumnNumber &gt; 0) {</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">            for (String delim : DETECT_DELIMS) {</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                if (StringSplitter.split(line, delim).length == expectedColumnNumber) {</span>
+<span class="nc" id="L191">                    logger.info(&quot;Auto detect delim to be '&quot; + delim + &quot;', split line to &quot; + expectedColumnNumber + &quot; columns -- &quot; + line);</span>
+<span class="nc" id="L192">                    return delim;</span>
+                }
+            }
+        }
+
+<span class="nc" id="L197">        logger.info(&quot;Auto detect delim to be null, will take THE-WHOLE-LINE as a single value, for &quot; + filePath);</span>
+<span class="nc" id="L198">        return null;</span>
+    }
+
+    // ============================================================================
+
+    private interface RowReader extends Closeable {
+        String nextLine() throws IOException; // return null on EOF
+    }
+
+    private class SeqRowReader implements RowReader {
+        Reader reader;
+        Writable key;
+        Text value;
+
+<span class="nc" id="L212">        SeqRowReader(Configuration hconf, String path) throws IOException {</span>
+<span class="nc" id="L213">            reader = new Reader(hconf, SequenceFile.Reader.file(new Path(path)));</span>
+<span class="nc" id="L214">            key = (Writable) ReflectionUtils.newInstance(reader.getKeyClass(), hconf);</span>
+<span class="nc" id="L215">            value = new Text();</span>
+<span class="nc" id="L216">        }</span>
+
+        @Override
+        public String nextLine() throws IOException {
+<span class="nc" id="L220">            boolean hasNext = reader.next(key, value);</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            if (hasNext)</span>
+<span class="nc" id="L222">                return Bytes.toString(value.getBytes(), 0, value.getLength());</span>
+            else
+<span class="nc" id="L224">                return null;</span>
+        }
+
+        @Override
+        public void close() throws IOException {
+<span class="nc" id="L229">            reader.close();</span>
+<span class="nc" id="L230">        }</span>
+    }
+
+    private class CsvRowReader implements RowReader {
+        BufferedReader reader;
+
+<span class="nc" id="L236">        CsvRowReader(FileSystem fs, String path) throws IOException {</span>
+<span class="nc" id="L237">            FSDataInputStream in = fs.open(new Path(path));</span>
+<span class="nc" id="L238">            reader = new BufferedReader(new InputStreamReader(in, &quot;UTF-8&quot;));</span>
+<span class="nc" id="L239">        }</span>
+
+        @Override
+        public String nextLine() throws IOException {
+<span class="nc" id="L243">            return reader.readLine();</span>
+        }
+
+        @Override
+        public void close() throws IOException {
+<span class="nc" id="L248">            reader.close();</span>
+<span class="nc" id="L249">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

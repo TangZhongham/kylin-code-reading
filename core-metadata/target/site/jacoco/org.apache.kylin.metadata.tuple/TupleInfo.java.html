@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TupleInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.tuple</a> &gt; <span class="el_source">TupleInfo.java</span></div><h1>TupleInfo.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.tuple;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.metadata.model.TblColRef;
+
+/**
+ * 
+ * @author xjiang
+ * 
+ */
+public class TupleInfo {
+
+    private final Map&lt;String, Integer&gt; fieldMap;
+    private final Map&lt;TblColRef, Integer&gt; columnMap;
+
+    private final List&lt;String&gt; fields;
+    private final List&lt;TblColRef&gt; columns;
+    private final List&lt;String&gt; dataTypeNames;
+
+<span class="nc" id="L42">    public TupleInfo() {</span>
+<span class="nc" id="L43">        fieldMap = new HashMap&lt;String, Integer&gt;();</span>
+<span class="nc" id="L44">        columnMap = new HashMap&lt;TblColRef, Integer&gt;();</span>
+<span class="nc" id="L45">        fields = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L46">        columns = new ArrayList&lt;TblColRef&gt;();</span>
+<span class="nc" id="L47">        dataTypeNames = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L48">    }</span>
+
+    public TblColRef getColumn(String fieldName) {
+<span class="nc" id="L51">        int idx = getFieldIndex(fieldName);</span>
+<span class="nc" id="L52">        return columns.get(idx);</span>
+    }
+
+    public TblColRef getColumn(int idx) {
+<span class="nc" id="L56">        return columns.get(idx);</span>
+    }
+
+    public int getColumnIndex(TblColRef col) {
+<span class="nc" id="L60">        return columnMap.get(col);</span>
+    }
+
+    public String getDataTypeName(int index) {
+<span class="nc" id="L64">        return dataTypeNames.get(index);</span>
+    }
+
+    public int getFieldIndex(String fieldName) {
+<span class="nc" id="L68">        return fieldMap.get(fieldName);</span>
+    }
+
+    public boolean hasField(String fieldName) {
+<span class="nc" id="L72">        return fieldMap.containsKey(fieldName);</span>
+    }
+
+    public String getFieldName(TblColRef col) {
+<span class="nc" id="L76">        int idx = columnMap.get(col);</span>
+<span class="nc" id="L77">        return fields.get(idx);</span>
+    }
+
+    public boolean hasColumn(TblColRef col) {
+<span class="nc" id="L81">        return columnMap.containsKey(col);</span>
+    }
+
+    public void setField(String fieldName, TblColRef col, int index) {
+<span class="nc" id="L85">        fieldMap.put(fieldName, index);</span>
+
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (col != null)</span>
+<span class="nc" id="L88">            columnMap.put(col, index);</span>
+
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        if (fields.size() &gt; index)</span>
+<span class="nc" id="L91">            fields.set(index, fieldName);</span>
+        else
+<span class="nc" id="L93">            fields.add(index, fieldName);</span>
+
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (columns.size() &gt; index)</span>
+<span class="nc" id="L96">            columns.set(index, col);</span>
+        else
+<span class="nc" id="L98">            columns.add(index, col);</span>
+
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (col != null) {</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            if (dataTypeNames.size() &gt; index)</span>
+<span class="nc" id="L102">                dataTypeNames.set(index, col.getColumnDesc().getUpgradedType().getName());</span>
+            else
+<span class="nc" id="L104">                dataTypeNames.add(index, col.getColumnDesc().getUpgradedType().getName());</span>
+        }
+<span class="nc" id="L106">    }</span>
+
+    public List&lt;String&gt; getAllFields() {
+<span class="nc" id="L109">        return fields;</span>
+    }
+
+    public List&lt;TblColRef&gt; getAllColumns() {
+<span class="nc" id="L113">        return columns;</span>
+    }
+
+    public int size() {
+<span class="nc" id="L117">        return fields.size();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

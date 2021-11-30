@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidRecommenderUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">CuboidRecommenderUtil.java</span></div><h1>CuboidRecommenderUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.cube.cuboid.algorithm.CuboidRecommender;
+import org.apache.kylin.cube.cuboid.algorithm.CuboidStats;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="nc" id="L35">public class CuboidRecommenderUtil {</span>
+
+<span class="nc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(CuboidRecommenderUtil.class);</span>
+    private static final String BASE_CUBOID_COUNT_IN_CUBOID_STATISTICS_IS_ZERO = &quot;Base cuboid count in cuboid statistics is 0.&quot;;
+
+    /** Trigger cube planner phase one */
+    public static Map&lt;Long, Long&gt; getRecommendCuboidList(CubeSegment segment) throws IOException {
+<span class="nc bnc" id="L42" title="All 2 branches missed.">        if (segment == null) {</span>
+<span class="nc" id="L43">            return null;</span>
+        }
+
+<span class="nc" id="L46">        CubeStatsReader cubeStatsReader = new CubeStatsReader(segment, null, segment.getConfig());</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (cubeStatsReader.getCuboidRowEstimatesHLL() == null</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">                || cubeStatsReader.getCuboidRowEstimatesHLL().isEmpty()) {</span>
+<span class="nc" id="L49">            logger.info(&quot;Cuboid Statistics is not enabled.&quot;);</span>
+<span class="nc" id="L50">            return null;</span>
+        }
+<span class="nc" id="L52">        CubeInstance cube = segment.getCubeInstance();</span>
+<span class="nc" id="L53">        long baseCuboid = cube.getCuboidScheduler().getBaseCuboidId();</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if ((cubeStatsReader.getCuboidRowEstimatesHLL().get(baseCuboid) == null</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">                || cubeStatsReader.getCuboidRowEstimatesHLL().get(baseCuboid) == 0L)</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">                &amp;&amp; segment.getConfig().isBuildBaseCuboid()) {</span>
+<span class="nc" id="L57">            logger.info(BASE_CUBOID_COUNT_IN_CUBOID_STATISTICS_IS_ZERO);</span>
+<span class="nc" id="L58">            return null;</span>
+        }
+
+<span class="nc" id="L61">        Set&lt;Long&gt; mandatoryCuboids = segment.getCubeDesc().getMandatoryCuboids();</span>
+
+<span class="nc" id="L63">        String key = cube.getName();</span>
+<span class="nc" id="L64">        CuboidStats cuboidStats = new CuboidStats.Builder(key, baseCuboid, cubeStatsReader.getCuboidRowEstimatesHLL(), cubeStatsReader.getCuboidSizeMap())</span>
+<span class="nc" id="L65">                .setMandatoryCuboids(mandatoryCuboids)</span>
+<span class="nc" id="L66">                .setBPUSMinBenefitRatio(segment.getConfig().getCubePlannerBPUSMinBenefitRatio())</span>
+<span class="nc" id="L67">                .build();</span>
+<span class="nc" id="L68">        return CuboidRecommender.getInstance().getRecommendCuboidList(cuboidStats, segment.getConfig(),</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">                !mandatoryCuboids.isEmpty());</span>
+    }
+
+    /** Trigger cube planner phase two for optimization */
+    public static Map&lt;Long, Long&gt; getRecommendCuboidList(CubeInstance cube, Map&lt;Long, Long&gt; hitFrequencyMap,
+            Map&lt;Long, Map&lt;Long, Pair&lt;Long, Long&gt;&gt;&gt; rollingUpCountSourceMap) throws IOException {
+
+<span class="nc" id="L76">        CuboidScheduler cuboidScheduler = cube.getCuboidScheduler();</span>
+<span class="nc" id="L77">        Set&lt;Long&gt; currentCuboids = cuboidScheduler.getAllCuboidIds();</span>
+<span class="nc" id="L78">        Pair&lt;Map&lt;Long, Long&gt;, Map&lt;Long, Double&gt;&gt; statsPair = CuboidStatsReaderUtil</span>
+<span class="nc" id="L79">                .readCuboidStatsAndSizeFromCube(currentCuboids, cube);</span>
+<span class="nc" id="L80">        long baseCuboid = cuboidScheduler.getBaseCuboidId();</span>
+<span class="nc bnc" id="L81" title="All 4 branches missed.">        if ((statsPair.getFirst().get(baseCuboid) == null || statsPair.getFirst().get(baseCuboid) == 0L)</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                &amp;&amp; cube.getConfig().isBuildBaseCuboid()) {</span>
+<span class="nc" id="L83">            logger.info(BASE_CUBOID_COUNT_IN_CUBOID_STATISTICS_IS_ZERO);</span>
+<span class="nc" id="L84">            return null;</span>
+        }
+
+<span class="nc" id="L87">        KylinConfig config = cube.getConfig();</span>
+<span class="nc" id="L88">        String key = cube.getName();</span>
+<span class="nc" id="L89">        double queryUncertaintyRatio = config.getCubePlannerQueryUncertaintyRatio();</span>
+<span class="nc" id="L90">        double bpusMinBenefitRatio = config.getCubePlannerBPUSMinBenefitRatio();</span>
+<span class="nc" id="L91">        CuboidStats cuboidStats = new CuboidStats.Builder(key, baseCuboid, statsPair.getFirst(),</span>
+<span class="nc" id="L92">                statsPair.getSecond()) {</span>
+            @Override
+            public Map&lt;Long, Double&gt; estimateCuboidsSize(Map&lt;Long, Long&gt; statistics) {
+                try {
+<span class="nc" id="L96">                    return CuboidStatsReaderUtil.readCuboidSizeFromCube(statistics, cube);</span>
+<span class="nc" id="L97">                } catch (IOException e) {</span>
+<span class="nc" id="L98">                    logger.warn(&quot;Fail to get cuboid size from cube due to &quot;, e);</span>
+<span class="nc" id="L99">                    return null;</span>
+                }
+            }
+<span class="nc" id="L102">        }.setQueryUncertaintyRatio(queryUncertaintyRatio) //</span>
+<span class="nc" id="L103">                .setBPUSMinBenefitRatio(bpusMinBenefitRatio) //</span>
+<span class="nc" id="L104">                .setHitFrequencyMap(hitFrequencyMap) //</span>
+<span class="nc" id="L105">                .setRollingUpCountSourceMap(rollingUpCountSourceMap) //</span>
+<span class="nc" id="L106">                .build();</span>
+<span class="nc" id="L107">        return CuboidRecommender.getInstance().getRecommendCuboidList(cuboidStats, config);</span>
+    }
+
+    /** For future segment level recommend */
+    public static Map&lt;Long, Long&gt; getRecommendCuboidList(CubeSegment segment, Map&lt;Long, Long&gt; hitFrequencyMap,
+            Map&lt;Long, Map&lt;Long, Pair&lt;Long, Long&gt;&gt;&gt; rollingUpCountSourceMap, boolean ifForceRecommend)
+            throws IOException {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (segment == null) {</span>
+<span class="nc" id="L115">            return null;</span>
+        }
+
+<span class="nc" id="L118">        CubeStatsReader cubeStatsReader = new CubeStatsReader(segment, null, segment.getConfig());</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (cubeStatsReader.getCuboidRowEstimatesHLL() == null</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                || cubeStatsReader.getCuboidRowEstimatesHLL().isEmpty()) {</span>
+<span class="nc" id="L121">            logger.info(&quot;Cuboid Statistics is not enabled.&quot;);</span>
+<span class="nc" id="L122">            return null;</span>
+        }
+<span class="nc" id="L124">        CubeInstance cube = segment.getCubeInstance();</span>
+<span class="nc" id="L125">        long baseCuboid = cube.getCuboidScheduler().getBaseCuboidId();</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if ((cubeStatsReader.getCuboidRowEstimatesHLL().get(baseCuboid) == null</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                || cubeStatsReader.getCuboidRowEstimatesHLL().get(baseCuboid) == 0L)</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                &amp;&amp; segment.getConfig().isBuildBaseCuboid()) {</span>
+<span class="nc" id="L129">            logger.info(BASE_CUBOID_COUNT_IN_CUBOID_STATISTICS_IS_ZERO);</span>
+<span class="nc" id="L130">            return null;</span>
+        }
+
+<span class="nc" id="L133">        String key = cube.getName() + &quot;-&quot; + segment.getName();</span>
+<span class="nc" id="L134">        CuboidStats cuboidStats = new CuboidStats.Builder(key, baseCuboid, cubeStatsReader.getCuboidRowEstimatesHLL(),</span>
+<span class="nc" id="L135">                cubeStatsReader.getCuboidSizeMap()).setHitFrequencyMap(hitFrequencyMap)</span>
+<span class="nc" id="L136">                        .setRollingUpCountSourceMap(rollingUpCountSourceMap).build();</span>
+<span class="nc" id="L137">        return CuboidRecommender.getInstance().getRecommendCuboidList(cuboidStats, segment.getConfig(),</span>
+                ifForceRecommend);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

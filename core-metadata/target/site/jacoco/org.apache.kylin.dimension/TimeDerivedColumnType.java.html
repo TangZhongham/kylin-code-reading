@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimeDerivedColumnType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">TimeDerivedColumnType.java</span></div><h1>TimeDerivedColumnType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.dimension;
+
+import java.util.Locale;
+import java.util.Map;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.common.util.TimeUtil;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="fc" id="L34">public enum TimeDerivedColumnType {</span>
+<span class="fc" id="L35">    MINUTE_START(&quot;minute_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="fc" id="L38">            long calTimeStart = TimeUtil.getMinuteStart(time);</span>
+<span class="fc" id="L39">            long calTimeEnd = calTimeStart + TimeUtil.ONE_MINUTE_TS;</span>
+<span class="fc" id="L40">            return new Pair&lt;&gt;(calTimeStart, calTimeEnd);</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L45">            return DateFormat.formatToTimeWithoutMilliStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L50">            return TimeUtil.getMinuteStart(time);</span>
+        }
+    },
+<span class="fc" id="L53">    HOUR_START(&quot;hour_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="fc" id="L56">            long calTimeStart = TimeUtil.getHourStart(time);</span>
+<span class="fc" id="L57">            long calTimeEnd = calTimeStart + TimeUtil.ONE_HOUR_TS;</span>
+<span class="fc" id="L58">            return new Pair&lt;&gt;(calTimeStart, calTimeEnd);</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L63">            return DateFormat.formatToTimeWithoutMilliStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L68">            return TimeUtil.getHourStart(time);</span>
+        }
+    },
+<span class="fc" id="L71">    DAY_START(&quot;day_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="fc" id="L74">            long calTimeStart = TimeUtil.getDayStart(time);</span>
+<span class="fc" id="L75">            long calTimeEnd = calTimeStart + TimeUtil.ONE_DAY_TS;</span>
+<span class="fc" id="L76">            return new Pair&lt;&gt;(calTimeStart, calTimeEnd);</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L81">            return DateFormat.formatToDateStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L86">            return TimeUtil.getDayStart(time);</span>
+        }
+    },
+<span class="fc" id="L89">    WEEK_START(&quot;week_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="nc" id="L92">            return new Pair&lt;&gt;(TimeUtil.getWeekStart(time), TimeUtil.getWeekEnd(time));</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L97">            return DateFormat.formatToDateStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L102">            return TimeUtil.getWeekStart(time);</span>
+        }
+    },
+<span class="fc" id="L105">    MONTH_START(&quot;month_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="nc" id="L108">            return new Pair&lt;&gt;(TimeUtil.getMonthStart(time), TimeUtil.getMonthEnd(time));</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L113">            return DateFormat.formatToDateStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L118">            return TimeUtil.getMonthStart(time);</span>
+        }
+    },
+<span class="fc" id="L121">    QUARTER_START(&quot;quarter_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="fc" id="L124">            return new Pair&lt;&gt;(TimeUtil.getQuarterStart(time), TimeUtil.getQuarterEnd(time));</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L129">            return DateFormat.formatToDateStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L134">            return TimeUtil.getQuarterStart(time);</span>
+        }
+    },
+<span class="fc" id="L137">    YEAR_START(&quot;year_start&quot;) {</span>
+        @Override
+        public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time) {
+<span class="nc" id="L140">            return new Pair&lt;&gt;(TimeUtil.getYearStart(time), TimeUtil.getYearEnd(time));</span>
+        }
+
+        @Override
+        public String normalizeTimeFormat(long time) {
+<span class="fc" id="L145">            return DateFormat.formatToDateStr(normalize(time));</span>
+        }
+
+        @Override
+        public long normalize(long time) {
+<span class="fc" id="L150">            return TimeUtil.getYearStart(time);</span>
+        }
+    };
+
+    private static final String MINUTE_START_NAME = &quot;minute_start&quot;;
+    private static final String HOUR_START_NAME = &quot;hour_start&quot;;
+    private static final String DAY_START_NAME = &quot;day_start&quot;;
+    private static final String WEEK_START_NAME = &quot;week_start&quot;;
+    private static final String MONTH_START_NAME = &quot;month_start&quot;;
+    private static final String QUARTER_START_NAME = &quot;quarter_start&quot;;
+    private static final String YEAR_START_NAME = &quot;year_start&quot;;
+<span class="fc" id="L161">    private static Map&lt;String, TimeDerivedColumnType&gt; nameColumnsMap = Maps.newHashMap();</span>
+<span class="fc" id="L162">    private static Logger logger = LoggerFactory.getLogger(TimeDerivedColumnType.class);</span>
+
+    static {
+<span class="fc" id="L165">        nameColumnsMap.put(MINUTE_START_NAME, MINUTE_START);</span>
+<span class="fc" id="L166">        nameColumnsMap.put(HOUR_START_NAME, HOUR_START);</span>
+<span class="fc" id="L167">        nameColumnsMap.put(DAY_START_NAME, DAY_START);</span>
+<span class="fc" id="L168">        nameColumnsMap.put(WEEK_START_NAME, WEEK_START);</span>
+<span class="fc" id="L169">        nameColumnsMap.put(MONTH_START_NAME, MONTH_START);</span>
+<span class="fc" id="L170">        nameColumnsMap.put(QUARTER_START_NAME, QUARTER_START);</span>
+<span class="fc" id="L171">        nameColumnsMap.put(YEAR_START_NAME, YEAR_START);</span>
+<span class="fc" id="L172">    }</span>
+
+    private String name;
+
+<span class="fc" id="L176">    TimeDerivedColumnType(String name) {</span>
+<span class="fc" id="L177">        this.name = name;</span>
+<span class="fc" id="L178">    }</span>
+
+    public static boolean isTimeDerivedColumn(String columnName) {
+<span class="fc" id="L181">        return nameColumnsMap.containsKey(columnName.toLowerCase(Locale.ROOT));</span>
+    }
+
+    public static boolean isTimeDerivedColumnAboveDayLevel(String columnName) {
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (!isTimeDerivedColumn(columnName))</span>
+<span class="nc" id="L186">            return false;</span>
+        else {
+<span class="nc bnc" id="L188" title="All 4 branches missed.">            return !columnName.equalsIgnoreCase(MINUTE_START_NAME) &amp;&amp; !columnName.equalsIgnoreCase(HOUR_START_NAME);</span>
+        }
+    }
+
+    public static TimeDerivedColumnType getTimeDerivedColumnType(String columnName) {
+<span class="nc" id="L193">        return nameColumnsMap.get(columnName.toLowerCase(Locale.ROOT));</span>
+    }
+
+    public static long parseTimeValue(Object value) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (value instanceof Long) {</span>
+<span class="fc" id="L198">            return (Long) value;</span>
+        }
+        String dateStr;
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (value instanceof String) {</span>
+<span class="fc" id="L202">            dateStr = (String) value;</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        } else if (value instanceof ByteArray) {</span>
+<span class="nc" id="L204">            dateStr = Bytes.toString(((ByteArray) value).array());</span>
+        } else {
+<span class="fc" id="L206">            throw new IllegalArgumentException(&quot;unknown type of value:&quot; + value.getClass());</span>
+        }
+<span class="fc" id="L208">        return DateFormat.stringToMillis(dateStr);</span>
+    }
+
+    public boolean hasTimeRangeOverlap(long timeStart, long timeEnd, Object timeValue) {
+<span class="fc" id="L212">        long time = parseTimeValue(timeValue);</span>
+<span class="fc" id="L213">        Pair&lt;Long, Long&gt; calUnitTimeRange = calculateTimeUnitRange(time);</span>
+<span class="fc bfc" id="L214" title="All 4 branches covered.">        if (calUnitTimeRange.getSecond() &lt;= timeStart || calUnitTimeRange.getFirst() &gt;= timeEnd) {</span>
+<span class="fc" id="L215">            return false;</span>
+        }
+<span class="fc" id="L217">        return true;</span>
+    }
+
+    public Pair&lt;Long, Long&gt; getTimeUnitRange(Object timeValue) {
+<span class="nc" id="L221">        long time = parseTimeValue(timeValue);</span>
+<span class="nc" id="L222">        return calculateTimeUnitRange(time);</span>
+    }
+
+    public Pair&lt;Long, Long&gt; getTimeUnitRangeTimezoneAware(Object timeValue, long timezoneOffset){
+<span class="nc" id="L226">        long ts = parseTimeValue(timeValue);</span>
+<span class="nc" id="L227">        Pair&lt;Long, Long&gt; res = calculateTimeUnitRange(ts);</span>
+<span class="nc" id="L228">        res = new Pair&lt;&gt;(res.getFirst() - timezoneOffset, res.getSecond() - timezoneOffset);</span>
+<span class="nc" id="L229">        return res;</span>
+    }
+
+    abstract public Pair&lt;Long, Long&gt; calculateTimeUnitRange(long time);
+
+    abstract public String normalizeTimeFormat(long time);
+
+    abstract public long normalize(long time);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

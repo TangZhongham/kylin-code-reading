@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResourceTool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">ResourceTool.java</span></div><h1>ResourceTool.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
+import java.util.NavigableSet;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceParallelCopier.Stats;
+import org.apache.kylin.common.util.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+<span class="fc" id="L40">public class ResourceTool {</span>
+
+<span class="fc" id="L42">    private static final Logger logger = LoggerFactory.getLogger(ResourceTool.class);</span>
+
+<span class="fc" id="L44">    private static final Set&lt;String&gt; IMMUTABLE_PREFIX = Sets.newHashSet(&quot;/UUID&quot;);</span>
+
+<span class="fc" id="L46">    private static final List&lt;String&gt; SKIP_CHILDREN_CHECK_RESOURCE_ROOT = Lists</span>
+<span class="fc" id="L47">            .newArrayList(ResourceStore.EXECUTE_RESOURCE_ROOT, ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT);</span>
+
+    public static void main(String[] args) throws IOException {
+<span class="nc" id="L50">        args = StringUtil.filterSystemArgs(args);</span>
+
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (args.length == 0) {</span>
+<span class="nc" id="L53">            System.out.println(&quot;Usage: ResourceTool list  RESOURCE_PATH&quot;);</span>
+<span class="nc" id="L54">            System.out.println(&quot;Usage: ResourceTool download  LOCAL_DIR [RESOURCE_PATH_PREFIX]&quot;);</span>
+<span class="nc" id="L55">            System.out.println(&quot;Usage: ResourceTool upload    LOCAL_DIR [RESOURCE_PATH_PREFIX]&quot;);</span>
+<span class="nc" id="L56">            System.out.println(&quot;Usage: ResourceTool reset&quot;);</span>
+<span class="nc" id="L57">            System.out.println(&quot;Usage: ResourceTool remove RESOURCE_PATH&quot;);</span>
+<span class="nc" id="L58">            System.out.println(&quot;Usage: ResourceTool cat RESOURCE_PATH&quot;);</span>
+<span class="nc" id="L59">            return;</span>
+        }
+
+<span class="nc" id="L62">        ResourceTool tool = new ResourceTool();</span>
+
+<span class="nc" id="L64">        String include = System.getProperty(&quot;include&quot;);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if (include != null) {</span>
+<span class="nc" id="L66">            tool.addIncludes(include.split(&quot;\\s*,\\s*&quot;));</span>
+        }
+<span class="nc" id="L68">        String exclude = System.getProperty(&quot;exclude&quot;);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (exclude != null) {</span>
+<span class="nc" id="L70">            tool.addExcludes(exclude.split(&quot;\\s*,\\s*&quot;));</span>
+        }
+<span class="nc" id="L72">        String group = System.getProperty(&quot;group&quot;);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (group != null)</span>
+<span class="nc" id="L74">            tool.parallelCopyGroupSize = Integer.parseInt(group);</span>
+
+<span class="nc" id="L76">        tool.addExcludes(IMMUTABLE_PREFIX.toArray(new String[IMMUTABLE_PREFIX.size()]));</span>
+
+<span class="nc" id="L78">        String cmd = args[0];</span>
+<span class="nc bnc" id="L79" title="All 8 branches missed.">        switch (cmd) {</span>
+            case &quot;reset&quot;:
+<span class="nc bnc" id="L81" title="All 2 branches missed.">                tool.reset(args.length == 1 ? KylinConfig.getInstanceFromEnv() : KylinConfig.createInstanceFromUri(args[1]));</span>
+<span class="nc" id="L82">                break;</span>
+            case &quot;list&quot;:
+<span class="nc" id="L84">                tool.list(KylinConfig.getInstanceFromEnv(), args[1]);</span>
+<span class="nc" id="L85">                break;</span>
+            case &quot;download&quot;:
+<span class="nc bnc" id="L87" title="All 2 branches missed.">                if (args.length == 2) {</span>
+<span class="nc" id="L88">                    tool.copyParallel(KylinConfig.getInstanceFromEnv(), KylinConfig.createInstanceFromUri(args[1]), &quot;/&quot;);</span>
+<span class="nc" id="L89">                    System.out.println(&quot;Metadata backed up to &quot; + args[1]);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">                } else if (args.length == 3) {</span>
+<span class="nc" id="L91">                    tool.copyParallel(KylinConfig.getInstanceFromEnv(), KylinConfig.createInstanceFromUri(args[1]), args[2]);</span>
+<span class="nc" id="L92">                    System.out.println(&quot;Metadata with prefix: &quot; + args[2] + &quot; backed up to &quot; + args[1]);</span>
+                } else {
+<span class="nc" id="L94">                    System.err.println(&quot;Illegal args : &quot; + args);</span>
+                }
+<span class="nc" id="L96">                break;</span>
+            case &quot;fetch&quot;:
+<span class="nc" id="L98">                tool.copy(KylinConfig.getInstanceFromEnv(), KylinConfig.createInstanceFromUri(args[1]), args[2], true);</span>
+<span class="nc" id="L99">                break;</span>
+            case &quot;upload&quot;:
+<span class="nc bnc" id="L101" title="All 2 branches missed.">                if (args.length == 2) {</span>
+<span class="nc" id="L102">                    tool.copyParallel(KylinConfig.createInstanceFromUri(args[1]), KylinConfig.getInstanceFromEnv(), &quot;/&quot;);</span>
+<span class="nc" id="L103">                    System.out.println(&quot;Metadata restored from &quot; + args[1]);</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">                } else if (args.length == 3) {</span>
+<span class="nc" id="L105">                    tool.copyParallel(KylinConfig.createInstanceFromUri(args[1]), KylinConfig.getInstanceFromEnv(), args[2]);</span>
+<span class="nc" id="L106">                    System.out.println(&quot;Metadata with prefix: &quot; + args[2] + &quot; restored from &quot; + args[1]);</span>
+                } else {
+<span class="nc" id="L108">                    System.err.println(&quot;Illegal args : &quot; + args);</span>
+                }
+<span class="nc" id="L110">                break;</span>
+            case &quot;remove&quot;:
+<span class="nc" id="L112">                tool.remove(KylinConfig.getInstanceFromEnv(), args[1]);</span>
+<span class="nc" id="L113">                break;</span>
+            case &quot;cat&quot;:
+<span class="nc" id="L115">                tool.cat(KylinConfig.getInstanceFromEnv(), args[1]);</span>
+<span class="nc" id="L116">                break;</span>
+            default:
+<span class="nc" id="L118">                System.out.println(&quot;Unknown cmd: &quot; + cmd);</span>
+        }
+<span class="nc" id="L120">    }</span>
+
+<span class="fc" id="L122">    private String[] includes = null;</span>
+<span class="fc" id="L123">    private String[] excludes = null;</span>
+<span class="fc" id="L124">    private int parallelCopyGroupSize = 0;</span>
+
+    private void addIncludes(String[] arg) {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (arg != null) {</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            if (includes != null) {</span>
+<span class="nc" id="L129">                String[] nIncludes = new String[includes.length + arg.length];</span>
+<span class="nc" id="L130">                System.arraycopy(includes, 0, nIncludes, 0, includes.length);</span>
+<span class="nc" id="L131">                System.arraycopy(arg, 0, nIncludes, includes.length, arg.length);</span>
+<span class="nc" id="L132">                includes = nIncludes;</span>
+<span class="nc" id="L133">            } else {</span>
+<span class="nc" id="L134">                includes = arg;</span>
+            }
+        }
+<span class="nc" id="L137">    }</span>
+
+    private void addExcludes(String[] arg) {
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (arg != null) {</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (excludes != null) {</span>
+<span class="nc" id="L142">                String[] nExcludes = new String[excludes.length + arg.length];</span>
+<span class="nc" id="L143">                System.arraycopy(excludes, 0, nExcludes, 0, excludes.length);</span>
+<span class="nc" id="L144">                System.arraycopy(arg, 0, nExcludes, excludes.length, arg.length);</span>
+<span class="nc" id="L145">                excludes = nExcludes;</span>
+<span class="nc" id="L146">            } else {</span>
+<span class="nc" id="L147">                excludes = arg;</span>
+            }
+        }
+<span class="nc" id="L150">    }</span>
+
+    private void copyParallel(KylinConfig from, KylinConfig to, String folder) throws IOException {
+<span class="nc" id="L153">        ResourceParallelCopier copier = new ResourceParallelCopier(ResourceStore.getStore(from), ResourceStore.getStore(to));</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (parallelCopyGroupSize &gt; 0)</span>
+<span class="nc" id="L155">            copier.setGroupSize(parallelCopyGroupSize);</span>
+
+<span class="nc" id="L157">        Stats stats = copier.copy(folder, includes, excludes, new Stats() {</span>
+
+            @Override
+            void heartBeat() {
+<span class="nc" id="L161">                double percent = 100D * (successGroups.size() + errorGroups.size()) / allGroups.size();</span>
+<span class="nc" id="L162">                double mb = totalBytes.get() / 1024D / 1024D;</span>
+<span class="nc" id="L163">                double sec = (System.nanoTime() - startTime) / 1000000000D;</span>
+<span class="nc" id="L164">                double kbps = totalBytes.get() / 1024D / sec;</span>
+<span class="nc bnc" id="L165" title="All 4 branches missed.">                String status = mb &gt; 0 &amp;&amp; kbps &lt; 500 ? &quot;-- Slow network or storage?&quot; : &quot;&quot;;</span>
+
+<span class="nc" id="L167">                String logInfo = String.format(Locale.ROOT,</span>
+<span class="nc" id="L168">                        &quot;Progress: %2.1f%%, %d resource, %d error; copied %.1f MB in %.1f min, %.1f KB/s %s&quot;, percent,</span>
+<span class="nc" id="L169">                        totalResource.get(), errorResource.get(), mb, sec / 60, kbps, status);</span>
+<span class="nc" id="L170">                System.out.println(logInfo);</span>
+<span class="nc" id="L171">            }</span>
+
+            @Override
+            void onRetry(int errorResourceCnt) {
+<span class="nc" id="L175">                System.out.println(&quot;-----&quot;);</span>
+<span class="nc" id="L176">                System.out.println(&quot;RETRY &quot; + errorResourceCnt + &quot; error resource ...&quot;);</span>
+<span class="nc" id="L177">            }</span>
+        });
+
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (stats.hasError()) {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            for (String errGroup : stats.errorGroups)</span>
+<span class="nc" id="L182">                System.out.println(&quot;Failed to copy resource group: &quot; + errGroup + &quot;*&quot;);</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">            for (String errResPath : stats.errorResourcePaths)</span>
+<span class="nc" id="L184">                System.out.println(&quot;Failed to copy resource: &quot; + errResPath);</span>
+<span class="nc" id="L185">            throw new IOException(&quot;Failed to copy &quot; + stats.errorResource.get() + &quot; resource&quot;);</span>
+        }
+<span class="nc" id="L187">    }</span>
+
+    public String cat(KylinConfig config, String path) throws IOException {
+<span class="nc" id="L190">        ResourceStore store = ResourceStore.getStore(config);</span>
+<span class="nc" id="L191">        StringBuffer sb = new StringBuffer();</span>
+        String line;
+
+<span class="nc" id="L194">        try (InputStream is = store.getResource(path).content();</span>
+<span class="nc" id="L195">                BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">            while ((line = br.readLine()) != null) {</span>
+<span class="nc" id="L197">                System.out.println(line);</span>
+<span class="nc" id="L198">                sb.append(line).append('\n');</span>
+            }
+        }
+
+<span class="nc" id="L202">        return sb.toString();</span>
+    }
+
+    public NavigableSet&lt;String&gt; list(KylinConfig config, String path) throws IOException {
+<span class="nc" id="L206">        ResourceStore store = ResourceStore.getStore(config);</span>
+<span class="nc" id="L207">        NavigableSet&lt;String&gt; result = store.listResources(path);</span>
+<span class="nc" id="L208">        System.out.println(&quot;&quot; + result);</span>
+<span class="nc" id="L209">        return result;</span>
+    }
+
+    public void copy(KylinConfig srcConfig, KylinConfig dstConfig, String path) throws IOException {
+<span class="fc" id="L213">        copy(srcConfig, dstConfig, path, false);</span>
+<span class="fc" id="L214">    }</span>
+
+    //Do NOT invoke this method directly, unless you want to copy and possibly overwrite immutable resources such as UUID.
+    public void copy(KylinConfig srcConfig, KylinConfig dstConfig, String path, boolean copyImmutableResource)
+            throws IOException {
+<span class="fc" id="L219">        ResourceStore src = ResourceStore.getStore(srcConfig);</span>
+<span class="fc" id="L220">        ResourceStore dst = ResourceStore.getStore(dstConfig);</span>
+
+<span class="fc" id="L222">        logger.info(&quot;Copy from {} to {}&quot;, src, dst);</span>
+
+<span class="fc" id="L224">        copyR(src, dst, path, copyImmutableResource);</span>
+<span class="fc" id="L225">    }</span>
+
+    public void copy(KylinConfig srcConfig, KylinConfig dstConfig, List&lt;String&gt; paths) throws IOException {
+<span class="nc" id="L228">        copy(srcConfig, dstConfig, paths, false);</span>
+<span class="nc" id="L229">    }</span>
+
+    //Do NOT invoke this method directly, unless you want to copy and possibly overwrite immutable resources such as UUID.
+    public void copy(KylinConfig srcConfig, KylinConfig dstConfig, List&lt;String&gt; paths,
+                     boolean copyImmutableResource) throws IOException {
+<span class="nc" id="L234">        ResourceStore src = ResourceStore.getStore(srcConfig);</span>
+<span class="nc" id="L235">        ResourceStore dst = ResourceStore.getStore(dstConfig);</span>
+
+<span class="nc" id="L237">        logger.info(&quot;Copy from {} to {}&quot;, src, dst);</span>
+
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        for (String path : paths) {</span>
+<span class="nc" id="L240">            copyR(src, dst, path, copyImmutableResource);</span>
+<span class="nc" id="L241">        }</span>
+<span class="nc" id="L242">    }</span>
+
+    public void copy(KylinConfig srcConfig, KylinConfig dstConfig) throws IOException {
+<span class="nc" id="L245">        copy(srcConfig, dstConfig, false);</span>
+<span class="nc" id="L246">    }</span>
+
+    //Do NOT invoke this method directly, unless you want to copy and possibly overwrite immutable resources such as UUID.
+    public void copy(KylinConfig srcConfig, KylinConfig dstConfig, boolean copyImmutableResource)
+            throws IOException {
+<span class="nc" id="L251">        copy(srcConfig, dstConfig, &quot;/&quot;, copyImmutableResource);</span>
+<span class="nc" id="L252">    }</span>
+
+    private void copyR(ResourceStore src, ResourceStore dst, String path, boolean copyImmutableResource)
+            throws IOException {
+
+<span class="pc bpc" id="L257" title="1 of 4 branches missed.">        if (!copyImmutableResource &amp;&amp; IMMUTABLE_PREFIX.contains(path)) {</span>
+<span class="fc" id="L258">            return;</span>
+        }
+
+<span class="fc" id="L261">        boolean isSkip = SKIP_CHILDREN_CHECK_RESOURCE_ROOT.stream()</span>
+<span class="fc" id="L262">                .anyMatch(prefixToSkip -&gt; (path.startsWith(prefixToSkip)));</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        if (isSkip)</span>
+<span class="fc" id="L264">            return;</span>
+
+<span class="fc" id="L266">        NavigableSet&lt;String&gt; children = src.listResources(path);</span>
+
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (children == null) {</span>
+            // case of resource (not a folder)
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">            if (matchFilter(path, includes, excludes)) {</span>
+                try {
+<span class="fc" id="L272">                    RawResource res = src.getResource(path);</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">                    if (res != null) {</span>
+<span class="fc" id="L274">                        logger.debug(&quot;Copy path: {} from {} to {}&quot;, path, src, dst);</span>
+                        try {
+<span class="fc" id="L276">                            dst.putResource(path, res.content(), res.lastModified());</span>
+                        } finally {
+<span class="fc" id="L278">                            res.close();</span>
+<span class="fc" id="L279">                        }</span>
+                    } else {
+<span class="nc" id="L281">                        System.out.println(&quot;Resource not exist for &quot; + path);</span>
+                    }
+<span class="nc" id="L283">                } catch (Exception ex) {</span>
+<span class="nc" id="L284">                    System.err.println(&quot;Failed to open &quot; + path);</span>
+<span class="nc" id="L285">                    logger.error(ex.getLocalizedMessage(), ex);</span>
+<span class="pc" id="L286">                }</span>
+            }
+        } else {
+            // case of folder
+<span class="fc bfc" id="L290" title="All 2 branches covered.">            for (String child : children)</span>
+<span class="fc" id="L291">                copyR(src, dst, child, copyImmutableResource);</span>
+        }
+
+<span class="fc" id="L294">    }</span>
+
+    static boolean matchFilter(String path, String[] includePrefix, String[] excludePrefix) {
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">        if (includePrefix != null) {</span>
+<span class="nc" id="L298">            boolean in = false;</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">            for (String include : includePrefix) {</span>
+<span class="nc bnc" id="L300" title="All 4 branches missed.">                in = in || path.startsWith(include);</span>
+            }
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            if (!in)</span>
+<span class="nc" id="L303">                return false;</span>
+        }
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">        if (excludePrefix != null) {</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            for (String exclude : excludePrefix) {</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">                if (path.startsWith(exclude))</span>
+<span class="nc" id="L308">                    return false;</span>
+            }
+        }
+<span class="fc" id="L311">        return true;</span>
+    }
+
+    public void reset(KylinConfig config) throws IOException {
+<span class="nc" id="L315">        ResourceStore store = ResourceStore.getStore(config);</span>
+<span class="nc" id="L316">        resetR(store, &quot;/&quot;);</span>
+<span class="nc" id="L317">    }</span>
+
+    public void resetR(ResourceStore store, String path) throws IOException {
+<span class="fc" id="L320">        NavigableSet&lt;String&gt; children = store.listResources(path);</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">        if (children == null) { // path is a resource (not a folder)</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">            if (matchFilter(path, includes, excludes)) {</span>
+<span class="fc" id="L323">                store.deleteResource(path);</span>
+            }
+        } else {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            for (String child : children)</span>
+<span class="fc" id="L327">                resetR(store, child);</span>
+        }
+<span class="fc" id="L329">    }</span>
+
+    public void remove(KylinConfig config, String path) throws IOException {
+<span class="nc" id="L332">        ResourceStore store = ResourceStore.getStore(config);</span>
+<span class="nc" id="L333">        resetR(store, path);</span>
+<span class="nc" id="L334">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

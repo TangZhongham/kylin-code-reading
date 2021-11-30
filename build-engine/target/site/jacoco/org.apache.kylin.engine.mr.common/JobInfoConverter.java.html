@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JobInfoConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">JobInfoConverter.java</span></div><h1>JobInfoConverter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.util.Map;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.model.CubeBuildTypeEnum;
+import org.apache.kylin.engine.mr.CubingJob;
+import org.apache.kylin.engine.mr.steps.CubingExecutableUtil;
+import org.apache.kylin.job.JobInstance;
+import org.apache.kylin.job.JobSearchResult;
+import org.apache.kylin.job.common.ShellExecutable;
+import org.apache.kylin.job.constant.JobStatusEnum;
+import org.apache.kylin.job.constant.JobStepStatusEnum;
+import org.apache.kylin.job.dao.ExecutableOutputPO;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.CheckpointExecutable;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.job.execution.ExecutableState;
+import org.apache.kylin.job.execution.Output;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="nc" id="L43">public class JobInfoConverter {</span>
+<span class="nc" id="L44">    private static final Logger logger = LoggerFactory.getLogger(JobInfoConverter.class);</span>
+
+    public static JobInstance parseToJobInstanceQuietly(AbstractExecutable job, Map&lt;String, Output&gt; outputs) {
+        try {
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            if (job instanceof CheckpointExecutable) {</span>
+<span class="nc" id="L49">                return parseToJobInstance((CheckpointExecutable)job, outputs);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">            } else if (job instanceof CubingJob) {</span>
+<span class="nc" id="L51">                return parseToJobInstance((CubingJob)job, outputs);</span>
+            } else {
+<span class="nc" id="L53">                return null;</span>
+            }
+<span class="nc" id="L55">        } catch (Exception e) {</span>
+<span class="nc" id="L56">            logger.error(&quot;Failed to parse job instance: uuid={}&quot;, job, e);</span>
+<span class="nc" id="L57">            return null;</span>
+        }
+    }
+
+    public static JobInstance parseToJobInstance(CubingJob job, Map&lt;String, Output&gt; outputs) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L63">            logger.warn(&quot;job is null.&quot;);</span>
+<span class="nc" id="L64">            return null;</span>
+        }
+
+<span class="nc" id="L67">        Output output = outputs.get(job.getId());</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L69">            logger.warn(&quot;job output is null.&quot;);</span>
+<span class="nc" id="L70">            return null;</span>
+        }
+
+<span class="nc" id="L73">        CubingJob cubeJob = (CubingJob) job;</span>
+<span class="nc" id="L74">        CubeInstance cube = CubeManager.getInstance(KylinConfig.getInstanceFromEnv())</span>
+<span class="nc" id="L75">                .getCube(CubingExecutableUtil.getCubeName(cubeJob.getParams()));</span>
+
+<span class="nc" id="L77">        final JobInstance result = new JobInstance();</span>
+<span class="nc" id="L78">        result.setName(job.getName());</span>
+<span class="nc" id="L79">        result.setProjectName(cubeJob.getProjectName());</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        result.setRelatedCube(cube != null ? cube.getName() : CubingExecutableUtil.getCubeName(cubeJob.getParams()));</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        result.setDisplayCubeName(cube != null ? cube.getDisplayName() : CubingExecutableUtil.getCubeName(cubeJob.getParams()));</span>
+<span class="nc" id="L82">        result.setRelatedSegment(CubingExecutableUtil.getSegmentId(cubeJob.getParams()));</span>
+<span class="nc" id="L83">        result.setRelatedSegmentName(CubingExecutableUtil.getSegmentName(cubeJob.getParams()));</span>
+<span class="nc" id="L84">        result.setLastModified(output.getLastModified());</span>
+<span class="nc" id="L85">        result.setSubmitter(job.getSubmitter());</span>
+<span class="nc" id="L86">        result.setUuid(job.getId());</span>
+<span class="nc" id="L87">        result.setType(CubeBuildTypeEnum.BUILD);</span>
+<span class="nc" id="L88">        result.setStatus(parseToJobStatus(output.getState()));</span>
+<span class="nc" id="L89">        result.setBuildInstance(AbstractExecutable.getBuildInstance(output));</span>
+<span class="nc" id="L90">        result.setMrWaiting(AbstractExecutable.getExtraInfoAsLong(output, CubingJob.MAP_REDUCE_WAIT_TIME, 0L) / 1000);</span>
+<span class="nc" id="L91">        result.setExecStartTime(AbstractExecutable.getStartTime(output));</span>
+<span class="nc" id="L92">        result.setExecEndTime(AbstractExecutable.getEndTime(output));</span>
+<span class="nc" id="L93">        result.setExecInterruptTime(AbstractExecutable.getInterruptTime(output));</span>
+<span class="nc" id="L94">        result.setDuration(AbstractExecutable.getDuration(result.getExecStartTime(), result.getExecEndTime(),</span>
+<span class="nc" id="L95">                result.getExecInterruptTime()) / 1000);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (int i = 0; i &lt; job.getTasks().size(); ++i) {</span>
+<span class="nc" id="L97">            AbstractExecutable task = job.getTasks().get(i);</span>
+<span class="nc" id="L98">            result.addStep(parseToJobStep(task, i, outputs.get(task.getId())));</span>
+        }
+<span class="nc" id="L100">        return result;</span>
+    }
+
+    public static JobInstance parseToJobInstance(CheckpointExecutable job, Map&lt;String, Output&gt; outputs) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L105">            logger.warn(&quot;job is null.&quot;);</span>
+<span class="nc" id="L106">            return null;</span>
+        }
+
+<span class="nc" id="L109">        Output output = outputs.get(job.getId());</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L111">            logger.warn(&quot;job output is null.&quot;);</span>
+<span class="nc" id="L112">            return null;</span>
+        }
+
+<span class="nc" id="L115">        final JobInstance result = new JobInstance();</span>
+<span class="nc" id="L116">        result.setName(job.getName());</span>
+<span class="nc" id="L117">        result.setProjectName(job.getProjectName());</span>
+<span class="nc" id="L118">        result.setRelatedCube(CubingExecutableUtil.getCubeName(job.getParams()));</span>
+<span class="nc" id="L119">        result.setDisplayCubeName(CubingExecutableUtil.getCubeName(job.getParams()));</span>
+<span class="nc" id="L120">        result.setLastModified(output.getLastModified());</span>
+<span class="nc" id="L121">        result.setSubmitter(job.getSubmitter());</span>
+<span class="nc" id="L122">        result.setUuid(job.getId());</span>
+<span class="nc" id="L123">        result.setType(CubeBuildTypeEnum.CHECKPOINT);</span>
+<span class="nc" id="L124">        result.setStatus(parseToJobStatus(output.getState()));</span>
+<span class="nc" id="L125">        result.setBuildInstance(AbstractExecutable.getBuildInstance(output));</span>
+<span class="nc" id="L126">        result.setExecStartTime(AbstractExecutable.getStartTime(output));</span>
+<span class="nc" id="L127">        result.setExecEndTime(AbstractExecutable.getEndTime(output));</span>
+<span class="nc" id="L128">        result.setExecInterruptTime(AbstractExecutable.getInterruptTime(output));</span>
+<span class="nc" id="L129">        result.setDuration(AbstractExecutable.getDuration(result.getExecStartTime(), result.getExecEndTime(),</span>
+<span class="nc" id="L130">                result.getExecInterruptTime()) / 1000);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        for (int i = 0; i &lt; job.getTasks().size(); ++i) {</span>
+<span class="nc" id="L132">            AbstractExecutable task = job.getTasks().get(i);</span>
+<span class="nc" id="L133">            result.addStep(parseToJobStep(task, i, outputs.get(task.getId())));</span>
+        }
+<span class="nc" id="L135">        return result;</span>
+    }
+
+    public static JobInstance.JobStep parseToJobStep(AbstractExecutable task, int i, Output stepOutput) {
+<span class="nc" id="L139">        JobInstance.JobStep result = new JobInstance.JobStep();</span>
+<span class="nc" id="L140">        result.setId(task.getId());</span>
+<span class="nc" id="L141">        result.setName(task.getName());</span>
+<span class="nc" id="L142">        result.setSequenceID(i);</span>
+
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (stepOutput == null) {</span>
+<span class="nc" id="L145">            logger.warn(&quot;Cannot found output for task: id={}&quot;, task.getId());</span>
+<span class="nc" id="L146">            return result;</span>
+        }
+
+<span class="nc" id="L149">        result.setStatus(parseToJobStepStatus(stepOutput.getState()));</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; entry : stepOutput.getExtra().entrySet()) {</span>
+<span class="nc bnc" id="L151" title="All 4 branches missed.">            if (entry.getKey() != null &amp;&amp; entry.getValue() != null) {</span>
+<span class="nc" id="L152">                result.putInfo(entry.getKey(), entry.getValue());</span>
+            }
+<span class="nc" id="L154">        }</span>
+<span class="nc" id="L155">        result.setExecStartTime(AbstractExecutable.getStartTime(stepOutput));</span>
+<span class="nc" id="L156">        result.setExecEndTime(AbstractExecutable.getEndTime(stepOutput));</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (task instanceof ShellExecutable) {</span>
+<span class="nc" id="L158">            result.setExecCmd(((ShellExecutable) task).getCmd());</span>
+        }
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (task instanceof MapReduceExecutable) {</span>
+<span class="nc" id="L161">            result.setExecCmd(((MapReduceExecutable) task).getMapReduceParams());</span>
+<span class="nc" id="L162">            result.setExecWaitTime(</span>
+<span class="nc" id="L163">                    AbstractExecutable.getExtraInfoAsLong(stepOutput, MapReduceExecutable.MAP_REDUCE_WAIT_TIME, 0L)</span>
+                            / 1000);
+        }
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (task instanceof HadoopShellExecutable) {</span>
+<span class="nc" id="L167">            result.setExecCmd(((HadoopShellExecutable) task).getJobParams());</span>
+        }
+<span class="nc" id="L169">        return result;</span>
+    }
+
+    public static JobStatusEnum parseToJobStatus(ExecutableState state) {
+<span class="nc bnc" id="L173" title="All 7 branches missed.">        switch (state) {</span>
+        case READY:
+<span class="nc" id="L175">            return JobStatusEnum.PENDING;</span>
+        case RUNNING:
+<span class="nc" id="L177">            return JobStatusEnum.RUNNING;</span>
+        case ERROR:
+<span class="nc" id="L179">            return JobStatusEnum.ERROR;</span>
+        case DISCARDED:
+<span class="nc" id="L181">            return JobStatusEnum.DISCARDED;</span>
+        case SUCCEED:
+<span class="nc" id="L183">            return JobStatusEnum.FINISHED;</span>
+        case STOPPED:
+<span class="nc" id="L185">            return JobStatusEnum.STOPPED;</span>
+        default:
+<span class="nc" id="L187">            throw new RuntimeException(&quot;invalid state:&quot; + state);</span>
+        }
+    }
+
+    public static JobStepStatusEnum parseToJobStepStatus(ExecutableState state) {
+<span class="nc bnc" id="L192" title="All 7 branches missed.">        switch (state) {</span>
+        case READY:
+<span class="nc" id="L194">            return JobStepStatusEnum.PENDING;</span>
+        case RUNNING:
+<span class="nc" id="L196">            return JobStepStatusEnum.RUNNING;</span>
+        case ERROR:
+<span class="nc" id="L198">            return JobStepStatusEnum.ERROR;</span>
+        case DISCARDED:
+<span class="nc" id="L200">            return JobStepStatusEnum.DISCARDED;</span>
+        case SUCCEED:
+<span class="nc" id="L202">            return JobStepStatusEnum.FINISHED;</span>
+        case STOPPED:
+<span class="nc" id="L204">            return JobStepStatusEnum.STOPPED;</span>
+        default:
+<span class="nc" id="L206">            throw new RuntimeException(&quot;invalid state:&quot; + state);</span>
+        }
+    }
+
+    public static JobSearchResult parseToJobSearchResult(DefaultChainedExecutable job, Map&lt;String, ExecutableOutputPO&gt; outputs) {
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L212">            logger.warn(&quot;job is null.&quot;);</span>
+<span class="nc" id="L213">            return null;</span>
+        }
+
+<span class="nc" id="L216">        ExecutableOutputPO output = outputs.get(job.getId());</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L218">            logger.warn(&quot;job output is null.&quot;);</span>
+<span class="nc" id="L219">            return null;</span>
+        }
+
+<span class="nc" id="L222">        final JobSearchResult result = new JobSearchResult();</span>
+
+<span class="nc" id="L224">        String cubeName = CubingExecutableUtil.getCubeName(job.getParams());</span>
+
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (cubeName == null) {</span>
+<span class="nc" id="L227">            cubeName = job.getParam(&quot;model_name&quot;);</span>
+        } else {
+<span class="nc" id="L229">            CubeInstance cube = CubeManager.getInstance(KylinConfig.getInstanceFromEnv()).getCube(cubeName);</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            if (cube != null) {</span>
+<span class="nc" id="L231">                cubeName = cube.getDisplayName();</span>
+            }
+        }
+<span class="nc" id="L234">        result.setCubeName(cubeName);</span>
+<span class="nc" id="L235">        result.setId(job.getId());</span>
+<span class="nc" id="L236">        result.setJobName(job.getName());</span>
+<span class="nc" id="L237">        result.setLastModified(output.getLastModified());</span>
+<span class="nc" id="L238">        result.setJobStatus(JobInfoConverter.parseToJobStatus(job.getStatus()));</span>
+<span class="nc" id="L239">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NDCuboidBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">NDCuboidBuilder.java</span></div><h1>NDCuboidBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.Serializable;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.common.RowKeySplitter;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.kv.RowConstants;
+import org.apache.kylin.cube.kv.RowKeyEncoder;
+import org.apache.kylin.cube.kv.RowKeyEncoderProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class NDCuboidBuilder implements Serializable {
+
+<span class="nc" id="L39">    protected static final Logger logger = LoggerFactory.getLogger(NDCuboidBuilder.class);</span>
+    protected String cubeName;
+    protected String segmentID;
+    protected CubeSegment cubeSegment;
+    private RowKeySplitter rowKeySplitter;
+    private RowKeyEncoderProvider rowKeyEncoderProvider;
+<span class="nc" id="L45">    private ByteArray newKeyBodyBuf = null;</span>
+
+    public NDCuboidBuilder(CubeSegment cubeSegment) {
+<span class="nc" id="L48">        this(cubeSegment, new RowKeyEncoderProvider(cubeSegment));</span>
+<span class="nc" id="L49">    }</span>
+
+<span class="nc" id="L51">    public NDCuboidBuilder(CubeSegment cubeSegment, RowKeyEncoderProvider rowKeyEncoderProvider) {</span>
+<span class="nc" id="L52">        this.cubeSegment = cubeSegment;</span>
+<span class="nc" id="L53">        this.rowKeyEncoderProvider = rowKeyEncoderProvider;</span>
+<span class="nc" id="L54">        this.rowKeySplitter = new RowKeySplitter(cubeSegment);</span>
+<span class="nc" id="L55">    }</span>
+
+    /**
+     * Build the new key, return a reused ByteArray object. Suitable for MR
+     * @param parentCuboid
+     * @param childCuboid
+     * @param splitBuffers
+     * @return
+     */
+    public Pair&lt;Integer, ByteArray&gt; buildKey(Cuboid parentCuboid, Cuboid childCuboid, ByteArray[] splitBuffers) {
+<span class="nc" id="L65">        RowKeyEncoder rowkeyEncoder = rowKeyEncoderProvider.getRowkeyEncoder(childCuboid);</span>
+<span class="nc" id="L66">        int fullKeySize = rowkeyEncoder.getBytesLength();</span>
+<span class="nc bnc" id="L67" title="All 4 branches missed.">        if (newKeyBodyBuf == null || newKeyBodyBuf.length() &lt; fullKeySize) {</span>
+<span class="nc" id="L68">            newKeyBodyBuf = new ByteArray(fullKeySize);</span>
+        }
+
+<span class="nc" id="L71">        buildKeyInternal(parentCuboid, childCuboid, splitBuffers, newKeyBodyBuf);</span>
+<span class="nc" id="L72">        return new Pair&lt;&gt;(Integer.valueOf(fullKeySize), newKeyBodyBuf);</span>
+
+    }
+
+    /**
+     * Build the new key, return a new ByteArray object each time. Suitable for spark
+     * @param parentCuboid
+     * @param childCuboid
+     * @param splitBuffers
+     * @return
+     */
+    public ByteArray buildKey2(Cuboid parentCuboid, Cuboid childCuboid, ByteArray[] splitBuffers) {
+<span class="nc" id="L84">        RowKeyEncoder rowkeyEncoder = rowKeyEncoderProvider.getRowkeyEncoder(childCuboid);</span>
+<span class="nc" id="L85">        int fullKeySize = rowkeyEncoder.getBytesLength();</span>
+<span class="nc" id="L86">        ByteArray newKey = new ByteArray(fullKeySize);</span>
+<span class="nc" id="L87">        buildKeyInternal(parentCuboid, childCuboid, splitBuffers, newKey);</span>
+<span class="nc" id="L88">        return newKey;</span>
+    }
+
+    private void buildKeyInternal(Cuboid parentCuboid, Cuboid childCuboid, ByteArray[] splitBuffers, ByteArray newKeyBodyBuf) {
+<span class="nc" id="L92">        RowKeyEncoder rowkeyEncoder = rowKeyEncoderProvider.getRowkeyEncoder(childCuboid);</span>
+
+        // rowkey columns
+<span class="nc" id="L95">        long mask = Long.highestOneBit(parentCuboid.getId());</span>
+<span class="nc" id="L96">        long parentCuboidId = parentCuboid.getId();</span>
+<span class="nc" id="L97">        long childCuboidId = childCuboid.getId();</span>
+<span class="nc" id="L98">        long parentCuboidIdActualLength = (long)Long.SIZE - Long.numberOfLeadingZeros(parentCuboid.getId());</span>
+<span class="nc" id="L99">        int index = rowKeySplitter.getBodySplitOffset(); // skip shard and cuboidId</span>
+<span class="nc" id="L100">        int offset = RowConstants.ROWKEY_SHARDID_LEN + RowConstants.ROWKEY_CUBOIDID_LEN; // skip shard and cuboidId</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        for (int i = 0; i &lt; parentCuboidIdActualLength; i++) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            if ((mask &amp; parentCuboidId) &gt; 0) {// if the this bit position equals</span>
+                // 1
+<span class="nc bnc" id="L104" title="All 2 branches missed.">                if ((mask &amp; childCuboidId) &gt; 0) {// if the child cuboid has this</span>
+                    // column
+<span class="nc" id="L106">                    System.arraycopy(splitBuffers[index].array(), splitBuffers[index].offset(), newKeyBodyBuf.array(), offset, splitBuffers[index].length());</span>
+<span class="nc" id="L107">                    offset += splitBuffers[index].length();</span>
+                }
+<span class="nc" id="L109">                index++;</span>
+            }
+<span class="nc" id="L111">            mask = mask &gt;&gt; 1;</span>
+        }
+
+<span class="nc" id="L114">        rowkeyEncoder.fillHeader(newKeyBodyBuf.array());</span>
+<span class="nc" id="L115">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

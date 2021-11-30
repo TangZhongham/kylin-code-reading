@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeasureCodec.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure</a> &gt; <span class="el_source">MeasureCodec.java</span></div><h1>MeasureCodec.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure;
+
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.MeasureDesc;
+
+import java.nio.ByteBuffer;
+import java.util.Collection;
+
+/**
+ * @author yangli9
+ * 
+ */
+<span class="nc bnc" id="L32" title="All 2 branches missed.">@SuppressWarnings({ &quot;rawtypes&quot; })</span>
+public class MeasureCodec implements java.io.Serializable {
+
+    private int nMeasures;
+    private DataTypeSerializer[] serializers;
+
+    public MeasureCodec(Collection&lt;MeasureDesc&gt; measureDescs) {
+<span class="nc" id="L39">        this((MeasureDesc[]) measureDescs.toArray(new MeasureDesc[measureDescs.size()]));</span>
+<span class="nc" id="L40">    }</span>
+
+<span class="nc" id="L42">    public MeasureCodec(MeasureDesc... measureDescs) {</span>
+<span class="nc" id="L43">        String[] dataTypes = new String[measureDescs.length];</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        for (int i = 0; i &lt; dataTypes.length; i++) {</span>
+<span class="nc" id="L45">            dataTypes[i] = measureDescs[i].getFunction().getReturnType();</span>
+        }
+<span class="nc" id="L47">        init(dataTypes);</span>
+<span class="nc" id="L48">    }</span>
+
+<span class="nc" id="L50">    public MeasureCodec(DataType... dataTypes) {</span>
+<span class="nc" id="L51">        init(dataTypes);</span>
+<span class="nc" id="L52">    }</span>
+
+<span class="nc" id="L54">    public MeasureCodec(String... dataTypes) {</span>
+<span class="nc" id="L55">        init(dataTypes);</span>
+<span class="nc" id="L56">    }</span>
+
+    private void init(String[] dataTypes) {
+<span class="nc" id="L59">        DataType[] typeInstances = new DataType[dataTypes.length];</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        for (int i = 0; i &lt; dataTypes.length; i++) {</span>
+<span class="nc" id="L61">            typeInstances[i] = DataType.getType(dataTypes[i]);</span>
+        }
+<span class="nc" id="L63">        init(typeInstances);</span>
+<span class="nc" id="L64">    }</span>
+
+    private void init(DataType[] dataTypes) {
+<span class="nc" id="L67">        nMeasures = dataTypes.length;</span>
+<span class="nc" id="L68">        serializers = new DataTypeSerializer[nMeasures];</span>
+
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        for (int i = 0; i &lt; nMeasures; i++) {</span>
+<span class="nc" id="L71">            serializers[i] = DataTypeSerializer.create(dataTypes[i]);</span>
+        }
+<span class="nc" id="L73">    }</span>
+
+    public void encode(int idx, Object o, ByteBuffer buf) {
+<span class="nc" id="L76">        serializers[idx].serialize(o, buf);</span>
+<span class="nc" id="L77">    }</span>
+
+    public int getMeasuresCount() {
+<span class="nc" id="L80">        return nMeasures;</span>
+    }
+
+    public int[] getPeekLength(ByteBuffer buf) {
+<span class="nc" id="L84">        int[] length = new int[nMeasures];</span>
+<span class="nc" id="L85">        int offset = 0;</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        for (int i = 0; i &lt; nMeasures; i++) {</span>
+<span class="nc" id="L87">            length[i] = serializers[i].peekLength(buf);</span>
+<span class="nc" id="L88">            offset += length[i];</span>
+<span class="nc" id="L89">            buf.position(offset);</span>
+        }
+<span class="nc" id="L91">        return length;</span>
+    }
+
+    public void decode(ByteBuffer buf, Object[] result) {
+<span class="nc bnc" id="L95" title="All 4 branches missed.">        assert result.length == nMeasures;</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (int i = 0; i &lt; nMeasures; i++) {</span>
+<span class="nc" id="L97">            result[i] = serializers[i].deserialize(buf);</span>
+        }
+<span class="nc" id="L99">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

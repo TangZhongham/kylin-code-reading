@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExpressionCountDistributor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.expression</a> &gt; <span class="el_source">ExpressionCountDistributor.java</span></div><h1>ExpressionCountDistributor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.expression;
+
+import java.util.List;
+
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.filter.TupleFilter;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class ExpressionCountDistributor implements ExpressionVisitor {
+
+    private final TupleExpression cntExpr;
+    private boolean ifToCnt;
+    private boolean ifCntSet;
+
+<span class="fc" id="L34">    public ExpressionCountDistributor(TupleExpression cntExpr) {</span>
+<span class="fc" id="L35">        this.cntExpr = cntExpr;</span>
+<span class="fc" id="L36">        this.ifToCnt = true;</span>
+<span class="fc" id="L37">        this.ifCntSet = false;</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override
+    public TupleExpression visitNumber(NumberTupleExpression numExpr) {
+<span class="fc" id="L42">        NumberTupleExpression copyExpr = new NumberTupleExpression(numExpr.getValue());</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (ifToCnt) {</span>
+<span class="fc" id="L44">            List&lt;TupleExpression&gt; children = Lists.newArrayList(cntExpr, copyExpr);</span>
+<span class="fc" id="L45">            ifCntSet = true;</span>
+<span class="fc" id="L46">            return new BinaryTupleExpression(TupleExpression.ExpressionOperatorEnum.MULTIPLE, children);</span>
+        }
+<span class="fc" id="L48">        return copyExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitString(StringTupleExpression strExpr) {
+<span class="nc" id="L53">        return new StringTupleExpression(strExpr.getValue());</span>
+    }
+
+    @Override
+    public TupleExpression visitColumn(ColumnTupleExpression colExpr) {
+<span class="fc" id="L58">        return new ColumnTupleExpression(colExpr.getColumn());</span>
+    }
+
+    @Override
+    public TupleExpression visitBinary(BinaryTupleExpression binaryExpr) {
+        TupleExpression leftCopy;
+        TupleExpression rightCopy;
+
+<span class="fc" id="L66">        boolean ifToCntO = ifToCnt;</span>
+<span class="pc bpc" id="L67" title="1 of 3 branches missed.">        switch (binaryExpr.getOperator()) {</span>
+        case PLUS:
+        case MINUS:
+<span class="fc" id="L70">            boolean ifCntSetO = ifCntSet;</span>
+<span class="fc" id="L71">            leftCopy = binaryExpr.getLeft().accept(this);</span>
+<span class="fc" id="L72">            ifToCnt = ifToCntO;</span>
+<span class="fc" id="L73">            ifCntSet = ifCntSetO;</span>
+<span class="fc" id="L74">            rightCopy = binaryExpr.getRight().accept(this);</span>
+<span class="fc" id="L75">            break;</span>
+        case MULTIPLE:
+        case DIVIDE:
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (ifToCntO) {</span>
+<span class="fc" id="L79">                ifToCnt = ExpressionColCollector.collectMeasureColumns(binaryExpr.getRight()).isEmpty();</span>
+            }
+<span class="fc" id="L81">            leftCopy = binaryExpr.getLeft().accept(this);</span>
+
+<span class="fc bfc" id="L83" title="All 4 branches covered.">            ifToCnt = ifToCntO &amp;&amp; !ifCntSet;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (ifToCnt) {</span>
+<span class="fc" id="L85">                ifToCnt = ExpressionColCollector.collectMeasureColumns(binaryExpr.getLeft()).isEmpty();</span>
+            }
+<span class="fc" id="L87">            ifCntSet = false;</span>
+
+<span class="fc" id="L89">            rightCopy = binaryExpr.getRight().accept(this);</span>
+<span class="pc bpc" id="L90" title="1 of 6 branches missed.">            ifCntSet = ifToCntO &amp;&amp; (ifCntSet || !ifToCnt);</span>
+<span class="fc" id="L91">            break;</span>
+        default:
+<span class="nc" id="L93">            throw new IllegalArgumentException(&quot;Unsupported operator &quot; + binaryExpr.getOperator());</span>
+        }
+<span class="fc" id="L95">        return new BinaryTupleExpression(binaryExpr.getOperator(), Lists.newArrayList(leftCopy, rightCopy));</span>
+    }
+
+    @Override
+    public TupleExpression visitCaseCall(CaseTupleExpression caseExpr) {
+<span class="fc" id="L100">        List&lt;Pair&lt;TupleFilter, TupleExpression&gt;&gt; whenList = Lists</span>
+<span class="fc" id="L101">                .newArrayListWithExpectedSize(caseExpr.getWhenList().size());</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (Pair&lt;TupleFilter, TupleExpression&gt; entry : caseExpr.getWhenList()) {</span>
+<span class="fc" id="L103">            TupleFilter filter = entry.getFirst();</span>
+<span class="fc" id="L104">            TupleExpression expression = visitIndependent(entry.getSecond());</span>
+<span class="fc" id="L105">            whenList.add(new Pair&lt;&gt;(filter, expression));</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">        TupleExpression elseExpr = null;</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (caseExpr.getElseExpr() != null) {</span>
+<span class="fc" id="L109">            elseExpr = visitIndependent(caseExpr.getElseExpr());</span>
+        }
+
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (ifToCnt) {</span>
+<span class="fc" id="L113">            ifToCnt = ExpressionColCollector.collectMeasureColumns(caseExpr).isEmpty();</span>
+        }
+<span class="fc" id="L115">        return new CaseTupleExpression(whenList, elseExpr);</span>
+    }
+
+    @Override
+    public TupleExpression visitRexCall(RexCallTupleExpression rexCallExpr) {
+<span class="nc" id="L120">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public TupleExpression visitNone(NoneTupleExpression noneExpr) {
+<span class="nc" id="L125">        return noneExpr;</span>
+    }
+
+    private TupleExpression visitIndependent(TupleExpression expression) {
+<span class="fc" id="L129">        boolean ifToCntO = ifToCnt;</span>
+<span class="fc" id="L130">        boolean ifCntSetO = ifCntSet;</span>
+<span class="fc" id="L131">        TupleExpression ret = expression.accept(this);</span>
+<span class="fc" id="L132">        ifToCnt = ifToCntO;</span>
+<span class="fc" id="L133">        ifCntSet = ifCntSetO;</span>
+<span class="fc" id="L134">        return ret;</span>
+    }
+
+    public boolean ifCntSet() {
+<span class="fc" id="L138">        return ifCntSet;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

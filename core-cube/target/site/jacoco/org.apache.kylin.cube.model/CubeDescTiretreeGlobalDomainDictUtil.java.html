@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeDescTiretreeGlobalDomainDictUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">CubeDescTiretreeGlobalDomainDictUtil.java</span></div><h1>CubeDescTiretreeGlobalDomainDictUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model;
+
+import java.io.Serializable;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.DataModelManager;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.source.SourceManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableList;
+
+<span class="nc" id="L42">public class CubeDescTiretreeGlobalDomainDictUtil {</span>
+<span class="nc" id="L43">    private static final Logger logger = LoggerFactory.getLogger(CubeDescTiretreeGlobalDomainDictUtil.class);</span>
+
+    /**
+     * get reuse global tiretree global dic path
+     * @param tblColRef
+     * @param cubeDesc
+     * @return
+     */
+    public static String globalReuseDictPath(KylinConfig config, TblColRef tblColRef, CubeDesc cubeDesc) {
+<span class="nc" id="L52">        String globalResumeDictPath = null;</span>
+<span class="nc" id="L53">        List&lt;GlobalDict&gt; globalDicts = cubeDesc.listDomainDict();</span>
+<span class="nc" id="L54">        DataModelManager metadataManager = DataModelManager.getInstance(config);</span>
+<span class="nc" id="L55">        CubeManager cubeManager = CubeManager.getInstance(config);</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        for (GlobalDict dict : globalDicts) {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (dict.getSrc().getIdentity().equalsIgnoreCase(tblColRef.getIdentity())) {</span>
+<span class="nc" id="L58">                String model = dict.getModel();</span>
+<span class="nc" id="L59">                String cube = dict.getCube();</span>
+<span class="nc" id="L60">                logger.info(&quot;cube:{} column:{} tiretree global domain dic reuse model:{} cube{} column:{} &quot;,</span>
+<span class="nc" id="L61">                        cubeDesc.getName(), tblColRef.getName(), model, cube, dict.getDesc());</span>
+
+<span class="nc" id="L63">                DataModelDesc dataModel = metadataManager.getDataModelDesc(model);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">                if (Objects.isNull(dataModel)) {</span>
+<span class="nc" id="L65">                    logger.error(&quot;get cube:{} column:{} tiretree global domain dic reuse DataModelDesc error&quot;,</span>
+<span class="nc" id="L66">                            cubeDesc.getName(), tblColRef.getName());</span>
+<span class="nc" id="L67">                    return null;</span>
+                }
+
+<span class="nc" id="L70">                CubeInstance cubeInstance = cubeManager.getCube(cube);</span>
+<span class="nc" id="L71">                CubeSegment cubeSegment = cubeInstance.getLatestReadySegment();</span>
+
+<span class="nc" id="L73">                TblColRef colRef = dataModel.findColumn(dict.getDesc());</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                if (Objects.isNull(colRef)) {</span>
+<span class="nc" id="L75">                    logger.error(&quot;get cube:{} column:{} tiretree global domain dic TblColRef error&quot;);</span>
+<span class="nc" id="L76">                    return null;</span>
+                }
+
+<span class="nc" id="L79">                globalResumeDictPath = cubeSegment.getDictResPath(colRef);</span>
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">                if (StringUtils.isBlank(globalResumeDictPath)) {</span>
+<span class="nc" id="L82">                    logger.error(&quot;get cube:{} column:{} tiretree global domain dic resume dict path error&quot;);</span>
+                }
+<span class="nc" id="L84">                logger.error(&quot;get cube:{} column:{} tiretree global domain dic resume dict path is {}&quot;,</span>
+                        globalResumeDictPath);
+<span class="nc" id="L86">                break;</span>
+            }
+<span class="nc" id="L88">        }</span>
+<span class="nc" id="L89">        return globalResumeDictPath;</span>
+    }
+
+    /**
+     * add resuce global tiretree global dic for baseid job
+     * @param cubeDesc
+     * @param dumpList
+     */
+    public static void cuboidJob(CubeDesc cubeDesc, Set&lt;String&gt; dumpList) {
+<span class="nc" id="L98">        logger.info(&quot;cube {} start to add global domain dic&quot;, cubeDesc.getName());</span>
+<span class="nc" id="L99">        CubeManager cubeManager = CubeManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L100">        DataModelManager metadataManager = DataModelManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+
+<span class="nc" id="L102">        cubeManager.getCube(cubeDesc.getName());</span>
+<span class="nc" id="L103">        List&lt;GlobalDict&gt; globalDicts = cubeDesc.listDomainDict();</span>
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (GlobalDict dict : globalDicts) {</span>
+<span class="nc" id="L106">            String cube = dict.getCube();</span>
+<span class="nc" id="L107">            String model = dict.getModel();</span>
+<span class="nc" id="L108">            logger.debug(&quot;cube {} column {} start to add global domain dic ,reuse {}.{}.{}&quot;, cubeDesc.getName(),</span>
+<span class="nc" id="L109">                    dict.getSrc(), model, cube, dict.getDesc());</span>
+<span class="nc" id="L110">            CubeInstance instance = cubeManager.getCube(cube);</span>
+<span class="nc" id="L111">            logger.debug(&quot;cube {} column {} start to add global domain dic ,reuse cube{} dict&quot;, cubeDesc.getName(),</span>
+<span class="nc" id="L112">                    dict.getSrc(), instance.getName());</span>
+
+            // cube, model_desc, cube_desc, table
+<span class="nc" id="L115">            dumpList.add(instance.getResourcePath());</span>
+<span class="nc" id="L116">            dumpList.add(instance.getDescriptor().getModel().getResourcePath());</span>
+<span class="nc" id="L117">            dumpList.add(instance.getDescriptor().getResourcePath());</span>
+<span class="nc" id="L118">            dumpList.add(instance.getProjectInstance().getResourcePath());</span>
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            for (TableRef tableRef : instance.getDescriptor().getModel().getAllTables()) {</span>
+<span class="nc" id="L121">                TableDesc table = tableRef.getTableDesc();</span>
+<span class="nc" id="L122">                dumpList.add(table.getResourcePath());</span>
+<span class="nc" id="L123">                dumpList.addAll(SourceManager.getMRDependentResources(table));</span>
+<span class="nc" id="L124">            }</span>
+
+<span class="nc" id="L126">            DataModelDesc dataModelDesc = metadataManager.getDataModelDesc(model);</span>
+<span class="nc" id="L127">            logger.debug(&quot;cube {} column {} start to add global domain dic ,reuse model{} dict&quot;, cubeDesc.getName(),</span>
+<span class="nc" id="L128">                    dict.getSrc(), dataModelDesc.getName());</span>
+<span class="nc" id="L129">            TblColRef tblColRef = dataModelDesc.findColumn(dict.getDesc());</span>
+<span class="nc" id="L130">            CubeSegment segment = instance.getLatestReadySegment();</span>
+<span class="nc" id="L131">            logger.debug(</span>
+                    &quot;cube {} column {} start to add global domain dic ,reuse mode:{} cube:{} segment:{} dict,tblColRef:{}&quot;,
+<span class="nc" id="L133">                    cubeDesc.getName(), dict.getSrc(), dataModelDesc.getName(), cube, segment.getName(),</span>
+<span class="nc" id="L134">                    tblColRef.getIdentity());</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (segment.getDictResPath(tblColRef) != null) {</span>
+<span class="nc" id="L136">                dumpList.addAll(ImmutableList.of(segment.getDictResPath(tblColRef)));</span>
+            }
+<span class="nc" id="L138">        }</span>
+<span class="nc" id="L139">    }</span>
+
+    public static class GlobalDict implements Serializable {
+        private TblColRef src;
+        private String desc;
+        private String cube;
+        private String model;
+
+<span class="nc" id="L147">        public GlobalDict(TblColRef src, String desc, String cube, String model) {</span>
+<span class="nc" id="L148">            this.src = src;</span>
+<span class="nc" id="L149">            this.desc = desc;</span>
+<span class="nc" id="L150">            this.cube = cube;</span>
+<span class="nc" id="L151">            this.model = model;</span>
+<span class="nc" id="L152">        }</span>
+
+        public TblColRef getSrc() {
+<span class="nc" id="L155">            return src;</span>
+        }
+
+        public String getDesc() {
+<span class="nc" id="L159">            return desc;</span>
+        }
+
+        public String getCube() {
+<span class="nc" id="L163">            return cube;</span>
+        }
+
+        public String getModel() {
+<span class="nc" id="L167">            return model;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

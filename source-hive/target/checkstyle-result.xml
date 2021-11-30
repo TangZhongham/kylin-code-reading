@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/jdbc/CmdStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveClientFactory.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/cardinality/HiveColumnCardinalityJob.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/cardinality/ColumnCardinalityReducer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/cardinality/HiveColumnCardinalityUpdateJob.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/cardinality/ColumnCardinalityMapper.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveMetaStoreClientFactory.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/IHiveClient.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/GarbageCollectionStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/BeelineOptionsProcessor.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/CreateFlatHiveTableByLivyStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/MRHiveDictUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveTable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveTableMeta.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/DBConnConf.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveMetadataExplorer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/RedistributeFlatHiveTableStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/CreateFlatHiveTableStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/CreateMrHiveDictStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveSource.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveMRInput.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/RedistributeFlatHiveTableByLivyStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveTableReader.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/CLIHiveClient.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveInputBase.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/exception/SegmentEmptyException.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/HiveTableMetaBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/main/java/org/apache/kylin/source/hive/BeelineHiveClient.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/cardinality/ColumnCardinalityReducerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/HiveMRInputTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/BeelineHIveClientTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/source-hive/src/test/java/org/apache/kylin/source/hive/BeelineOptionsProcessorTest.java">
+</file>
+</checkstyle>

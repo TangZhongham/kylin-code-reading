@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TableMeta.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.querymeta</a> &gt; <span class="el_source">TableMeta.java</span></div><h1>TableMeta.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.querymeta;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ */
+public class TableMeta implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+    protected String TABLE_CAT;
+    protected String TABLE_SCHEM;
+    protected String TABLE_NAME;
+    protected String TABLE_TYPE;
+    protected String REMARKS;
+    protected String TYPE_CAT;
+    protected String TYPE_SCHEM;
+    protected String TYPE_NAME;
+    protected String SELF_REFERENCING_COL_NAME;
+    protected String REF_GENERATION;
+<span class="nc" id="L40">    private List&lt;ColumnMeta&gt; columns = new ArrayList&lt;ColumnMeta&gt;();</span>
+
+<span class="nc" id="L42">    public TableMeta() {</span>
+<span class="nc" id="L43">    }</span>
+
+    public TableMeta(String tABLE_CAT, String tABLE_SCHEM, String tABLE_NAME, String tABLE_TYPE, String rEMARKS, String tYPE_CAT, String tYPE_SCHEM, String tYPE_NAME, String sELF_REFERENCING_COL_NAME, String rEF_GENERATION) {
+<span class="nc" id="L46">        super();</span>
+<span class="nc" id="L47">        TABLE_CAT = tABLE_CAT;</span>
+<span class="nc" id="L48">        TABLE_SCHEM = tABLE_SCHEM;</span>
+<span class="nc" id="L49">        TABLE_NAME = tABLE_NAME;</span>
+<span class="nc" id="L50">        TABLE_TYPE = tABLE_TYPE;</span>
+<span class="nc" id="L51">        REMARKS = rEMARKS;</span>
+<span class="nc" id="L52">        TYPE_CAT = tYPE_CAT;</span>
+<span class="nc" id="L53">        TYPE_SCHEM = tYPE_SCHEM;</span>
+<span class="nc" id="L54">        TYPE_NAME = tYPE_NAME;</span>
+<span class="nc" id="L55">        SELF_REFERENCING_COL_NAME = sELF_REFERENCING_COL_NAME;</span>
+<span class="nc" id="L56">        REF_GENERATION = rEF_GENERATION;</span>
+<span class="nc" id="L57">    }</span>
+
+    public String getTABLE_CAT() {
+<span class="nc" id="L60">        return TABLE_CAT;</span>
+    }
+
+    public void setTABLE_CAT(String tABLE_CAT) {
+<span class="nc" id="L64">        TABLE_CAT = tABLE_CAT;</span>
+<span class="nc" id="L65">    }</span>
+
+    public String getTABLE_SCHEM() {
+<span class="nc" id="L68">        return TABLE_SCHEM;</span>
+    }
+
+    public void setTABLE_SCHEM(String tABLE_SCHEM) {
+<span class="nc" id="L72">        TABLE_SCHEM = tABLE_SCHEM;</span>
+<span class="nc" id="L73">    }</span>
+
+    public String getTABLE_NAME() {
+<span class="nc" id="L76">        return TABLE_NAME;</span>
+    }
+
+    public void setTABLE_NAME(String tABLE_NAME) {
+<span class="nc" id="L80">        TABLE_NAME = tABLE_NAME;</span>
+<span class="nc" id="L81">    }</span>
+
+    public String getTABLE_TYPE() {
+<span class="nc" id="L84">        return TABLE_TYPE;</span>
+    }
+
+    public void setTABLE_TYPE(String tABLE_TYPE) {
+<span class="nc" id="L88">        TABLE_TYPE = tABLE_TYPE;</span>
+<span class="nc" id="L89">    }</span>
+
+    public String getREMARKS() {
+<span class="nc" id="L92">        return REMARKS;</span>
+    }
+
+    public void setREMARKS(String rEMARKS) {
+<span class="nc" id="L96">        REMARKS = rEMARKS;</span>
+<span class="nc" id="L97">    }</span>
+
+    public String getTYPE_CAT() {
+<span class="nc" id="L100">        return TYPE_CAT;</span>
+    }
+
+    public void setTYPE_CAT(String tYPE_CAT) {
+<span class="nc" id="L104">        TYPE_CAT = tYPE_CAT;</span>
+<span class="nc" id="L105">    }</span>
+
+    public String getTYPE_SCHEM() {
+<span class="nc" id="L108">        return TYPE_SCHEM;</span>
+    }
+
+    public void setTYPE_SCHEM(String tYPE_SCHEM) {
+<span class="nc" id="L112">        TYPE_SCHEM = tYPE_SCHEM;</span>
+<span class="nc" id="L113">    }</span>
+
+    public String getTYPE_NAME() {
+<span class="nc" id="L116">        return TYPE_NAME;</span>
+    }
+
+    public void setTYPE_NAME(String tYPE_NAME) {
+<span class="nc" id="L120">        TYPE_NAME = tYPE_NAME;</span>
+<span class="nc" id="L121">    }</span>
+
+    public String getSELF_REFERENCING_COL_NAME() {
+<span class="nc" id="L124">        return SELF_REFERENCING_COL_NAME;</span>
+    }
+
+    public void setSELF_REFERENCING_COL_NAME(String sELF_REFERENCING_COL_NAME) {
+<span class="nc" id="L128">        SELF_REFERENCING_COL_NAME = sELF_REFERENCING_COL_NAME;</span>
+<span class="nc" id="L129">    }</span>
+
+    public String getREF_GENERATION() {
+<span class="nc" id="L132">        return REF_GENERATION;</span>
+    }
+
+    public void setREF_GENERATION(String rEF_GENERATION) {
+<span class="nc" id="L136">        REF_GENERATION = rEF_GENERATION;</span>
+<span class="nc" id="L137">    }</span>
+
+    public List&lt;ColumnMeta&gt; getColumns() {
+<span class="nc" id="L140">        return columns;</span>
+    }
+
+    public void setColumns(List&lt;ColumnMeta&gt; columns) {
+<span class="nc" id="L144">        this.columns = columns;</span>
+<span class="nc" id="L145">    }</span>
+
+    public void addColumn(ColumnMeta column) {
+<span class="nc" id="L148">        this.columns.add(column);</span>
+<span class="nc" id="L149">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

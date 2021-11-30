@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PushDownExecutor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.util</a> &gt; <span class="el_source">PushDownExecutor.java</span></div><h1>PushDownExecutor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.query.util;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+
+import org.apache.calcite.sql.parser.SqlParseException;
+
+import org.apache.calcite.sql.validate.SqlValidatorException;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.QueryContextFacade;
+import org.apache.kylin.common.exceptions.KylinTimeoutException;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.querymeta.SelectedColumnMeta;
+import org.apache.kylin.metadata.realization.NoRealizationFoundException;
+import org.apache.kylin.metadata.realization.RoutingIndicatorException;
+import org.apache.kylin.query.adhoc.PushDownRunnerJdbcImpl;
+import org.apache.kylin.query.security.AccessDeniedException;
+import org.apache.kylin.source.adhocquery.IPushDownRunner;
+
+import org.codehaus.commons.compiler.CompileException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.SQLException;
+import java.util.List;
+
+/**
+ * Execute a pushdown query using a single or multiple runners depending on the configuration.
+ */
+public class PushDownExecutor {
+<span class="nc" id="L53">    private static final Logger logger = LoggerFactory.getLogger(PushDownExecutor.class);</span>
+<span class="nc" id="L54">    private KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+
+<span class="nc" id="L56">    public PushDownExecutor() {</span>
+
+<span class="nc" id="L58">    }</span>
+
+    public Pair&lt;List&lt;List&lt;String&gt;&gt;, List&lt;SelectedColumnMeta&gt;&gt; pushDownQuery(String project, String sql,
+            String defaultSchema, SQLException sqlException, boolean isSelect, boolean isPrepare) throws Exception {
+
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (!kylinConfig.isPushDownEnabled()) {</span>
+<span class="nc" id="L64">            return null;</span>
+        }
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (isSelect) {</span>
+<span class="nc" id="L68">            logger.info(&quot;Query failed to utilize pre-calculation, routing to other engines&quot;, sqlException);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if (!isExpectedCause(sqlException)) {</span>
+<span class="nc" id="L70">                logger.info(&quot;quit doPushDownQuery because prior exception thrown is unexpected&quot;);</span>
+<span class="nc" id="L71">                return null;</span>
+            }
+        } else {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            Preconditions.checkState(sqlException == null);</span>
+<span class="nc" id="L75">            logger.info(&quot;Kylin cannot support non-select queries, routing to other engines&quot;);</span>
+        }
+
+<span class="nc" id="L78">        List&lt;String&gt; ids = kylinConfig.getPushDownRunnerIds();</span>
+
+<span class="nc bnc" id="L80" title="All 4 branches missed.">        if (ids.isEmpty() &amp;&amp; StringUtils.isNotEmpty(kylinConfig.getPushDownRunnerClassName())) {</span>
+<span class="nc" id="L81">            IPushDownRunner runner = (IPushDownRunner) ClassUtil.newInstance(kylinConfig.getPushDownRunnerClassName());</span>
+<span class="nc" id="L82">            runner.init(kylinConfig);</span>
+<span class="nc" id="L83">            return queryBySingleRunner(runner, project, sql, defaultSchema, sqlException, isSelect, isPrepare);</span>
+        } else {
+<span class="nc" id="L85">            return queryByMultiJdbcRunners(ids, project, sql, defaultSchema, sqlException, isSelect, isPrepare);</span>
+        }
+    }
+
+    private static boolean isExpectedCause(SQLException sqlException) {
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        Preconditions.checkArgument(sqlException != null);</span>
+<span class="nc" id="L91">        Throwable rootCause = ExceptionUtils.getRootCause(sqlException);</span>
+
+        //SqlValidatorException is not an excepted exception in the origin design.But in the multi pass scene,
+        //query pushdown may create tables, and the tables are not in the model, so will throw SqlValidatorException.
+<span class="nc" id="L95">        boolean isPushDownUpdateEnabled = KylinConfig.getInstanceFromEnv().isPushDownUpdateEnabled();</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (isPushDownUpdateEnabled) {</span>
+<span class="nc bnc" id="L98" title="All 6 branches missed.">            return (rootCause instanceof NoRealizationFoundException //</span>
+                    || rootCause instanceof RoutingIndicatorException || rootCause instanceof SqlValidatorException); //
+        } else {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            if (rootCause instanceof KylinTimeoutException)</span>
+<span class="nc" id="L102">                return false;</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            if (rootCause instanceof AccessDeniedException) {</span>
+<span class="nc" id="L104">                return false;</span>
+            }
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (rootCause instanceof RoutingIndicatorException) {</span>
+<span class="nc" id="L107">                return true;</span>
+            }
+
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            if (rootCause instanceof CompileException) {</span>
+<span class="nc" id="L111">                return true;</span>
+            }
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            if (QueryContextFacade.current().isWithoutSyntaxError()) {</span>
+<span class="nc" id="L115">                logger.warn(&quot;route to push down for met error when running current query&quot;, sqlException);</span>
+<span class="nc" id="L116">                return true;</span>
+            }
+        }
+
+<span class="nc" id="L120">        return false;</span>
+    }
+
+    private Pair&lt;List&lt;List&lt;String&gt;&gt;, List&lt;SelectedColumnMeta&gt;&gt; queryBySingleRunner(IPushDownRunner runner,
+            String project, String sql, String defaultSchema, SQLException sqlException, boolean isSelect,
+            boolean isPrepare) throws Exception {
+
+<span class="nc" id="L127">        logger.debug(&quot;Query Pushdown runner {}&quot;, runner);</span>
+
+        // default schema in calcite does not apply to other engines.
+        // since this is a universql requirement, it's not implemented as a converter
+<span class="nc bnc" id="L131" title="All 4 branches missed.">        if (defaultSchema != null &amp;&amp; !defaultSchema.equals(&quot;DEFAULT&quot;)) {</span>
+<span class="nc" id="L132">            String completed = sql;</span>
+            try {
+<span class="nc" id="L134">                completed = PushDownUtil.schemaCompletion(sql, defaultSchema);</span>
+<span class="nc" id="L135">            } catch (SqlParseException e) {</span>
+                // fail to parse the pushdown sql, ignore
+<span class="nc" id="L137">                logger.debug(&quot;fail to do schema completion on the pushdown sql, ignore it.&quot;, e.getMessage());</span>
+<span class="nc" id="L138">            }</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">            if (!sql.equals(completed)) {</span>
+<span class="nc" id="L140">                logger.info(&quot;the query is converted to {} after schema completion&quot;, completed);</span>
+<span class="nc" id="L141">                sql = completed;</span>
+            }
+        }
+
+<span class="nc" id="L145">        sql = runner.convertSql(kylinConfig, sql, project, defaultSchema, isPrepare);</span>
+
+<span class="nc" id="L147">        List&lt;List&lt;String&gt;&gt; returnRows = Lists.newArrayList();</span>
+<span class="nc" id="L148">        List&lt;SelectedColumnMeta&gt; returnColumnMeta = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (isSelect) {</span>
+<span class="nc" id="L151">            runner.executeQuery(sql, returnRows, returnColumnMeta);</span>
+        }
+<span class="nc bnc" id="L153" title="All 6 branches missed.">        if (!isSelect &amp;&amp; !isPrepare &amp;&amp; kylinConfig.isPushDownUpdateEnabled()) {</span>
+<span class="nc" id="L154">            runner.executeUpdate(sql);</span>
+        }
+<span class="nc" id="L156">        return Pair.newPair(returnRows, returnColumnMeta);</span>
+    }
+
+    private Pair&lt;List&lt;List&lt;String&gt;&gt;, List&lt;SelectedColumnMeta&gt;&gt; queryByMultiJdbcRunners(List&lt;String&gt; ids, String project,
+            String sql, String defaultSchema, SQLException sqlException, boolean isSelect, boolean isPrepare)
+            throws Exception {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        for (int i = 0; i &lt; ids.size(); i++) {</span>
+<span class="nc" id="L163">            String id = ids.get(i);</span>
+<span class="nc" id="L164">            PushDownRunnerJdbcImpl runner = new PushDownRunnerJdbcImpl();</span>
+<span class="nc" id="L165">            runner.initById(kylinConfig, id);</span>
+
+            try {
+<span class="nc" id="L168">                Pair&lt;List&lt;List&lt;String&gt;&gt;, List&lt;SelectedColumnMeta&gt;&gt; ret = queryBySingleRunner(runner, project, sql,</span>
+                        defaultSchema, sqlException, isSelect, isPrepare);
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                if (null != ret) {</span>
+<span class="nc" id="L171">                    return ret;</span>
+                }
+<span class="nc" id="L173">            } catch (Exception e) {</span>
+<span class="nc" id="L174">                logger.error(&quot;Execute pushdown query/update by jdbc runner &quot; + id + &quot; failed: &quot;</span>
+<span class="nc" id="L175">                        + ExceptionUtils.getStackTrace(e));</span>
+<span class="nc" id="L176">            }</span>
+        }
+
+<span class="nc" id="L179">        throw new RuntimeException(&quot;Execute pushdown query/update by multi jdbc runners failed&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

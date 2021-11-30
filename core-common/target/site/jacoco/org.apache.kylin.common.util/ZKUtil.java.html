@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZKUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ZKUtil.java</span></div><h1>ZKUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.util;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
+
+import javax.annotation.Nullable;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.imps.CuratorFrameworkState;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.test.TestingServer;
+import org.apache.curator.utils.ZKPaths;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.Shell;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.kylin.shaded.com.google.common.base.Function;
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+import org.apache.kylin.shaded.com.google.common.cache.Cache;
+import org.apache.kylin.shaded.com.google.common.cache.CacheBuilder;
+import org.apache.kylin.shaded.com.google.common.cache.RemovalListener;
+import org.apache.kylin.shaded.com.google.common.cache.RemovalNotification;
+import org.apache.kylin.shaded.com.google.common.collect.Iterables;
+
+<span class="nc" id="L53">public class ZKUtil {</span>
+<span class="fc" id="L54">    private static final Logger logger = LoggerFactory.getLogger(ZKUtil.class);</span>
+
+<span class="fc" id="L56">    private static final KylinConfig defaultKylinConfig = KylinConfig.getInstanceFromEnv();</span>
+<span class="fc" id="L57">    private static final String zkChRoot = fixPath(defaultKylinConfig.getZookeeperBasePath(),</span>
+<span class="fc" id="L58">            defaultKylinConfig.getClusterName());</span>
+<span class="fc" id="L59">    private static TestingServer server = null;</span>
+<span class="fc" id="L60">    private static Cache&lt;String, CuratorFramework&gt; CACHE = CacheBuilder.newBuilder()</span>
+<span class="fc" id="L61">            .removalListener(new RemovalListener&lt;String, CuratorFramework&gt;() {</span>
+                @Override
+                public void onRemoval(RemovalNotification&lt;String, CuratorFramework&gt; notification) {
+<span class="fc" id="L64">                    logger.info(&quot;CuratorFramework for zkString &quot; + notification.getKey() + &quot; is removed due to &quot;</span>
+<span class="fc" id="L65">                            + notification.getCause());</span>
+<span class="fc" id="L66">                    CuratorFramework curator = notification.getValue();</span>
+                    try {
+<span class="nc" id="L68">                        curator.close();</span>
+<span class="nc" id="L69">                    } catch (Exception ex) {</span>
+<span class="nc" id="L70">                        logger.error(&quot;Error at closing &quot; + curator, ex);</span>
+<span class="nc" id="L71">                    }</span>
+<span class="nc" id="L72">                }</span>
+<span class="fc" id="L73">            }).expireAfterWrite(10000, TimeUnit.DAYS).build();//never expired</span>
+
+    static {
+<span class="fc" id="L76">        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {</span>
+            @Override
+            public void run() {
+<span class="fc" id="L79">                logger.info(&quot;Going to remove {} cached curator clients&quot;, CACHE.size());</span>
+<span class="nc" id="L80">                CACHE.invalidateAll();</span>
+<span class="nc" id="L81">            }</span>
+        }));
+<span class="fc" id="L83">    }</span>
+
+    private static String fixPath(String parent, String child) {
+<span class="fc" id="L86">        String path = ZKPaths.makePath(parent, child);</span>
+
+        try {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (Shell.WINDOWS) {</span>
+<span class="nc" id="L90">                return new File(path).toURI().getPath();</span>
+            } else {
+<span class="fc" id="L92">                return new File(path).getCanonicalPath();</span>
+            }
+<span class="nc" id="L94">        } catch (IOException e) {</span>
+<span class="nc" id="L95">            logger.error(&quot;get canonical path failed, use original path&quot;, e);</span>
+<span class="nc" id="L96">            return path;</span>
+        }
+    }
+
+    /**
+     * Get zookeeper connection string from kylin.properties
+     */
+    public static String getZKConnectString(KylinConfig config) {
+<span class="fc" id="L104">        String zkString = config.getZookeeperConnectString();</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (zkString == null) {</span>
+<span class="nc" id="L106">            zkString = getZKConnectStringFromHBase();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (zkString == null) {</span>
+<span class="nc" id="L108">                throw new RuntimeException(&quot;Please set 'kylin.env.zookeeper-connect-string' in kylin.properties&quot;);</span>
+            }
+        }
+
+<span class="fc" id="L112">        return zkString;</span>
+    }
+
+    public static String getZkRootBasedPath(String path) {
+<span class="nc" id="L116">        return zkChRoot + &quot;/&quot; + path;</span>
+    }
+
+    public static CuratorFramework getZookeeperClient(KylinConfig config) {
+<span class="fc" id="L120">        RetryPolicy retryPolicy = getRetryPolicy(config);</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (config.isZKLocal()) {</span>
+<span class="nc" id="L122">            startTestingServer();</span>
+        }
+<span class="fc" id="L124">        return getZookeeperClient(getZKConnectString(config), retryPolicy);</span>
+    }
+
+    private static void startTestingServer() {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (server == null) {</span>
+            try {
+<span class="nc" id="L130">                server = new TestingServer(12181, true);</span>
+<span class="nc" id="L131">                server.start();</span>
+<span class="nc" id="L132">                logger.error(&quot;Started zk testing server.&quot;);</span>
+<span class="nc" id="L133">            } catch (Exception e) {</span>
+<span class="nc" id="L134">                logger.error(&quot;Failed to start zk testing server.&quot;, e);</span>
+<span class="nc" id="L135">            }</span>
+        }
+<span class="nc" id="L137">    }</span>
+
+    private static CuratorFramework getZookeeperClient(final String zkString, final RetryPolicy retryPolicy) {
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (StringUtils.isEmpty(zkString)) {</span>
+<span class="nc" id="L141">            throw new IllegalArgumentException(&quot;ZOOKEEPER_QUORUM is empty!&quot;);</span>
+        }
+        try {
+<span class="fc" id="L144">            CuratorFramework instance = CACHE.get(zkString, new Callable&lt;CuratorFramework&gt;() {</span>
+                @Override
+                public CuratorFramework call() throws Exception {
+<span class="fc" id="L147">                    return newZookeeperClient(zkString, retryPolicy);</span>
+                }
+            });
+            // during test, curator may be closed by others, remove it from CACHE and reinitialize a new one
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (instance.getState() != CuratorFrameworkState.STARTED) {</span>
+<span class="nc" id="L152">                logger.warn(&quot;curator for {} is closed by others unexpectedly, reinitialize a new one&quot;, zkString);</span>
+<span class="nc" id="L153">                CACHE.invalidate(zkString);</span>
+<span class="nc" id="L154">                instance = getZookeeperClient(zkString, retryPolicy);</span>
+            }
+<span class="fc" id="L156">            return instance;</span>
+<span class="nc" id="L157">        } catch (Throwable e) {</span>
+<span class="nc" id="L158">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    @VisibleForTesting
+    //no cache
+    public static CuratorFramework newZookeeperClient() {
+<span class="nc" id="L165">        return newZookeeperClient(KylinConfig.getInstanceFromEnv());</span>
+    }
+
+    @VisibleForTesting
+    //no cache
+    public static CuratorFramework newZookeeperClient(KylinConfig config) {
+<span class="nc" id="L171">        RetryPolicy retryPolicy = getRetryPolicy(config);</span>
+<span class="nc" id="L172">        return newZookeeperClient(getZKConnectString(config), retryPolicy);</span>
+    }
+
+    @VisibleForTesting
+    //no cache
+    public static CuratorFramework newZookeeperClient(String zkString, RetryPolicy retryPolicy) {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (zkChRoot == null)</span>
+<span class="nc" id="L179">            throw new NullPointerException(&quot;zkChRoot must not be null&quot;);</span>
+
+<span class="fc" id="L181">        logger.info(&quot;zookeeper connection string: {} with namespace {}&quot;, zkString, zkChRoot);</span>
+
+<span class="fc" id="L183">        CuratorFramework instance = getCuratorFramework(zkString, zkChRoot, retryPolicy);</span>
+<span class="fc" id="L184">        instance.start();</span>
+<span class="fc" id="L185">        logger.info(&quot;new zookeeper Client start: &quot; + zkString);</span>
+        // create zkChRoot znode if necessary
+<span class="fc" id="L187">        createZkChRootIfNecessary(instance, zkString);</span>
+<span class="fc" id="L188">        return instance;</span>
+    }
+
+    private static RetryPolicy getRetryPolicy(KylinConfig config) {
+<span class="fc" id="L192">        int baseSleepTimeMs = config.getZKBaseSleepTimeMs();</span>
+<span class="fc" id="L193">        int maxRetries = config.getZKMaxRetries();</span>
+<span class="fc" id="L194">        return new ExponentialBackoffRetry(baseSleepTimeMs, maxRetries);</span>
+    }
+
+    private static synchronized void createZkChRootIfNecessary(CuratorFramework instance, String zkString) {
+        try {
+<span class="fc" id="L199">            RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (instance.checkExists().forPath(&quot;/&quot;) == null) {</span>
+<span class="fc" id="L201">                CuratorFramework tmpCurator = getCuratorFramework(zkString, null, retryPolicy);</span>
+<span class="fc" id="L202">                tmpCurator.start();</span>
+<span class="fc" id="L203">                tmpCurator.create().creatingParentsIfNeeded().forPath(zkChRoot);</span>
+<span class="fc" id="L204">                tmpCurator.close();</span>
+            }
+<span class="nc" id="L206">        } catch (KeeperException.NodeExistsException e) {</span>
+<span class="nc" id="L207">            logger.warn(&quot;The chRoot znode {} has been created by others&quot;, zkChRoot);</span>
+<span class="nc" id="L208">        } catch (Exception e) {</span>
+<span class="nc" id="L209">            throw new RuntimeException(&quot;Fail to check or create znode for chRoot &quot; + zkChRoot + &quot; due to &quot;, e);</span>
+<span class="pc" id="L210">        }</span>
+<span class="fc" id="L211">    }</span>
+
+    private static CuratorFramework getCuratorFramework(String zkString, String zkChRoot, RetryPolicy retryPolicy) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (!Strings.isNullOrEmpty(zkChRoot)) {</span>
+<span class="fc" id="L215">            zkString += zkChRoot;</span>
+        }
+<span class="fc" id="L217">        return CuratorFrameworkFactory.newClient(zkString, 120000, 15000, retryPolicy);</span>
+    }
+
+    private static String getZKConnectStringFromHBase() {
+<span class="nc" id="L221">        Configuration hconf = null;</span>
+        try {
+<span class="nc" id="L223">            Class&lt;? extends Object&gt; hbaseConnClz = ClassUtil.forName(&quot;org.apache.kylin.storage.hbase.HBaseConnection&quot;,</span>
+                    Object.class);
+<span class="nc" id="L225">            hconf = (Configuration) hbaseConnClz.getMethod(&quot;getCurrentHBaseConfiguration&quot;).invoke(null);</span>
+<span class="nc" id="L226">        } catch (Throwable ex) {</span>
+<span class="nc" id="L227">            logger.warn(&quot;Failed to get zookeeper connect string from HBase configuration&quot;, ex);</span>
+<span class="nc" id="L228">            return null;</span>
+<span class="nc" id="L229">        }</span>
+
+<span class="nc" id="L231">        final String serverList = hconf.get(&quot;hbase.zookeeper.quorum&quot;);</span>
+<span class="nc" id="L232">        final String port = hconf.get(&quot;hbase.zookeeper.property.clientPort&quot;);</span>
+<span class="nc" id="L233">        return StringUtils</span>
+<span class="nc" id="L234">                .join(Iterables.transform(Arrays.asList(serverList.split(&quot;,&quot;)), new Function&lt;String, String&gt;() {</span>
+                    @Nullable
+                    @Override
+                    public String apply(String input) {
+<span class="nc" id="L238">                        return input + &quot;:&quot; + port;</span>
+                    }
+                }), &quot;,&quot;);
+    }
+
+    public static void cleanZkPath(String path) {
+<span class="nc" id="L244">        CuratorFramework zkClient = ZKUtil.newZookeeperClient();</span>
+
+        try {
+<span class="nc" id="L247">            zkClient.delete().deletingChildrenIfNeeded().forPath(path);</span>
+<span class="nc" id="L248">        } catch (Exception e) {</span>
+<span class="nc" id="L249">            logger.warn(&quot;Failed to delete zookeeper path: {}&quot;, path, e);</span>
+        } finally {
+<span class="nc" id="L251">            zkClient.close();</span>
+        }
+<span class="nc" id="L253">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

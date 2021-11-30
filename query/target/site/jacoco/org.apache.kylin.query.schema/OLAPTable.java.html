@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPTable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.schema</a> &gt; <span class="el_source">OLAPTable.java</span></div><h1>OLAPTable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.query.schema;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+
+import org.apache.calcite.DataContext;
+import org.apache.calcite.adapter.java.AbstractQueryableTable;
+import org.apache.calcite.linq4j.Enumerable;
+import org.apache.calcite.linq4j.Enumerator;
+import org.apache.calcite.linq4j.QueryProvider;
+import org.apache.calcite.linq4j.Queryable;
+import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.plan.RelOptTable.ToRelContext;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.schema.SchemaPlus;
+import org.apache.calcite.schema.Statistic;
+import org.apache.calcite.schema.Statistics;
+import org.apache.calcite.schema.TranslatableTable;
+import org.apache.calcite.schema.impl.AbstractTableQueryable;
+import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.query.enumerator.OLAPQuery;
+import org.apache.kylin.query.enumerator.OLAPQuery.EnumeratorTypeEnum;
+import org.apache.kylin.query.relnode.OLAPTableScan;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+
+/**
+ */
+public class OLAPTable extends AbstractQueryableTable implements TranslatableTable {
+
+<span class="fc" id="L69">    protected static final Logger logger = LoggerFactory.getLogger(OLAPTable.class);</span>
+
+<span class="fc" id="L71">    public static final Map&lt;SqlTypeName, String&gt; DATATYPE_MAPPING = Maps.newHashMap();</span>
+
+    static {
+<span class="fc" id="L74">        DATATYPE_MAPPING.put(SqlTypeName.CHAR, &quot;char&quot;);</span>
+<span class="fc" id="L75">        DATATYPE_MAPPING.put(SqlTypeName.VARCHAR, &quot;varchar&quot;);</span>
+<span class="fc" id="L76">        DATATYPE_MAPPING.put(SqlTypeName.BOOLEAN, &quot;boolean&quot;);</span>
+<span class="fc" id="L77">        DATATYPE_MAPPING.put(SqlTypeName.INTEGER, &quot;integer&quot;);</span>
+<span class="fc" id="L78">        DATATYPE_MAPPING.put(SqlTypeName.TINYINT, &quot;tinyint&quot;);</span>
+<span class="fc" id="L79">        DATATYPE_MAPPING.put(SqlTypeName.SMALLINT, &quot;smallint&quot;);</span>
+<span class="fc" id="L80">        DATATYPE_MAPPING.put(SqlTypeName.BIGINT, &quot;bigint&quot;);</span>
+<span class="fc" id="L81">        DATATYPE_MAPPING.put(SqlTypeName.DECIMAL, &quot;decimal&quot;);</span>
+<span class="fc" id="L82">        DATATYPE_MAPPING.put(SqlTypeName.FLOAT, &quot;float&quot;);</span>
+<span class="fc" id="L83">        DATATYPE_MAPPING.put(SqlTypeName.REAL, &quot;real&quot;);</span>
+<span class="fc" id="L84">        DATATYPE_MAPPING.put(SqlTypeName.DOUBLE, &quot;double&quot;);</span>
+<span class="fc" id="L85">        DATATYPE_MAPPING.put(SqlTypeName.DATE, &quot;date&quot;);</span>
+<span class="fc" id="L86">        DATATYPE_MAPPING.put(SqlTypeName.TIME, &quot;time&quot;);</span>
+<span class="fc" id="L87">        DATATYPE_MAPPING.put(SqlTypeName.TIMESTAMP, &quot;timestamp&quot;);</span>
+<span class="fc" id="L88">        DATATYPE_MAPPING.put(SqlTypeName.ANY, &quot;any&quot;);</span>
+    }
+
+<span class="fc" id="L91">    private static Map&lt;String, SqlTypeName&gt; SQLTYPE_MAPPING = new HashMap&lt;String, SqlTypeName&gt;();</span>
+<span class="fc" id="L92">    private static Map&lt;String, SqlTypeName&gt; REGEX_SQLTYPE_MAPPING = new HashMap&lt;String, SqlTypeName&gt;();</span>
+
+    static {
+<span class="fc" id="L95">        SQLTYPE_MAPPING.put(&quot;char&quot;, SqlTypeName.CHAR);</span>
+<span class="fc" id="L96">        SQLTYPE_MAPPING.put(&quot;varchar&quot;, SqlTypeName.VARCHAR);</span>
+<span class="fc" id="L97">        SQLTYPE_MAPPING.put(&quot;boolean&quot;, SqlTypeName.BOOLEAN);</span>
+<span class="fc" id="L98">        SQLTYPE_MAPPING.put(&quot;integer&quot;, SqlTypeName.INTEGER);</span>
+<span class="fc" id="L99">        SQLTYPE_MAPPING.put(&quot;tinyint&quot;, SqlTypeName.TINYINT);</span>
+<span class="fc" id="L100">        SQLTYPE_MAPPING.put(&quot;smallint&quot;, SqlTypeName.SMALLINT);</span>
+<span class="fc" id="L101">        SQLTYPE_MAPPING.put(&quot;bigint&quot;, SqlTypeName.BIGINT);</span>
+<span class="fc" id="L102">        SQLTYPE_MAPPING.put(&quot;decimal&quot;, SqlTypeName.DECIMAL);</span>
+<span class="fc" id="L103">        SQLTYPE_MAPPING.put(&quot;numeric&quot;, SqlTypeName.DECIMAL);</span>
+<span class="fc" id="L104">        SQLTYPE_MAPPING.put(&quot;float&quot;, SqlTypeName.FLOAT);</span>
+<span class="fc" id="L105">        SQLTYPE_MAPPING.put(&quot;real&quot;, SqlTypeName.REAL);</span>
+<span class="fc" id="L106">        SQLTYPE_MAPPING.put(&quot;double&quot;, SqlTypeName.DOUBLE);</span>
+<span class="fc" id="L107">        SQLTYPE_MAPPING.put(&quot;date&quot;, SqlTypeName.DATE);</span>
+<span class="fc" id="L108">        SQLTYPE_MAPPING.put(&quot;time&quot;, SqlTypeName.TIME);</span>
+<span class="fc" id="L109">        SQLTYPE_MAPPING.put(&quot;timestamp&quot;, SqlTypeName.TIMESTAMP);</span>
+<span class="fc" id="L110">        SQLTYPE_MAPPING.put(&quot;any&quot;, SqlTypeName.ANY);</span>
+
+<span class="fc" id="L112">        REGEX_SQLTYPE_MAPPING.put(&quot;array\\&lt;.+\\&gt;&quot;, SqlTypeName.ARRAY);</span>
+<span class="fc" id="L113">    }</span>
+
+    private final boolean exposeMore;
+    private final OLAPSchema olapSchema;
+    private final TableDesc sourceTable;
+    protected RelDataType rowType;
+    private List&lt;ColumnDesc&gt; sourceColumns;
+
+    public OLAPTable(OLAPSchema schema, TableDesc tableDesc, boolean exposeMore) {
+<span class="nc" id="L122">        super(Object[].class);</span>
+<span class="nc" id="L123">        this.exposeMore = exposeMore;</span>
+<span class="nc" id="L124">        this.olapSchema = schema;</span>
+<span class="nc" id="L125">        this.sourceTable = tableDesc;</span>
+<span class="nc" id="L126">        this.rowType = null;</span>
+<span class="nc" id="L127">    }</span>
+
+    public OLAPSchema getSchema() {
+<span class="nc" id="L130">        return this.olapSchema;</span>
+    }
+
+    public TableDesc getSourceTable() {
+<span class="nc" id="L134">        return this.sourceTable;</span>
+    }
+
+    public String getTableName() {
+<span class="nc" id="L138">        return this.sourceTable.getIdentity();</span>
+    }
+
+    public List&lt;ColumnDesc&gt; getSourceColumns() {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (sourceColumns == null) {</span>
+<span class="nc" id="L143">            sourceColumns = listSourceColumns();</span>
+        }
+<span class="nc" id="L145">        return sourceColumns;</span>
+    }
+
+    @Override
+    public RelDataType getRowType(RelDataTypeFactory typeFactory) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (this.rowType == null) {</span>
+            // always build exposedColumns and rowType together
+<span class="nc" id="L152">            this.sourceColumns = getSourceColumns();</span>
+<span class="nc" id="L153">            this.rowType = deriveRowType(typeFactory);</span>
+        }
+<span class="nc" id="L155">        return this.rowType;</span>
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    private RelDataType deriveRowType(RelDataTypeFactory typeFactory) {
+<span class="nc" id="L160">        RelDataTypeFactory.FieldInfoBuilder fieldInfo = typeFactory.builder();</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        for (ColumnDesc column : sourceColumns) {</span>
+<span class="nc" id="L162">            RelDataType sqlType = createSqlType(typeFactory, column.getUpgradedType(), column.isNullable());</span>
+<span class="nc" id="L163">            sqlType = SqlTypeUtil.addCharsetAndCollation(sqlType, typeFactory);</span>
+<span class="nc" id="L164">            fieldInfo.add(column.getName(), sqlType);</span>
+<span class="nc" id="L165">        }</span>
+<span class="nc" id="L166">        return typeFactory.createStructType(fieldInfo);</span>
+    }
+
+    public static RelDataType createSqlType(RelDataTypeFactory typeFactory, DataType dataType, boolean isNullable) {
+<span class="fc" id="L170">        SqlTypeName sqlTypeName = SQLTYPE_MAPPING.get(dataType.getName());</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (sqlTypeName == null) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            for (String reg : REGEX_SQLTYPE_MAPPING.keySet()) {</span>
+<span class="fc" id="L173">                Pattern pattern = Pattern.compile(reg);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                if (pattern.matcher(dataType.getName()).matches()) {</span>
+<span class="fc" id="L175">                    sqlTypeName = REGEX_SQLTYPE_MAPPING.get(reg);</span>
+<span class="fc" id="L176">                    break;</span>
+                }
+<span class="fc" id="L178">            }</span>
+        }
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (sqlTypeName == null)</span>
+<span class="fc" id="L182">            throw new IllegalArgumentException(&quot;Unrecognized data type &quot; + dataType);</span>
+
+<span class="fc" id="L184">        int precision = dataType.getPrecision();</span>
+<span class="fc" id="L185">        int scale = dataType.getScale();</span>
+
+        RelDataType result;
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (sqlTypeName == SqlTypeName.ARRAY) {</span>
+<span class="fc" id="L189">            String innerTypeName = dataType.getName().split(&quot;&lt;|&gt;&quot;)[1];</span>
+<span class="fc" id="L190">            result = typeFactory.createArrayType(createSqlType(typeFactory, DataType.getType(innerTypeName), false),</span>
+                    -1);
+<span class="pc bpc" id="L192" title="1 of 4 branches missed.">        } else if (precision &gt;= 0 &amp;&amp; scale &gt;= 0)</span>
+<span class="fc" id="L193">            result = typeFactory.createSqlType(sqlTypeName, precision, scale);</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        else if (precision &gt;= 0)</span>
+<span class="fc" id="L195">            result = typeFactory.createSqlType(sqlTypeName, precision);</span>
+        else
+<span class="nc" id="L197">            result = typeFactory.createSqlType(sqlTypeName);</span>
+
+        // due to left join and uncertain data quality, dimension value can be null
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        if (isNullable) {</span>
+<span class="fc" id="L201">            result = typeFactory.createTypeWithNullability(result, true);</span>
+        } else {
+<span class="fc" id="L203">            result = typeFactory.createTypeWithNullability(result, false);</span>
+        }
+
+<span class="fc" id="L206">        return result;</span>
+    }
+
+    private List&lt;ColumnDesc&gt; listSourceColumns() {
+<span class="nc" id="L210">        ProjectManager mgr = ProjectManager.getInstance(olapSchema.getConfig());</span>
+
+<span class="nc" id="L212">        List&lt;ColumnDesc&gt; tableColumns = mgr.listExposedColumns(olapSchema.getProjectName(), sourceTable, exposeMore);</span>
+
+<span class="nc" id="L214">        List&lt;ColumnDesc&gt; metricColumns = Lists.newArrayList();</span>
+<span class="nc" id="L215">        List&lt;MeasureDesc&gt; countMeasures = mgr.listEffectiveRewriteMeasures(olapSchema.getProjectName(),</span>
+<span class="nc" id="L216">                sourceTable.getIdentity());</span>
+<span class="nc" id="L217">        HashSet&lt;String&gt; metFields = new HashSet&lt;String&gt;();</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        for (MeasureDesc m : countMeasures) {</span>
+
+<span class="nc" id="L220">            FunctionDesc func = m.getFunction();</span>
+<span class="nc" id="L221">            String fieldName = func.getRewriteFieldName();</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">            if (!metFields.contains(fieldName)) {</span>
+<span class="nc" id="L223">                metFields.add(fieldName);</span>
+<span class="nc" id="L224">                ColumnDesc fakeCountCol = func.newFakeRewriteColumn(sourceTable);</span>
+<span class="nc" id="L225">                metricColumns.add(fakeCountCol);</span>
+            }
+<span class="nc" id="L227">        }</span>
+
+<span class="nc" id="L229">        Collections.sort(tableColumns, new Comparator&lt;ColumnDesc&gt;() {</span>
+            @Override
+            public int compare(ColumnDesc o1, ColumnDesc o2) {
+<span class="nc" id="L232">                return o1.getZeroBasedIndex() - o2.getZeroBasedIndex();</span>
+            }
+        });
+<span class="nc" id="L235">        return Lists.newArrayList(Iterables.concat(tableColumns, metricColumns));</span>
+    }
+
+    @Override
+    public RelNode toRel(ToRelContext context, RelOptTable relOptTable) {
+<span class="nc" id="L240">        int fieldCount = relOptTable.getRowType().getFieldCount();</span>
+<span class="nc" id="L241">        int[] fields = identityList(fieldCount);</span>
+<span class="nc" id="L242">        return new OLAPTableScan(context.getCluster(), relOptTable, this, fields);</span>
+    }
+
+    protected int[] identityList(int n) {
+<span class="nc" id="L246">        int[] integers = new int[n];</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L248">            integers[i] = i;</span>
+        }
+<span class="nc" id="L250">        return integers;</span>
+    }
+
+    @Override
+    public &lt;T&gt; Queryable&lt;T&gt; asQueryable(QueryProvider queryProvider, SchemaPlus schema, String tableName) {
+<span class="nc" id="L255">        return new AbstractTableQueryable&lt;T&gt;(queryProvider, schema, this, tableName) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            public Enumerator&lt;T&gt; enumerator() {
+<span class="nc" id="L258">                final OLAPQuery query = new OLAPQuery(EnumeratorTypeEnum.OLAP, 0);</span>
+<span class="nc" id="L259">                return (Enumerator&lt;T&gt;) query.enumerator();</span>
+            }
+        };
+    }
+
+    @Override
+    public Statistic getStatistic() {
+<span class="nc" id="L266">        List&lt;ImmutableBitSet&gt; keys = new ArrayList&lt;ImmutableBitSet&gt;();</span>
+<span class="nc" id="L267">        return Statistics.of(100, keys);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L272">        return &quot;OLAPTable {&quot; + getTableName() + &quot;}&quot;;</span>
+    }
+
+    public Enumerable&lt;Object[]&gt; executeOLAPQuery(DataContext optiqContext, int ctxSeq) {
+<span class="nc" id="L276">        return new OLAPQuery(optiqContext, EnumeratorTypeEnum.OLAP, ctxSeq);</span>
+    }
+
+    public Enumerable&lt;Object[]&gt; executeLookupTableQuery(DataContext optiqContext, int ctxSeq) {
+<span class="nc" id="L280">        return new OLAPQuery(optiqContext, EnumeratorTypeEnum.LOOKUP_TABLE, ctxSeq);</span>
+    }
+
+    public Enumerable&lt;Object[]&gt; executeColumnDictionaryQuery(DataContext optiqContext, int ctxSeq) {
+<span class="nc" id="L284">        return new OLAPQuery(optiqContext, EnumeratorTypeEnum.COL_DICT, ctxSeq);</span>
+    }
+
+    public Enumerable&lt;Object[]&gt; executeHiveQuery(DataContext optiqContext, int ctxSeq) {
+<span class="nc" id="L288">        return new OLAPQuery(optiqContext, EnumeratorTypeEnum.HIVE, ctxSeq);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

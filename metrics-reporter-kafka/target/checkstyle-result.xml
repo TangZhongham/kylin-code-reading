@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-kafka/src/main/java/org/apache/kylin/metrics/lib/impl/kafka/KafkaReservoirReporter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-kafka/src/main/java/org/apache/kylin/metrics/lib/impl/kafka/KafkaSink.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metrics-reporter-kafka/src/main/java/org/apache/kylin/metrics/lib/impl/kafka/KafkaActiveReserviorListener.java">
+</file>
+</checkstyle>

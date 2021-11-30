@@ -1,0 +1,708 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemDiskStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.inmemcubing</a> &gt; <span class="el_source">MemDiskStore.java</span></div><h1>MemDiskStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.inmemcubing;
+
+import static org.apache.kylin.common.util.MemoryBudgetController.ONE_MB;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.Closeable;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+import org.apache.kylin.common.util.MemoryBudgetController;
+import org.apache.kylin.common.util.MemoryBudgetController.MemoryConsumer;
+import org.apache.kylin.common.util.MemoryBudgetController.NotEnoughBudgetException;
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.gridtable.IGTScanner;
+import org.apache.kylin.gridtable.IGTStore;
+import org.apache.kylin.gridtable.IGTWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class MemDiskStore implements IGTStore, Closeable {
+
+<span class="fc" id="L52">    private static final Logger logger = LoggerFactory.getLogger(MemDiskStore.class);</span>
+    private static final boolean debug = false;
+
+    private static final int STREAM_BUFFER_SIZE = 8192;
+    private static final int MEM_CHUNK_SIZE_MB = 5;
+
+    private final GTInfo info;
+    private final Object lock; // all public methods that read/write object states are synchronized on this lock
+    private final MemPart memPart;
+    private final DiskPart diskPart;
+    private final boolean delOnClose;
+
+    private Writer ongoingWriter;
+
+    public MemDiskStore(GTInfo info, MemoryBudgetController budgetCtrl) throws IOException {
+<span class="fc" id="L67">        this(info, budgetCtrl, File.createTempFile(&quot;MemDiskStore&quot;, &quot;&quot;), true);</span>
+<span class="fc" id="L68">    }</span>
+
+    public MemDiskStore(GTInfo info, MemoryBudgetController budgetCtrl, File diskFile) throws IOException {
+<span class="nc" id="L71">        this(info, budgetCtrl, diskFile, false);</span>
+<span class="nc" id="L72">    }</span>
+
+<span class="fc" id="L74">    private MemDiskStore(GTInfo info, MemoryBudgetController budgetCtrl, File diskFile, boolean delOnClose) throws IOException {</span>
+<span class="fc" id="L75">        this.info = info;</span>
+<span class="fc" id="L76">        this.lock = this;</span>
+<span class="fc" id="L77">        this.memPart = new MemPart(budgetCtrl);</span>
+<span class="fc" id="L78">        this.diskPart = new DiskPart(diskFile);</span>
+<span class="fc" id="L79">        this.delOnClose = delOnClose;</span>
+
+        // in case user forget to call close()
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (delOnClose)</span>
+<span class="fc" id="L83">            diskFile.deleteOnExit();</span>
+<span class="fc" id="L84">    }</span>
+
+    @Override
+    public GTInfo getInfo() {
+<span class="nc" id="L88">        return info;</span>
+    }
+
+    @Override
+    public IGTWriter rebuild() throws IOException {
+<span class="fc" id="L93">        return newWriter(0);</span>
+    }
+
+    @Override
+    public IGTWriter append() throws IOException {
+<span class="nc" id="L98">        return newWriter(length());</span>
+    }
+
+    private Writer newWriter(long startOffset) throws IOException {
+<span class="fc" id="L102">        synchronized (lock) {</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            if (ongoingWriter != null)</span>
+<span class="nc" id="L104">                throw new IllegalStateException();</span>
+
+<span class="fc" id="L106">            ongoingWriter = new Writer(startOffset);</span>
+<span class="fc" id="L107">            return ongoingWriter;</span>
+        }
+    }
+
+    @Override
+    public IGTScanner scan(GTScanRequest scanRequest) throws IOException {
+<span class="fc" id="L113">        synchronized (lock) {</span>
+<span class="fc" id="L114">            return new Reader();</span>
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        // synchronized inside the parts close()
+<span class="nc" id="L121">        memPart.close();</span>
+<span class="nc" id="L122">        diskPart.close();</span>
+<span class="nc" id="L123">    }</span>
+
+    public long length() {
+<span class="fc" id="L126">        synchronized (lock) {</span>
+<span class="fc" id="L127">            return Math.max(memPart.tailOffset(), diskPart.tailOffset);</span>
+        }
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        return &quot;MemDiskStore@&quot; + (info.getTableName() == null ? this.hashCode() : info.getTableName());</span>
+    }
+
+    private class Reader implements IGTScanner {
+
+        final DataInputStream din;
+<span class="fc" id="L139">        long readOffset = 0;</span>
+<span class="fc" id="L140">        long memRead = 0;</span>
+<span class="fc" id="L141">        long diskRead = 0;</span>
+<span class="fc" id="L142">        int nReadCalls = 0;</span>
+<span class="fc" id="L143">        int count = 0;</span>
+
+<span class="fc" id="L145">        Reader() throws IOException {</span>
+<span class="fc" id="L146">            diskPart.openRead();</span>
+            if (debug)
+                logger.debug(MemDiskStore.this + &quot; read start @ &quot; + readOffset);
+
+<span class="fc" id="L150">            InputStream in = new InputStream() {</span>
+<span class="fc" id="L151">                byte[] tmp = new byte[1];</span>
+                MemChunk memChunk;
+
+                @Override
+                public int read() throws IOException {
+<span class="nc" id="L156">                    int n = read(tmp, 0, 1);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                    if (n &lt;= 0)</span>
+<span class="nc" id="L158">                        return -1;</span>
+                    else
+<span class="nc" id="L160">                        return (int) tmp[0];</span>
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) throws IOException {
+<span class="fc" id="L165">                    synchronized (lock) {</span>
+<span class="fc" id="L166">                        nReadCalls++;</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                        if (available() &lt;= 0)</span>
+<span class="nc" id="L168">                            return -1;</span>
+
+<span class="pc bpc" id="L170" title="1 of 6 branches missed.">                        if (memChunk == null &amp;&amp; memPart.headOffset() &lt;= readOffset &amp;&amp; readOffset &lt; memPart.tailOffset()) {</span>
+<span class="fc" id="L171">                            memChunk = memPart.seekMemChunk(readOffset);</span>
+                        }
+
+<span class="fc" id="L174">                        int lenToGo = Math.min(available(), len);</span>
+
+<span class="fc" id="L176">                        int nRead = 0;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                        while (lenToGo &gt; 0) {</span>
+                            int n;
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                            if (memChunk != null) {</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                                if (memChunk.headOffset() &gt; readOffset) {</span>
+<span class="nc" id="L181">                                    memChunk = null;</span>
+<span class="nc" id="L182">                                    continue;</span>
+                                }
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                                if (readOffset &gt;= memChunk.tailOffset()) {</span>
+<span class="nc" id="L185">                                    memChunk = memChunk.next;</span>
+<span class="nc" id="L186">                                    continue;</span>
+                                }
+<span class="fc" id="L188">                                int chunkOffset = (int) (readOffset - memChunk.headOffset());</span>
+<span class="fc" id="L189">                                n = Math.min((int) (memChunk.tailOffset() - readOffset), lenToGo);</span>
+<span class="fc" id="L190">                                System.arraycopy(memChunk.data, chunkOffset, b, off, n);</span>
+<span class="fc" id="L191">                                memRead += n;</span>
+<span class="fc" id="L192">                            } else {</span>
+<span class="fc" id="L193">                                n = diskPart.read(readOffset, b, off, lenToGo);</span>
+<span class="fc" id="L194">                                diskRead += n;</span>
+                            }
+<span class="fc" id="L196">                            lenToGo -= n;</span>
+<span class="fc" id="L197">                            nRead += n;</span>
+<span class="fc" id="L198">                            off += n;</span>
+<span class="fc" id="L199">                            readOffset += n;</span>
+<span class="fc" id="L200">                        }</span>
+<span class="fc" id="L201">                        return nRead;</span>
+                    }
+                }
+
+                @Override
+                public int available() throws IOException {
+<span class="fc" id="L207">                    synchronized (lock) {</span>
+<span class="fc" id="L208">                        return (int) (length() - readOffset);</span>
+                    }
+                }
+            };
+
+<span class="fc" id="L213">            din = new DataInputStream(new BufferedInputStream(in, STREAM_BUFFER_SIZE));</span>
+<span class="fc" id="L214">        }</span>
+
+        @Override
+        public void close() throws IOException {
+<span class="fc" id="L218">            synchronized (lock) {</span>
+<span class="fc" id="L219">                din.close();</span>
+<span class="fc" id="L220">                diskPart.closeRead();</span>
+                if (debug)
+                    logger.debug(MemDiskStore.this + &quot; read end @ &quot; + readOffset + &quot;, &quot; + (memRead) + &quot; from mem, &quot; + (diskRead) + &quot; from disk, &quot; + nReadCalls + &quot; read() calls&quot;);
+<span class="fc" id="L223">            }</span>
+<span class="fc" id="L224">        }</span>
+
+        @Override
+        public Iterator&lt;GTRecord&gt; iterator() {
+<span class="fc" id="L228">            count = 0;</span>
+<span class="fc" id="L229">            return new Iterator&lt;GTRecord&gt;() {</span>
+<span class="fc" id="L230">                GTRecord record = new GTRecord(info);</span>
+                GTRecord next;
+<span class="fc" id="L232">                ByteBuffer buf = ByteBuffer.allocate(info.getMaxRecordLength());</span>
+
+                @Override
+                public boolean hasNext() {
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                    if (next != null)</span>
+<span class="nc" id="L237">                        return true;</span>
+
+                    try {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                        if (din.available() &gt; 0) {</span>
+<span class="fc" id="L241">                            int len = din.readInt();</span>
+<span class="fc" id="L242">                            din.read(buf.array(), buf.arrayOffset(), len);</span>
+<span class="fc" id="L243">                            buf.clear();</span>
+<span class="fc" id="L244">                            buf.limit(len);</span>
+<span class="fc" id="L245">                            record.loadColumns(info.getAllColumns(), buf);</span>
+<span class="fc" id="L246">                            next = record;</span>
+                        }
+<span class="nc" id="L248">                    } catch (IOException e) {</span>
+<span class="nc" id="L249">                        throw new RuntimeException(e);</span>
+<span class="fc" id="L250">                    }</span>
+
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                    return next != null;</span>
+                }
+
+                @Override
+                public GTRecord next() {
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">                    if (next == null) {</span>
+<span class="nc" id="L258">                        hasNext();</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">                        if (next == null)</span>
+<span class="nc" id="L260">                            throw new NoSuchElementException();</span>
+                    }
+<span class="fc" id="L262">                    GTRecord r = next;</span>
+<span class="fc" id="L263">                    next = null;</span>
+<span class="fc" id="L264">                    count++;</span>
+<span class="fc" id="L265">                    return r;</span>
+                }
+
+                @Override
+                public void remove() {
+<span class="nc" id="L270">                    throw new UnsupportedOperationException();</span>
+                }
+
+            };
+        }
+
+        @Override
+        public GTInfo getInfo() {
+<span class="nc" id="L278">            return info;</span>
+        }
+    }
+
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">    private class Writer implements IGTWriter {</span>
+
+        final DataOutputStream dout;
+        final ByteBuffer buf;
+        long writeOffset;
+<span class="fc" id="L287">        long memWrite = 0;</span>
+<span class="fc" id="L288">        long diskWrite = 0;</span>
+        int nWriteCalls;
+<span class="fc" id="L290">        boolean closed = false;</span>
+
+<span class="fc" id="L292">        Writer(long startOffset) throws IOException {</span>
+<span class="fc" id="L293">            buf = ByteBuffer.allocate(info.getMaxRecordLength());</span>
+<span class="fc" id="L294">            writeOffset = 0; // TODO does not support append yet</span>
+<span class="fc" id="L295">            memPart.clear();</span>
+<span class="fc" id="L296">            diskPart.clear();</span>
+<span class="fc" id="L297">            diskPart.openWrite(false);</span>
+            if (debug)
+                logger.debug(MemDiskStore.this + &quot; write start @ &quot; + writeOffset);
+
+<span class="fc" id="L301">            memPart.activateMemWrite();</span>
+
+<span class="fc" id="L303">            OutputStream out = new OutputStream() {</span>
+<span class="fc" id="L304">                byte[] tmp = new byte[1];</span>
+<span class="fc" id="L305">                boolean memPartActivated = true;</span>
+
+                @Override
+                public void write(int b) throws IOException {
+<span class="nc" id="L309">                    tmp[0] = (byte) b;</span>
+<span class="nc" id="L310">                    write(tmp, 0, 1);</span>
+<span class="nc" id="L311">                }</span>
+
+                @Override
+                public void write(byte[] bytes, int offset, int length) throws IOException {
+                    // lock inside memPart.write() and diskPart.write()
+<span class="fc" id="L316">                    nWriteCalls++;</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                    while (length &gt; 0) {</span>
+                        int n;
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                        if (memPartActivated) {</span>
+<span class="fc" id="L320">                            n = memPart.write(bytes, offset, length, writeOffset);</span>
+<span class="fc" id="L321">                            memWrite += n;</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                            if (n == 0) {</span>
+<span class="fc" id="L323">                                memPartActivated = false;</span>
+                            }
+                        } else {
+<span class="fc" id="L326">                            n = diskPart.write(writeOffset, bytes, offset, length);</span>
+<span class="fc" id="L327">                            diskWrite += n;</span>
+                        }
+<span class="fc" id="L329">                        offset += n;</span>
+<span class="fc" id="L330">                        length -= n;</span>
+<span class="fc" id="L331">                        writeOffset += n;</span>
+<span class="fc" id="L332">                    }</span>
+<span class="fc" id="L333">                }</span>
+            };
+<span class="fc" id="L335">            dout = new DataOutputStream(new BufferedOutputStream(out, STREAM_BUFFER_SIZE));</span>
+<span class="fc" id="L336">        }</span>
+
+        @Override
+        public void write(GTRecord rec) throws IOException {
+<span class="fc" id="L340">            buf.clear();</span>
+<span class="fc" id="L341">            rec.exportColumns(info.getAllColumns(), buf);</span>
+
+<span class="fc" id="L343">            int len = buf.position();</span>
+<span class="fc" id="L344">            dout.writeInt(len);</span>
+<span class="fc" id="L345">            dout.write(buf.array(), buf.arrayOffset(), len);</span>
+<span class="fc" id="L346">        }</span>
+
+        @Override
+        public void close() throws IOException {
+<span class="fc" id="L350">            synchronized (lock) {</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                if (!closed) {</span>
+<span class="fc" id="L352">                    dout.close();</span>
+<span class="fc" id="L353">                    memPart.deactivateMemWrite();</span>
+                }
+
+<span class="fc bfc" id="L356" title="All 2 branches covered.">                if (memPart.asyncFlusher == null) {</span>
+<span class="pc bpc" id="L357" title="2 of 4 branches missed.">                    assert writeOffset == diskPart.tailOffset;</span>
+<span class="fc" id="L358">                    diskPart.closeWrite();</span>
+<span class="fc" id="L359">                    ongoingWriter = null;</span>
+                    if (debug)
+                        logger.debug(MemDiskStore.this + &quot; write end @ &quot; + writeOffset + &quot;, &quot; + (memWrite) + &quot; to mem, &quot; + (diskWrite) + &quot; to disk, &quot; + nWriteCalls + &quot; write() calls&quot;);
+                } else {
+                    // the asyncFlusher will call this close() again later
+                }
+<span class="fc" id="L365">                closed = true;</span>
+<span class="fc" id="L366">            }</span>
+<span class="fc" id="L367">        }</span>
+    }
+
+    private static class MemChunk {
+        long diskOffset;
+        int length;
+        byte[] data;
+        MemChunk next;
+
+        boolean isFull() {
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">            return length == data.length;</span>
+        }
+
+        long headOffset() {
+<span class="fc" id="L381">            return diskOffset;</span>
+        }
+
+        long tailOffset() {
+<span class="fc" id="L385">            return diskOffset + length;</span>
+        }
+
+        int freeSpace() {
+<span class="fc" id="L389">            return data.length - length;</span>
+        }
+    }
+
+    private class MemPart implements Closeable, MemoryConsumer {
+
+        final MemoryBudgetController budgetCtrl;
+
+        // async flush thread checks this flag out of sync block
+        volatile boolean writeActivated;
+        MemChunk firstChunk;
+        MemChunk lastChunk;
+        int chunkCount;
+
+        Thread asyncFlusher;
+        MemChunk asyncFlushChunk;
+        long asyncFlushDiskOffset;
+        Throwable asyncFlushException;
+
+<span class="fc" id="L408">        MemPart(MemoryBudgetController budgetCtrl) {</span>
+<span class="fc" id="L409">            this.budgetCtrl = budgetCtrl;</span>
+<span class="fc" id="L410">        }</span>
+
+        long headOffset() {
+<span class="fc bfc" id="L413" title="All 2 branches covered.">            return firstChunk == null ? 0 : firstChunk.headOffset();</span>
+        }
+
+        long tailOffset() {
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            return lastChunk == null ? 0 : lastChunk.tailOffset();</span>
+        }
+
+        public MemChunk seekMemChunk(long diskOffset) {
+<span class="fc" id="L421">            MemChunk c = firstChunk;</span>
+<span class="pc bpc" id="L422" title="2 of 4 branches missed.">            while (c != null &amp;&amp; c.headOffset() &lt;= diskOffset) {</span>
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">                if (diskOffset &lt; c.tailOffset())</span>
+<span class="fc" id="L424">                    break;</span>
+<span class="nc" id="L425">                c = c.next;</span>
+            }
+<span class="fc" id="L427">            return c;</span>
+        }
+
+        public int write(byte[] bytes, int offset, int length, long diskOffset) {
+<span class="fc" id="L431">            int needMoreMem = 0;</span>
+
+<span class="fc" id="L433">            synchronized (lock) {</span>
+<span class="pc bpc" id="L434" title="1 of 2 branches missed.">                if (writeActivated == false)</span>
+<span class="nc" id="L435">                    return 0;</span>
+
+                // write is only expected at the tail
+<span class="fc bfc" id="L438" title="All 2 branches covered.">                if (diskOffset != tailOffset())</span>
+<span class="fc" id="L439">                    return 0;</span>
+
+<span class="pc bpc" id="L441" title="1 of 4 branches missed.">                if (chunkCount == 0 || lastChunk.isFull())</span>
+<span class="fc" id="L442">                    needMoreMem = (chunkCount + 1) * MEM_CHUNK_SIZE_MB;</span>
+<span class="fc" id="L443">            }</span>
+
+            // call to budgetCtrl.reserve() must be out of synchronized block, or deadlock may happen between MemoryConsumers
+<span class="fc bfc" id="L446" title="All 2 branches covered.">            if (needMoreMem &gt; 0) {</span>
+                try {
+<span class="fc" id="L448">                    budgetCtrl.reserve(this, needMoreMem);</span>
+<span class="nc" id="L449">                } catch (NotEnoughBudgetException ex) {</span>
+<span class="nc" id="L450">                    deactivateMemWrite();</span>
+<span class="nc" id="L451">                    return 0;</span>
+<span class="fc" id="L452">                }</span>
+            }
+
+<span class="fc" id="L455">            synchronized (lock) {</span>
+<span class="pc bpc" id="L456" title="3 of 6 branches missed.">                if (needMoreMem &gt; 0 &amp;&amp; (chunkCount == 0 || lastChunk.isFull())) {</span>
+<span class="fc" id="L457">                    MemChunk chunk = new MemChunk();</span>
+<span class="fc" id="L458">                    chunk.diskOffset = diskOffset;</span>
+<span class="fc" id="L459">                    chunk.data = new byte[ONE_MB * MEM_CHUNK_SIZE_MB - 48]; // -48 for MemChunk overhead</span>
+<span class="pc bpc" id="L460" title="1 of 2 branches missed.">                    if (chunkCount == 0) {</span>
+<span class="fc" id="L461">                        firstChunk = lastChunk = chunk;</span>
+                    } else {
+<span class="nc" id="L463">                        lastChunk.next = chunk;</span>
+<span class="nc" id="L464">                        lastChunk = chunk;</span>
+                    }
+<span class="fc" id="L466">                    chunkCount++;</span>
+                }
+
+<span class="fc" id="L469">                int n = Math.min(lastChunk.freeSpace(), length);</span>
+<span class="fc" id="L470">                System.arraycopy(bytes, offset, lastChunk.data, lastChunk.length, n);</span>
+<span class="fc" id="L471">                lastChunk.length += n;</span>
+
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">                if (n &gt; 0)</span>
+<span class="fc" id="L474">                    asyncFlush(lastChunk, diskOffset, n);</span>
+
+<span class="fc" id="L476">                return n;</span>
+            }
+        }
+
+        private void asyncFlush(MemChunk lastChunk, long diskOffset, int n) {
+<span class="fc bfc" id="L481" title="All 2 branches covered.">            if (asyncFlushChunk == null) {</span>
+<span class="fc" id="L482">                asyncFlushChunk = lastChunk;</span>
+<span class="fc" id="L483">                asyncFlushDiskOffset = diskOffset;</span>
+            }
+
+<span class="fc bfc" id="L486" title="All 2 branches covered.">            if (asyncFlusher == null) {</span>
+<span class="fc" id="L487">                asyncFlusher = new Thread() {</span>
+                    public void run() {
+<span class="fc" id="L489">                        asyncFlushException = null;</span>
+                        if (debug)
+                            logger.debug(MemDiskStore.this + &quot; async flush started @ &quot; + asyncFlushDiskOffset);
+                        try {
+<span class="fc bfc" id="L493" title="All 2 branches covered.">                            while (writeActivated) {</span>
+<span class="fc" id="L494">                                flushToDisk();</span>
+<span class="fc" id="L495">                                Thread.sleep(10);</span>
+                            }
+<span class="fc" id="L497">                            flushToDisk();</span>
+
+                            if (debug)
+                                logger.debug(MemDiskStore.this + &quot; async flush ended @ &quot; + asyncFlushDiskOffset);
+
+<span class="fc" id="L502">                            synchronized (lock) {</span>
+<span class="fc" id="L503">                                asyncFlusher = null;</span>
+<span class="fc" id="L504">                                asyncFlushChunk = null;</span>
+<span class="pc bpc" id="L505" title="1 of 2 branches missed.">                                if (ongoingWriter.closed) {</span>
+<span class="fc" id="L506">                                    ongoingWriter.close(); // call writer.close() again to clean up</span>
+                                }
+<span class="fc" id="L508">                            }</span>
+<span class="nc" id="L509">                        } catch (Throwable ex) {</span>
+<span class="nc" id="L510">                            asyncFlushException = ex;</span>
+<span class="fc" id="L511">                        }</span>
+<span class="fc" id="L512">                    }</span>
+                };
+<span class="fc" id="L514">                asyncFlusher.start();</span>
+            }
+<span class="fc" id="L516">        }</span>
+
+        private void flushToDisk() throws IOException {
+            byte[] data;
+<span class="fc" id="L520">            int offset = 0;</span>
+<span class="fc" id="L521">            int length = 0;</span>
+<span class="fc" id="L522">            int flushedLen = 0;</span>
+
+            while (true) {
+<span class="fc" id="L525">                data = null;</span>
+<span class="fc" id="L526">                synchronized (lock) {</span>
+<span class="fc" id="L527">                    asyncFlushDiskOffset += flushedLen; // bytes written in last loop</span>
+                    //                    if (debug)
+                    //                        logger.debug(GTMemDiskStore.this + &quot; async flush @ &quot; + asyncFlushDiskOffset);
+<span class="fc bfc" id="L530" title="All 4 branches covered.">                    if (asyncFlushChunk != null &amp;&amp; asyncFlushChunk.tailOffset() == asyncFlushDiskOffset) {</span>
+<span class="fc" id="L531">                        asyncFlushChunk = asyncFlushChunk.next;</span>
+                    }
+<span class="fc bfc" id="L533" title="All 2 branches covered.">                    if (asyncFlushChunk != null) {</span>
+<span class="fc" id="L534">                        data = asyncFlushChunk.data;</span>
+<span class="fc" id="L535">                        offset = (int) (asyncFlushDiskOffset - asyncFlushChunk.headOffset());</span>
+<span class="fc" id="L536">                        length = asyncFlushChunk.length - offset;</span>
+                    }
+<span class="fc" id="L538">                }</span>
+
+<span class="fc bfc" id="L540" title="All 2 branches covered.">                if (data == null)</span>
+<span class="fc" id="L541">                    break;</span>
+
+<span class="fc" id="L543">                flushedLen = diskPart.write(asyncFlushDiskOffset, data, offset, length);</span>
+            }
+<span class="fc" id="L545">        }</span>
+
+        @Override
+        public int freeUp(int mb) {
+<span class="fc" id="L549">            synchronized (lock) {</span>
+<span class="fc" id="L550">                int mbReleased = 0;</span>
+<span class="pc bpc" id="L551" title="1 of 4 branches missed.">                while (chunkCount &gt; 0 &amp;&amp; mbReleased &lt; mb) {</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">                    if (firstChunk == asyncFlushChunk)</span>
+<span class="fc" id="L553">                        break;</span>
+
+<span class="fc" id="L555">                    mbReleased += MEM_CHUNK_SIZE_MB;</span>
+<span class="fc" id="L556">                    chunkCount--;</span>
+<span class="pc bpc" id="L557" title="1 of 2 branches missed.">                    if (chunkCount == 0) {</span>
+<span class="fc" id="L558">                        firstChunk = lastChunk = null;</span>
+                    } else {
+<span class="nc" id="L560">                        MemChunk next = firstChunk.next;</span>
+<span class="nc" id="L561">                        firstChunk.next = null;</span>
+<span class="nc" id="L562">                        firstChunk = next;</span>
+<span class="nc" id="L563">                    }</span>
+                }
+<span class="fc" id="L565">                return mbReleased;</span>
+            }
+        }
+
+        public void activateMemWrite() {
+<span class="pc bpc" id="L570" title="1 of 2 branches missed.">            if (budgetCtrl.getTotalBudgetMB() &gt; 0) {</span>
+<span class="fc" id="L571">                writeActivated = true;</span>
+                if (debug)
+                    logger.debug(MemDiskStore.this + &quot; mem write activated&quot;);
+            }
+<span class="fc" id="L575">        }</span>
+
+        public void deactivateMemWrite() {
+<span class="fc" id="L578">            writeActivated = false;</span>
+            if (debug)
+                logger.debug(MemDiskStore.this + &quot; mem write de-activated&quot;);
+<span class="fc" id="L581">        }</span>
+
+        public void clear() {
+<span class="fc" id="L584">            chunkCount = 0;</span>
+<span class="fc" id="L585">            firstChunk = lastChunk = null;</span>
+<span class="fc" id="L586">            budgetCtrl.reserve(this, 0);</span>
+<span class="fc" id="L587">        }</span>
+
+        @Override
+        public void close() throws IOException {
+<span class="nc" id="L591">            synchronized (lock) {</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">                if (asyncFlushException != null)</span>
+<span class="nc" id="L593">                    throwAsyncException(asyncFlushException);</span>
+<span class="nc" id="L594">            }</span>
+            try {
+<span class="nc" id="L596">                asyncFlusher.join();</span>
+<span class="nc" id="L597">            } catch (NullPointerException npe) {</span>
+                // that's fine, async flusher may not present
+<span class="nc" id="L599">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L600">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L601">                logger.warn(&quot;async join interrupted&quot;, e);</span>
+<span class="nc" id="L602">            }</span>
+<span class="nc" id="L603">            synchronized (lock) {</span>
+<span class="nc bnc" id="L604" title="All 2 branches missed.">                if (asyncFlushException != null)</span>
+<span class="nc" id="L605">                    throwAsyncException(asyncFlushException);</span>
+
+<span class="nc" id="L607">                clear();</span>
+<span class="nc" id="L608">            }</span>
+<span class="nc" id="L609">        }</span>
+
+        private void throwAsyncException(Throwable ex) throws IOException {
+<span class="nc bnc" id="L612" title="All 2 branches missed.">            if (ex instanceof IOException)</span>
+<span class="nc" id="L613">                throw (IOException) ex;</span>
+            else
+<span class="nc" id="L615">                throw new IOException(ex);</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc" id="L620">            return MemDiskStore.this.toString();</span>
+        }
+
+    }
+
+    private class DiskPart implements Closeable {
+        final File diskFile;
+        FileChannel writeChannel;
+        FileChannel readChannel;
+<span class="fc" id="L629">        int readerCount = 0; // allow parallel readers</span>
+        long tailOffset;
+
+<span class="fc" id="L632">        DiskPart(File diskFile) throws IOException {</span>
+<span class="fc" id="L633">            this.diskFile = diskFile;</span>
+<span class="fc" id="L634">            this.tailOffset = diskFile.length();</span>
+            if (debug)
+                logger.debug(MemDiskStore.this + &quot; disk file &quot; + diskFile.getAbsolutePath());
+<span class="fc" id="L637">        }</span>
+
+        public void openRead() throws IOException {
+<span class="pc bpc" id="L640" title="1 of 2 branches missed.">            if (readChannel == null) {</span>
+<span class="fc" id="L641">                readChannel = FileChannel.open(diskFile.toPath(), StandardOpenOption.READ);</span>
+            }
+<span class="fc" id="L643">            readerCount++;</span>
+<span class="fc" id="L644">        }</span>
+
+        public int read(long diskOffset, byte[] bytes, int offset, int length) throws IOException {
+<span class="fc" id="L647">            return readChannel.read(ByteBuffer.wrap(bytes, offset, length), diskOffset);</span>
+        }
+
+        public void closeRead() throws IOException {
+<span class="fc" id="L651">            closeRead(false);</span>
+<span class="fc" id="L652">        }</span>
+
+        private void closeRead(boolean force) throws IOException {
+<span class="fc" id="L655">            readerCount--;</span>
+<span class="pc bpc" id="L656" title="3 of 4 branches missed.">            if (readerCount == 0 || force) {</span>
+<span class="pc bpc" id="L657" title="1 of 2 branches missed.">                if (readChannel != null) {</span>
+<span class="fc" id="L658">                    readChannel.close();</span>
+<span class="fc" id="L659">                    readChannel = null;</span>
+                }
+            }
+<span class="fc" id="L662">        }</span>
+
+        public void openWrite(boolean append) throws IOException {
+<span class="pc bpc" id="L665" title="1 of 2 branches missed.">            if (append) {</span>
+<span class="nc" id="L666">                writeChannel = FileChannel.open(diskFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE);</span>
+<span class="nc" id="L667">                tailOffset = diskFile.length();</span>
+            } else {
+<span class="fc" id="L669">                diskFile.delete();</span>
+<span class="fc" id="L670">                writeChannel = FileChannel.open(diskFile.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);</span>
+<span class="fc" id="L671">                tailOffset = 0;</span>
+            }
+<span class="fc" id="L673">        }</span>
+
+        public int write(long diskOffset, byte[] bytes, int offset, int length) throws IOException {
+<span class="fc" id="L676">            synchronized (lock) {</span>
+<span class="fc" id="L677">                int n = writeChannel.write(ByteBuffer.wrap(bytes, offset, length), diskOffset);</span>
+<span class="fc" id="L678">                tailOffset = Math.max(diskOffset + n, tailOffset);</span>
+<span class="fc" id="L679">                return n;</span>
+            }
+        }
+
+        public void closeWrite() throws IOException {
+<span class="pc bpc" id="L684" title="1 of 2 branches missed.">            if (writeChannel != null) {</span>
+<span class="fc" id="L685">                writeChannel.close();</span>
+<span class="fc" id="L686">                writeChannel = null;</span>
+            }
+<span class="fc" id="L688">        }</span>
+
+        public void clear() throws IOException {
+<span class="fc" id="L691">            diskFile.delete();</span>
+<span class="fc" id="L692">            tailOffset = 0;</span>
+<span class="fc" id="L693">        }</span>
+
+        @Override
+        public void close() throws IOException {
+<span class="nc" id="L697">            synchronized (lock) {</span>
+<span class="nc" id="L698">                closeWrite();</span>
+<span class="nc" id="L699">                closeRead(true);</span>
+<span class="nc bnc" id="L700" title="All 2 branches missed.">                if (delOnClose) {</span>
+<span class="nc" id="L701">                    diskFile.delete();</span>
+                }
+<span class="nc" id="L703">            }</span>
+<span class="nc" id="L704">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

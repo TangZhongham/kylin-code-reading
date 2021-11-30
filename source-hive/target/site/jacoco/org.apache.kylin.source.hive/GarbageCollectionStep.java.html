@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GarbageCollectionStep.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">GarbageCollectionStep.java</span></div><h1>GarbageCollectionStep.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive;
+
+import java.io.IOException;
+import java.util.List;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.HiveCmdBuilder;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.ExecutableContext;
+import org.apache.kylin.job.execution.ExecuteResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+<span class="nc" id="L40">public class GarbageCollectionStep extends AbstractExecutable {</span>
+<span class="nc" id="L41">    private static final Logger logger = LoggerFactory.getLogger(GarbageCollectionStep.class);</span>
+
+    @Override
+    protected ExecuteResult doWork(ExecutableContext context) throws ExecuteException {
+<span class="nc" id="L45">        KylinConfig config = context.getConfig();</span>
+<span class="nc" id="L46">        StringBuffer output = new StringBuffer();</span>
+        try {
+<span class="nc" id="L48">            output.append(cleanUpIntermediateFlatTable(config));</span>
+<span class="nc" id="L49">        } catch (IOException e) {</span>
+<span class="nc" id="L50">            logger.error(&quot;job:&quot; + getId() + &quot; execute finished with exception&quot;, e);</span>
+<span class="nc" id="L51">            return ExecuteResult.createError(e);</span>
+<span class="nc" id="L52">        }</span>
+
+<span class="nc" id="L54">        return new ExecuteResult(ExecuteResult.State.SUCCEED, output.toString());</span>
+    }
+
+    //clean up both hive intermediate flat table and view table
+    private String cleanUpIntermediateFlatTable(KylinConfig config) throws IOException {
+<span class="nc" id="L59">        StringBuffer output = new StringBuffer();</span>
+<span class="nc" id="L60">        final HiveCmdBuilder hiveCmdBuilder = new HiveCmdBuilder(getName());</span>
+<span class="nc" id="L61">        final List&lt;String&gt; hiveTables = this.getIntermediateTables();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (!config.isHiveKeepFlatTable()) {</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            for (String hiveTable : hiveTables) {</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">                if (StringUtils.isNotEmpty(hiveTable)) {</span>
+<span class="nc" id="L65">                    hiveCmdBuilder.addStatement(&quot;USE &quot; + config.getHiveDatabaseForIntermediateTable() + &quot;;&quot;);</span>
+<span class="nc" id="L66">                    hiveCmdBuilder</span>
+<span class="nc" id="L67">                            .addStatement(&quot;DROP TABLE IF EXISTS &quot; + hiveTable + &quot;;&quot;);</span>
+
+<span class="nc" id="L69">                    output.append(&quot;Hive table &quot; + hiveTable + &quot; is dropped. \n&quot;);</span>
+                }
+<span class="nc" id="L71">            }</span>
+<span class="nc" id="L72">            rmdirOnHDFS(getExternalDataPaths());</span>
+        }
+<span class="nc" id="L74">        config.getCliCommandExecutor().execute(hiveCmdBuilder.build());</span>
+<span class="nc" id="L75">        output.append(&quot;Path &quot; + getExternalDataPaths() + &quot; is deleted. \n&quot;);</span>
+
+<span class="nc" id="L77">        return output.toString();</span>
+    }
+
+    private void rmdirOnHDFS(List&lt;String&gt; paths) throws IOException {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        for (String path : paths) {</span>
+<span class="nc" id="L82">            Path externalDataPath = new Path(path);</span>
+<span class="nc" id="L83">            FileSystem fs = HadoopUtil.getWorkingFileSystem();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            if (fs.exists(externalDataPath)) {</span>
+<span class="nc" id="L85">                fs.delete(externalDataPath, true);</span>
+            }
+<span class="nc" id="L87">        }</span>
+<span class="nc" id="L88">    }</span>
+
+    public void setIntermediateTables(List&lt;String&gt; tableIdentity) {
+<span class="nc" id="L91">        setParam(&quot;oldHiveTables&quot;, StringUtil.join(tableIdentity, &quot;,&quot;));</span>
+<span class="nc" id="L92">    }</span>
+
+    //get intermediate fact table and lookup table(if exists)
+    private List&lt;String&gt; getIntermediateTables() {
+<span class="nc" id="L96">        List&lt;String&gt; intermediateTables = Lists.newArrayList();</span>
+<span class="nc" id="L97">        String hiveTables = getParam(&quot;oldHiveTables&quot;);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (this.getParams().containsKey(&quot;oldHiveViewIntermediateTables&quot;)) {</span>
+<span class="nc" id="L99">            hiveTables += (&quot;,&quot; + getParam(&quot;oldHiveViewIntermediateTables&quot;));</span>
+        }
+<span class="nc" id="L101">        String[] tables = StringUtil.splitAndTrim(hiveTables, &quot;,&quot;);</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        for (String t : tables) {</span>
+<span class="nc" id="L103">            intermediateTables.add(t);</span>
+        }
+<span class="nc" id="L105">        return intermediateTables;</span>
+    }
+
+    public void setExternalDataPaths(List&lt;String&gt; externalDataPaths) {
+<span class="nc" id="L109">        setParam(&quot;externalDataPaths&quot;, StringUtil.join(externalDataPaths, &quot;,&quot;));</span>
+<span class="nc" id="L110">    }</span>
+
+    private List&lt;String&gt; getExternalDataPaths() {
+<span class="nc" id="L113">        String[] paths = StringUtil.splitAndTrim(getParam(&quot;externalDataPaths&quot;), &quot;,&quot;);</span>
+<span class="nc" id="L114">        List&lt;String&gt; result = Lists.newArrayList();</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        for (String s : paths) {</span>
+<span class="nc" id="L116">            result.add(s);</span>
+        }
+<span class="nc" id="L118">        return result;</span>
+    }
+
+    public void setHiveViewIntermediateTableIdentities(String tableIdentities) {
+<span class="nc" id="L122">        setParam(&quot;oldHiveViewIntermediateTables&quot;, tableIdentities);</span>
+<span class="nc" id="L123">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

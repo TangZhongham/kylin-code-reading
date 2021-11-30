@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveProducerRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Metrics Reporter Hive</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.lib.impl.hive</a> &gt; <span class="el_source">HiveProducerRecord.java</span></div><h1>HiveProducerRecord.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metrics.lib.impl.hive;
+
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+
+public class HiveProducerRecord {
+
+    public static final String DELIMITER = &quot;,&quot;;
+
+    private final RecordKey key;
+    private final List&lt;Object&gt; value;
+
+<span class="nc" id="L33">    public HiveProducerRecord(String dbName, String tableName, Map&lt;String, String&gt; partitionKVs, List&lt;Object&gt; value) {</span>
+<span class="nc" id="L34">        this.key = new RecordKey(dbName, tableName, partitionKVs);</span>
+<span class="nc" id="L35">        this.value = value;</span>
+<span class="nc" id="L36">    }</span>
+
+<span class="nc" id="L38">    public HiveProducerRecord(String tableName, Map&lt;String, String&gt; partitionKVs, List&lt;Object&gt; value) {</span>
+<span class="nc" id="L39">        this.key = new RecordKey(tableName, partitionKVs);</span>
+<span class="nc" id="L40">        this.value = value;</span>
+<span class="nc" id="L41">    }</span>
+
+<span class="nc" id="L43">    public HiveProducerRecord(String dbName, String tableName, List&lt;Object&gt; value) {</span>
+<span class="nc" id="L44">        this.key = new RecordKey(dbName, tableName);</span>
+<span class="nc" id="L45">        this.value = value;</span>
+<span class="nc" id="L46">    }</span>
+
+<span class="nc" id="L48">    public HiveProducerRecord(String tableName, List&lt;Object&gt; value) {</span>
+<span class="nc" id="L49">        this.key = new RecordKey(tableName);</span>
+<span class="nc" id="L50">        this.value = value;</span>
+<span class="nc" id="L51">    }</span>
+
+    public RecordKey key() {
+<span class="nc" id="L54">        return this.key;</span>
+    }
+
+    public List&lt;Object&gt; value() {
+<span class="nc" id="L58">        return this.value;</span>
+    }
+
+    public String toString() {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        String value = this.value == null ? &quot;null&quot; : this.value.toString();</span>
+<span class="nc" id="L63">        return &quot;HiveProducerRecord(key=&quot; + this.key.toString() + &quot;, value=&quot; + value + &quot;)&quot;;</span>
+    }
+
+    public String valueToString() {
+<span class="nc bnc" id="L67" title="All 4 branches missed.">        if (this.value == null || value.isEmpty()) {</span>
+<span class="nc" id="L68">            return null;</span>
+        }
+<span class="nc" id="L70">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        for (int i = 0; i &lt; value.size() - 1; i++) {</span>
+<span class="nc" id="L72">            sb.append(value.get(i) + DELIMITER);</span>
+        }
+<span class="nc" id="L74">        sb.append(value.get(value.size() - 1));</span>
+<span class="nc" id="L75">        return sb.toString();</span>
+    }
+
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (this == o) {</span>
+<span class="nc" id="L80">            return true;</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        } else if (!(o instanceof HiveProducerRecord)) {</span>
+<span class="nc" id="L82">            return false;</span>
+        } else {
+<span class="nc" id="L84">            HiveProducerRecord that = (HiveProducerRecord) o;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            if (this.key != null) {</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                if (!this.key.equals(that.key)) {</span>
+<span class="nc" id="L87">                    return false;</span>
+                }
+<span class="nc bnc" id="L89" title="All 2 branches missed.">            } else if (that.key != null) {</span>
+<span class="nc" id="L90">                return false;</span>
+            }
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (this.value != null) {</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">                if (!this.value.equals(that.value)) {</span>
+<span class="nc" id="L94">                    return false;</span>
+                }
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            } else if (that.value != null) {</span>
+<span class="nc" id="L97">                return false;</span>
+            }
+        }
+<span class="nc" id="L100">        return true;</span>
+    }
+
+    public int hashCode() {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        int result = this.key != null ? this.key.hashCode() : 0;</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        result = 31 * result + (this.value != null ? this.value.hashCode() : 0);</span>
+<span class="nc" id="L106">        return result;</span>
+    }
+
+    /**
+     * Use to organize metrics message
+     */
+    public class RecordKey {
+        public static final String DEFAULT_DB_NAME = &quot;DEFAULT&quot;;
+
+        private final String dbName;
+        private final String tableName;
+        private final Map&lt;String, String&gt; partitionKVs;
+
+<span class="nc" id="L119">        public RecordKey(String dbName, String tableName, Map&lt;String, String&gt; partitionKVs) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            if (Strings.isNullOrEmpty(dbName)) {</span>
+<span class="nc" id="L121">                this.dbName = DEFAULT_DB_NAME;</span>
+            } else {
+<span class="nc" id="L123">                this.dbName = dbName;</span>
+            }
+<span class="nc" id="L125">            this.tableName = tableName;</span>
+<span class="nc" id="L126">            this.partitionKVs = partitionKVs;</span>
+<span class="nc" id="L127">        }</span>
+
+        public RecordKey(String tableName, Map&lt;String, String&gt; partitionKVs) {
+<span class="nc" id="L130">            this(null, tableName, partitionKVs);</span>
+<span class="nc" id="L131">        }</span>
+
+        public RecordKey(String dbName, String tableName) {
+<span class="nc" id="L134">            this(dbName, tableName, null);</span>
+<span class="nc" id="L135">        }</span>
+
+        public RecordKey(String tableName) {
+<span class="nc" id="L138">            this(null, tableName, null);</span>
+<span class="nc" id="L139">        }</span>
+
+        public String database() {
+<span class="nc" id="L142">            return this.dbName;</span>
+        }
+
+        public String table() {
+<span class="nc" id="L146">            return this.tableName;</span>
+        }
+
+        public Map&lt;String, String&gt; partition() {
+<span class="nc" id="L150">            return this.partitionKVs;</span>
+        }
+
+        public String toString() {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            String partitionKVs = this.partitionKVs == null ? &quot;null&quot; : this.partitionKVs.toString();</span>
+<span class="nc" id="L155">            return &quot;RecordKey(database=&quot; + this.dbName + &quot;, table=&quot; + this.tableName + &quot;, partition=&quot; + partitionKVs + &quot;)&quot;;</span>
+        }
+
+        public boolean equals(Object o) {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">            if (this == o) {</span>
+<span class="nc" id="L160">                return true;</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">            } else if (!(o instanceof RecordKey)) {</span>
+<span class="nc" id="L162">                return false;</span>
+            } else {
+<span class="nc" id="L164">                RecordKey that = (RecordKey) o;</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                if (this.dbName != null) {</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">                    if (!this.dbName.equals(that.dbName)) {</span>
+<span class="nc" id="L167">                        return false;</span>
+                    }
+<span class="nc bnc" id="L169" title="All 2 branches missed.">                } else if (that.dbName != null) {</span>
+<span class="nc" id="L170">                    return false;</span>
+                }
+
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                if (this.tableName != null) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                    if (!this.tableName.equals(that.tableName)) {</span>
+<span class="nc" id="L175">                        return false;</span>
+                    }
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                } else if (that.tableName != null) {</span>
+<span class="nc" id="L178">                    return false;</span>
+                }
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                if (this.partitionKVs != null) {</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                    if (!this.partitionKVs.equals(that.partitionKVs)) {</span>
+<span class="nc" id="L183">                        return false;</span>
+                    }
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                } else if (that.partitionKVs != null) {</span>
+<span class="nc" id="L186">                    return false;</span>
+                }
+            }
+<span class="nc" id="L189">            return true;</span>
+        }
+
+        public int hashCode() {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">            int result = this.dbName != null ? this.dbName.hashCode() : 0;</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            result = 31 * result + (this.tableName != null ? this.tableName.hashCode() : 0);</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">            result = 31 * result + (this.partitionKVs != null ? this.partitionKVs.hashCode() : 0);</span>
+<span class="nc" id="L196">            return result;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

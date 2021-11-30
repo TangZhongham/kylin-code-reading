@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TempStatementManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata</a> &gt; <span class="el_source">TempStatementManager.java</span></div><h1>TempStatementManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.persistence.WriteConflictException;
+import org.apache.kylin.common.util.AutoReadWriteLock;
+import org.apache.kylin.common.util.AutoReadWriteLock.AutoLock;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.CachedCrudAssist;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class TempStatementManager {
+<span class="fc" id="L41">    private static final Logger logger = LoggerFactory.getLogger(TempStatementManager.class);</span>
+
+    public static TempStatementManager getInstance(KylinConfig config) {
+<span class="fc" id="L44">        return config.getManager(TempStatementManager.class);</span>
+    }
+
+    // called by reflection
+    static TempStatementManager newInstance(KylinConfig config) throws IOException {
+<span class="fc" id="L49">        return new TempStatementManager(config);</span>
+    }
+
+    // ============================================================================
+
+    private KylinConfig config;
+    private CaseInsensitiveStringCache&lt;TempStatementEntity&gt; tmpStatMap;
+    private CachedCrudAssist&lt;TempStatementEntity&gt; crud;
+<span class="fc" id="L57">    private AutoReadWriteLock lock = new AutoReadWriteLock();</span>
+
+<span class="fc" id="L59">    private TempStatementManager(KylinConfig cfg) throws IOException {</span>
+<span class="fc" id="L60">        this.config = cfg;</span>
+<span class="fc" id="L61">        this.tmpStatMap = new CaseInsensitiveStringCache&lt;&gt;(config, &quot;temp_statement&quot;);</span>
+<span class="fc" id="L62">        this.crud = new CachedCrudAssist&lt;TempStatementEntity&gt;(getStore(), ResourceStore.TEMP_STATMENT_RESOURCE_ROOT,</span>
+<span class="fc" id="L63">                TempStatementEntity.class, tmpStatMap) {</span>
+            @Override
+            protected TempStatementEntity initEntityAfterReload(TempStatementEntity t, String resourceName) {
+<span class="fc" id="L66">                return t; // noop</span>
+            }
+        };
+
+<span class="fc" id="L70">        crud.reloadAll();</span>
+
+        // touch lower level metadata before registering my listener
+<span class="fc" id="L73">        Broadcaster.getInstance(config).registerListener(new TempStatementSyncListener(), &quot;temp_statement&quot;);</span>
+<span class="fc" id="L74">    }</span>
+
+<span class="fc" id="L76">    private class TempStatementSyncListener extends Broadcaster.Listener {</span>
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Broadcaster.Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L81">            try (AutoLock l = lock.lockForWrite()) {</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                if (event == Broadcaster.Event.DROP)</span>
+<span class="nc" id="L83">                    tmpStatMap.removeLocal(cacheKey);</span>
+                else
+<span class="nc" id="L85">                    crud.reloadQuietly(cacheKey);</span>
+            }
+<span class="nc" id="L87">        }</span>
+    }
+
+    public String getTempStatement(String statementId) {
+<span class="fc" id="L91">        return getTempStatement(TempStatementEntity.DEFAULT_SESSION_ID, statementId);</span>
+    }
+
+    public String getTempStatement(String sessionId, String statementId) {
+<span class="fc" id="L95">        TempStatementEntity entity = getTempStatEntity(sessionId, statementId);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        return entity == null ? null : entity.statement;</span>
+    }
+
+    public TempStatementEntity getTempStatEntity(String sessionId, String statementId) {
+<span class="fc" id="L100">        try (AutoLock l = lock.lockForRead()) {</span>
+<span class="fc" id="L101">            return tmpStatMap.get(TempStatementEntity.resourceName(sessionId, statementId));</span>
+        }
+    }
+
+    // for test
+    List&lt;String&gt; reloadAllTempStatement() throws IOException {
+<span class="fc" id="L107">        try (AutoLock l = lock.lockForWrite()) {</span>
+<span class="fc" id="L108">            crud.reloadAll();</span>
+<span class="fc" id="L109">            return new ArrayList&lt;&gt;(tmpStatMap.keySet());</span>
+        }
+    }
+
+    public void updateTempStatement(String statementId, String statement) throws IOException {
+<span class="fc" id="L114">        updateTempStatement(TempStatementEntity.DEFAULT_SESSION_ID, statementId, statement);</span>
+<span class="fc" id="L115">    }</span>
+
+    public void updateTempStatement(String sessionId, String statementId, String statement) throws IOException {
+<span class="fc" id="L118">        try (AutoLock l = lock.lockForWrite()) {</span>
+<span class="fc" id="L119">            TempStatementEntity entity = new TempStatementEntity(sessionId, statementId, statement);</span>
+<span class="fc" id="L120">            entity = prepareToOverwrite(entity, getTempStatEntity(sessionId, statementId));</span>
+<span class="fc" id="L121">            updateTempStatementWithRetry(entity, 0);</span>
+        }
+<span class="fc" id="L123">    }</span>
+
+    private TempStatementEntity prepareToOverwrite(TempStatementEntity entity, TempStatementEntity origin) {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (origin == null) {</span>
+            // create
+<span class="fc" id="L128">            entity.updateRandomUuid();</span>
+        } else {
+            // update
+<span class="fc" id="L131">            entity.setUuid(origin.getUuid());</span>
+<span class="fc" id="L132">            entity.setLastModified(origin.getLastModified());</span>
+        }
+<span class="fc" id="L134">        return entity;</span>
+    }
+
+    private void updateTempStatementWithRetry(TempStatementEntity entity, int retry) throws IOException {
+        try {
+<span class="fc" id="L139">            crud.save(entity);</span>
+<span class="nc" id="L140">        } catch (WriteConflictException ise) {</span>
+<span class="nc" id="L141">            logger.warn(&quot;Write conflict to update temp statement&quot; + entity.statementId + &quot; at try &quot; + retry</span>
+                    + &quot;, will retry...&quot;);
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (retry &gt;= 7) {</span>
+<span class="nc" id="L144">                logger.error(&quot;Retried 7 times till got error, abandoning...&quot;, ise);</span>
+<span class="nc" id="L145">                throw ise;</span>
+            }
+
+<span class="nc" id="L148">            TempStatementEntity reload = crud.reload(entity.resourceName());</span>
+<span class="nc" id="L149">            entity = prepareToOverwrite(entity, reload);</span>
+<span class="nc" id="L150">            updateTempStatementWithRetry(entity, ++retry);</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">    }</span>
+
+    public void removeTempStatement(String statementId) throws IOException {
+<span class="fc" id="L155">        removeTempStatement(TempStatementEntity.DEFAULT_SESSION_ID, statementId);</span>
+<span class="fc" id="L156">    }</span>
+
+    public void removeTempStatement(String session, String statementId) throws IOException {
+<span class="fc" id="L159">        try (AutoLock l = lock.lockForWrite()) {</span>
+<span class="fc" id="L160">            crud.delete(TempStatementEntity.resourceName(session, statementId));</span>
+        }
+<span class="fc" id="L162">    }</span>
+
+    private ResourceStore getStore() {
+<span class="fc" id="L165">        return ResourceStore.getStore(this.config);</span>
+    }
+
+    @SuppressWarnings({ &quot;serial&quot;, &quot;unused&quot; })
+    @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE, setterVisibility = JsonAutoDetect.Visibility.NONE)
+    private static class TempStatementEntity extends RootPersistentEntity {
+        private static final String DEFAULT_SESSION_ID = &quot;DEFAULT_SESSION&quot;;
+        @JsonProperty(&quot;session_id&quot;)
+        private String sessionId;
+        @JsonProperty(&quot;statement_id&quot;)
+        private String statementId;
+        @JsonProperty(&quot;statement&quot;)
+        private String statement;
+
+        // for jackson
+<span class="fc" id="L180">        public TempStatementEntity() {</span>
+<span class="fc" id="L181">        }</span>
+
+        public TempStatementEntity(String statementId, String statement) {
+<span class="nc" id="L184">            this(DEFAULT_SESSION_ID, statementId, statement);</span>
+<span class="nc" id="L185">        }</span>
+
+<span class="fc" id="L187">        public TempStatementEntity(String sessionId, String statementId, String statement) {</span>
+<span class="fc" id="L188">            this.sessionId = sessionId;</span>
+<span class="fc" id="L189">            this.statementId = statementId;</span>
+<span class="fc" id="L190">            this.statement = statement;</span>
+<span class="fc" id="L191">        }</span>
+
+        public String getStatementId() {
+<span class="nc" id="L194">            return statementId;</span>
+        }
+
+        public void setStatementId(String statementId) {
+<span class="nc" id="L198">            this.statementId = statementId;</span>
+<span class="nc" id="L199">        }</span>
+
+        public String getStatement() {
+<span class="nc" id="L202">            return statement;</span>
+        }
+
+        public void setStatement(String statement) {
+<span class="nc" id="L206">            this.statement = statement;</span>
+<span class="nc" id="L207">        }</span>
+
+        /**
+         * Get the key to localmapping
+         * @return
+         */
+        public String getMapKey() {
+<span class="nc" id="L214">            return resourceName();</span>
+        }
+
+        @Override
+        public String resourceName() {
+<span class="fc" id="L219">            return sessionId + &quot;/&quot; + statementId;</span>
+        }
+
+        public static String resourceName(String sessionId, String statementId) {
+<span class="fc" id="L223">            return sessionId + &quot;/&quot; + statementId;</span>
+        }
+
+        public String concatResourcePath() {
+<span class="nc" id="L227">            return concatResourcePath(this.sessionId, this.statementId);</span>
+        }
+
+        public static String concatResourcePath(String statementId) {
+<span class="nc" id="L231">            return concatResourcePath(DEFAULT_SESSION_ID, statementId);</span>
+        }
+
+        public static String concatResourcePath(String sessionId, String statementId) {
+<span class="nc" id="L235">            return ResourceStore.TEMP_STATMENT_RESOURCE_ROOT + &quot;/&quot; + sessionId + &quot;/&quot; + statementId</span>
+                    + MetadataConstants.FILE_SURFIX;
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

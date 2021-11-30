@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StatisticsDecisionUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">StatisticsDecisionUtil.java</span></div><h1>StatisticsDecisionUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.CubeUpdate;
+import org.apache.kylin.engine.mr.CubingJob;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="nc" id="L38">public class StatisticsDecisionUtil {</span>
+<span class="nc" id="L39">    protected static final Logger logger = LoggerFactory.getLogger(StatisticsDecisionUtil.class);</span>
+
+    public static void decideCubingAlgorithm(CubingJob cubingJob, CubeSegment seg) throws IOException {
+<span class="nc" id="L42">        CubeStatsReader cubeStats = new CubeStatsReader(seg, null, seg.getConfig());</span>
+<span class="nc" id="L43">        decideCubingAlgorithm(cubingJob, seg, cubeStats.getMapperOverlapRatioOfFirstBuild(),</span>
+<span class="nc" id="L44">                cubeStats.getMapperNumberOfFirstBuild());</span>
+<span class="nc" id="L45">    }</span>
+
+    public static void decideCubingAlgorithm(CubingJob cubingJob, CubeSegment seg, double mapperOverlapRatio,
+            int mapperNumber) throws IOException {
+<span class="nc" id="L49">        KylinConfig kylinConf = seg.getConfig();</span>
+<span class="nc" id="L50">        String algPref = kylinConf.getCubeAlgorithm();</span>
+        CubingJob.AlgorithmEnum alg;
+<span class="nc bnc" id="L52" title="All 4 branches missed.">        if (mapperOverlapRatio == 0 &amp;&amp; kylinConf.isAutoInmemToOptimize()) { // no source records</span>
+<span class="nc" id="L53">            alg = CubingJob.AlgorithmEnum.INMEM;</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        } else if (CubingJob.AlgorithmEnum.INMEM.name().equalsIgnoreCase(algPref)) {</span>
+<span class="nc" id="L55">            alg = CubingJob.AlgorithmEnum.INMEM;</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">            if (seg.getCubeDesc().isStreamingCube() &amp;&amp; CubingJob.CubingJobTypeEnum</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">                    .getByName(cubingJob.getJobType()) == CubingJob.CubingJobTypeEnum.BUILD) {</span>
+<span class="nc" id="L58">                alg = CubingJob.AlgorithmEnum.LAYER;</span>
+            }
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        } else if (CubingJob.AlgorithmEnum.LAYER.name().equalsIgnoreCase(algPref)) {</span>
+<span class="nc" id="L61">            alg = CubingJob.AlgorithmEnum.LAYER;</span>
+        } else {
+<span class="nc" id="L63">            int memoryHungryMeasures = 0;</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            for (MeasureDesc measure : seg.getCubeDesc().getMeasures()) {</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">                if (measure.getFunction().getMeasureType().isMemoryHungry()) {</span>
+<span class="nc" id="L66">                    logger.info(&quot;This cube has memory-hungry measure &quot; + measure.getFunction().getExpression());</span>
+<span class="nc" id="L67">                    memoryHungryMeasures++;</span>
+                }
+<span class="nc" id="L69">            }</span>
+
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            if (memoryHungryMeasures &gt; 0) {</span>
+<span class="nc" id="L72">                alg = CubingJob.AlgorithmEnum.LAYER;</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            } else if (&quot;random&quot;.equalsIgnoreCase(algPref)) { // for testing</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                alg = new Random().nextBoolean() ? CubingJob.AlgorithmEnum.INMEM : CubingJob.AlgorithmEnum.LAYER;</span>
+            } else { // the default
+<span class="nc" id="L76">                int mapperNumLimit = kylinConf.getCubeAlgorithmAutoMapperLimit();</span>
+<span class="nc" id="L77">                double overlapThreshold = kylinConf.getCubeAlgorithmAutoThreshold();</span>
+<span class="nc" id="L78">                logger.info(&quot;mapperNumber for &quot; + seg + &quot; is &quot; + mapperNumber + &quot; and threshold is &quot; + mapperNumLimit);</span>
+<span class="nc" id="L79">                logger.info(&quot;mapperOverlapRatio for &quot; + seg + &quot; is &quot; + mapperOverlapRatio + &quot; and threshold is &quot;</span>
+                        + overlapThreshold);
+
+                // in-mem cubing is good when
+                // 1) the cluster has enough mapper slots to run in parallel
+                // 2) the mapper overlap ratio is small, meaning the shuffle of in-mem MR has advantage
+<span class="nc bnc" id="L85" title="All 4 branches missed.">                alg = (mapperNumber &lt;= mapperNumLimit &amp;&amp; mapperOverlapRatio &lt;= overlapThreshold)//</span>
+                        ? CubingJob.AlgorithmEnum.INMEM
+                        : CubingJob.AlgorithmEnum.LAYER;
+            }
+
+        }
+<span class="nc" id="L91">        logger.info(&quot;The cube algorithm for &quot; + seg + &quot; is &quot; + alg);</span>
+
+<span class="nc" id="L93">        cubingJob.setAlgorithm(alg);</span>
+<span class="nc" id="L94">    }</span>
+
+    // For triggering cube planner phase one
+    public static Map&lt;Long, Long&gt; optimizeCubingPlan(CubeSegment segment) throws IOException {
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (isAbleToOptimizeCubingPlan(segment)) {</span>
+<span class="nc" id="L99">            logger.info(&quot;It's able to trigger cuboid planner algorithm.&quot;);</span>
+        } else {
+<span class="nc" id="L101">            return new HashMap&lt;&gt;();</span>
+        }
+
+<span class="nc" id="L104">        Map&lt;Long, Long&gt; recommendCuboidsWithStats = CuboidRecommenderUtil.getRecommendCuboidList(segment);</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">        if (recommendCuboidsWithStats == null || recommendCuboidsWithStats.isEmpty()) {</span>
+<span class="nc" id="L106">            return new HashMap&lt;&gt;();</span>
+        }
+
+<span class="nc" id="L109">        CubeInstance cube = segment.getCubeInstance();</span>
+<span class="nc" id="L110">        CubeUpdate update = new CubeUpdate(cube.latestCopyForWrite());</span>
+<span class="nc" id="L111">        update.setCuboids(recommendCuboidsWithStats);</span>
+<span class="nc" id="L112">        CubeManager.getInstance(cube.getConfig()).updateCube(update);</span>
+<span class="nc" id="L113">        return recommendCuboidsWithStats;</span>
+    }
+
+    public static boolean isAbleToOptimizeCubingPlan(CubeSegment segment) {
+<span class="nc" id="L117">        CubeInstance cube = segment.getCubeInstance();</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (!cube.getConfig().isCubePlannerEnabled())</span>
+<span class="nc" id="L119">            return false;</span>
+
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (cube.getSegments(SegmentStatusEnum.READY_PENDING).size() &gt; 0) {</span>
+<span class="nc" id="L122">            logger.info(&quot;Has read pending segments and will not enable cube planner.&quot;);</span>
+<span class="nc" id="L123">            return false;</span>
+        }
+<span class="nc" id="L125">        List&lt;CubeSegment&gt; readySegments = cube.getSegments(SegmentStatusEnum.READY);</span>
+<span class="nc" id="L126">        List&lt;CubeSegment&gt; newSegments = cube.getSegments(SegmentStatusEnum.NEW);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (newSegments.size() &lt;= 1 &amp;&amp; //</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                (readySegments.size() == 0 || //</span>
+<span class="nc bnc" id="L129" title="All 4 branches missed.">                        (cube.getConfig().isCubePlannerEnabledForExistingCube() &amp;&amp; readySegments.size() == 1</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                                &amp;&amp; readySegments.get(0).getSegRange().equals(segment.getSegRange())))) {</span>
+<span class="nc" id="L131">            return true;</span>
+        } else {
+<span class="nc" id="L133">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

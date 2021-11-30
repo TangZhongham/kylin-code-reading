@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Quadruple.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">Quadruple.java</span></div><h1>Quadruple.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.util;
+
+/**
+ * Utility class to manage a quadruple. Copied from org.apache.hadoop.hbase.util.Pair
+ */
+public class Quadruple&lt;A, B, C, D&gt; {
+    private A first;
+    private B second;
+    private C third;
+    private D fourth;
+
+<span class="nc" id="L30">    public Quadruple(A first, B second, C third, D fourth) {</span>
+<span class="nc" id="L31">        this.first = first;</span>
+<span class="nc" id="L32">        this.second = second;</span>
+<span class="nc" id="L33">        this.third = third;</span>
+<span class="nc" id="L34">        this.fourth = fourth;</span>
+<span class="nc" id="L35">    }</span>
+
+    // ctor cannot infer types w/o warning but a method can.
+    public static &lt;A, B, C, D&gt; Quadruple&lt;A, B, C, D&gt; create(A first, B second, C third, D fourth) {
+<span class="nc" id="L39">        return new Quadruple&lt;A, B, C, D&gt;(first, second, third, fourth);</span>
+    }
+
+    public int hashCode() {
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        int hashFirst = (first != null ? first.hashCode() : 0);</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        int hashSecond = (second != null ? second.hashCode() : 0);</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        int hashThird = (third != null ? third.hashCode() : 0);</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        int hashFourth = (fourth != null ? fourth.hashCode() : 0);</span>
+
+<span class="nc" id="L48">        return (hashFirst &gt;&gt; 1) ^ hashSecond ^ (hashThird &lt;&lt; 1) ^ (hashFourth &lt;&lt; 1);</span>
+    }
+
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (!(obj instanceof Quadruple)) {</span>
+<span class="nc" id="L53">            return false;</span>
+        }
+
+<span class="nc" id="L56">        Quadruple&lt;?, ?, ?, ?&gt; otherQuadruple = (Quadruple&lt;?, ?, ?, ?&gt;) obj;</span>
+
+<span class="nc bnc" id="L58" title="All 6 branches missed.">        if (first != otherQuadruple.first &amp;&amp; (first != null &amp;&amp; !(first.equals(otherQuadruple.first))))</span>
+<span class="nc" id="L59">            return false;</span>
+<span class="nc bnc" id="L60" title="All 6 branches missed.">        if (second != otherQuadruple.second &amp;&amp; (second != null &amp;&amp; !(second.equals(otherQuadruple.second))))</span>
+<span class="nc" id="L61">            return false;</span>
+<span class="nc bnc" id="L62" title="All 6 branches missed.">        if (third != otherQuadruple.third &amp;&amp; (third != null &amp;&amp; !(third.equals(otherQuadruple.third))))</span>
+<span class="nc" id="L63">            return false;</span>
+<span class="nc bnc" id="L64" title="All 6 branches missed.">        if (fourth != otherQuadruple.fourth &amp;&amp; (fourth != null &amp;&amp; !(fourth.equals(otherQuadruple.fourth))))</span>
+<span class="nc" id="L65">            return false;</span>
+
+<span class="nc" id="L67">        return true;</span>
+    }
+
+    public String toString() {
+<span class="nc" id="L71">        return &quot;(&quot; + first + &quot;, &quot; + second + &quot;, &quot; + third + &quot;, &quot; + fourth + &quot;)&quot;;</span>
+    }
+
+    public A getFirst() {
+<span class="nc" id="L75">        return first;</span>
+    }
+
+    public void setFirst(A first) {
+<span class="nc" id="L79">        this.first = first;</span>
+<span class="nc" id="L80">    }</span>
+
+    public B getSecond() {
+<span class="nc" id="L83">        return second;</span>
+    }
+
+    public void setSecond(B second) {
+<span class="nc" id="L87">        this.second = second;</span>
+<span class="nc" id="L88">    }</span>
+
+    public C getThird() {
+<span class="nc" id="L91">        return third;</span>
+    }
+
+    public void setThird(C third) {
+<span class="nc" id="L95">        this.third = third;</span>
+<span class="nc" id="L96">    }</span>
+
+    public D getFourth() {
+<span class="nc" id="L99">        return fourth;</span>
+    }
+
+    public void setFourth(D fourth) {
+<span class="nc" id="L103">        this.fourth = fourth;</span>
+<span class="nc" id="L104">    }</span>
+}
+
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

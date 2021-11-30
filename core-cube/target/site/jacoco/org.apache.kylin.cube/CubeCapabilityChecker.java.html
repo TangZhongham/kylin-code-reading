@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeCapabilityChecker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">CubeCapabilityChecker.java</span></div><h1>CubeCapabilityChecker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube;
+
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import java.util.Arrays;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.cube.model.AggregationGroup;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.basic.BasicMeasureType;
+import org.apache.kylin.metadata.filter.UDF.MassInTupleFilter;
+import org.apache.kylin.metadata.model.DynamicFunctionDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.IStorageAware;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.CapabilityResult;
+import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ */
+<span class="nc" id="L52">public class CubeCapabilityChecker {</span>
+<span class="nc" id="L53">    private static final Logger logger = LoggerFactory.getLogger(CubeCapabilityChecker.class);</span>
+
+    public static CapabilityResult check(CubeInstance cube, SQLDigest digest) {
+<span class="nc" id="L56">        CapabilityResult result = new CapabilityResult();</span>
+<span class="nc" id="L57">        result.capable = false;</span>
+
+        // match joins is ensured at model select
+
+        // dimensions &amp; measures
+<span class="nc" id="L62">        Collection&lt;TblColRef&gt; dimensionColumns = getDimensionColumns(digest);</span>
+<span class="nc" id="L63">        Collection&lt;FunctionDesc&gt; aggrFunctions = digest.aggregations;</span>
+<span class="nc" id="L64">        Collection&lt;TblColRef&gt; unmatchedDimensions = unmatchedDimensions(dimensionColumns, cube);</span>
+<span class="nc" id="L65">        Collection&lt;FunctionDesc&gt; unmatchedAggregations = unmatchedAggregations(aggrFunctions, cube);</span>
+
+        // try custom measure types
+<span class="nc" id="L68">        tryCustomMeasureTypes(unmatchedDimensions, unmatchedAggregations, digest, cube, result);</span>
+
+        //more tricks
+<span class="nc" id="L71">        String rootFactTable = cube.getRootFactTable();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (rootFactTable.equals(digest.factTable)) {</span>
+            //for query-on-facttable
+            //1. dimension as measure
+
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            if (!unmatchedAggregations.isEmpty()) {</span>
+<span class="nc" id="L77">                removeUnmatchedGroupingAgg(unmatchedAggregations);</span>
+<span class="nc" id="L78">                tryDimensionAsMeasures(unmatchedAggregations, result,</span>
+<span class="nc" id="L79">                        cube.getDescriptor().listDimensionColumnsIncludingDerived());</span>
+            }
+        } else {
+            //for non query-on-facttable
+<span class="nc" id="L83">            CubeSegment latestReadySeg = cube.getLatestReadySegment();</span>
+<span class="nc bnc" id="L84" title="All 4 branches missed.">            if ((latestReadySeg != null &amp;&amp; latestReadySeg.getSnapshots().containsKey(digest.factTable))</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">                    || cube.getSnapshots().containsKey(digest.factTable)) {</span>
+
+<span class="nc" id="L87">                Set&lt;TblColRef&gt; dimCols = Sets.newHashSet(cube.getModel().findFirstTable(digest.factTable).getColumns());</span>
+
+                //1. all aggregations on lookup table can be done. For distinct count, mark them all DimensionAsMeasures
+                // so that the measure has a chance to be upgraded to DimCountDistinctMeasureType in org.apache.kylin.metadata.model.FunctionDesc#reInitMeasureType
+<span class="nc bnc" id="L91" title="All 2 branches missed.">                if (!unmatchedAggregations.isEmpty()) {</span>
+<span class="nc" id="L92">                    Iterator&lt;FunctionDesc&gt; itr = unmatchedAggregations.iterator();</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">                    while (itr.hasNext()) {</span>
+<span class="nc" id="L94">                        FunctionDesc functionDesc = itr.next();</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">                        if (dimCols.containsAll(functionDesc.getParameter().getColRefs())) {</span>
+<span class="nc" id="L96">                            itr.remove();</span>
+                        }
+<span class="nc" id="L98">                    }</span>
+                }
+<span class="nc" id="L100">                tryDimensionAsMeasures(Lists.newArrayList(aggrFunctions), result, dimCols);</span>
+
+                //2. more &quot;dimensions&quot; contributed by snapshot
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                if (!unmatchedDimensions.isEmpty()) {</span>
+<span class="nc" id="L104">                    unmatchedDimensions.removeAll(dimCols);</span>
+                }
+<span class="nc" id="L106">            } else {</span>
+<span class="nc" id="L107">                logger.info(&quot;cube {} does not touch lookup table {} at all&quot;, cube.getName(), digest.factTable);</span>
+<span class="nc" id="L108">                return result;</span>
+            }
+        }
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (!unmatchedDimensions.isEmpty()) {</span>
+<span class="nc" id="L113">            logger.info(&quot;Exclude cube &quot; + cube.getName() + &quot; because unmatched dimensions: &quot; + unmatchedDimensions);</span>
+<span class="nc" id="L114">            result.incapableCause = CapabilityResult.IncapableCause.unmatchedDimensions(unmatchedDimensions);</span>
+<span class="nc" id="L115">            return result;</span>
+        }
+
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (!unmatchedAggregations.isEmpty()) {</span>
+<span class="nc" id="L119">            logger.info(&quot;Exclude cube &quot; + cube.getName() + &quot; because unmatched aggregations: &quot; + unmatchedAggregations);</span>
+<span class="nc" id="L120">            result.incapableCause = CapabilityResult.IncapableCause.unmatchedAggregations(unmatchedAggregations);</span>
+<span class="nc" id="L121">            return result;</span>
+        }
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (cube.getStorageType() == IStorageAware.ID_HBASE</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                &amp;&amp; MassInTupleFilter.containsMassInTupleFilter(digest.filter)) {</span>
+<span class="nc" id="L126">            logger.info(</span>
+<span class="nc" id="L127">                    &quot;Exclude cube &quot; + cube.getName() + &quot; because only v2 storage + v2 query engine supports massin&quot;);</span>
+<span class="nc" id="L128">            result.incapableCause = CapabilityResult.IncapableCause</span>
+<span class="nc" id="L129">                    .create(CapabilityResult.IncapableType.UNSUPPORT_MASSIN);</span>
+<span class="nc" id="L130">            return result;</span>
+        }
+
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (digest.limitPrecedesAggr) {</span>
+<span class="nc" id="L134">            logger.info(&quot;Exclude cube &quot; + cube.getName() + &quot; because there's limit preceding aggregation&quot;);</span>
+<span class="nc" id="L135">            result.incapableCause = CapabilityResult.IncapableCause</span>
+<span class="nc" id="L136">                    .create(CapabilityResult.IncapableType.LIMIT_PRECEDE_AGGR);</span>
+<span class="nc" id="L137">            return result;</span>
+        }
+
+<span class="nc bnc" id="L140" title="All 4 branches missed.">        if (digest.isRawQuery &amp;&amp; rootFactTable.equals(digest.factTable)) {</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (cube.getConfig().isDisableCubeNoAggSQL()) {</span>
+<span class="nc" id="L142">                result.incapableCause = CapabilityResult.IncapableCause</span>
+<span class="nc" id="L143">                        .create(CapabilityResult.IncapableType.UNSUPPORT_RAWQUERY);</span>
+<span class="nc" id="L144">                return result;</span>
+            } else {
+<span class="nc" id="L146">                result.influences.add(new CapabilityInfluence() {</span>
+                    @Override
+                    public double suggestCostMultiplier() {
+<span class="nc" id="L149">                        return 100;</span>
+                    }
+
+                    @Override
+                    public MeasureDesc getInvolvedMeasure() {
+<span class="nc" id="L154">                        return null;</span>
+                    }
+                });
+            }
+        }
+
+        // cost will be minded by caller
+<span class="nc" id="L161">        result.capable = true;</span>
+<span class="nc" id="L162">        return result;</span>
+    }
+
+    private static Collection&lt;TblColRef&gt; getDimensionColumns(SQLDigest sqlDigest) {
+<span class="nc" id="L166">        Collection&lt;TblColRef&gt; groupByColumns = sqlDigest.groupbyColumns;</span>
+<span class="nc" id="L167">        Collection&lt;TblColRef&gt; filterColumns = sqlDigest.filterColumns;</span>
+<span class="nc" id="L168">        Collection&lt;TblColRef&gt; rtDimColumns = sqlDigest.rtDimensionColumns;</span>
+
+<span class="nc" id="L170">        Collection&lt;TblColRef&gt; dimensionColumns = new HashSet&lt;TblColRef&gt;();</span>
+<span class="nc" id="L171">        dimensionColumns.addAll(groupByColumns);</span>
+<span class="nc" id="L172">        dimensionColumns.addAll(filterColumns);</span>
+<span class="nc" id="L173">        dimensionColumns.addAll(rtDimColumns);</span>
+<span class="nc" id="L174">        return dimensionColumns;</span>
+    }
+
+    private static Set&lt;TblColRef&gt; unmatchedDimensions(Collection&lt;TblColRef&gt; dimensionColumns, CubeInstance cube) {
+<span class="nc" id="L178">        HashSet&lt;TblColRef&gt; result = Sets.newHashSet(dimensionColumns);</span>
+<span class="nc" id="L179">        CubeDesc cubeDesc = cube.getDescriptor();</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (cube.getConfig().isBuildBaseCuboid()) {</span>
+<span class="nc" id="L181">            result.removeAll(cubeDesc.listDimensionColumnsIncludingDerived());</span>
+        } else {
+<span class="nc" id="L183">            HashSet&lt;TblColRef&gt; aggResult = result;</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            for (AggregationGroup aggGroup : cubeDesc.getAggregationGroups()) {</span>
+<span class="nc" id="L185">                List&lt;String&gt; aggGroupColumn = Arrays.asList(aggGroup.getIncludes());</span>
+<span class="nc" id="L186">                HashSet&lt;TblColRef&gt; tmpAggResult = new HashSet&lt;&gt;(dimensionColumns);</span>
+<span class="nc" id="L187">                Iterator&lt;TblColRef&gt; iterator = result.iterator();</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">                while (iterator.hasNext()) {</span>
+<span class="nc" id="L189">                    TblColRef col = iterator.next();</span>
+<span class="nc" id="L190">                    String colName = col.getCanonicalName();</span>
+<span class="nc" id="L191">                    String[] colInfo = colName.split(&quot;\\.&quot;);</span>
+                    // colName: database.table.column
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                    if (colInfo.length == 3) {</span>
+<span class="nc" id="L194">                        colName = colInfo[1] + &quot;.&quot; + colInfo[2];</span>
+                    }
+                    // colName: tableAlias:database.table.column
+<span class="nc bnc" id="L197" title="All 2 branches missed.">                    if (col.getTableAlias() != null) {</span>
+<span class="nc" id="L198">                        colName = col.getTableAlias() + &quot;.&quot; + colInfo[2];</span>
+                    }
+                    // aggGroupColumn: [table1Alias.column1,table2Alias.column2,....]
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                    if (aggGroupColumn.contains(colName)) {</span>
+<span class="nc" id="L202">                        tmpAggResult.remove(col);</span>
+                    }
+<span class="nc" id="L204">                }</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                if (tmpAggResult.size() &lt; aggResult.size()) {</span>
+<span class="nc" id="L206">                    aggResult = tmpAggResult;</span>
+                }
+<span class="nc" id="L208">            }</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">            if (aggResult.size() &gt; 0) {</span>
+<span class="nc" id="L210">                aggResult.removeAll(cubeDesc.listDerivedDimensionColumns());</span>
+            }
+<span class="nc" id="L212">            result = aggResult;</span>
+        }
+<span class="nc" id="L214">        return result;</span>
+    }
+
+    private static Set&lt;FunctionDesc&gt; unmatchedAggregations(Collection&lt;FunctionDesc&gt; aggregations, CubeInstance cube) {
+<span class="nc" id="L218">        HashSet&lt;FunctionDesc&gt; result = Sets.newHashSet(aggregations);</span>
+
+<span class="nc" id="L220">        CubeDesc cubeDesc = cube.getDescriptor();</span>
+<span class="nc" id="L221">        List&lt;FunctionDesc&gt; definedFuncs = cubeDesc.listAllFunctions();</span>
+
+        // check normal aggregations
+<span class="nc" id="L224">        result.removeAll(definedFuncs);</span>
+
+        // check dynamic aggregations
+<span class="nc" id="L227">        Iterator&lt;FunctionDesc&gt; funcIterator = result.iterator();</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        while (funcIterator.hasNext()) {</span>
+<span class="nc" id="L229">            FunctionDesc entry = funcIterator.next();</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            if (entry instanceof DynamicFunctionDesc) {</span>
+<span class="nc" id="L231">                DynamicFunctionDesc dynFunc = (DynamicFunctionDesc) entry;</span>
+                // Filter columns cannot be derived
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                Collection&lt;TblColRef&gt; definedCols = dynFunc.ifFriendlyForDerivedFilter()</span>
+<span class="nc" id="L234">                        ? cubeDesc.listDimensionColumnsIncludingDerived()</span>
+<span class="nc" id="L235">                        : cubeDesc.listDimensionColumnsExcludingDerived(true);</span>
+<span class="nc" id="L236">                Set&lt;TblColRef&gt; filterCols = Sets.newHashSet(dynFunc.getFilterColumnSet());</span>
+<span class="nc" id="L237">                filterCols.removeAll(definedCols);</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">                if (!filterCols.isEmpty()) {</span>
+<span class="nc" id="L239">                    continue;</span>
+                }
+
+                // All inner funcs should be defined
+<span class="nc" id="L243">                Set&lt;FunctionDesc&gt; innerFuncSet = Sets.newHashSet(dynFunc.getRuntimeFuncs());</span>
+<span class="nc" id="L244">                innerFuncSet.removeAll(definedFuncs);</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                if (!innerFuncSet.isEmpty()) {</span>
+<span class="nc" id="L246">                    continue;</span>
+                }
+
+<span class="nc" id="L249">                funcIterator.remove();</span>
+            }
+<span class="nc" id="L251">        }</span>
+<span class="nc" id="L252">        return result;</span>
+    }
+
+    private static void tryDimensionAsMeasures(Collection&lt;FunctionDesc&gt; unmatchedAggregations, CapabilityResult result,
+            Set&lt;TblColRef&gt; dimCols) {
+
+<span class="nc" id="L258">        Iterator&lt;FunctionDesc&gt; it = unmatchedAggregations.iterator();</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L260">            FunctionDesc functionDesc = it.next();</span>
+
+            // let calcite handle count
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            if (functionDesc.isCount()) {</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">                logger.warn(&quot;No count measure found for column {}, will use count(1) to replace it, please note that it will count all value(include null value)&quot;, functionDesc.getParameter() == null ? &quot;&quot; : functionDesc.getParameter().getColRef().getName());</span>
+<span class="nc" id="L265">                it.remove();</span>
+<span class="nc" id="L266">                continue;</span>
+            }
+
+            // calcite can do aggregation from columns on-the-fly
+<span class="nc" id="L270">            ParameterDesc parameterDesc = functionDesc.getParameter();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (parameterDesc == null) {</span>
+<span class="nc" id="L272">                continue;</span>
+            }
+<span class="nc" id="L274">            List&lt;TblColRef&gt; neededCols = parameterDesc.getColRefs();</span>
+<span class="nc bnc" id="L275" title="All 4 branches missed.">            if (neededCols.size() &gt; 0 &amp;&amp; dimCols.containsAll(neededCols)</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">                    &amp;&amp; FunctionDesc.BUILT_IN_AGGREGATIONS.contains(functionDesc.getExpression())) {</span>
+<span class="nc" id="L277">                result.influences.add(new CapabilityResult.DimensionAsMeasure(functionDesc));</span>
+<span class="nc" id="L278">                it.remove();</span>
+<span class="nc" id="L279">                continue;</span>
+            }
+<span class="nc" id="L281">        }</span>
+<span class="nc" id="L282">    }</span>
+
+    // custom measure types can cover unmatched dimensions or measures
+    private static void tryCustomMeasureTypes(Collection&lt;TblColRef&gt; unmatchedDimensions,
+            Collection&lt;FunctionDesc&gt; unmatchedAggregations, SQLDigest digest, CubeInstance cube,
+            CapabilityResult result) {
+<span class="nc" id="L288">        CubeDesc cubeDesc = cube.getDescriptor();</span>
+<span class="nc" id="L289">        List&lt;String&gt; influencingMeasures = Lists.newArrayList();</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        for (MeasureDesc measure : cubeDesc.getMeasures()) {</span>
+            //            if (unmatchedDimensions.isEmpty() &amp;&amp; unmatchedAggregations.isEmpty())
+            //                break;
+
+<span class="nc" id="L294">            MeasureType&lt;?&gt; measureType = measure.getFunction().getMeasureType();</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (measureType instanceof BasicMeasureType)</span>
+<span class="nc" id="L296">                continue;</span>
+
+<span class="nc" id="L298">            CapabilityInfluence inf = measureType.influenceCapabilityCheck(unmatchedDimensions, unmatchedAggregations,</span>
+                    digest, measure);
+<span class="nc bnc" id="L300" title="All 2 branches missed.">            if (inf != null) {</span>
+<span class="nc" id="L301">                result.influences.add(inf);</span>
+<span class="nc" id="L302">                influencingMeasures.add(measure.getName() + &quot;@&quot; + measureType.getClass());</span>
+            }
+<span class="nc" id="L304">        }</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (influencingMeasures.size() != 0)</span>
+<span class="nc" id="L306">            logger.info(&quot;Cube {} CapabilityInfluences: {}&quot;, cube.getCanonicalName(),</span>
+<span class="nc" id="L307">                    StringUtils.join(influencingMeasures, &quot;,&quot;));</span>
+<span class="nc" id="L308">    }</span>
+
+    private static void removeUnmatchedGroupingAgg(Collection&lt;FunctionDesc&gt; unmatchedAggregations) {
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        if (CollectionUtils.isEmpty(unmatchedAggregations))</span>
+<span class="nc" id="L312">            return;</span>
+<span class="nc" id="L313">        Iterator&lt;FunctionDesc&gt; iterator = unmatchedAggregations.iterator();</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            if (FunctionDesc.FUNC_GROUPING.equalsIgnoreCase(iterator.next().getExpression())) {</span>
+<span class="nc" id="L316">                iterator.remove();</span>
+            }
+        }
+<span class="nc" id="L319">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

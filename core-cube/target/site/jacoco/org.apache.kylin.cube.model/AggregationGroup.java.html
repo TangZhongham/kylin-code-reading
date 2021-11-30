@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AggregationGroup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">AggregationGroup.java</span></div><h1>AggregationGroup.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.model;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.Function;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Collections2;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.math.LongMath;
+
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L48">public class AggregationGroup implements Serializable {</span>
+<span class="fc" id="L49">    public static class HierarchyMask implements Serializable {</span>
+        public long fullMask; // 00000111
+        public long[] allMasks; // 00000100,00000110,00000111
+        public long[] dims; // 00000100,00000010,00000001
+    }
+
+    @JsonProperty(&quot;includes&quot;)
+    private String[] includes;
+    @JsonProperty(&quot;select_rule&quot;)
+    private SelectRule selectRule;
+
+    //computed
+    private long partialCubeFullMask;
+    private long mandatoryColumnMask;
+    private List&lt;HierarchyMask&gt; hierarchyMasks;
+    private List&lt;Long&gt; joints;//each long is a group
+    private long jointDimsMask;
+    private long normalDimsMask;
+    private long hierarchyDimsMask;
+    private List&lt;Long&gt; normalDims;//each long is a single dim
+    private CubeDesc cubeDesc;
+    private boolean isMandatoryOnlyValid;
+    private HashMap&lt;Long, Long&gt; dim2JointMap;
+
+    public void init(CubeDesc cubeDesc, RowKeyDesc rowKeyDesc) {
+<span class="fc" id="L74">        this.cubeDesc = cubeDesc;</span>
+<span class="fc" id="L75">        this.isMandatoryOnlyValid = cubeDesc.getConfig().getCubeAggrGroupIsMandatoryOnlyValid();</span>
+
+<span class="pc bpc" id="L77" title="1 of 6 branches missed.">        if (this.includes == null || this.includes.length == 0 || this.selectRule == null) {</span>
+<span class="fc" id="L78">            throw new IllegalStateException(&quot;AggregationGroup incomplete&quot;);</span>
+        }
+
+<span class="fc" id="L81">        normalizeColumnNames();</span>
+
+<span class="fc" id="L83">        buildPartialCubeFullMask(rowKeyDesc);</span>
+<span class="fc" id="L84">        buildMandatoryColumnMask(rowKeyDesc);</span>
+<span class="fc" id="L85">        buildJointColumnMask(rowKeyDesc);</span>
+<span class="fc" id="L86">        buildJointDimsMask();</span>
+<span class="fc" id="L87">        buildHierarchyMasks(rowKeyDesc);</span>
+<span class="fc" id="L88">        buildHierarchyDimsMask();</span>
+<span class="fc" id="L89">        buildNormalDimsMask();</span>
+<span class="fc" id="L90">    }</span>
+
+    private void normalizeColumnNames() {
+<span class="fc" id="L93">        Preconditions.checkNotNull(includes);</span>
+<span class="fc" id="L94">        normalizeColumnNames(includes);</span>
+
+<span class="fc" id="L96">        Preconditions.checkNotNull(selectRule.mandatoryDims);</span>
+<span class="fc" id="L97">        normalizeColumnNames(selectRule.mandatoryDims);</span>
+
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (selectRule.hierarchyDims == null)</span>
+<span class="nc" id="L100">            selectRule.hierarchyDims = new String[0][];</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        for (String[] cols : selectRule.hierarchyDims) {</span>
+<span class="fc" id="L102">            Preconditions.checkNotNull(cols);</span>
+<span class="fc" id="L103">            normalizeColumnNames(cols);</span>
+        }
+
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (selectRule.jointDims == null)</span>
+<span class="nc" id="L107">            selectRule.jointDims = new String[0][];</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        for (String[] cols : selectRule.jointDims) {</span>
+<span class="fc" id="L109">            Preconditions.checkNotNull(cols);</span>
+<span class="fc" id="L110">            normalizeColumnNames(cols);</span>
+        }
+<span class="fc" id="L112">    }</span>
+
+    private void normalizeColumnNames(String[] names) {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (names == null)</span>
+<span class="nc" id="L116">            return;</span>
+
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (int i = 0; i &lt; names.length; i++) {</span>
+<span class="fc" id="L119">            TblColRef col = cubeDesc.getModel().findColumn(names[i]);</span>
+<span class="fc" id="L120">            names[i] = col.getIdentity();</span>
+        }
+
+        // check no dup
+<span class="fc" id="L124">        Set&lt;String&gt; set = new HashSet&lt;&gt;(Arrays.asList(names));</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (set.size() &lt; names.length)</span>
+<span class="nc" id="L126">            throw new IllegalStateException(</span>
+<span class="nc" id="L127">                    &quot;Columns in aggrgroup must not contain duplication: &quot; + Arrays.asList(names));</span>
+<span class="fc" id="L128">    }</span>
+
+    private void buildPartialCubeFullMask(RowKeyDesc rowKeyDesc) {
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        Preconditions.checkState(this.includes != null);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        Preconditions.checkState(this.includes.length != 0);</span>
+
+<span class="fc" id="L134">        partialCubeFullMask = 0L;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (String dim : this.includes) {</span>
+<span class="fc" id="L136">            TblColRef hColumn = cubeDesc.getModel().findColumn(dim);</span>
+<span class="fc" id="L137">            Integer index = rowKeyDesc.getColumnBitIndex(hColumn);</span>
+<span class="fc" id="L138">            long bit = 1L &lt;&lt; index;</span>
+<span class="fc" id="L139">            partialCubeFullMask |= bit;</span>
+        }
+<span class="fc" id="L141">    }</span>
+
+    private void buildJointColumnMask(RowKeyDesc rowKeyDesc) {
+<span class="fc" id="L144">        joints = Lists.newArrayList();</span>
+<span class="fc" id="L145">        dim2JointMap = Maps.newHashMap();</span>
+
+<span class="pc bpc" id="L147" title="1 of 4 branches missed.">        if (this.selectRule.jointDims == null || this.selectRule.jointDims.length == 0) {</span>
+<span class="fc" id="L148">            return;</span>
+        }
+
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (String[] jointDims : this.selectRule.jointDims) {</span>
+<span class="pc bpc" id="L152" title="2 of 4 branches missed.">            if (jointDims == null || jointDims.length == 0) {</span>
+<span class="nc" id="L153">                continue;</span>
+            }
+
+<span class="fc" id="L156">            long joint = 0L;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            for (int i = 0; i &lt; jointDims.length; i++) {</span>
+<span class="fc" id="L158">                TblColRef hColumn = cubeDesc.getModel().findColumn(jointDims[i]);</span>
+<span class="fc" id="L159">                Integer index = rowKeyDesc.getColumnBitIndex(hColumn);</span>
+<span class="fc" id="L160">                long bit = 1L &lt;&lt; index;</span>
+<span class="fc" id="L161">                joint |= bit;</span>
+            }
+
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            Preconditions.checkState(joint != 0);</span>
+<span class="fc" id="L165">            joints.add(joint);</span>
+        }
+
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        for (long jt : joints) {</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            for (int i = 0; i &lt; 64; i++) {</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                if (((1L &lt;&lt; i) &amp; jt) != 0) {</span>
+<span class="fc" id="L171">                    dim2JointMap.put((1L &lt;&lt; i), jt);</span>
+                }
+            }
+<span class="fc" id="L174">        }</span>
+<span class="fc" id="L175">    }</span>
+
+    private void buildMandatoryColumnMask(RowKeyDesc rowKeyDesc) {
+<span class="fc" id="L178">        mandatoryColumnMask = 0L;</span>
+
+<span class="fc" id="L180">        String[] mandatory_dims = this.selectRule.mandatoryDims;</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">        if (mandatory_dims == null || mandatory_dims.length == 0) {</span>
+<span class="fc" id="L182">            return;</span>
+        }
+
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        for (String dim : mandatory_dims) {</span>
+<span class="fc" id="L186">            TblColRef hColumn = cubeDesc.getModel().findColumn(dim);</span>
+<span class="fc" id="L187">            Integer index = rowKeyDesc.getColumnBitIndex(hColumn);</span>
+<span class="fc" id="L188">            mandatoryColumnMask |= (1L &lt;&lt; index);</span>
+        }
+<span class="fc" id="L190">    }</span>
+
+    private void buildHierarchyMasks(RowKeyDesc rowKeyDesc) {
+<span class="fc" id="L193">        this.hierarchyMasks = new ArrayList&lt;HierarchyMask&gt;();</span>
+
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">        if (this.selectRule.hierarchyDims == null || this.selectRule.hierarchyDims.length == 0) {</span>
+<span class="fc" id="L196">            return;</span>
+        }
+
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (String[] hierarchy_dims : this.selectRule.hierarchyDims) {</span>
+<span class="fc" id="L200">            HierarchyMask mask = new HierarchyMask();</span>
+<span class="pc bpc" id="L201" title="2 of 4 branches missed.">            if (hierarchy_dims == null || hierarchy_dims.length == 0) {</span>
+<span class="nc" id="L202">                continue;</span>
+            }
+
+<span class="fc" id="L205">            ArrayList&lt;Long&gt; allMaskList = new ArrayList&lt;Long&gt;();</span>
+<span class="fc" id="L206">            ArrayList&lt;Long&gt; dimList = new ArrayList&lt;Long&gt;();</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            for (int i = 0; i &lt; hierarchy_dims.length; i++) {</span>
+<span class="fc" id="L208">                TblColRef hColumn = cubeDesc.getModel().findColumn(hierarchy_dims[i]);</span>
+<span class="fc" id="L209">                Integer index = rowKeyDesc.getColumnBitIndex(hColumn);</span>
+<span class="fc" id="L210">                long bit = 1L &lt;&lt; index;</span>
+
+                // combine joint as logic dim
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                if (dim2JointMap.get(bit) != null) {</span>
+<span class="fc" id="L214">                    bit = dim2JointMap.get(bit);</span>
+                }
+
+<span class="fc" id="L217">                mask.fullMask |= bit;</span>
+<span class="fc" id="L218">                allMaskList.add(mask.fullMask);</span>
+<span class="fc" id="L219">                dimList.add(bit);</span>
+            }
+
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            Preconditions.checkState(allMaskList.size() == dimList.size());</span>
+<span class="fc" id="L223">            mask.allMasks = new long[allMaskList.size()];</span>
+<span class="fc" id="L224">            mask.dims = new long[dimList.size()];</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            for (int i = 0; i &lt; allMaskList.size(); i++) {</span>
+<span class="fc" id="L226">                mask.allMasks[i] = allMaskList.get(i);</span>
+<span class="fc" id="L227">                mask.dims[i] = dimList.get(i);</span>
+            }
+
+<span class="fc" id="L230">            this.hierarchyMasks.add(mask);</span>
+        }
+<span class="fc" id="L232">    }</span>
+
+    private void buildNormalDimsMask() {
+        //no joint, no hierarchy, no mandatory
+<span class="fc" id="L236">        long leftover = partialCubeFullMask &amp; ~mandatoryColumnMask;</span>
+<span class="fc" id="L237">        leftover &amp;= ~this.jointDimsMask;</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        for (HierarchyMask hierarchyMask : this.hierarchyMasks) {</span>
+<span class="fc" id="L239">            leftover &amp;= ~hierarchyMask.fullMask;</span>
+<span class="fc" id="L240">        }</span>
+
+<span class="fc" id="L242">        this.normalDimsMask = leftover;</span>
+<span class="fc" id="L243">        this.normalDims = bits(leftover);</span>
+<span class="fc" id="L244">    }</span>
+
+    private void buildHierarchyDimsMask() {
+<span class="fc" id="L247">        long ret = 0;</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        for (HierarchyMask mask : hierarchyMasks) {</span>
+<span class="fc" id="L249">            ret |= mask.fullMask;</span>
+<span class="fc" id="L250">        }</span>
+<span class="fc" id="L251">        this.hierarchyDimsMask = ret;</span>
+<span class="fc" id="L252">    }</span>
+
+    private List&lt;Long&gt; bits(long x) {
+<span class="fc" id="L255">        List&lt;Long&gt; r = Lists.newArrayList();</span>
+<span class="fc" id="L256">        long l = x;</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        while (l != 0) {</span>
+<span class="fc" id="L258">            long bit = Long.lowestOneBit(l);</span>
+<span class="fc" id="L259">            r.add(bit);</span>
+<span class="fc" id="L260">            l ^= bit;</span>
+<span class="fc" id="L261">        }</span>
+<span class="fc" id="L262">        return r;</span>
+    }
+
+    public void buildJointDimsMask() {
+<span class="fc" id="L266">        long ret = 0;</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        for (long x : joints) {</span>
+<span class="fc" id="L268">            ret |= x;</span>
+<span class="fc" id="L269">        }</span>
+<span class="fc" id="L270">        this.jointDimsMask = ret;</span>
+<span class="fc" id="L271">    }</span>
+
+    public long getMandatoryColumnMask() {
+<span class="fc" id="L274">        return mandatoryColumnMask;</span>
+    }
+
+    public List&lt;HierarchyMask&gt; getHierarchyMasks() {
+<span class="fc" id="L278">        return hierarchyMasks;</span>
+    }
+
+    public int getBuildLevel() {
+<span class="nc" id="L282">        int ret = 1;//base cuboid =&gt; partial cube root</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">        if (this.getPartialCubeFullMask() == Cuboid.getBaseCuboidId(cubeDesc)) {</span>
+<span class="nc" id="L284">            ret -= 1;//if partial cube's root is base cuboid, then one round less agg</span>
+        }
+
+<span class="nc" id="L287">        ret += getNormalDims().size();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        for (HierarchyMask hierarchyMask : this.hierarchyMasks) {</span>
+<span class="nc" id="L289">            ret += hierarchyMask.allMasks.length;</span>
+<span class="nc" id="L290">        }</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        for (Long joint : joints) {</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">            if ((joint &amp; this.getHierarchyDimsMask()) == 0) {</span>
+<span class="nc" id="L293">                ret += 1;</span>
+            }
+<span class="nc" id="L295">        }</span>
+
+<span class="nc" id="L297">        return ret;</span>
+    }
+
+    /** Compute cuboid combination for aggregation group */
+    public long calculateCuboidCombination() {
+<span class="fc" id="L302">        long combination = 1;</span>
+
+        try {
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            if (this.getDimCap() &gt; 0) {</span>
+<span class="fc" id="L306">                CuboidScheduler cuboidScheduler = cubeDesc.getInitialCuboidScheduler();</span>
+<span class="fc" id="L307">                combination = cuboidScheduler.calculateCuboidsForAggGroup(this).size();</span>
+<span class="fc" id="L308">            } else {</span>
+<span class="fc" id="L309">                Set&lt;String&gt; includeDims = new TreeSet&lt;&gt;(Arrays.asList(includes));</span>
+<span class="fc" id="L310">                Set&lt;String&gt; mandatoryDims = new TreeSet&lt;&gt;(Arrays.asList(selectRule.mandatoryDims));</span>
+    
+<span class="fc" id="L312">                Set&lt;String&gt; hierarchyDims = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                for (String[] ss : selectRule.hierarchyDims) {</span>
+<span class="fc" id="L314">                    hierarchyDims.addAll(Arrays.asList(ss));</span>
+<span class="fc" id="L315">                    combination = LongMath.checkedMultiply(combination, (ss.length + 1));</span>
+                }
+    
+<span class="fc" id="L318">                Set&lt;String&gt; jointDims = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                for (String[] ss : selectRule.jointDims) {</span>
+<span class="fc" id="L320">                    jointDims.addAll(Arrays.asList(ss));</span>
+                }
+<span class="fc" id="L322">                combination = LongMath.checkedMultiply(combination, (1L &lt;&lt; selectRule.jointDims.length));</span>
+    
+<span class="fc" id="L324">                Set&lt;String&gt; normalDims = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L325">                normalDims.addAll(includeDims);</span>
+<span class="fc" id="L326">                normalDims.removeAll(mandatoryDims);</span>
+<span class="fc" id="L327">                normalDims.removeAll(hierarchyDims);</span>
+<span class="fc" id="L328">                normalDims.removeAll(jointDims);</span>
+    
+<span class="fc" id="L330">                combination = LongMath.checkedMultiply(combination, (1L &lt;&lt; normalDims.size()));</span>
+    
+<span class="pc bpc" id="L332" title="1 of 4 branches missed.">                if (cubeDesc.getConfig().getCubeAggrGroupIsMandatoryOnlyValid() &amp;&amp; !mandatoryDims.isEmpty()) {</span>
+<span class="fc" id="L333">                    combination += 1;</span>
+                }
+<span class="fc" id="L335">                combination -= 1; // not include cuboid 0</span>
+            }
+            
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">            if (combination &lt; 0)</span>
+<span class="nc" id="L339">                throw new ArithmeticException();</span>
+            
+<span class="nc" id="L341">        } catch (ArithmeticException ae) {</span>
+            // long overflow, give max value
+<span class="nc" id="L343">            combination = Long.MAX_VALUE;</span>
+<span class="fc" id="L344">        }</span>
+
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        if (combination &lt; 0) { // overflow</span>
+<span class="nc" id="L347">            combination = Long.MAX_VALUE - 1;</span>
+        }
+<span class="fc" id="L349">        return combination;</span>
+    }
+
+    public Long translateToOnTreeCuboid(long cuboidID) {
+<span class="fc bfc" id="L353" title="All 2 branches covered.">        if ((cuboidID &amp; ~getPartialCubeFullMask()) &gt; 0) {</span>
+            //the partial cube might not contain all required dims
+<span class="fc" id="L355">            return null;</span>
+        }
+
+        // add mandantory
+<span class="fc" id="L359">        cuboidID = cuboidID | getMandatoryColumnMask();</span>
+
+        // add hierarchy
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        for (HierarchyMask hierarchyMask : getHierarchyMasks()) {</span>
+<span class="fc" id="L363">            long fullMask = hierarchyMask.fullMask;</span>
+<span class="fc" id="L364">            long intersect = cuboidID &amp; fullMask;</span>
+<span class="fc bfc" id="L365" title="All 4 branches covered.">            if (intersect != 0 &amp;&amp; intersect != fullMask) {</span>
+
+<span class="fc" id="L367">                boolean startToFill = false;</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">                for (int i = hierarchyMask.dims.length - 1; i &gt;= 0; i--) {</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">                    if (startToFill) {</span>
+<span class="fc" id="L370">                        cuboidID |= hierarchyMask.dims[i];</span>
+                    } else {
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                        if ((cuboidID &amp; hierarchyMask.dims[i]) != 0) {</span>
+<span class="fc" id="L373">                            startToFill = true;</span>
+<span class="fc" id="L374">                            cuboidID |= hierarchyMask.dims[i];</span>
+                        }
+                    }
+                }
+            }
+<span class="fc" id="L379">        }</span>
+
+        // add joint dims
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        for (Long joint : getJoints()) {</span>
+<span class="fc bfc" id="L383" title="All 4 branches covered.">            if (((cuboidID | joint) != cuboidID) &amp;&amp; ((cuboidID &amp; ~joint) != cuboidID)) {</span>
+<span class="fc" id="L384">                cuboidID = cuboidID | joint;</span>
+            }
+<span class="fc" id="L386">        }</span>
+
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        if (!isOnTree(cuboidID)) {</span>
+            // no column, add one column
+<span class="fc" id="L390">            long nonJointDims = removeBits((getPartialCubeFullMask() ^ getMandatoryColumnMask()), getJoints());</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">            if (nonJointDims != 0) {</span>
+<span class="fc" id="L392">                long nonJointNonHierarchy = removeBits(nonJointDims,</span>
+<span class="fc" id="L393">                        Collections2.transform(getHierarchyMasks(), new Function&lt;HierarchyMask, Long&gt;() {</span>
+                            @Override
+                            public Long apply(HierarchyMask input) {
+<span class="fc" id="L396">                                return input.fullMask;</span>
+                            }
+                        }));
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">                if (nonJointNonHierarchy != 0) {</span>
+                    //there exists dim that does not belong to any joint or any hierarchy, that's perfect
+<span class="fc" id="L401">                    return cuboidID | Long.lowestOneBit(nonJointNonHierarchy);</span>
+                } else {
+                    //choose from a hierarchy that does not intersect with any joint dim, only check level 1
+<span class="nc" id="L404">                    long allJointDims = getJointDimsMask();</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">                    for (HierarchyMask hierarchyMask : getHierarchyMasks()) {</span>
+<span class="nc" id="L406">                        long dim = hierarchyMask.allMasks[0];</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">                        if ((dim &amp; allJointDims) == 0) {</span>
+<span class="nc" id="L408">                            return cuboidID | dim;</span>
+                        }
+<span class="nc" id="L410">                    }</span>
+                }
+            }
+<span class="nc bnc" id="L413" title="All 2 branches missed.">            if (getJoints().size() &gt; 0) {</span>
+<span class="nc" id="L414">                cuboidID = cuboidID | Collections.min(getJoints(), Cuboid.cuboidSelectComparator);</span>
+            }
+<span class="nc bnc" id="L416" title="All 2 branches missed.">            if (!isOnTree(cuboidID)) {</span>
+                // kylin.cube.aggrgroup.is-mandatory-only-valid can be false
+<span class="nc" id="L418">                return null;</span>
+            }
+        }
+<span class="fc" id="L421">        return cuboidID;</span>
+    }
+
+    private long removeBits(long original, Collection&lt;Long&gt; toRemove) {
+<span class="fc" id="L425">        long ret = original;</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">        for (Long joint : toRemove) {</span>
+<span class="fc" id="L427">            ret = ret &amp; ~joint;</span>
+<span class="fc" id="L428">        }</span>
+<span class="fc" id="L429">        return ret;</span>
+    }
+
+    public boolean isOnTree(long cuboidID) {
+<span class="fc bfc" id="L433" title="All 2 branches covered.">        if (cuboidID &lt;= 0) {</span>
+<span class="fc" id="L434">            return false; //cuboid must be greater than 0</span>
+        }
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        if ((cuboidID &amp; ~partialCubeFullMask) != 0) {</span>
+<span class="fc" id="L437">            return false; //a cuboid's parent within agg is at most partialCubeFullMask</span>
+        }
+
+<span class="pc bpc" id="L440" title="1 of 6 branches missed.">        return checkMandatoryColumns(cuboidID) &amp;&amp; checkHierarchy(cuboidID) &amp;&amp; checkJoint(cuboidID);</span>
+    }
+
+    private boolean checkMandatoryColumns(long cuboidID) {
+<span class="fc bfc" id="L444" title="All 2 branches covered.">        if ((cuboidID &amp; mandatoryColumnMask) != mandatoryColumnMask) {</span>
+<span class="fc" id="L445">            return false;</span>
+        } else {
+            //base cuboid is always valid
+<span class="fc bfc" id="L448" title="All 2 branches covered.">            if (cuboidID == Cuboid.getBaseCuboidId(cubeDesc)) {</span>
+<span class="fc" id="L449">                return true;</span>
+            }
+
+            //cuboid with only mandatory columns maybe valid
+<span class="fc bfc" id="L453" title="All 4 branches covered.">            return isMandatoryOnlyValid || (cuboidID &amp; ~mandatoryColumnMask) != 0;</span>
+        }
+    }
+
+    private boolean checkJoint(long cuboidID) {
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        for (long joint : joints) {</span>
+<span class="fc" id="L459">            long common = cuboidID &amp; joint;</span>
+<span class="fc bfc" id="L460" title="All 4 branches covered.">            if (!(common == 0 || common == joint)) {</span>
+<span class="fc" id="L461">                return false;</span>
+            }
+<span class="fc" id="L463">        }</span>
+<span class="fc" id="L464">        return true;</span>
+    }
+
+    private boolean checkHierarchy(long cuboidID) {
+        // if no hierarchy defined in metadata
+<span class="pc bpc" id="L469" title="1 of 4 branches missed.">        if (hierarchyMasks == null || hierarchyMasks.size() == 0) {</span>
+<span class="fc" id="L470">            return true;</span>
+        }
+
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        for (HierarchyMask hierarchy : hierarchyMasks) {</span>
+<span class="fc" id="L474">            long result = cuboidID &amp; hierarchy.fullMask;</span>
+<span class="fc bfc" id="L475" title="All 2 branches covered.">            if (result &gt; 0) {</span>
+<span class="fc" id="L476">                boolean meetHierarcy = false;</span>
+<span class="pc bpc" id="L477" title="1 of 2 branches missed.">                for (long mask : hierarchy.allMasks) {</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">                    if (result == mask) {</span>
+<span class="fc" id="L479">                        meetHierarcy = true;</span>
+<span class="fc" id="L480">                        break;</span>
+                    }
+                }
+
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">                if (!meetHierarcy) {</span>
+<span class="nc" id="L485">                    return false;</span>
+                }
+            }
+<span class="fc" id="L488">        }</span>
+<span class="fc" id="L489">        return true;</span>
+    }
+
+    public void setIncludes(String[] includes) {
+<span class="fc" id="L493">        this.includes = includes;</span>
+<span class="fc" id="L494">    }</span>
+
+    public void setSelectRule(SelectRule selectRule) {
+<span class="fc" id="L497">        this.selectRule = selectRule;</span>
+<span class="fc" id="L498">    }</span>
+
+    public List&lt;Long&gt; getJoints() {
+<span class="fc" id="L501">        return joints;</span>
+    }
+
+    public long getJointDimsMask() {
+<span class="nc" id="L505">        return jointDimsMask;</span>
+    }
+
+    public long getNormalDimsMask() {
+<span class="nc" id="L509">        return normalDimsMask;</span>
+    }
+
+    public long getHierarchyDimsMask() {
+<span class="nc" id="L513">        return hierarchyDimsMask;</span>
+    }
+
+    public List&lt;Long&gt; getNormalDims() {
+<span class="fc" id="L517">        return normalDims;</span>
+    }
+
+    public long getPartialCubeFullMask() {
+<span class="fc" id="L521">        return partialCubeFullMask;</span>
+    }
+
+    public String[] getIncludes() {
+<span class="fc" id="L525">        return includes;</span>
+    }
+
+    public SelectRule getSelectRule() {
+<span class="fc" id="L529">        return selectRule;</span>
+    }
+
+    public boolean isMandatoryOnlyValid() {
+<span class="fc" id="L533">        return isMandatoryOnlyValid;</span>
+    }
+
+    public CubeDesc getCubeDesc() {
+<span class="nc" id="L537">        return cubeDesc;</span>
+    }
+
+    public int getDimCap() {
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        return this.selectRule.dimCap == null ? 0 : this.selectRule.dimCap;</span>
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

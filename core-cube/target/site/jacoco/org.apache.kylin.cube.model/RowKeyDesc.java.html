@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RowKeyDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">RowKeyDesc.java</span></div><h1>RowKeyDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.MoreObjects;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L39">public class RowKeyDesc implements java.io.Serializable {</span>
+
+    @JsonProperty(&quot;rowkey_columns&quot;)
+    private RowKeyColDesc[] rowkeyColumns;
+
+    // computed content
+    private long fullMask;
+    private CubeDesc cubeDesc;
+    private Map&lt;TblColRef, RowKeyColDesc&gt; columnMap;
+    private Set&lt;TblColRef&gt; shardByColumns;
+    private int[] columnsNeedIndex;
+
+    public RowKeyColDesc[] getRowKeyColumns() {
+<span class="fc" id="L52">        return rowkeyColumns;</span>
+    }
+
+    public void setCubeDesc(CubeDesc cubeRef) {
+<span class="fc" id="L56">        this.cubeDesc = cubeRef;</span>
+<span class="fc" id="L57">    }</span>
+
+    public int getColumnBitIndex(TblColRef col) {
+<span class="fc" id="L60">        return getColDesc(col).getBitIndex();</span>
+    }
+
+    public RowKeyColDesc getColDesc(TblColRef col) {
+<span class="fc" id="L64">        RowKeyColDesc desc = columnMap.get(col);</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (desc == null)</span>
+<span class="nc" id="L66">            throw new NullPointerException(&quot;Column &quot; + col + &quot; does not exist in row key desc&quot;);</span>
+<span class="fc" id="L67">        return desc;</span>
+    }
+
+    public RowKeyColDesc getColDescUncheck(TblColRef col) {
+<span class="nc" id="L71">        return columnMap.get(col);</span>
+    }
+
+    public boolean isUseDictionary(TblColRef col) {
+<span class="nc" id="L75">        return getColDesc(col).isUsingDictionary();</span>
+    }
+
+    public Set&lt;TblColRef&gt; getShardByColumns() {
+<span class="nc" id="L79">        return shardByColumns;</span>
+    }
+
+    public void init(CubeDesc cubeDesc) {
+<span class="fc" id="L83">        setCubeDesc(cubeDesc);</span>
+<span class="fc" id="L84">        buildRowKey();</span>
+<span class="fc" id="L85">        initColumnsNeedIndex();</span>
+<span class="fc" id="L86">    }</span>
+
+    private void initColumnsNeedIndex() {
+<span class="fc" id="L89">        int[] tmp = new int[100];</span>
+<span class="fc" id="L90">        int x = 0;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        for (int i = 0, n = rowkeyColumns.length; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L92" title="All 4 branches covered.">            if (&quot;true&quot;.equalsIgnoreCase(rowkeyColumns[i].getIndex()) &amp;&amp; rowkeyColumns[i].isUsingDictionary()) {</span>
+<span class="fc" id="L93">                tmp[x] = i;</span>
+<span class="fc" id="L94">                x++;</span>
+            }
+        }
+
+<span class="fc" id="L98">        columnsNeedIndex = ArrayUtils.subarray(tmp, 0, x);</span>
+<span class="fc" id="L99">    }</span>
+
+    public void setRowkeyColumns(RowKeyColDesc[] rowkeyColumns) {
+<span class="nc" id="L102">        this.rowkeyColumns = rowkeyColumns;</span>
+<span class="nc" id="L103">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L107">        return MoreObjects.toStringHelper(this).add(&quot;RowKeyColumns&quot;, Arrays.toString(rowkeyColumns)).toString();</span>
+    }
+
+    private void buildRowKey() {
+<span class="fc" id="L111">        columnMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L112">        shardByColumns = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (int i = 0; i &lt; rowkeyColumns.length; i++) {</span>
+<span class="fc" id="L115">            RowKeyColDesc rowKeyColDesc = rowkeyColumns[i];</span>
+<span class="fc" id="L116">            rowKeyColDesc.init(rowkeyColumns.length - i - 1, cubeDesc);</span>
+<span class="fc" id="L117">            columnMap.put(rowKeyColDesc.getColRef(), rowKeyColDesc);</span>
+
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (rowKeyColDesc.isShardBy()) {</span>
+<span class="fc" id="L120">                shardByColumns.add(rowKeyColDesc.getColRef());</span>
+            }
+        }
+
+<span class="fc" id="L124">        this.fullMask = 0L;</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (int i = 0; i &lt; this.rowkeyColumns.length; i++) {</span>
+<span class="fc" id="L126">            int index = rowkeyColumns[i].getBitIndex();</span>
+<span class="fc" id="L127">            this.fullMask |= 1L &lt;&lt; index;</span>
+        }
+<span class="fc" id="L129">    }</span>
+
+    public long getFullMask() {
+<span class="fc" id="L132">        return this.fullMask;</span>
+    }
+
+    public int[] getColumnsNeedIndex() {
+<span class="nc" id="L136">        return columnsNeedIndex;</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

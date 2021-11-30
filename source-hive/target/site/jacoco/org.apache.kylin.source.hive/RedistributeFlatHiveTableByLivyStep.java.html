@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RedistributeFlatHiveTableByLivyStep.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">RedistributeFlatHiveTableByLivyStep.java</span></div><h1>RedistributeFlatHiveTableByLivyStep.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableList;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.job.common.PatternedLogger;
+import org.apache.kylin.job.constant.ExecutableConstants;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.ExecutableContext;
+import org.apache.kylin.job.execution.ExecuteResult;
+
+
+<span class="nc" id="L31">public class RedistributeFlatHiveTableByLivyStep extends AbstractExecutable {</span>
+<span class="nc" id="L32">    private final PatternedLogger stepLogger = new PatternedLogger(logger);</span>
+
+    private long computeRowCount(String database, String table) throws Exception {
+<span class="nc" id="L35">        IHiveClient hiveClient = HiveClientFactory.getHiveClient();</span>
+<span class="nc" id="L36">        return hiveClient.getHiveTableRows(database, table);</span>
+    }
+
+    private long getDataSize(String database, String table) throws Exception {
+<span class="nc" id="L40">        IHiveClient hiveClient = HiveClientFactory.getHiveClient();</span>
+<span class="nc" id="L41">        long size = hiveClient.getHiveTableMeta(database, table).fileSize;</span>
+<span class="nc" id="L42">        return size;</span>
+    }
+
+    private void redistributeTable(KylinConfig config, int numReducers) throws Exception {
+<span class="nc" id="L46">        StringBuffer statement = new StringBuffer();</span>
+<span class="nc" id="L47">        statement.append(getInitStatement());</span>
+<span class="nc" id="L48">        statement.append(&quot;set mapreduce.job.reduces=&quot; + numReducers + &quot;;\n&quot;);</span>
+<span class="nc" id="L49">        statement.append(&quot;set hive.merge.mapredfiles=false;\n&quot;);</span>
+<span class="nc" id="L50">        statement.append(getRedistributeDataStatement());</span>
+
+<span class="nc" id="L52">        stepLogger.log(&quot;Redistribute table, cmd: &quot;);</span>
+<span class="nc" id="L53">        stepLogger.log(statement.toString());</span>
+
+<span class="nc" id="L55">        MRHiveDictUtil.runLivySqlJob(stepLogger, config, ImmutableList.of(statement.toString()), getManager(), getId());</span>
+<span class="nc" id="L56">    }</span>
+
+    @Override
+    protected ExecuteResult doWork(ExecutableContext context) throws ExecuteException {
+<span class="nc" id="L60">        KylinConfig config = getCubeSpecificConfig();</span>
+<span class="nc" id="L61">        String intermediateTable = getIntermediateTable();</span>
+        String database, tableName;
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (intermediateTable.indexOf(&quot;.&quot;) &gt; 0) {</span>
+<span class="nc" id="L64">            database = intermediateTable.substring(0, intermediateTable.indexOf(&quot;.&quot;));</span>
+<span class="nc" id="L65">            tableName = intermediateTable.substring(intermediateTable.indexOf(&quot;.&quot;) + 1);</span>
+        } else {
+<span class="nc" id="L67">            database = config.getHiveDatabaseForIntermediateTable();</span>
+<span class="nc" id="L68">            tableName = intermediateTable;</span>
+        }
+
+        try {
+<span class="nc" id="L72">            long rowCount = computeRowCount(database, tableName);</span>
+<span class="nc" id="L73">            logger.debug(&quot;Row count of table '&quot; + intermediateTable + &quot;' is &quot; + rowCount);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            if (rowCount == 0) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                if (!config.isEmptySegmentAllowed()) {</span>
+<span class="nc" id="L76">                    stepLogger.log(&quot;Detect upstream hive table is empty, &quot;</span>
+                            + &quot;fail the job because \&quot;kylin.job.allow-empty-segment\&quot; = \&quot;false\&quot;&quot;);
+<span class="nc" id="L78">                    return new ExecuteResult(ExecuteResult.State.ERROR, stepLogger.getBufferedLog());</span>
+                } else {
+<span class="nc" id="L80">                    return new ExecuteResult(ExecuteResult.State.SUCCEED, &quot;Row count is 0, no need to redistribute&quot;);</span>
+                }
+            }
+
+<span class="nc" id="L84">            int mapperInputRows = config.getHadoopJobMapperInputRows();</span>
+
+<span class="nc" id="L86">            int numReducers = Math.round(rowCount / ((float) mapperInputRows));</span>
+<span class="nc" id="L87">            numReducers = Math.max(1, numReducers);</span>
+<span class="nc" id="L88">            numReducers = Math.min(numReducers, config.getHadoopJobMaxReducerNumber());</span>
+
+<span class="nc" id="L90">            stepLogger.log(&quot;total input rows = &quot; + rowCount);</span>
+<span class="nc" id="L91">            stepLogger.log(&quot;expected input rows per mapper = &quot; + mapperInputRows);</span>
+<span class="nc" id="L92">            stepLogger.log(&quot;num reducers for RedistributeFlatHiveTableStep = &quot; + numReducers);</span>
+
+<span class="nc" id="L94">            redistributeTable(config, numReducers);</span>
+<span class="nc" id="L95">            long dataSize = getDataSize(database, tableName);</span>
+<span class="nc" id="L96">            getManager().addJobInfo(getId(), ExecutableConstants.HDFS_BYTES_WRITTEN, &quot;&quot; + dataSize);</span>
+<span class="nc" id="L97">            return new ExecuteResult(ExecuteResult.State.SUCCEED, stepLogger.getBufferedLog());</span>
+
+<span class="nc" id="L99">        } catch (Exception e) {</span>
+<span class="nc" id="L100">            logger.error(&quot;job:&quot; + getId() + &quot; execute finished with exception&quot;, e);</span>
+<span class="nc" id="L101">            return new ExecuteResult(ExecuteResult.State.ERROR, stepLogger.getBufferedLog(), e);</span>
+        }
+    }
+
+    public void setInitStatement(String sql) {
+<span class="nc" id="L106">        setParam(&quot;HiveInit&quot;, sql);</span>
+<span class="nc" id="L107">    }</span>
+
+    public String getInitStatement() {
+<span class="nc" id="L110">        return getParam(&quot;HiveInit&quot;);</span>
+    }
+
+    public void setRedistributeDataStatement(String sql) {
+<span class="nc" id="L114">        setParam(&quot;HiveRedistributeData&quot;, sql);</span>
+<span class="nc" id="L115">    }</span>
+
+    public String getRedistributeDataStatement() {
+<span class="nc" id="L118">        return getParam(&quot;HiveRedistributeData&quot;);</span>
+    }
+
+    public String getIntermediateTable() {
+<span class="nc" id="L122">        return getParam(&quot;intermediateTable&quot;);</span>
+    }
+
+    public void setIntermediateTable(String intermediateTable) {
+<span class="nc" id="L126">        setParam(&quot;intermediateTable&quot;, intermediateTable);</span>
+<span class="nc" id="L127">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

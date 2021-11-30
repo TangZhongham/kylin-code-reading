@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DBConnConf.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">DBConnConf.java</span></div><h1>DBConnConf.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.hive;
+
+import java.util.Locale;
+
+import org.apache.commons.configuration.PropertiesConfiguration;
+
+public class DBConnConf {
+    public static final String KEY_DRIVER = &quot;driver&quot;;
+    public static final String KEY_URL = &quot;url&quot;;
+    public static final String KEY_USER = &quot;user&quot;;
+    public static final String KEY_PASS = &quot;pass&quot;;
+
+    private String driver;
+    private String url;
+    private String user;
+    private String pass;
+
+<span class="nc" id="L36">    public DBConnConf() {</span>
+<span class="nc" id="L37">    }</span>
+
+<span class="nc" id="L39">    public DBConnConf(String prefix, PropertiesConfiguration pc) {</span>
+<span class="nc" id="L40">        driver = pc.getString(prefix + KEY_DRIVER);</span>
+<span class="nc" id="L41">        url = pc.getString(prefix + KEY_URL);</span>
+<span class="nc" id="L42">        user = pc.getString(prefix + KEY_USER);</span>
+<span class="nc" id="L43">        pass = pc.getString(prefix + KEY_PASS);</span>
+<span class="nc" id="L44">    }</span>
+
+<span class="nc" id="L46">    public DBConnConf(String driver, String url, String user, String pass) {</span>
+<span class="nc" id="L47">        this.driver = driver;</span>
+<span class="nc" id="L48">        this.url = url;</span>
+<span class="nc" id="L49">        this.user = user;</span>
+<span class="nc" id="L50">        this.pass = pass;</span>
+<span class="nc" id="L51">    }</span>
+
+    public String toString() {
+<span class="nc" id="L54">        return String.format(Locale.ROOT, &quot;%s,%s,%s,%s&quot;, driver, url, user, pass);</span>
+    }
+
+    public String getDriver() {
+<span class="nc" id="L58">        return driver;</span>
+    }
+
+    public void setDriver(String driver) {
+<span class="nc" id="L62">        this.driver = driver;</span>
+<span class="nc" id="L63">    }</span>
+
+    public String getUrl() {
+<span class="nc" id="L66">        return url;</span>
+    }
+
+    public void setUrl(String url) {
+<span class="nc" id="L70">        this.url = url;</span>
+<span class="nc" id="L71">    }</span>
+
+    public String getUser() {
+<span class="nc" id="L74">        return user;</span>
+    }
+
+    public void setUser(String user) {
+<span class="nc" id="L78">        this.user = user;</span>
+<span class="nc" id="L79">    }</span>
+
+    public String getPass() {
+<span class="nc" id="L82">        return pass;</span>
+    }
+
+    public void setPass(String pass) {
+<span class="nc" id="L86">        this.pass = pass;</span>
+<span class="nc" id="L87">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

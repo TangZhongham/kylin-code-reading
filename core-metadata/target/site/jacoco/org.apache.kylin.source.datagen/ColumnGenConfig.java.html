@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColumnGenConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.datagen</a> &gt; <span class="el_source">ColumnGenConfig.java</span></div><h1>ColumnGenConfig.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.datagen;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.ColumnDesc;
+
+public class ColumnGenConfig {
+
+    public static final String FK = &quot;FK&quot;;
+    public static final String ID = &quot;ID&quot;;
+    public static final String RAND = &quot;RAND&quot;;
+    public static final String $RANDOM = &quot;${RANDOM}&quot;;
+    
+    // discrete values
+    boolean isDiscrete;
+    boolean isFK;
+    List&lt;String&gt; values;
+    
+    // random
+    boolean isRandom;
+    String randFormat;
+    int randStart;
+    int randEnd;
+    
+    // ID
+    boolean isID;
+    int idStart;
+    
+    // general
+    int cardinality;
+    boolean genNull;
+    double genNullPct;
+    String genNullStr;
+    boolean order;
+    boolean unique;
+    
+<span class="fc" id="L60">    public ColumnGenConfig(ColumnDesc col, ModelDataGenerator modelGen) throws IOException {</span>
+<span class="fc" id="L61">        init(col, modelGen);</span>
+<span class="fc" id="L62">    }</span>
+
+    private void init(ColumnDesc col, ModelDataGenerator modelGen) throws IOException {
+        
+<span class="fc" id="L66">        Map&lt;String, String&gt; config = Util.parseEqualCommaPairs(col.getDataGen(), &quot;values&quot;);</span>
+
+<span class="fc" id="L68">        values = Arrays.asList(Util.parseString(config, &quot;values&quot;, &quot;&quot;).split(&quot;[|]&quot;));</span>
+        
+<span class="fc" id="L70">        List&lt;String&gt; pkValues = modelGen.getPkValuesIfIsFk(col);</span>
+        
+<span class="fc bfc" id="L72" title="All 6 branches covered.">        if (FK.equals(values.get(0)) || (values.get(0).isEmpty() &amp;&amp; pkValues != null)) {</span>
+<span class="fc" id="L73">            isFK = true;</span>
+<span class="fc" id="L74">            values = getPkValues(modelGen, config, pkValues);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        } else if (ID.equals(values.get(0))) {</span>
+<span class="fc" id="L76">            isID = true;</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            idStart = (values.size() &gt; 1) ? Integer.parseInt(values.get(1)) : 0;</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">        } else if (RAND.equals(values.get(0)) || values.get(0).isEmpty()) {</span>
+<span class="fc" id="L79">            isRandom = true;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            randFormat = (values.size() &gt; 1) ? values.get(1) : &quot;&quot;;</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            randStart = (values.size() &gt; 2) ? Integer.parseInt(values.get(2)) : 0;</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            randEnd = (values.size() &gt; 3) ? Integer.parseInt(values.get(3)) : 0;</span>
+        } else {
+<span class="fc" id="L84">            isDiscrete = true;</span>
+        }
+        
+<span class="fc" id="L87">        cardinality = Util.parseInt(config, &quot;card&quot;, guessCardinality(col.getName()));</span>
+<span class="fc" id="L88">        genNull = Util.parseBoolean(config, &quot;null&quot;, guessGenNull(col.getName()));</span>
+<span class="fc" id="L89">        genNullPct = Util.parseDouble(config, &quot;nullpct&quot;, 0.01);</span>
+<span class="fc" id="L90">        genNullStr = Util.parseString(config, &quot;nullstr&quot;, &quot;\\N&quot;); // '\N' is null in hive</span>
+<span class="fc" id="L91">        order = Util.parseBoolean(config, &quot;order&quot;, false);</span>
+<span class="fc" id="L92">        unique = Util.parseBoolean(config, &quot;uniq&quot;, modelGen.isPK(col));</span>
+<span class="fc" id="L93">    }</span>
+
+    private List&lt;String&gt; getPkValues(ModelDataGenerator modelGen, Map&lt;String, String&gt; config, List&lt;String&gt; dftPkValues) throws IOException {
+<span class="fc" id="L96">        String pkColName = config.get(&quot;pk&quot;);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (pkColName == null)</span>
+<span class="fc" id="L98">            return dftPkValues;</span>
+        
+<span class="fc" id="L100">        int cut = pkColName.lastIndexOf('.');</span>
+<span class="fc" id="L101">        String pkTableName = pkColName.substring(0, cut);</span>
+<span class="fc" id="L102">        pkColName = pkColName.substring(cut + 1);</span>
+        
+<span class="fc" id="L104">        KylinConfig kylinConfig = modelGen.getModle().getConfig();</span>
+<span class="fc" id="L105">        String project = modelGen.getModle().getProject();</span>
+<span class="fc" id="L106">        ColumnDesc pkcol = TableMetadataManager.getInstance(kylinConfig)//</span>
+<span class="fc" id="L107">                .getTableDesc(pkTableName, project).findColumnByName(pkColName);</span>
+<span class="fc" id="L108">        return modelGen.getPkValues(pkcol);</span>
+    }
+
+    private int guessCardinality(String col) {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for (String s : col.split(&quot;_&quot;)) {</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (s.startsWith(&quot;C&quot;)) {</span>
+                try {
+<span class="nc" id="L115">                    return Integer.parseInt(s.substring(1));</span>
+<span class="fc" id="L116">                } catch (Exception ex) {</span>
+                    // ok
+                }
+            }
+        }
+<span class="fc" id="L121">        return 0;</span>
+    }
+
+    private static boolean guessGenNull(String col) {
+<span class="fc" id="L125">        return col.contains(&quot;_NULL&quot;);</span>
+    }
+
+    public static boolean isNullable(ColumnDesc col) {
+<span class="nc" id="L129">        Map&lt;String, String&gt; config = Util.parseEqualCommaPairs(col.getDataGen(), &quot;values&quot;);</span>
+<span class="nc" id="L130">        List&lt;String&gt; values = Arrays.asList(Util.parseString(config, &quot;values&quot;, &quot;&quot;).split(&quot;[|]&quot;));</span>
+<span class="nc" id="L131">        return Util.parseBoolean(config, &quot;null&quot;, guessGenNull(col.getName()));</span>
+    }
+
+    public static String getNullStr(ColumnDesc col) {
+<span class="nc" id="L135">        Map&lt;String, String&gt; config = Util.parseEqualCommaPairs(col.getDataGen(), &quot;values&quot;);</span>
+<span class="nc" id="L136">        List&lt;String&gt; values = Arrays.asList(Util.parseString(config, &quot;values&quot;, &quot;&quot;).split(&quot;[|]&quot;));</span>
+<span class="nc" id="L137">        return Util.parseString(config, &quot;nullstr&quot;, &quot;\\N&quot;); // '\N' is null in hive</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

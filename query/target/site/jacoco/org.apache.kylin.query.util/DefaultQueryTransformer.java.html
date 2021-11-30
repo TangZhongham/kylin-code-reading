@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultQueryTransformer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.util</a> &gt; <span class="el_source">DefaultQueryTransformer.java</span></div><h1>DefaultQueryTransformer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.util;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.kylin.query.util.QueryUtil.IQueryTransformer;
+
+<span class="fc" id="L26">public class DefaultQueryTransformer implements IQueryTransformer {</span>
+
+    private static final String S0 = &quot;\\s*&quot;;
+    private static final String S1 = &quot;\\s&quot;;
+    private static final String SM = &quot;\\s+&quot;;
+<span class="fc" id="L31">    private static final Pattern PTN_GROUP_BY = Pattern.compile(S1 + &quot;GROUP&quot; + SM + &quot;BY&quot; + S1,</span>
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L33">    private static final Pattern PTN_HAVING_COUNT_GREATER_THAN_ZERO = Pattern.compile(S1 + &quot;HAVING&quot; + SM + &quot;[(]?&quot; + S0</span>
+            + &quot;COUNT&quot; + S0 + &quot;[(]&quot; + S0 + &quot;1&quot; + S0 + &quot;[)]&quot; + S0 + &quot;&gt;&quot; + S0 + &quot;0&quot; + S0 + &quot;[)]?&quot;,
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L36">    private static final Pattern PTN_SUM_1 = Pattern.compile(S0 + &quot;SUM&quot; + S0 + &quot;[(]&quot; + S0 + &quot;[1]&quot; + S0 + &quot;[)]&quot; + S0,</span>
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L38">    private static final Pattern PTN_MIN_1 = Pattern.compile(S0 + &quot;MIN&quot; + S0 + &quot;[(]&quot; + S0 + &quot;[1]&quot; + S0 + &quot;[)]&quot; + S0,</span>
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L40">    private static final Pattern PTN_MAX_1 = Pattern.compile(S0 + &quot;MAX&quot; + S0 + &quot;[(]&quot; + S0 + &quot;[1]&quot; + S0 + &quot;[)]&quot; + S0,</span>
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L42">    private static final Pattern PTN_NOT_EQ = Pattern.compile(S0 + &quot;!=&quot; + S0, Pattern.CASE_INSENSITIVE);</span>
+<span class="fc" id="L43">    private static final Pattern PTN_INTERVAL = Pattern.compile(</span>
+            &quot;interval&quot; + SM + &quot;(floor\\()([\\d\\.]+)(\\))&quot; + SM + &quot;(second|minute|hour|day|month|year)&quot;,
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L46">    private static final Pattern PTN_HAVING_ESCAPE_FUNCTION = Pattern.compile(&quot;\\{fn&quot; + SM + &quot;(EXTRACT\\(.*?\\)||CURRENT_TIMESTAMP\\(.*?\\))&quot; + &quot;\\}&quot;,</span>
+            Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L48">    private static final Pattern PIN_SUM_OF_CAST = Pattern.compile(S0 + &quot;SUM&quot; + S0 + &quot;\\(&quot; + S0 + &quot;CAST&quot; + S0 + &quot;\\(&quot;</span>
+            + S0 + &quot;([^\\s,]+)&quot; + S0 + &quot;AS&quot; + SM + &quot;DOUBLE&quot; + S0 + &quot;\\)&quot; + S0 + &quot;\\)&quot;, Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L50">    private static final Pattern PIN_SUM_OF_FN_CONVERT = Pattern</span>
+<span class="fc" id="L51">            .compile(S0 + &quot;SUM&quot; + S0 + &quot;\\(&quot; + S0 + &quot;\\{\\s*fn&quot; + SM + &quot;convert&quot; + S0 + &quot;\\(&quot; + S0 + &quot;([^\\s,]+)&quot; + S0</span>
+                    + &quot;,&quot; + S0 + &quot;(SQL_DOUBLE|SQL_BIGINT)&quot; + S0 + &quot;\\)&quot; + S0 + &quot;\\}&quot; + S0 + &quot;\\)&quot;, Pattern.CASE_INSENSITIVE);
+
+    @Override
+    public String transform(String sql, String project, String defaultSchema) {
+        Matcher m;
+
+        // Case: SUM(CAST (column_name AS DOUBLE))
+        while (true) {
+<span class="fc" id="L60">            m = PIN_SUM_OF_CAST.matcher(sql);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (!m.find())</span>
+<span class="fc" id="L62">                break;</span>
+
+<span class="fc" id="L64">            sql = sql.substring(0, m.start()) + &quot; SUM(&quot; + m.group(1).trim() + &quot;)&quot;</span>
+<span class="fc" id="L65">                    + sql.substring(m.end(), sql.length());</span>
+        }
+
+        //Case: SUM({fn CONVERT(...)}) generated by PowerBI
+        while (true) {
+<span class="fc" id="L70">            m = PIN_SUM_OF_FN_CONVERT.matcher(sql);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (!m.find())</span>
+<span class="fc" id="L72">                break;</span>
+
+<span class="fc" id="L74">            sql = sql.substring(0, m.start()) + &quot; SUM(&quot; + m.group(1).trim() + &quot;)&quot;</span>
+<span class="fc" id="L75">                    + sql.substring(m.end(), sql.length());</span>
+        }
+
+        // Case {fn EXTRACT(...) }
+        // Use non-greedy regex matching to remove escape functions
+        // Notice: Only unsupported escape function need to be handled
+        // Reference: https://calcite.apache.org/docs/reference.html#jdbc-function-escape
+        while (true) {
+<span class="fc" id="L83">            m = PTN_HAVING_ESCAPE_FUNCTION.matcher(sql);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (!m.find())</span>
+<span class="fc" id="L85">                break;</span>
+<span class="fc" id="L86">            sql = sql.substring(0, m.start()) + m.group(1) + sql.substring(m.end());</span>
+        }
+
+        // Case: HAVING COUNT(1)&gt;0 without Group By
+        // Tableau generates: SELECT SUM(1) AS &quot;COL&quot; FROM &quot;VAC_SW&quot; HAVING
+        // COUNT(1)&gt;0
+<span class="fc" id="L92">        m = PTN_HAVING_COUNT_GREATER_THAN_ZERO.matcher(sql);</span>
+<span class="pc bpc" id="L93" title="3 of 4 branches missed.">        if (m.find() &amp;&amp; PTN_GROUP_BY.matcher(sql).find() == false) {</span>
+<span class="nc" id="L94">            sql = sql.substring(0, m.start()) + &quot; &quot; + sql.substring(m.end());</span>
+        }
+
+        // Case: SUM(1)
+        // Replace it with COUNT(1)
+        while (true) {
+<span class="fc" id="L100">            m = PTN_SUM_1.matcher(sql);</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">            if (!m.find())</span>
+<span class="fc" id="L102">                break;</span>
+<span class="nc" id="L103">            sql = sql.substring(0, m.start()) + &quot; COUNT(1) &quot; + sql.substring(m.end());</span>
+        }
+
+        // Case: MIN(1) or MAX(1)
+        // Replace it with 1
+        while (true) {
+<span class="fc" id="L109">            m = PTN_MIN_1.matcher(sql);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (!m.find())</span>
+<span class="fc" id="L111">                break;</span>
+<span class="nc" id="L112">            sql = sql.substring(0, m.start()) + &quot; 1 &quot; + sql.substring(m.end());</span>
+        }
+        while (true) {
+<span class="fc" id="L115">            m = PTN_MAX_1.matcher(sql);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">            if (!m.find())</span>
+<span class="fc" id="L117">                break;</span>
+<span class="nc" id="L118">            sql = sql.substring(0, m.start()) + &quot; 1 &quot; + sql.substring(m.end());</span>
+        }
+
+        // Case: !=
+        // Replace it with &lt;&gt;
+        while (true) {
+<span class="fc" id="L124">            m = PTN_NOT_EQ.matcher(sql);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (!m.find())</span>
+<span class="fc" id="L126">                break;</span>
+<span class="nc" id="L127">            sql = sql.substring(0, m.start()) + &quot; &lt;&gt; &quot; + sql.substring(m.end());</span>
+        }
+
+        // ( date '2001-09-28' + interval floor(1) day ) generated by cognos
+        // calcite only recognizes date '2001-09-28' + interval '1' day
+        while (true) {
+<span class="fc" id="L133">            m = PTN_INTERVAL.matcher(sql);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (!m.find())</span>
+<span class="fc" id="L135">                break;</span>
+
+<span class="fc" id="L137">            int value = (int) Math.floor(Double.parseDouble(m.group(2)));</span>
+<span class="fc" id="L138">            sql = sql.substring(0, m.start(1)) + &quot;'&quot; + value + &quot;'&quot; + sql.substring(m.end(3));</span>
+<span class="fc" id="L139">        }</span>
+        
+<span class="fc" id="L141">        return sql;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

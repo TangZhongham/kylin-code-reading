@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CreateMrHiveDictStep.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">CreateMrHiveDictStep.java</span></div><h1>CreateMrHiveDictStep.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.source.hive;
+
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableList;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.lock.DistributedLock;
+import org.apache.kylin.common.util.HiveCmdBuilder;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.engine.mr.steps.CubingExecutableUtil;
+import org.apache.kylin.job.common.PatternedLogger;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.ExecutableContext;
+import org.apache.kylin.job.execution.ExecuteResult;
+import org.apache.kylin.metadata.model.IEngineAware;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ *
+ */
+<span class="nc" id="L51">public class CreateMrHiveDictStep extends AbstractExecutable {</span>
+
+<span class="nc" id="L53">    private static final Logger logger = LoggerFactory.getLogger(CreateMrHiveDictStep.class);</span>
+<span class="nc" id="L54">    private final PatternedLogger stepLogger = new PatternedLogger(logger);</span>
+<span class="nc" id="L55">    private DistributedLock lock = KylinConfig.getInstanceFromEnv().getDistributedLockFactory().lockForCurrentThread();</span>
+    private static final String GET_SQL = &quot;\&quot; Get Max Dict Value Sql : \&quot;&quot;;
+
+    protected void createMrHiveDict(KylinConfig config) throws Exception {
+        try {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            if (getIsLock()) {</span>
+<span class="nc" id="L61">                String pathName = getLockPathName();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">                if (Strings.isNullOrEmpty(pathName)) {</span>
+<span class="nc" id="L63">                    throw new IllegalArgumentException(&quot;create Mr-Hive dict lock path name is null&quot;);</span>
+                }
+<span class="nc" id="L65">                String lockPath = getLockPath(pathName);</span>
+<span class="nc" id="L66">                boolean isLocked = true;</span>
+<span class="nc" id="L67">                long lockStartTime = System.currentTimeMillis();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">                while (isLocked) {</span>
+<span class="nc" id="L69">                    isLocked = lock.isLocked(lockPath);</span>
+<span class="nc" id="L70">                    stepLogger.log(&quot;zookeeper lock path :&quot; + lockPath + &quot;, result is &quot; + isLocked);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                    if (!isLocked) {</span>
+<span class="nc" id="L72">                        break;</span>
+                    }
+                    // wait 1 min and try again
+<span class="nc" id="L75">                    Thread.sleep(60000);</span>
+                }
+<span class="nc" id="L77">                stepLogger.log(&quot;zookeeper get lock costTime : &quot; + ((System.currentTimeMillis() - lockStartTime) / 1000) + &quot; s&quot;);</span>
+<span class="nc" id="L78">                lock.lock(lockPath);</span>
+            }
+<span class="nc" id="L80">            final HiveCmdBuilder hiveCmdBuilder = new HiveCmdBuilder(getName());</span>
+<span class="nc" id="L81">            hiveCmdBuilder.overwriteHiveProps(config.getHiveConfigOverride());</span>
+<span class="nc" id="L82">            hiveCmdBuilder.addStatement(getInitStatement());</span>
+
+<span class="nc" id="L84">            String sql = getCreateTableStatement();</span>
+<span class="nc bnc" id="L85" title="All 4 branches missed.">            if (sql != null &amp;&amp; sql.length() &gt; 0) {</span>
+<span class="nc" id="L86">                hiveCmdBuilder.addStatement(sql);</span>
+            }
+<span class="nc" id="L88">            Map&lt;String, String&gt; maxDictValMap = deserilizeForMap(getMaxDictStatementMap());</span>
+<span class="nc" id="L89">            Map&lt;String, String&gt; dictSqlMap = deserilizeForMap(getCreateTableStatementMap());</span>
+
+<span class="nc bnc" id="L91" title="All 4 branches missed.">            if (dictSqlMap != null &amp;&amp; dictSqlMap.size() &gt; 0) {</span>
+<span class="nc" id="L92">                IHiveClient hiveClient = HiveClientFactory.getHiveClient();</span>
+<span class="nc bnc" id="L93" title="All 4 branches missed.">                if (maxDictValMap != null &amp;&amp; maxDictValMap.size() &gt; 0) {</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">                    if (maxDictValMap.size() == dictSqlMap.size()) {</span>
+<span class="nc" id="L95">                        maxDictValMap.forEach((columnName, maxDictValSql) -&gt; {</span>
+<span class="nc" id="L96">                            int max = 0;</span>
+<span class="nc" id="L97">                            List&lt;Object[]&gt; datas = null;</span>
+                            try {
+<span class="nc" id="L99">                                datas = hiveClient.getHiveResult(maxDictValSql);</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">                                if (Objects.nonNull(datas) &amp;&amp; !datas.isEmpty()) {</span>
+<span class="nc" id="L101">                                    max = Integer.valueOf(datas.get(0)[0] + &quot;&quot;);</span>
+<span class="nc" id="L102">                                    stepLogger.log(columnName + GET_SQL + maxDictValSql);</span>
+<span class="nc" id="L103">                                    stepLogger.log(columnName + &quot; Get Max Dict Value Of : &quot; + max);</span>
+                                } else {
+<span class="nc" id="L105">                                    stepLogger.log(columnName + GET_SQL + maxDictValSql);</span>
+<span class="nc" id="L106">                                    stepLogger.log(columnName + &quot; Get Max Dict Value Of ERROR: hive execute result is null.&quot;);</span>
+<span class="nc" id="L107">                                    throw new IOException(&quot;execute get max dict result fail : &quot; + maxDictValSql);</span>
+                                }
+<span class="nc" id="L109">                            } catch (Exception e) {</span>
+<span class="nc" id="L110">                                stepLogger.log(columnName + GET_SQL + maxDictValSql);</span>
+<span class="nc" id="L111">                                stepLogger.log(columnName + &quot; Get Max Dict Value Of ERROR :&quot; + e.getMessage());</span>
+<span class="nc" id="L112">                                logger.error(&quot;execute get max dict result fail : &quot; + maxDictValSql, e);</span>
+<span class="nc" id="L113">                            }</span>
+<span class="nc" id="L114">                            String dictSql = dictSqlMap.get(columnName).replace(&quot;___maxDictVal___&quot;, max + &quot;&quot;);</span>
+<span class="nc" id="L115">                            hiveCmdBuilder.addStatement(dictSql);</span>
+<span class="nc" id="L116">                        });</span>
+                    } else {
+<span class="nc" id="L118">                        logger.error(&quot;Max Dict Value size is not equals Dict Sql size ! &quot;);</span>
+                    }
+                } else {
+<span class="nc" id="L121">                    dictSqlMap.forEach((columnName, dictSql) -&gt; hiveCmdBuilder.addStatement(dictSql));</span>
+                }
+            }
+
+<span class="nc" id="L125">            final String cmd = hiveCmdBuilder.toString();</span>
+
+<span class="nc" id="L127">            stepLogger.log(&quot;MR-Hive dict, cmd: &quot; + cmd);</span>
+
+<span class="nc" id="L129">            CubeManager manager = CubeManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L130">            CubeInstance cube = manager.getCube(getCubeName());</span>
+
+<span class="nc bnc" id="L132" title="All 4 branches missed.">            if (config.isLivyEnabled() &amp;&amp; cube.getEngineType() == IEngineAware.ID_SPARK) {</span>
+<span class="nc" id="L133">                MRHiveDictUtil.runLivySqlJob(stepLogger, config, ImmutableList.copyOf(hiveCmdBuilder.getStatements()), getManager(), getId());</span>
+            } else {
+<span class="nc" id="L135">                Pair&lt;Integer, String&gt; response = config.getCliCommandExecutor().execute(cmd, stepLogger, null);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                if (response.getFirst() != 0) {</span>
+<span class="nc" id="L137">                    throw new RuntimeException(&quot;Failed to create mr hive dict, error code &quot; + response.getFirst());</span>
+                }
+<span class="nc" id="L139">                getManager().addJobInfo(getId(), stepLogger.getInfo());</span>
+            }
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (getIsLock()) {</span>
+<span class="nc" id="L142">                String pathName = getLockPathName();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">                if (Strings.isNullOrEmpty(pathName)) {</span>
+<span class="nc" id="L144">                    throw new IllegalArgumentException(&quot; create mr hive dict unlock path name is null&quot;);</span>
+                }
+<span class="nc" id="L146">                lock.unlock(getLockPath(pathName));</span>
+<span class="nc" id="L147">                stepLogger.log(&quot;zookeeper unlock path :&quot; + getLockPathName());</span>
+            }
+<span class="nc" id="L149">        } catch (Exception e) {</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            if (getIsLock()) {</span>
+<span class="nc" id="L151">                lock.unlock(getLockPath(getLockPathName()));</span>
+<span class="nc" id="L152">                stepLogger.log(&quot;zookeeper unlock path :&quot; + getLockPathName());</span>
+            }
+<span class="nc" id="L154">            logger.error(&quot;&quot;, e);</span>
+<span class="nc" id="L155">            throw e;</span>
+<span class="nc" id="L156">        }</span>
+<span class="nc" id="L157">    }</span>
+
+    @Override
+    public KylinConfig getCubeSpecificConfig() {
+<span class="nc" id="L161">        String cubeName = CubingExecutableUtil.getCubeName(getParams());</span>
+<span class="nc" id="L162">        CubeManager manager = CubeManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L163">        CubeInstance cube = manager.getCube(cubeName);</span>
+<span class="nc" id="L164">        return cube.getConfig();</span>
+    }
+
+    @Override
+    protected ExecuteResult doWork(ExecutableContext context) throws ExecuteException {
+<span class="nc" id="L169">        KylinConfig config = getCubeSpecificConfig();</span>
+        try {
+
+<span class="nc" id="L172">            String preHdfsShell = getPreHdfsShell();</span>
+<span class="nc bnc" id="L173" title="All 4 branches missed.">            if (Objects.nonNull(preHdfsShell) &amp;&amp; !&quot;&quot;.equalsIgnoreCase(preHdfsShell)) {</span>
+<span class="nc" id="L174">                doRetry(preHdfsShell, config);</span>
+            }
+
+<span class="nc" id="L177">            createMrHiveDict(config);</span>
+
+<span class="nc" id="L179">            String postfixHdfsCmd = getPostfixHdfsShell();</span>
+<span class="nc bnc" id="L180" title="All 4 branches missed.">            if (Objects.nonNull(postfixHdfsCmd) &amp;&amp; !&quot;&quot;.equalsIgnoreCase(postfixHdfsCmd)) {</span>
+<span class="nc" id="L181">                doRetry(postfixHdfsCmd, config);</span>
+            }
+
+<span class="nc" id="L184">            return new ExecuteResult(ExecuteResult.State.SUCCEED, stepLogger.getBufferedLog());</span>
+
+<span class="nc" id="L186">        } catch (Exception e) {</span>
+<span class="nc" id="L187">            logger.error(&quot;job:&quot; + getId() + &quot; execute finished with exception&quot;, e);</span>
+<span class="nc" id="L188">            return new ExecuteResult(ExecuteResult.State.ERROR, stepLogger.getBufferedLog());</span>
+        }
+    }
+
+    private void doRetry(String cmd, KylinConfig config) throws Exception {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (Objects.nonNull(cmd)) {</span>
+<span class="nc" id="L194">            stepLogger.log(&quot;cmd : &quot; + cmd);</span>
+<span class="nc" id="L195">            int currTimes = 0;</span>
+<span class="nc" id="L196">            int maxTimes = 360;</span>
+<span class="nc" id="L197">            boolean flag = true;</span>
+<span class="nc bnc" id="L198" title="All 4 branches missed.">            while (flag &amp;&amp; currTimes &lt;= maxTimes) {</span>
+                try {
+<span class="nc" id="L200">                    Pair&lt;Integer, String&gt; result = config.getCliCommandExecutor().execute(cmd, stepLogger, null);</span>
+<span class="nc" id="L201">                    stepLogger.log(result.toString());</span>
+<span class="nc" id="L202">                    flag = false;</span>
+<span class="nc" id="L203">                } catch (Exception e) {</span>
+<span class="nc" id="L204">                    stepLogger.log(&quot;execute : &quot; + cmd + &quot; Failed &amp;&amp; And errLog is &quot; + e.getMessage());</span>
+<span class="nc" id="L205">                    Thread.sleep(60000);</span>
+<span class="nc" id="L206">                    currTimes += 60;</span>
+<span class="nc" id="L207">                }</span>
+            }
+        }
+<span class="nc" id="L210">    }</span>
+
+
+    public void setInitStatement(String sql) {
+<span class="nc" id="L214">        setParam(&quot;HiveInit&quot;, sql);</span>
+<span class="nc" id="L215">    }</span>
+
+    public String getInitStatement() {
+<span class="nc" id="L218">        return getParam(&quot;HiveInit&quot;);</span>
+    }
+
+    public void setCreateTableStatement(String sql) {
+<span class="nc" id="L222">        setParam(&quot;HiveRedistributeData&quot;, sql);</span>
+<span class="nc" id="L223">    }</span>
+
+    public String getCreateTableStatement() {
+<span class="nc" id="L226">        return getParam(&quot;HiveRedistributeData&quot;);</span>
+    }
+
+    public void setCreateTableStatementMap(Map&lt;String, String&gt; dictSqlMap) {
+<span class="nc" id="L230">        setParam(&quot;HiveRedistributeDataMap&quot;, serilizeToMap(dictSqlMap));</span>
+<span class="nc" id="L231">    }</span>
+
+    public String getCreateTableStatementMap() {
+<span class="nc" id="L234">        return getParam(&quot;HiveRedistributeDataMap&quot;);</span>
+    }
+
+    public void setMaxDictStatementMap(Map&lt;String, String&gt; maxDictValMap) {
+<span class="nc" id="L238">        setParam(&quot;DictMaxMap&quot;, serilizeToMap(maxDictValMap));</span>
+<span class="nc" id="L239">    }</span>
+
+    public String getMaxDictStatementMap() {
+<span class="nc" id="L242">        return getParam(&quot;DictMaxMap&quot;);</span>
+    }
+
+    public String getPreHdfsShell() {
+<span class="nc" id="L246">        return getParam(&quot;preHdfsCmd&quot;);</span>
+    }
+
+    public void setPrefixHdfsShell(String cmd) {
+<span class="nc" id="L250">        setParam(&quot;preHdfsCmd&quot;, cmd);</span>
+<span class="nc" id="L251">    }</span>
+
+    public String getPostfixHdfsShell() {
+<span class="nc" id="L254">        return getParam(&quot;postfixHdfsCmd&quot;);</span>
+    }
+
+    public void setPostfixHdfsShell(String cmd) {
+<span class="nc" id="L258">        setParam(&quot;postfixHdfsCmd&quot;, cmd);</span>
+<span class="nc" id="L259">    }</span>
+
+    public void setIsLock(Boolean isLock) {
+<span class="nc" id="L262">        setParam(&quot;isLock&quot;, String.valueOf(isLock));</span>
+<span class="nc" id="L263">    }</span>
+
+    public boolean getIsLock() {
+<span class="nc" id="L266">        String isLock = getParam(&quot;isLock&quot;);</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        return Strings.isNullOrEmpty(isLock) ? false : Boolean.parseBoolean(isLock);</span>
+    }
+
+    public void setIsUnLock(Boolean isUnLock) {
+<span class="nc" id="L271">        setParam(&quot;isUnLock&quot;, String.valueOf(isUnLock));</span>
+<span class="nc" id="L272">    }</span>
+
+    public boolean getIsUnlock() {
+<span class="nc" id="L275">        String isUnLock = getParam(&quot;isUnLock&quot;);</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        return Strings.isNullOrEmpty(isUnLock) ? false : Boolean.parseBoolean(isUnLock);</span>
+    }
+
+    public void setLockPathName(String pathName) {
+<span class="nc" id="L280">        setParam(&quot;lockPathName&quot;, pathName);</span>
+<span class="nc" id="L281">    }</span>
+
+    public String getLockPathName() {
+<span class="nc" id="L284">        return getParam(&quot;lockPathName&quot;);</span>
+    }
+
+    private static String serilizeToMap(Map&lt;String, String&gt; map) {
+<span class="nc" id="L288">        JSONArray result = new JSONArray();</span>
+<span class="nc bnc" id="L289" title="All 4 branches missed.">        if (map != null &amp;&amp; map.size() &gt; 0) {</span>
+<span class="nc" id="L290">            map.forEach((key, value) -&gt; {</span>
+<span class="nc" id="L291">                JSONObject jsonObject = new JSONObject();</span>
+                try {
+<span class="nc" id="L293">                    jsonObject.put(key, value);</span>
+<span class="nc" id="L294">                } catch (JSONException e) {</span>
+<span class="nc" id="L295">                    logger.error(&quot;Json Error&quot;, e);</span>
+<span class="nc" id="L296">                }</span>
+<span class="nc" id="L297">                result.put(jsonObject);</span>
+<span class="nc" id="L298">            });</span>
+        }
+<span class="nc" id="L300">        return result.toString();</span>
+    }
+
+    private static Map&lt;String, String&gt; deserilizeForMap(String mapStr) {
+<span class="nc" id="L304">        Map&lt;String, String&gt; result = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (mapStr != null) {</span>
+            try {
+<span class="nc" id="L307">                JSONArray jsonArray = new JSONArray(mapStr);</span>
+<span class="nc" id="L308">                int size = jsonArray.length();</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">                for (int i = 0; i &lt; size; i++) {</span>
+<span class="nc" id="L310">                    JSONObject jsonObject = jsonArray.getJSONObject(i);</span>
+<span class="nc" id="L311">                    Iterator&lt;String&gt; iterator = jsonObject.keys();</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                    while (iterator.hasNext()) {</span>
+<span class="nc" id="L313">                        String key = iterator.next();</span>
+<span class="nc" id="L314">                        String value = jsonObject.getString(key);</span>
+<span class="nc" id="L315">                        result.put(key, value);</span>
+<span class="nc" id="L316">                    }</span>
+                }
+<span class="nc" id="L318">            } catch (JSONException e) {</span>
+<span class="nc" id="L319">                logger.error(&quot;Json Error&quot;, e);</span>
+<span class="nc" id="L320">            }</span>
+        }
+<span class="nc" id="L322">        return result;</span>
+    }
+
+    private String getLockPath(String pathName) {
+<span class="nc" id="L326">        return MRHiveDictUtil.DictHiveType.MrDictLockPath.getName() + pathName;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

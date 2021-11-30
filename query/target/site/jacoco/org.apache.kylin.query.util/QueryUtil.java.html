@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.util</a> &gt; <span class="el_source">QueryUtil.java</span></div><h1>QueryUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.util;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.google.common.collect.Lists;
+
+/**
+ */
+public class QueryUtil {
+
+<span class="fc" id="L39">    protected static final Logger logger = LoggerFactory.getLogger(QueryUtil.class);</span>
+    private static final String KEYWORD_SELECT = &quot;select&quot;;
+    private static final String KEYWORD_WITH = &quot;with&quot;;
+    private static final String KEYWORD_EXPLAIN = &quot;explain&quot;;
+    private static List&lt;IQueryTransformer&gt; queryTransformers;
+<span class="nc" id="L44">    private QueryUtil() {</span>
+<span class="nc" id="L45">        throw new IllegalStateException(&quot;Class QueryUtil is an utility class !&quot;);</span>
+    }
+
+    public static String appendLimitOffsetToSql(String sql, int limit, int offset) {
+<span class="fc" id="L49">        String retSql = sql;</span>
+<span class="fc" id="L50">        String prefixSql = &quot;select * from (&quot;;</span>
+<span class="fc" id="L51">        String suffixSql = &quot;)&quot;;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (StringUtils.startsWithIgnoreCase(sql, KEYWORD_EXPLAIN)</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                || StringUtils.startsWithIgnoreCase(sql, KEYWORD_WITH)) {</span>
+<span class="fc" id="L54">            prefixSql = &quot;&quot;;</span>
+<span class="fc" id="L55">            suffixSql = &quot;&quot;;</span>
+        }
+<span class="fc bfc" id="L57" title="All 4 branches covered.">        if (0 != limit &amp;&amp; 0 != offset) {</span>
+<span class="fc" id="L58">            retSql = prefixSql + sql + suffixSql + &quot; limit &quot; + String.valueOf(limit) + &quot; offset &quot;</span>
+<span class="fc" id="L59">                    + String.valueOf(offset);</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">        } else if (0 == limit &amp;&amp; 0 != offset) {</span>
+<span class="fc" id="L61">            retSql = prefixSql + sql + suffixSql + &quot; offset &quot; + String.valueOf(offset);</span>
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">        } else if (0 != limit &amp;&amp; 0 == offset) {</span>
+<span class="fc" id="L63">            retSql = prefixSql + sql + suffixSql + &quot; limit &quot; + String.valueOf(limit);</span>
+        } else {
+            // do nothing
+        }
+<span class="fc" id="L67">        return retSql;</span>
+    }
+
+    /**
+     * @deprecated Deprecated because of KYLIN-3594
+     */
+    @Deprecated
+    public static String massageSql(String sql, String project, int limit, int offset, String defaultSchema) {
+<span class="fc" id="L75">        sql = sql.trim();</span>
+<span class="fc" id="L76">        sql = sql.replace(&quot;\r&quot;, &quot; &quot;).replace(&quot;\n&quot;, System.getProperty(&quot;line.separator&quot;));</span>
+
+<span class="fc" id="L78">        ProjectManager projectManager = ProjectManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="fc" id="L79">        ProjectInstance projectInstance = projectManager.getProject(project);</span>
+<span class="fc" id="L80">        KylinConfig kylinConfig = projectInstance.getConfig();</span>
+<span class="fc" id="L81">        sql = removeCommentInSql(sql);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        while (sql.endsWith(&quot;;&quot;))</span>
+<span class="nc" id="L83">            sql = sql.substring(0, sql.length() - 1);</span>
+
+<span class="fc" id="L85">        String sql1 = sql;</span>
+<span class="fc" id="L86">        final String suffixPattern = &quot;^.+?\\s(limit\\s\\d+)?\\s(offset\\s\\d+)?\\s*$&quot;;</span>
+<span class="fc" id="L87">        sql = sql.replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+<span class="fc" id="L88">        Pattern pattern = Pattern.compile(suffixPattern);</span>
+<span class="fc" id="L89">        Matcher matcher = pattern.matcher(sql.toLowerCase(Locale.ROOT) + &quot;  &quot;);</span>
+
+<span class="fc" id="L91">        int toAppendLimit = 0;</span>
+<span class="fc" id="L92">        int toAppendOffset = 0;</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (matcher.find()) {</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">            if (limit &gt; 0 &amp;&amp; matcher.group(1) == null) {</span>
+<span class="fc" id="L95">                toAppendLimit = limit;</span>
+            }
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">            if (offset &gt; 0 &amp;&amp; matcher.group(2) == null) {</span>
+<span class="fc" id="L98">                toAppendOffset = offset;</span>
+            }
+        }
+
+        // https://issues.apache.org/jira/browse/KYLIN-2649
+<span class="pc bpc" id="L103" title="2 of 6 branches missed.">        if (kylinConfig.getForceLimit() &gt; 0 &amp;&amp; limit &lt;= 0 &amp;&amp; matcher.group(1) == null</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                &amp;&amp; sql1.toLowerCase(Locale.ROOT).matches(&quot;^select\\s+\\*\\p{all}*&quot;)) {</span>
+<span class="fc" id="L105">            toAppendLimit = kylinConfig.getForceLimit();</span>
+        }
+
+<span class="fc" id="L108">        sql1 = appendLimitOffsetToSql(sql1, toAppendLimit, toAppendOffset);</span>
+
+        // customizable SQL transformation
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (queryTransformers == null) {</span>
+<span class="fc" id="L112">            initQueryTransformers();</span>
+        }
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (IQueryTransformer t : queryTransformers) {</span>
+<span class="fc" id="L115">            sql1 = t.transform(sql1, project, defaultSchema);</span>
+<span class="fc" id="L116">        }</span>
+<span class="fc" id="L117">        return sql1;</span>
+    }
+
+    /**
+     * add remove catalog step at final
+     */
+    public static String massageSql(String sql, String project, int limit, int offset, String defaultSchema,
+            String catalog) {
+<span class="nc" id="L125">        String correctedSql = massageSql(sql, project, limit, offset, defaultSchema);</span>
+<span class="nc" id="L126">        correctedSql = removeCatalog(correctedSql, catalog);</span>
+<span class="nc" id="L127">        return correctedSql;</span>
+    }
+
+    /**
+     * Although SQL standard define CATALOG concept, ISV has right not to implement it.
+     * We remove it in before send it to SQL parser.
+     *
+     * @param sql query which maybe has such pattern: [[catalogName.]schemaName.]tableName
+     * @return replace [[catalogName.]schemaName.]tableName with [schemaName.]tableName
+     */
+    static String removeCatalog(String sql, String catalog) {
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (catalog == null)</span>
+<span class="nc" id="L139">            return sql;</span>
+        else
+<span class="fc" id="L141">            return sql.replace(catalog + &quot;.&quot;, &quot;&quot;);</span>
+    }
+
+    private static void initQueryTransformers() {
+<span class="fc" id="L145">        List&lt;IQueryTransformer&gt; transformers = Lists.newArrayList();</span>
+
+<span class="fc" id="L147">        String[] classes = KylinConfig.getInstanceFromEnv().getQueryTransformers();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        for (String clz : classes) {</span>
+            try {
+<span class="fc" id="L150">                IQueryTransformer t = (IQueryTransformer) ClassUtil.newInstance(clz);</span>
+<span class="fc" id="L151">                transformers.add(t);</span>
+<span class="nc" id="L152">            } catch (Exception e) {</span>
+<span class="nc" id="L153">                throw new IllegalStateException(&quot;Failed to init query transformer&quot;, e);</span>
+<span class="fc" id="L154">            }</span>
+        }
+
+<span class="fc" id="L157">        queryTransformers = transformers;</span>
+<span class="fc" id="L158">    }</span>
+
+    public static String makeErrorMsgUserFriendly(Throwable e) {
+<span class="fc" id="L161">        String msg = e.getMessage();</span>
+
+        // pick ParseException error message if possible
+<span class="fc" id="L164">        Throwable cause = e;</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        while (cause != null) {</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">            if (cause.getClass().getName().contains(&quot;ParseException&quot;)) {</span>
+<span class="nc" id="L167">                msg = cause.getMessage();</span>
+<span class="nc" id="L168">                break;</span>
+            }
+
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">            if (cause.getClass().getName().contains(&quot;ArithmeticException&quot;)) {</span>
+<span class="nc" id="L172">                msg = &quot;ArithmeticException: &quot; + cause.getMessage();</span>
+<span class="nc" id="L173">                break;</span>
+            }
+
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">            if (cause.getClass().getName().contains(&quot;NumberFormatException&quot;)) {</span>
+<span class="nc" id="L177">                msg = &quot;NumberFormatException: &quot; + cause.getMessage();</span>
+<span class="nc" id="L178">                break;</span>
+            }
+
+            //where in(...) condition has too many elements
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            if (cause.getClass().equals(StackOverflowError.class)) {</span>
+<span class="nc" id="L183">                msg = &quot;StackOverflowError maybe caused by that filters have too many elements&quot;;</span>
+<span class="nc" id="L184">                break;</span>
+            }
+<span class="fc" id="L186">            cause = cause.getCause();</span>
+        }
+
+<span class="fc" id="L189">        return makeErrorMsgUserFriendly(msg);</span>
+    }
+
+    public static String makeErrorMsgUserFriendly(String errorMsg) {
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">        if (errorMsg == null) {</span>
+<span class="fc" id="L194">            return &quot;Unknown error.&quot;;</span>
+        }
+        try {
+            // make one line
+<span class="nc" id="L198">            errorMsg = errorMsg.replaceAll(&quot;\\s&quot;, &quot; &quot;);</span>
+
+            // move cause to be ahead of sql, calcite creates the message pattern below
+<span class="nc" id="L201">            Pattern pattern = Pattern.compile(&quot;Error while executing SQL \&quot;(.*)\&quot;:(.*)&quot;);</span>
+<span class="nc" id="L202">            Matcher matcher = pattern.matcher(errorMsg);</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            if (matcher.find()) {</span>
+<span class="nc" id="L204">                return matcher.group(2).trim() + &quot;\nwhile executing SQL: \&quot;&quot; + matcher.group(1).trim() + &quot;\&quot;&quot;;</span>
+            } else
+<span class="nc" id="L206">                return errorMsg;</span>
+<span class="nc" id="L207">        } catch (Exception e) {</span>
+<span class="nc" id="L208">            return errorMsg;</span>
+        }
+    }
+
+    public static boolean isSelectStatement(String sql) {
+<span class="fc" id="L213">        String sql1 = sql.toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L214">        sql1 = removeCommentInSql(sql1);</span>
+<span class="fc" id="L215">        sql1 = sql1.trim();</span>
+
+<span class="pc bpc" id="L217" title="3 of 6 branches missed.">        return sql1.startsWith(KEYWORD_SELECT) || (sql1.startsWith(KEYWORD_WITH) &amp;&amp; sql1.contains(KEYWORD_SELECT))</span>
+<span class="pc bpc" id="L218" title="1 of 4 branches missed.">                || (sql1.startsWith(KEYWORD_EXPLAIN) &amp;&amp; sql1.contains(KEYWORD_SELECT));</span>
+    }
+
+
+    public static String removeCommentInSql(String sql) {
+        // match two patterns, one is &quot;-- comment&quot;, the other is &quot;/* comment */&quot;
+        try {
+<span class="fc" id="L225">            return new CommentParser(sql).Input().trim();</span>
+<span class="fc" id="L226">        } catch (ParseException e) {</span>
+<span class="fc" id="L227">            logger.error(&quot;Failed to parse sql: {}&quot;, sql, e);</span>
+<span class="fc" id="L228">            return sql;</span>
+        }
+    }
+
+    public interface IQueryTransformer {
+        String transform(String sql, String project, String defaultSchema);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

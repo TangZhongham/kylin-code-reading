@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultChainedExecutable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.execution</a> &gt; <span class="el_source">DefaultChainedExecutable.java</span></div><h1>DefaultChainedExecutable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.execution;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.lock.DistributedLockFactory;
+import org.apache.kylin.job.exception.ExecuteException;
+
+import org.apache.kylin.metadata.MetadataConstants;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ */
+public class DefaultChainedExecutable extends AbstractExecutable implements ChainedExecutable {
+
+<span class="fc" id="L40">    public static final Integer DEFAULT_PRIORITY = 10;</span>
+
+
+<span class="fc" id="L43">    private final List&lt;AbstractExecutable&gt; subTasks = Lists.newArrayList();</span>
+
+    public DefaultChainedExecutable() {
+<span class="fc" id="L46">        super();</span>
+<span class="fc" id="L47">    }</span>
+
+    protected void initConfig(KylinConfig config) {
+<span class="fc" id="L50">        super.initConfig(config);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        for (AbstractExecutable sub : subTasks) {</span>
+<span class="fc" id="L52">            sub.initConfig(config);</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">    }</span>
+
+    public void setProjectName(String name) {
+<span class="nc" id="L57">        setParam(MetadataConstants.P_PROJECT_NAME, name);</span>
+<span class="nc" id="L58">    }</span>
+
+    public String getProjectName() {
+<span class="nc" id="L61">        return getParam(MetadataConstants.P_PROJECT_NAME);</span>
+    }
+
+    public long getMapReduceWaitTime() {
+<span class="nc" id="L65">        return getExtraInfoAsLong(MetadataConstants.MAP_REDUCE_WAIT_TIME, 0L);</span>
+    }
+
+    public void setMapReduceWaitTime(long t) {
+<span class="nc" id="L69">        addExtraInfo(MetadataConstants.MAP_REDUCE_WAIT_TIME, t + &quot;&quot;);</span>
+<span class="nc" id="L70">    }</span>
+
+    public Set&lt;String&gt; getMetadataDumpList(KylinConfig config) {
+<span class="nc" id="L73">        return Collections.emptySet();</span>
+    }
+
+    @Override
+    protected ExecuteResult doWork(ExecutableContext context) throws ExecuteException {
+<span class="fc" id="L78">        List&lt;? extends Executable&gt; executables = getTasks();</span>
+<span class="fc" id="L79">        final int size = executables.size();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        for (int i = 0; i &lt; size; ++i) {</span>
+<span class="fc" id="L81">            Executable subTask = executables.get(i);</span>
+<span class="fc" id="L82">            ExecutableState state = subTask.getStatus();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            if (state == ExecutableState.RUNNING) {</span>
+                // there is already running subtask, no need to start a new subtask
+<span class="nc" id="L85">                break;</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            } else if (state == ExecutableState.STOPPED) {</span>
+                // the job is paused
+<span class="nc" id="L88">                break;</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            } else if (state == ExecutableState.ERROR) {</span>
+<span class="nc" id="L90">                throw new IllegalStateException(</span>
+<span class="nc" id="L91">                        &quot;invalid subtask state, subtask:&quot; + subTask.getName() + &quot;, state:&quot; + subTask.getStatus());</span>
+            }
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (subTask.isRunnable()) {</span>
+<span class="fc" id="L94">                return subTask.execute(context);</span>
+            }
+        }
+<span class="nc" id="L97">        return new ExecuteResult(ExecuteResult.State.SUCCEED);</span>
+    }
+
+    @Override
+    protected void onExecuteStart(ExecutableContext executableContext) {
+<span class="fc" id="L102">        final long startTime = getStartTime();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (startTime &gt; 0) {</span>
+<span class="fc" id="L104">            getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.RUNNING, null, null, getLogPath());</span>
+        } else {
+<span class="fc" id="L106">            Map&lt;String, String&gt; info = Maps.newHashMap();</span>
+<span class="fc" id="L107">            info.put(START_TIME, Long.toString(System.currentTimeMillis()));</span>
+<span class="fc" id="L108">            getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.RUNNING, info, null, getLogPath());</span>
+        }
+<span class="fc" id="L110">        getManager().addJobInfo(getId(), BUILD_INSTANCE, DistributedLockFactory.processAndHost());</span>
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    protected void onExecuteError(Throwable exception, ExecutableContext executableContext) {
+<span class="fc" id="L115">        super.onExecuteError(exception, executableContext);</span>
+<span class="fc" id="L116">        onStatusChange(executableContext, ExecuteResult.createError(exception), ExecutableState.ERROR);</span>
+<span class="fc" id="L117">    }</span>
+
+    @Override
+    protected void onExecuteFinished(ExecuteResult result, ExecutableContext executableContext) {
+<span class="fc" id="L121">        ExecutableManager mgr = getManager();</span>
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (isDiscarded()) {</span>
+<span class="fc" id="L124">            setEndTime(System.currentTimeMillis());</span>
+<span class="fc" id="L125">            onStatusChange(executableContext, result, ExecutableState.DISCARDED);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        } else if (isPaused()) {</span>
+<span class="nc" id="L127">            setEndTime(System.currentTimeMillis());</span>
+<span class="nc" id="L128">            onStatusChange(executableContext, result, ExecutableState.STOPPED);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        } else if (result.succeed()) {</span>
+<span class="fc" id="L130">            List&lt;? extends Executable&gt; jobs = getTasks();</span>
+<span class="fc" id="L131">            boolean allSucceed = true;</span>
+<span class="fc" id="L132">            boolean hasError = false;</span>
+<span class="fc" id="L133">            boolean hasDiscarded = false;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            for (Executable task : jobs) {</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (task.getStatus() == ExecutableState.RUNNING) {</span>
+<span class="fc" id="L136">                    logger.error(</span>
+                            &quot;There shouldn't be a running subtask[jobId: {}, jobName: {}], \n&quot;
+                                    + &quot;it might cause endless state, will retry to fetch subtask's state.&quot;,
+<span class="fc" id="L139">                            task.getId(), task.getName());</span>
+<span class="fc" id="L140">                    getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), task.getId(), ExecutableState.ERROR, null,</span>
+<span class="fc" id="L141">                            &quot;killed due to inconsistent state&quot;, getLogPath());</span>
+<span class="fc" id="L142">                    hasError = true;</span>
+                }
+
+<span class="fc" id="L145">                final ExecutableState status = task.getStatus();</span>
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                if (status == ExecutableState.ERROR) {</span>
+<span class="fc" id="L148">                    hasError = true;</span>
+                }
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (status != ExecutableState.SUCCEED) {</span>
+<span class="fc" id="L151">                    allSucceed = false;</span>
+                }
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                if (status == ExecutableState.DISCARDED) {</span>
+<span class="nc" id="L154">                    hasDiscarded = true;</span>
+                }
+<span class="fc" id="L156">            }</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (allSucceed) {</span>
+<span class="fc" id="L158">                setEndTime(System.currentTimeMillis());</span>
+<span class="fc" id="L159">                mgr.updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.SUCCEED, null, null, getLogPath());</span>
+<span class="fc" id="L160">                onStatusChange(executableContext, result, ExecutableState.SUCCEED);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            } else if (hasError) {</span>
+<span class="fc" id="L162">                setEndTime(System.currentTimeMillis());</span>
+<span class="fc" id="L163">                mgr.updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.ERROR, null, null, getLogPath());</span>
+<span class="fc" id="L164">                onStatusChange(executableContext, result, ExecutableState.ERROR);</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">            } else if (hasDiscarded) {</span>
+<span class="nc" id="L166">                setEndTime(System.currentTimeMillis());</span>
+<span class="nc" id="L167">                mgr.updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.DISCARDED, null, null, getLogPath());</span>
+            } else {
+<span class="fc" id="L169">                mgr.updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.READY, null, null, getLogPath());</span>
+            }
+<span class="fc" id="L171">        } else {</span>
+<span class="fc" id="L172">            setEndTime(System.currentTimeMillis());</span>
+<span class="fc" id="L173">            mgr.updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.ERROR, null, result.output(), getLogPath());</span>
+<span class="fc" id="L174">            onStatusChange(executableContext, result, ExecutableState.ERROR);</span>
+        }
+<span class="fc" id="L176">    }</span>
+
+    protected void onStatusChange(ExecutableContext context, ExecuteResult result, ExecutableState state) {
+<span class="fc" id="L179">        super.notifyUserStatusChange(context, state);</span>
+<span class="fc" id="L180">    }</span>
+
+    @Override
+    public List&lt;AbstractExecutable&gt; getTasks() {
+<span class="fc" id="L184">        return subTasks;</span>
+    }
+
+    public final AbstractExecutable getTaskByName(String name) {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        for (AbstractExecutable task : subTasks) {</span>
+<span class="nc bnc" id="L189" title="All 4 branches missed.">            if (task.getName() != null &amp;&amp; task.getName().equalsIgnoreCase(name)) {</span>
+<span class="nc" id="L190">                return task;</span>
+            }
+<span class="nc" id="L192">        }</span>
+<span class="nc" id="L193">        return null;</span>
+    }
+
+    @Override
+    public void addTask(AbstractExecutable executable) {
+<span class="fc" id="L198">        executable.setParentExecutable(this);</span>
+<span class="fc" id="L199">        executable.setParent(this);</span>
+<span class="fc" id="L200">        executable.setId(getId() + &quot;-&quot; + String.format(Locale.ROOT, &quot;%02d&quot;, subTasks.size()));</span>
+<span class="fc" id="L201">        this.subTasks.add(executable);</span>
+<span class="fc" id="L202">    }</span>
+
+    @Override
+    public int getDefaultPriority() {
+<span class="fc" id="L206">        return DEFAULT_PRIORITY;</span>
+    }
+
+    public String findExtraInfo(String key, String dft) {
+<span class="nc" id="L210">        return findExtraInfo(key, dft, false);</span>
+    }
+
+    public String findExtraInfoBackward(String key, String dft) {
+<span class="nc" id="L214">        return findExtraInfo(key, dft, true);</span>
+    }
+
+    private String findExtraInfo(String key, String dft, boolean backward) {
+<span class="nc" id="L218">        ArrayList&lt;AbstractExecutable&gt; tasks = new ArrayList&lt;AbstractExecutable&gt;(getTasks());</span>
+
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        if (backward) {</span>
+<span class="nc" id="L221">            Collections.reverse(tasks);</span>
+        }
+
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        for (AbstractExecutable child : tasks) {</span>
+<span class="nc" id="L225">            Output output = getManager().getOutput(child.getId());</span>
+<span class="nc" id="L226">            String value = output.getExtra().get(key);</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            if (value != null)</span>
+<span class="nc" id="L228">                return value;</span>
+<span class="nc" id="L229">        }</span>
+<span class="nc" id="L230">        return dft;</span>
+    }
+
+    @Override
+    public &lt;T extends AbstractExecutable&gt; T getTask(Class&lt;T&gt; clz) {
+<span class="nc" id="L235">        List&lt;AbstractExecutable&gt; tasks = getTasks();</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        for (AbstractExecutable task : tasks) {</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">            if (task.getClass().equals(clz)) {</span>
+<span class="nc" id="L238">                return (T) task;</span>
+            }
+<span class="nc" id="L240">        }</span>
+<span class="nc" id="L241">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

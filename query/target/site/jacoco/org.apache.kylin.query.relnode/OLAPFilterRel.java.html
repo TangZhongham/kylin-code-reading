@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPFilterRel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPFilterRel.java</span></div><h1>OLAPFilterRel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.List;
+import java.util.Set;
+
+import org.apache.calcite.adapter.enumerable.EnumerableCalc;
+import org.apache.calcite.adapter.enumerable.EnumerableConvention;
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.core.Filter;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexProgram;
+import org.apache.calcite.rex.RexProgramBuilder;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.metadata.filter.FilterOptimizeTransformer;
+import org.apache.kylin.metadata.filter.LogicalTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter.FilterOperatorEnum;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.query.relnode.visitor.TupleFilterVisitor;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Sets;
+
+/**
+ */
+public class OLAPFilterRel extends Filter implements OLAPRel {
+
+    ColumnRowType columnRowType;
+    OLAPContext context;
+<span class="nc bnc" id="L58" title="All 2 branches missed.">    boolean autoJustTimezone = KylinConfig.getInstanceFromEnv().getStreamingDerivedTimeTimezone().length() &gt; 0;</span>
+
+    public OLAPFilterRel(RelOptCluster cluster, RelTraitSet traits, RelNode child, RexNode condition) {
+<span class="nc" id="L61">        super(cluster, traits, child, condition);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == CONVENTION);</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == child.getConvention());</span>
+<span class="nc" id="L64">        this.rowType = getRowType();</span>
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+<span class="nc" id="L69">        return super.computeSelfCost(planner, mq).multiplyBy(.05);</span>
+    }
+
+    @Override
+    public Filter copy(RelTraitSet traitSet, RelNode input, RexNode condition) {
+<span class="nc" id="L74">        return new OLAPFilterRel(getCluster(), traitSet, input, condition);</span>
+    }
+
+    @Override
+    public void implementOLAP(OLAPImplementor implementor) {
+<span class="nc" id="L79">        implementor.fixSharedOlapTableScan(this);</span>
+<span class="nc" id="L80">        implementor.visitChild(getInput(), this);</span>
+
+<span class="nc" id="L82">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L83">        this.context = implementor.getContext();</span>
+
+        // only translate where clause and don't translate having clause
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (!context.afterAggregate) {</span>
+<span class="nc" id="L87">            translateFilter(context);</span>
+        } else {
+<span class="nc" id="L89">            context.afterHavingClauseFilter = true;</span>
+
+<span class="nc" id="L91">            TupleFilterVisitor visitor = new TupleFilterVisitor(this.columnRowType);</span>
+<span class="nc" id="L92">            TupleFilter havingFilter = this.condition.accept(visitor);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (context.havingFilter == null)</span>
+<span class="nc" id="L94">                context.havingFilter = havingFilter;</span>
+        }
+<span class="nc" id="L96">    }</span>
+
+    ColumnRowType buildColumnRowType() {
+<span class="nc" id="L99">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L100">        ColumnRowType inputColumnRowType = olapChild.getColumnRowType();</span>
+<span class="nc" id="L101">        return inputColumnRowType;</span>
+    }
+
+    void translateFilter(OLAPContext context) {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (this.condition == null) {</span>
+<span class="nc" id="L106">            return;</span>
+        }
+
+<span class="nc" id="L109">        TupleFilterVisitor visitor = new TupleFilterVisitor(this.columnRowType);</span>
+<span class="nc" id="L110">        boolean isRealtimeTable = columnRowType.getColumnByIndex(0).getColumnDesc().getTable().isStreamingTable() ;</span>
+<span class="nc bnc" id="L111" title="All 4 branches missed.">        autoJustTimezone = isRealtimeTable &amp;&amp; autoJustTimezone;</span>
+<span class="nc" id="L112">        visitor.setAutoJustByTimezone(autoJustTimezone);</span>
+<span class="nc" id="L113">        TupleFilter filter = this.condition.accept(visitor);</span>
+
+        // optimize the filter, the optimization has to be segment-irrelevant
+<span class="nc" id="L116">        filter = new FilterOptimizeTransformer().transform(filter);</span>
+
+<span class="nc" id="L118">        Set&lt;TblColRef&gt; filterColumns = Sets.newHashSet();</span>
+<span class="nc" id="L119">        TupleFilter.collectColumns(filter, filterColumns);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        for (TblColRef tblColRef : filterColumns) {</span>
+<span class="nc bnc" id="L121" title="All 4 branches missed.">            if (!tblColRef.isInnerColumn() &amp;&amp; context.belongToContextTables(tblColRef)) {</span>
+<span class="nc" id="L122">                context.allColumns.add(tblColRef);</span>
+<span class="nc" id="L123">                context.filterColumns.add(tblColRef);</span>
+            }
+<span class="nc" id="L125">        }</span>
+
+<span class="nc" id="L127">        context.filter = and(context.filter, filter);</span>
+<span class="nc" id="L128">    }</span>
+    
+    private TupleFilter and(TupleFilter f1, TupleFilter f2) {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (f1 == null)</span>
+<span class="nc" id="L132">            return f2;</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (f2 == null)</span>
+<span class="nc" id="L134">            return f1;</span>
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (f1.getOperator() == FilterOperatorEnum.AND) {</span>
+<span class="nc" id="L137">            f1.addChild(f2);</span>
+<span class="nc" id="L138">            return f1;</span>
+        }
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (f2.getOperator() == FilterOperatorEnum.AND) {</span>
+<span class="nc" id="L142">            f2.addChild(f1);</span>
+<span class="nc" id="L143">            return f2;</span>
+        }
+
+<span class="nc" id="L146">        LogicalTupleFilter and = new LogicalTupleFilter(FilterOperatorEnum.AND);</span>
+<span class="nc" id="L147">        and.addChild(f1);</span>
+<span class="nc" id="L148">        and.addChild(f2);</span>
+<span class="nc" id="L149">        return and;</span>
+    }
+
+    @Override
+    public EnumerableRel implementEnumerable(List&lt;EnumerableRel&gt; inputs) {
+        // keep it for having clause
+<span class="nc" id="L155">        RexBuilder rexBuilder = getCluster().getRexBuilder();</span>
+<span class="nc" id="L156">        RelDataType inputRowType = getInput().getRowType();</span>
+<span class="nc" id="L157">        RexProgramBuilder programBuilder = new RexProgramBuilder(inputRowType, rexBuilder);</span>
+<span class="nc" id="L158">        programBuilder.addIdentity();</span>
+<span class="nc" id="L159">        programBuilder.addCondition(this.condition);</span>
+<span class="nc" id="L160">        RexProgram program = programBuilder.getProgram();</span>
+
+<span class="nc" id="L162">        return new EnumerableCalc(getCluster(), getCluster().traitSetOf(EnumerableConvention.INSTANCE), //</span>
+<span class="nc" id="L163">                sole(inputs), program);</span>
+    }
+
+    @Override
+    public void implementRewrite(RewriteImplementor implementor) {
+<span class="nc" id="L168">        implementor.visitChild(this, getInput());</span>
+
+<span class="nc" id="L170">        this.rowType = this.deriveRowType();</span>
+<span class="nc" id="L171">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L172">    }</span>
+
+    @Override
+    public OLAPContext getContext() {
+<span class="nc" id="L176">        return context;</span>
+    }
+
+    @Override
+    public ColumnRowType getColumnRowType() {
+<span class="nc" id="L181">        return columnRowType;</span>
+    }
+
+    @Override
+    public boolean hasSubQuery() {
+<span class="nc" id="L186">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L187">        return olapChild.hasSubQuery();</span>
+    }
+
+    @Override
+    public RelTraitSet replaceTraitSet(RelTrait trait) {
+<span class="nc" id="L192">        RelTraitSet oldTraitSet = this.traitSet;</span>
+<span class="nc" id="L193">        this.traitSet = this.traitSet.replace(trait);</span>
+<span class="nc" id="L194">        return oldTraitSet;</span>
+    }
+
+    @Override
+    public RelWriter explainTerms(RelWriter pw) {
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        return super.explainTerms(pw).item(&quot;ctx&quot;,</span>
+<span class="nc" id="L200">                context == null ? &quot;&quot; : String.valueOf(context.id) + &quot;@&quot; + context.realization);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

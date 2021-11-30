@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DoubleDeltaSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.topn</a> &gt; <span class="el_source">DoubleDeltaSerializer.java</span></div><h1>DoubleDeltaSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.measure.topn;
+
+import java.nio.ByteBuffer;
+
+/**
+ * Given an array of double in ascending order, serialize them into very compact bytes.
+ * 
+ * http://bitcharmer.blogspot.co.uk/2013/12/how-to-serialise-array-of-doubles-with.html
+ */
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">public class DoubleDeltaSerializer implements java.io.Serializable {</span>
+
+    // first 32 bits stores meta info
+    static final int PRECISION_BITS = 3;
+    static final int DELTA_SIZE_BITS = 6;
+    static final int LENGTH_BITS = 23;
+
+<span class="fc" id="L34">    static final long[] MASKS = new long[64];</span>
+    static {
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (int i = 0; i &lt; MASKS.length; i++) {</span>
+<span class="fc" id="L37">            MASKS[i] = (1L &lt;&lt; i) - 1;</span>
+        }
+<span class="fc" id="L39">    }</span>
+
+    final private int precision;
+    final private int multiplier;
+
+    transient ThreadLocal&lt;long[]&gt; deltasThreadLocal;
+
+    public DoubleDeltaSerializer() {
+<span class="fc" id="L47">        this(2);</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * @param precision round to specified number of digits after decimal point
+     */
+<span class="fc" id="L53">    public DoubleDeltaSerializer(int precision) {</span>
+<span class="fc" id="L54">        checkFitInBits(precision, PRECISION_BITS);</span>
+
+<span class="fc" id="L56">        this.precision = precision;</span>
+<span class="fc" id="L57">        this.multiplier = (int) Math.pow(10, precision);</span>
+<span class="fc" id="L58">    }</span>
+
+    public void serialize(double[] values, ByteBuffer buf) {
+<span class="fc" id="L61">        long[] deltas = calculateDeltas(values);</span>
+<span class="fc" id="L62">        int deltaSize = maxDeltaSize(deltas, values.length - 1);</span>
+
+<span class="fc" id="L64">        checkFitInBits(deltaSize, DELTA_SIZE_BITS);</span>
+<span class="fc" id="L65">        checkFitInBits(values.length, LENGTH_BITS);</span>
+
+<span class="fc" id="L67">        int meta = (int) precision &lt;&lt; (LENGTH_BITS + DELTA_SIZE_BITS) | (int) deltaSize &lt;&lt; LENGTH_BITS | values.length;</span>
+<span class="fc" id="L68">        buf.putInt(meta);</span>
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (values.length == 0)</span>
+<span class="fc" id="L71">            return;</span>
+
+<span class="fc" id="L73">        buf.putLong(roundAndPromote(values[0]));</span>
+<span class="fc" id="L74">        putDeltas(deltas, values.length - 1, deltaSize, buf);</span>
+<span class="fc" id="L75">    }</span>
+
+    private void putDeltas(long[] deltas, int len, int deltaSize, ByteBuffer buf) {
+<span class="fc" id="L78">        long bits = 0;</span>
+<span class="fc" id="L79">        int free = Long.SIZE;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            if (free &gt;= deltaSize) {</span>
+<span class="fc" id="L82">                bits |= deltas[i] &lt;&lt; (free - deltaSize);</span>
+<span class="fc" id="L83">                free -= deltaSize;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                if (free == 0) {</span>
+<span class="fc" id="L85">                    buf.putLong(bits);</span>
+<span class="fc" id="L86">                    bits = 0;</span>
+<span class="fc" id="L87">                    free = Long.SIZE;</span>
+                }
+            } else {
+<span class="fc" id="L90">                bits |= deltas[i] &gt;&gt; (deltaSize - free);</span>
+<span class="fc" id="L91">                buf.putLong(bits);</span>
+<span class="fc" id="L92">                free = (Long.SIZE - (deltaSize - free));</span>
+<span class="fc" id="L93">                bits = deltas[i] &lt;&lt; free;</span>
+            }
+        }
+
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (free &lt; Long.SIZE) {</span>
+<span class="fc" id="L98">            buf.putLong(bits);</span>
+        }
+<span class="fc" id="L100">    }</span>
+
+    private int maxDeltaSize(long[] deltas, int len) {
+<span class="fc" id="L103">        long maxDelta = 0;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc" id="L105">            maxDelta = Math.max(maxDelta, deltas[i]);</span>
+        }
+<span class="fc" id="L107">        return Long.SIZE - Long.numberOfLeadingZeros(maxDelta);</span>
+    }
+
+    private long[] calculateDeltas(double[] values) {
+<span class="fc" id="L111">        int len = values.length - 1;</span>
+<span class="fc" id="L112">        len = Math.max(0, len);</span>
+
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (deltasThreadLocal == null) {</span>
+<span class="fc" id="L115">            deltasThreadLocal = new ThreadLocal&lt;&gt;();</span>
+        }
+
+<span class="fc" id="L118">        long[] deltas = deltasThreadLocal.get();</span>
+<span class="pc bpc" id="L119" title="3 of 4 branches missed.">        if (deltas == null || deltas.length &lt; len) {</span>
+<span class="fc" id="L120">            deltas = new long[len];</span>
+<span class="fc" id="L121">            deltasThreadLocal.set(deltas);</span>
+        }
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (len == 0)</span>
+<span class="fc" id="L125">            return deltas;</span>
+
+<span class="fc" id="L127">        long current = roundAndPromote(values[0]);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc" id="L129">            long next = roundAndPromote(values[i + 1]);</span>
+<span class="fc" id="L130">            deltas[i] = next - current;</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">            assert deltas[i] &gt;= 0;</span>
+<span class="fc" id="L132">            current = next;</span>
+        }
+<span class="fc" id="L134">        return deltas;</span>
+    }
+
+    private long roundAndPromote(double value) {
+<span class="fc" id="L138">        return (long) (value * multiplier + .5d);</span>
+    }
+
+    private void checkFitInBits(int num, int bits) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (num &gt;= (1 &lt;&lt; bits))</span>
+<span class="nc" id="L143">            throw new IllegalArgumentException();</span>
+<span class="fc" id="L144">    }</span>
+
+    public double[] deserialize(ByteBuffer buf) {
+<span class="fc" id="L147">        int meta = buf.getInt();</span>
+<span class="fc" id="L148">        int len = meta &amp; ((1 &lt;&lt; LENGTH_BITS) - 1);</span>
+
+<span class="fc" id="L150">        double[] result = new double[len];</span>
+<span class="fc" id="L151">        deserialize(buf, meta, result);</span>
+
+<span class="fc" id="L153">        return result;</span>
+    }
+
+    public int deserialize(ByteBuffer buf, double[] result) {
+<span class="nc" id="L157">        return deserialize(buf, buf.getInt(), result);</span>
+    }
+
+    private int deserialize(ByteBuffer buf, int meta, double[] result) {
+<span class="fc" id="L161">        int precision = meta &gt;&gt;&gt; (DELTA_SIZE_BITS + LENGTH_BITS);</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">        assert precision == this.precision;</span>
+<span class="fc" id="L163">        int deltaSize = (meta &gt;&gt;&gt; LENGTH_BITS) &amp; ((1 &lt;&lt; DELTA_SIZE_BITS) - 1);</span>
+<span class="fc" id="L164">        int len = meta &amp; ((1 &lt;&lt; LENGTH_BITS) - 1);</span>
+
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (len == 0)</span>
+<span class="fc" id="L167">            return 0;</span>
+<span class="pc bpc" id="L168" title="2 of 4 branches missed.">        assert result.length &gt;= len;</span>
+
+<span class="fc" id="L170">        long current = buf.getLong();</span>
+<span class="fc" id="L171">        result[0] = (double) current / multiplier;</span>
+
+<span class="fc" id="L173">        long bits = 0;</span>
+<span class="fc" id="L174">        int left = 0;</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (int i = 1; i &lt; len; i++) {</span>
+<span class="fc" id="L176">            long delta = 0;</span>
+
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (left &gt;= deltaSize) {</span>
+<span class="fc" id="L179">                delta = (bits &gt;&gt; (left - deltaSize)) &amp; MASKS[deltaSize];</span>
+<span class="fc" id="L180">                left -= deltaSize;</span>
+            } else {
+<span class="fc" id="L182">                int more = deltaSize - left;</span>
+<span class="fc" id="L183">                delta = (bits &amp; MASKS[left]) &lt;&lt; more;</span>
+<span class="fc" id="L184">                bits = buf.getLong();</span>
+<span class="fc" id="L185">                left = Long.SIZE;</span>
+<span class="fc" id="L186">                delta |= (bits &gt;&gt; (left - more)) &amp; MASKS[more];</span>
+<span class="fc" id="L187">                left -= more;</span>
+            }
+
+<span class="fc" id="L190">            current += delta;</span>
+<span class="fc" id="L191">            result[i] = (double) current / multiplier;</span>
+        }
+<span class="fc" id="L193">        return len;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

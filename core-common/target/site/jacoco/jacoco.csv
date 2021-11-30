@@ -1,0 +1,212 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.common,MetricsFactory,23,0,4,0,12,0,7,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.common,MetricsNameBuilder,44,0,0,0,4,0,4,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.common,MetricsConstant,3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,MetricVariableRatioGauge,33,0,4,0,9,0,4,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.new CacheLoader() {...},22,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.new CacheLoader() {...},19,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.new CacheLoader() {...},19,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.new CacheLoader() {...},22,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.new ThreadLocal() {...},10,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.new Gauge() {...},13,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics,922,0,43,0,185,0,51,0,28,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,HadoopMetrics2Reporter.Builder,14,50,0,0,4,12,2,4,2,4
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,JsonFileMetricsReporter,116,0,4,0,26,0,6,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,JsonFileMetricsReporter.new Runnable() {...},122,0,0,0,26,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,CodahaleMetrics.CodahaleMetricsScope,102,0,4,0,18,0,5,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,Metrics2Reporter,38,0,0,0,12,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,KylinObjectNameFactory,109,0,6,0,21,0,7,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,HadoopMetrics2Reporter,129,663,7,13,24,123,8,30,3,25
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,JmxMetricsReporter,30,0,0,0,10,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,ConsoleMetricsReporter,22,0,0,0,8,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.metrics2,MetricsReporting,44,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.threadlocal,InternalThread,46,0,0,0,19,0,10,0,10,0
+Apache Kylin - Core Common,org.apache.kylin.common.threadlocal,InternalThreadLocalMap,80,182,12,12,22,52,13,15,5,11
+Apache Kylin - Core Common,org.apache.kylin.common.threadlocal,InternalThreadLocal,76,126,18,12,26,42,16,13,3,11
+Apache Kylin - Core Common,org.apache.kylin.common.lock,DistributedLockFactory,34,0,0,0,6,0,5,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.logging,SensitivePatternLayout,86,0,6,0,15,0,7,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.zookeeper,KylinServerDiscovery.JsonInstanceSerializer,0,60,0,0,0,13,0,3,0,3
+Apache Kylin - Core Common,org.apache.kylin.common.zookeeper,KylinServerDiscovery,38,184,4,8,9,48,6,7,2,5
+Apache Kylin - Core Common,org.apache.kylin.common.zookeeper,KylinServerDiscovery.SingletonHolder,6,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.zookeeper,KylinServerDiscovery.new ServiceCacheListener() {...},1,115,0,2,1,16,1,4,1,3
+Apache Kylin - Core Common,org.apache.kylin.common.util,DateFormat,257,146,51,9,47,23,42,8,15,5
+Apache Kylin - Core Common,org.apache.kylin.common.util,HiveCmdBuilder,56,285,6,15,11,65,9,14,4,8
+Apache Kylin - Core Common,org.apache.kylin.common.util,HadoopUtil.new PathFilter() {...},12,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,HadoopUtil.new PathFilter() {...},12,0,2,0,2,0,3,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ShardingHash,80,0,10,0,21,0,12,0,7,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,CaseInsensitiveStringMap,0,4,0,0,0,2,0,1,0,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,StreamingMessageRow,31,0,0,0,12,0,6,0,6,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MemoryBudgetController.MemoryWaterLevel,61,0,4,0,14,0,6,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,LoggableCachedThreadPool,71,0,6,0,18,0,6,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,HadoopUtil.new PathFilter() {...},12,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MyLogFormatter,118,0,6,0,30,0,5,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MemoryBudgetController,402,0,48,0,116,0,38,0,14,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,VersionUtil,43,19,6,2,11,7,6,2,2,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,CompressionUtils,134,0,4,0,30,0,6,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Bytes.LexicographicalComparerHolder.UnsafeComparer.new PrivilegedAction() {...},24,0,0,0,8,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,TimeUtil,7,259,0,0,2,62,1,21,1,21
+Apache Kylin - Core Common,org.apache.kylin.common.util,SSHClient,822,0,78,0,201,0,47,0,8,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ServerMode,99,0,14,0,17,0,16,0,9,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,RangeUtil,153,313,32,60,32,60,25,29,3,5
+Apache Kylin - Core Common,org.apache.kylin.common.util,FlinkEntry,90,0,8,0,16,0,6,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ClasspathScanner,619,0,112,0,123,0,69,0,13,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ClassUtil,109,155,9,11,24,36,10,9,3,6
+Apache Kylin - Core Common,org.apache.kylin.common.util,OrderedProperties.CustomProperties,26,14,0,0,4,4,4,2,4,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,BytesUtil,808,334,96,32,190,74,86,27,33,16
+Apache Kylin - Core Common,org.apache.kylin.common.util,DBUtils,27,0,2,0,14,0,7,0,6,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,SourceConfigurationUtil,102,155,13,11,17,35,11,7,1,5
+Apache Kylin - Core Common,org.apache.kylin.common.util,SetThreadName,28,0,0,0,6,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ByteBufferBackedInputStream,47,0,6,0,12,0,7,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Bytes.LexicographicalComparerHolder,30,0,0,0,8,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Bytes,2545,33,307,3,492,7,258,3,104,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,HadoopUtil,435,80,30,8,84,19,37,10,20,8
+Apache Kylin - Core Common,org.apache.kylin.common.util,SSHClientOutput,19,0,0,0,7,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,DaemonThreadFactory,12,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,FileUtils,36,0,6,0,7,0,5,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Bytes.LexicographicalComparerHolder.PureJavaComparer,69,0,12,0,12,0,8,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,JsonUtil.new TypeReference() {...},3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,StringSplitter,15,45,1,3,3,9,2,2,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,SortUtil,22,9,1,1,6,3,2,1,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,Dictionary,243,0,16,0,49,0,25,0,17,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,BitSets,3,57,1,7,1,9,2,4,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,BufferedLogger,49,0,2,0,15,0,7,0,6,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Array,115,0,20,0,24,0,17,0,7,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,BytesSplitter,276,0,20,0,57,0,19,0,9,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MemoryBudgetController.ConsumerEntry,6,0,0,0,3,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,DecimalUtil,62,0,12,0,9,0,10,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,PartialSorter,3,43,0,4,1,8,1,3,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,CaseInsensitiveStringSet,8,4,0,0,3,2,1,1,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,ZKUtil,180,168,10,10,49,44,15,11,7,9
+Apache Kylin - Core Common,org.apache.kylin.common.util,Primes,2238,0,44,0,55,0,26,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ImplementationSwitch,23,114,3,7,2,26,3,6,0,4
+Apache Kylin - Core Common,org.apache.kylin.common.util,Bytes.new Iterator() {...},93,0,8,0,15,0,8,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,AutoReadWriteLock.new AutoReadWriteLock.AutoLock() {...},0,12,0,0,0,3,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,CaseInsensitiveString,60,0,12,0,14,0,11,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,IdentityUtils,14,69,3,11,4,15,4,5,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,EncryptUtil,39,125,2,4,13,16,4,6,3,4
+Apache Kylin - Core Common,org.apache.kylin.common.util,AutoReadWriteLock.new AutoReadWriteLock.AutoLock() {...},0,12,0,0,0,3,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,FIFOIterable,12,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,AutoReadWriteLock,6,27,0,0,2,8,1,4,1,4
+Apache Kylin - Core Common,org.apache.kylin.common.util,JsonUtil,129,28,0,0,30,7,17,3,17,3
+Apache Kylin - Core Common,org.apache.kylin.common.util,RandomSampler,7,56,2,8,2,13,2,5,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,FIFOIterator,29,0,4,0,8,0,6,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,AbstractApplication,70,0,0,0,12,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,SparkEntry,90,0,8,0,16,0,6,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Pair,111,24,20,0,17,8,20,3,10,3
+Apache Kylin - Core Common,org.apache.kylin.common.util,SumHelper,3,70,0,6,1,15,1,6,1,3
+Apache Kylin - Core Common,org.apache.kylin.common.util,CliCommandExecutor,233,148,15,9,54,34,17,10,6,9
+Apache Kylin - Core Common,org.apache.kylin.common.util,HiveCmdBuilder.HiveClientMode,0,24,0,0,0,2,0,1,0,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,StringUtil,213,184,57,29,55,43,40,22,10,9
+Apache Kylin - Core Common,org.apache.kylin.common.util,ImmutableBitSet.new Iterator() {...},44,0,4,0,7,0,6,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ImmutableBitSet.new BytesSerializer() {...},18,0,0,0,5,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Triple,157,0,26,0,30,0,24,0,11,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MailTemplateProvider,79,0,4,0,19,0,7,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,SoutLogger,13,3,0,0,5,1,2,1,2,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,OrderedProperties.OrderedPropertiesBuilder,26,0,2,0,5,0,4,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ImmutableBitSet,303,0,20,0,68,0,37,0,27,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Quadruple,202,0,34,0,37,0,30,0,13,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,CheckUtil,127,0,22,0,27,0,18,0,7,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,OrderedProperties,271,58,14,2,62,14,32,7,25,6
+Apache Kylin - Core Common,org.apache.kylin.common.util,SerializeToByteBuffer,29,0,0,0,9,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MemoryBudgetController.NotEnoughBudgetException,7,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ToolUtil,93,40,17,9,33,14,15,4,4,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,ByteArray,243,40,36,4,55,11,37,4,17,4
+Apache Kylin - Core Common,org.apache.kylin.common.util,ByteBufferOutputStream,21,0,0,0,7,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ValueIterators,53,0,6,0,15,0,6,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,MathUtil,40,0,2,0,6,0,3,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,OptionsHelper,90,5,5,1,19,2,10,1,7,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,ZKUtil.new Runnable() {...},3,9,0,0,2,2,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,ZKUtil.new Callable() {...},0,15,0,0,0,2,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,ZKUtil.new Function() {...},18,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,SplittedBytes,10,0,0,0,4,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ZKUtil.new RemovalListener() {...},16,24,0,0,5,4,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.util,MailService,217,0,18,0,52,0,14,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,Bytes.LexicographicalComparerHolder.UnsafeComparer,278,0,44,0,51,0,28,0,6,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,RandomUtil,7,8,0,0,2,1,1,1,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.util,ZipFileUtils,71,0,8,0,15,0,9,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ClasspathScanner.new ClasspathScanner.ResourceVisitor() {...},82,0,10,0,12,0,9,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.util,ClasspathScanner.new ClasspathScanner.ResourceVisitor() {...},25,0,0,0,5,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.livy,LivyTypeEnum,24,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.livy,LivyRestExecutor,326,0,20,0,68,0,17,0,7,0
+Apache Kylin - Core Common,org.apache.kylin.common.livy,LivyRestBuilder,240,0,6,0,66,0,19,0,16,0
+Apache Kylin - Core Common,org.apache.kylin.common.livy,LivyRestClient,280,0,8,0,54,0,12,0,8,0
+Apache Kylin - Core Common,org.apache.kylin.common.livy,LivyStateEnum,94,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,HDFSResourceStore,578,127,66,6,106,29,51,5,16,4
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCConnectionManager,233,0,10,0,56,0,14,0,9,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.new ResourceStore.Visitor() {...},41,0,2,0,8,0,3,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResource,36,0,0,0,16,0,8,0,8,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.new Callable() {...},0,36,0,0,0,4,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.new Callable() {...},0,27,0,0,0,4,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,StringEntity,33,39,8,4,8,11,7,5,1,5
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceTool.new ResourceParallelCopier.Stats() {...},126,0,4,0,14,0,5,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceParallelCopier,487,0,52,0,111,0,42,0,16,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,RawResource,12,35,0,2,3,13,2,7,2,6
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ContentWriter,30,29,0,0,8,7,3,5,3,5
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCSqlQueryFormat,84,0,2,0,21,0,17,0,16,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.SqlOperation,9,0,0,0,3,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,PushdownResourceStore.RollbackablePushdown,262,0,16,0,58,0,11,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.2.new ResourceStore.Visitor() {...},13,24,1,1,2,6,1,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,StringEntity.new Serializer() {...},0,16,0,0,0,5,0,3,0,3
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.1.new ResourceStore.Visitor() {...},6,22,3,1,0,5,2,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceSQL,474,0,4,0,56,0,15,0,13,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ExponentialBackoffRetry,106,66,17,7,25,24,13,7,3,5
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceParallelCopier.new Runnable() {...},59,0,0,0,10,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceParallelCopier.new ResourceStore.Visitor() {...},67,0,2,0,12,0,3,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCSqlQueryFormatProvider,78,0,4,0,15,0,5,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.VisitFilter,24,78,5,11,5,19,5,10,1,6
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore,337,754,30,28,70,165,29,63,11,52
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,FileResourceStore,115,386,23,45,21,78,21,29,1,15
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceStore.Checkpoint,16,149,2,10,3,36,2,10,0,6
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceTool,654,186,64,18,122,44,50,14,12,8
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,WriteConflictException,5,4,0,0,2,2,1,1,1,1
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore,792,0,72,0,170,0,69,0,33,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,AutoDeleteDirectory,40,23,0,0,7,9,3,3,3,3
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},273,0,14,0,47,0,9,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},180,0,8,0,32,0,6,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},61,0,2,0,7,0,3,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},273,0,24,0,46,0,14,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},109,0,6,0,28,0,6,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},30,0,0,0,5,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JDBCResourceStore.new JDBCResourceStore.SqlOperation() {...},39,0,0,0,6,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ContentWriter.new ContentWriter() {...},2,21,1,1,0,4,1,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,JsonSerializer,38,0,2,0,13,0,5,0,4,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ContentWriter.new ContentWriter() {...},0,29,0,0,0,5,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,RawResource.new InputStream() {...},9,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,IdentifierFileResourceStore,20,0,0,0,6,0,3,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,RootPersistentEntity,143,21,24,0,38,8,25,4,13,4
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ResourceParallelCopier.Stats,224,0,4,0,53,0,15,0,13,0
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,ContentReader,2,34,2,2,1,11,2,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common.persistence,PushdownResourceStore,187,0,8,0,44,0,16,0,12,0
+Apache Kylin - Core Common,org.apache.kylin.common.annotation,Clarification.Priority,34,0,0,0,4,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.annotation,ConfigTag.Tag,104,0,0,0,11,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.debug,BackdoorToggles,226,0,20,0,67,0,39,0,29,0
+Apache Kylin - Core Common,org.apache.kylin.common.restclient,RestClient,1231,176,47,9,187,49,55,10,28,9
+Apache Kylin - Core Common,org.apache.kylin.common,KylinConfigBase,4315,570,170,22,785,127,613,57,521,53
+Apache Kylin - Core Common,org.apache.kylin.common,KylinVersion.new Predicate() {...},29,0,6,0,2,0,5,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common,KylinVersion.new Predicate() {...},23,0,4,0,2,0,4,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common,KylinConfigExt,24,99,1,5,7,23,4,7,3,5
+Apache Kylin - Core Common,org.apache.kylin.common,KylinConfig,775,428,66,28,177,115,55,31,15,24
+Apache Kylin - Core Common,org.apache.kylin.common,KylinVersion,216,178,26,16,41,32,22,11,6,6
+Apache Kylin - Core Common,org.apache.kylin.common,KylinConfig.SetAndUnsetThreadLocalConfig,9,9,0,0,2,5,1,2,1,2
+Apache Kylin - Core Common,org.apache.kylin.common,SourceDialect,103,0,4,0,14,0,5,0,3,0
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContext.RPCStatistics,109,0,0,0,39,0,22,0,22,0
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContext.CubeSegmentStatisticsResult,67,0,0,0,19,0,11,0,11,0
+Apache Kylin - Core Common,org.apache.kylin.common,KylinConfig.UriType,0,44,0,0,0,2,0,1,0,1
+Apache Kylin - Core Common,org.apache.kylin.common,KylinConfigCannotInitException,4,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common,BackwardCompatibilityConfig,357,221,48,22,62,48,31,17,6,7
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContextFacade.new InternalThreadLocal() {...},15,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContextFacade.new Comparator() {...},25,0,4,0,6,0,4,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common,KConstants,3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContextFacade,73,0,4,0,21,0,9,0,7,0
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContext.CubeSegmentStatistics,237,0,6,0,70,0,35,0,32,0
+Apache Kylin - Core Common,org.apache.kylin.common,QueryContext,667,0,46,0,173,0,82,0,59,0
+Apache Kylin - Core Common,org.apache.kylin.common,StorageURL,81,268,21,27,20,61,17,20,2,11
+Apache Kylin - Core Common,org.apache.kylin.common,StorageURL.new CacheLoader() {...},0,8,0,0,0,2,0,2,0,2
+Apache Kylin - Core Common,org.apache.kylin.common,JobProcessContext,42,0,0,0,12,0,6,0,6,0
+Apache Kylin - Core Common,org.apache.kylin.common.exceptions,KylinTimeoutException,4,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Common,org.apache.kylin.common.exceptions,ResourceLimitExceededException,9,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.exceptions,TooBigDictionaryException,9,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.storage,DefaultStorageProvider,7,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.perflog,PerfLoggerFactory,59,0,4,0,18,0,7,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.perflog,SimplePerfLogger,137,0,12,0,28,0,11,0,5,0
+Apache Kylin - Core Common,org.apache.kylin.common.metrics.perflog,PerfLogger,302,0,30,0,64,0,30,0,15,0

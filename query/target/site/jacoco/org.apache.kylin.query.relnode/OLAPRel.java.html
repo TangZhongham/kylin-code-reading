@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPRel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPRel.java</span></div><h1>OLAPRel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Stack;
+
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.adapter.enumerable.EnumerableRelImplementor;
+import org.apache.calcite.plan.Convention;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.BiRel;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.SingleRel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+
+/**
+ */
+public interface OLAPRel extends RelNode {
+
+<span class="nc" id="L45">    public static final Logger logger = LoggerFactory.getLogger(OLAPRel.class);</span>
+
+    // Calling convention for relational operations that occur in OLAP.
+<span class="nc" id="L48">    public static final Convention CONVENTION = new Convention.Impl(&quot;OLAP&quot;, OLAPRel.class);</span>
+
+    /**
+     * get olap context
+     */
+    public OLAPContext getContext();
+
+    /**
+     * get the row type of ColumnDesc
+     * 
+     * @return
+     */
+    public ColumnRowType getColumnRowType();
+
+    /**
+     * whether has sub query
+     */
+    public boolean hasSubQuery();
+
+    /**
+     * replace RelTraitSet
+     */
+    public RelTraitSet replaceTraitSet(RelTrait trait);
+
+    /**
+     * visitor pattern for olap query analysis
+     */
+<span class="nc" id="L75">    public static class OLAPImplementor {</span>
+
+<span class="nc" id="L77">        private Stack&lt;RelNode&gt; parentNodeStack = new Stack&lt;&gt;();</span>
+<span class="nc" id="L78">        private int ctxSeq = 0;</span>
+<span class="nc" id="L79">        private Stack&lt;OLAPContext&gt; ctxStack = new Stack&lt;OLAPContext&gt;();</span>
+<span class="nc" id="L80">        private boolean newOLAPContextRequired = false;</span>
+
+        public void visitChild(RelNode input, RelNode parentNode) {
+<span class="nc" id="L83">            this.parentNodeStack.push(parentNode);</span>
+<span class="nc" id="L84">            ((OLAPRel) input).implementOLAP(this);</span>
+<span class="nc" id="L85">            this.parentNodeStack.pop();</span>
+<span class="nc" id="L86">        }</span>
+
+        public RelNode getParentNode() {
+<span class="nc" id="L89">            return parentNodeStack.peek();</span>
+        }
+
+        public Stack&lt;RelNode&gt; getParentNodeStack() {
+<span class="nc" id="L93">            return parentNodeStack;</span>
+        }
+
+        public OLAPContext getContext() {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (ctxStack.isEmpty()) {</span>
+<span class="nc" id="L98">                return null;</span>
+            }
+<span class="nc" id="L100">            return ctxStack.peek();</span>
+        }
+
+        public void freeContext() {
+<span class="nc" id="L104">            ctxStack.pop();</span>
+<span class="nc" id="L105">        }</span>
+
+        public void allocateContext() {
+<span class="nc" id="L108">            OLAPContext context = new OLAPContext(ctxSeq++);</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            if (!ctxStack.isEmpty()) {</span>
+<span class="nc" id="L110">                ctxStack.peek().disableLimitPushdown = true;</span>
+<span class="nc" id="L111">                context.disableLimitPushdown = true;</span>
+            }
+<span class="nc" id="L113">            ctxStack.push(context);</span>
+<span class="nc" id="L114">            OLAPContext.registerContext(context);</span>
+<span class="nc" id="L115">            setNewOLAPContextRequired(false);</span>
+<span class="nc" id="L116">        }</span>
+
+        // set the flag to let OLAPImplementor allocate a new context more proactively
+        public void setNewOLAPContextRequired(boolean newOLAPContextRequired) {
+<span class="nc" id="L120">            this.newOLAPContextRequired = newOLAPContextRequired;</span>
+<span class="nc" id="L121">        }</span>
+
+        public boolean isNewOLAPContextRequired() {
+<span class="nc" id="L124">            return this.newOLAPContextRequired;</span>
+        }
+
+        public void fixSharedOlapTableScan(SingleRel parent) {
+<span class="nc" id="L128">            OLAPTableScan copy = copyTableScanIfNeeded(parent.getInput());</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (copy != null)</span>
+<span class="nc" id="L130">                parent.replaceInput(0, copy);</span>
+<span class="nc" id="L131">        }</span>
+
+        public void fixSharedOlapTableScanOnTheLeft(BiRel parent) {
+<span class="nc" id="L134">            OLAPTableScan copy = copyTableScanIfNeeded(parent.getLeft());</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (copy != null)</span>
+<span class="nc" id="L136">                parent.replaceInput(0, copy);</span>
+<span class="nc" id="L137">        }</span>
+
+        public void fixSharedOlapTableScanOnTheRight(BiRel parent) {
+<span class="nc" id="L140">            OLAPTableScan copy = copyTableScanIfNeeded(parent.getRight());</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (copy != null)</span>
+<span class="nc" id="L142">                parent.replaceInput(1, copy);</span>
+<span class="nc" id="L143">        }</span>
+
+        public void fixSharedOlapTableScanAt(RelNode parent, int ordinalInParent) {
+<span class="nc" id="L146">            OLAPTableScan copy = copyTableScanIfNeeded(parent.getInputs().get(ordinalInParent));</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if (copy != null)</span>
+<span class="nc" id="L148">                parent.replaceInput(ordinalInParent, copy);</span>
+<span class="nc" id="L149">        }</span>
+
+        private OLAPTableScan copyTableScanIfNeeded(RelNode input) {
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            if (input instanceof OLAPTableScan) {</span>
+<span class="nc" id="L153">                OLAPTableScan tableScan = (OLAPTableScan) input;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                if (tableScan.getColumnRowType() != null) { // implementedOLAP() was done, meaning it is shared</span>
+<span class="nc" id="L155">                    OLAPTableScan copy = (OLAPTableScan) tableScan.copy(tableScan.getTraitSet(), tableScan.getInputs());</span>
+<span class="nc" id="L156">                    return copy;</span>
+                }
+            }
+<span class="nc" id="L159">            return null;</span>
+        }
+    }
+
+    public void implementOLAP(OLAPImplementor implementor);
+
+    /**
+     * visitor pattern for query rewrite
+     */
+
+<span class="nc" id="L169">    public static class RewriteImplementor {</span>
+        private OLAPContext parentContext;
+
+        public void visitChild(RelNode parent, RelNode child) {
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            if (parent instanceof OLAPRel) {</span>
+<span class="nc" id="L174">                OLAPRel olapRel = (OLAPRel) parent;</span>
+<span class="nc" id="L175">                this.parentContext = olapRel.getContext();</span>
+            }
+<span class="nc" id="L177">            OLAPRel olapChild = (OLAPRel) child;</span>
+<span class="nc" id="L178">            olapChild.implementRewrite(this);</span>
+<span class="nc" id="L179">        }</span>
+
+        public OLAPContext getParentContext() {
+<span class="nc" id="L182">            return parentContext;</span>
+        }
+
+        public static boolean needRewrite(OLAPContext ctx) {
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            if (ctx.hasJoin)</span>
+<span class="nc" id="L187">                return true;</span>
+
+<span class="nc bnc" id="L189" title="All 2 branches missed.">            if (ctx.realization == null) {</span>
+<span class="nc" id="L190">                return false;</span>
+            }
+
+<span class="nc" id="L193">            String realRootFact = ctx.realization.getModel().getRootFactTable().getTableIdentity();</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            if (ctx.firstTableScan.getTableName().equals(realRootFact))</span>
+<span class="nc" id="L195">                return true;</span>
+
+<span class="nc" id="L197">            return false;</span>
+        }
+    }
+
+    public void implementRewrite(RewriteImplementor rewriter);
+
+    /**
+     * implementor for java generation
+     */
+    public static class JavaImplementor extends EnumerableRelImplementor {
+
+<span class="nc" id="L208">        private IdentityHashMap&lt;EnumerableRel, OLAPContext&gt; relContexts = Maps.newIdentityHashMap();</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        private boolean calciteDebug = System.getProperty(&quot;calcite.debug&quot;) != null;</span>
+
+        public JavaImplementor(EnumerableRelImplementor enumImplementor) {
+<span class="nc" id="L212">            super(enumImplementor.getRexBuilder(), new LinkedHashMap&lt;String, Object&gt;());</span>
+<span class="nc" id="L213">        }</span>
+
+        public EnumerableRel createEnumerable(OLAPRel parent) {
+<span class="nc" id="L216">            ArrayList&lt;EnumerableRel&gt; enumInputs = null;</span>
+<span class="nc" id="L217">            List&lt;RelNode&gt; children = parent.getInputs();</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if (children != null) {</span>
+<span class="nc" id="L219">                enumInputs = Lists.newArrayListWithCapacity(children.size());</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">                for (RelNode child : children) {</span>
+<span class="nc" id="L221">                    enumInputs.add(createEnumerable((OLAPRel) child));</span>
+<span class="nc" id="L222">                }</span>
+            }
+
+<span class="nc" id="L225">            EnumerableRel result = parent.implementEnumerable(enumInputs);</span>
+<span class="nc" id="L226">            relContexts.put(result, parent.getContext());</span>
+<span class="nc" id="L227">            return result;</span>
+        }
+
+        @Override
+        public EnumerableRel.Result visitChild(EnumerableRel parent, int ordinal, EnumerableRel child,
+                EnumerableRel.Prefer prefer) {
+
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (calciteDebug) {</span>
+                OLAPContext context;
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                if (child instanceof OLAPRel)</span>
+<span class="nc" id="L237">                    context = ((OLAPRel) child).getContext();</span>
+                else
+<span class="nc" id="L239">                    context = relContexts.get(child);</span>
+<span class="nc" id="L240">                System.out.println(context + &quot; - &quot; + child);</span>
+            }
+
+<span class="nc" id="L243">            return super.visitChild(parent, ordinal, child, prefer);</span>
+        }
+    }
+
+    public EnumerableRel implementEnumerable(List&lt;EnumerableRel&gt; inputs);
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

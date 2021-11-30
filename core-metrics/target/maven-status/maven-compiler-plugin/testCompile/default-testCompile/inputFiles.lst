@@ -1,0 +1,6 @@
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/MetricsSystemTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/RecordEventTimeDetailTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/BlockingReservoirTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/RecordEventTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/lib/impl/InstantReservoirTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-metrics/src/test/java/org/apache/kylin/metrics/property/MetricsPropertyEnumTest.java

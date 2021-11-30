@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidStats.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm</a> &gt; <span class="el_source">CuboidStats.java</span></div><h1>CuboidStats.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableSet;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class CuboidStats {
+<span class="nc" id="L36">    private static final Logger logger = LoggerFactory.getLogger(CuboidStats.class);</span>
+
+    static final double WEIGHT_FOR_UN_QUERY = 0.2;
+    static final double BPUS_MIN_BENEFIT_RATIO = 0.001;
+
+    public static class Builder {
+
+        private static final long THRESHOLD_ROLL_UP_FOR_MANDATORY = 1000L;
+
+        // Required parameters
+        private String key;
+        private Long nTotalCuboids;
+        private Long baseCuboid;
+<span class="nc" id="L49">        private double queryUncertaintyRatio = WEIGHT_FOR_UN_QUERY;</span>
+<span class="nc" id="L50">        private double bpusMinBenefitRatio = BPUS_MIN_BENEFIT_RATIO;</span>
+        private Map&lt;Long, Long&gt; statistics;
+        private Map&lt;Long, Double&gt; size;
+
+        // Optional parameters - initialized to default values
+<span class="nc" id="L55">        private Set&lt;Long&gt; mandatoryCuboids = null;</span>
+        //// These two properties are for generating mandatory cuboids
+<span class="nc" id="L57">        private Map&lt;Long, Map&lt;Long, Pair&lt;Long, Long&gt;&gt;&gt; rollingUpCountSourceMap = null;</span>
+
+<span class="nc" id="L59">        private Map&lt;Long, Long&gt; hitFrequencyMap = null;</span>
+<span class="nc" id="L60">        private Map&lt;Long, Map&lt;Long, Long&gt;&gt; scanCountSourceMap = null;</span>
+
+        public Builder(String key, Long baseCuboid, Map&lt;Long, Long&gt; statistics, Map&lt;Long, Double&gt; size) {
+<span class="nc" id="L63">            this(key, baseCuboid, baseCuboid, statistics, size);</span>
+<span class="nc" id="L64">        }</span>
+
+        public Builder(String key, Long nTotalCuboids, Long baseCuboid, Map&lt;Long, Long&gt; statistics,
+<span class="nc" id="L67">                Map&lt;Long, Double&gt; size) {</span>
+<span class="nc" id="L68">            this.key = key;</span>
+<span class="nc" id="L69">            this.nTotalCuboids = nTotalCuboids;</span>
+<span class="nc" id="L70">            this.baseCuboid = baseCuboid;</span>
+<span class="nc" id="L71">            this.statistics = statistics;</span>
+<span class="nc" id="L72">            this.size = size;</span>
+<span class="nc" id="L73">        }</span>
+
+        public Builder setQueryUncertaintyRatio(double queryUncertaintyRatio) {
+<span class="nc" id="L76">            this.queryUncertaintyRatio = queryUncertaintyRatio;</span>
+<span class="nc" id="L77">            return this;</span>
+        }
+
+        public Builder setBPUSMinBenefitRatio(double bpusMinBenefitRatio) {
+<span class="nc" id="L81">            this.bpusMinBenefitRatio = bpusMinBenefitRatio;</span>
+<span class="nc" id="L82">            return this;</span>
+        }
+
+        public Builder setRollingUpCountSourceMap(Map&lt;Long, Map&lt;Long, Pair&lt;Long, Long&gt;&gt;&gt; rollingUpCountSourceMap) {
+<span class="nc" id="L86">            this.rollingUpCountSourceMap = rollingUpCountSourceMap;</span>
+<span class="nc" id="L87">            return this;</span>
+        }
+
+        public Builder setMandatoryCuboids(Set&lt;Long&gt; mandatoryCuboids) {
+<span class="nc" id="L91">            this.mandatoryCuboids = mandatoryCuboids;</span>
+<span class="nc" id="L92">            return this;</span>
+        }
+
+        public Builder setHitFrequencyMap(Map&lt;Long, Long&gt; hitFrequencyMap) {
+<span class="nc" id="L96">            this.hitFrequencyMap = hitFrequencyMap;</span>
+<span class="nc" id="L97">            return this;</span>
+        }
+
+        public Builder setScanCountSourceMap(Map&lt;Long, Map&lt;Long, Long&gt;&gt; scanCountSourceMap) {
+<span class="nc" id="L101">            this.scanCountSourceMap = scanCountSourceMap;</span>
+<span class="nc" id="L102">            return this;</span>
+        }
+
+        public Map&lt;Long, Double&gt; estimateCuboidsSize(Map&lt;Long, Long&gt; statistics) {
+<span class="nc" id="L106">            return null;</span>
+        }
+
+        public CuboidStats build() {
+<span class="nc" id="L110">            Preconditions.checkNotNull(key, &quot;key should not be null&quot;);</span>
+<span class="nc" id="L111">            Preconditions.checkNotNull(baseCuboid, &quot;baseCuboid should not be null&quot;);</span>
+<span class="nc" id="L112">            Preconditions.checkNotNull(statistics, &quot;statistics should not be null&quot;);</span>
+<span class="nc" id="L113">            Preconditions.checkNotNull(size, &quot;size should not be null&quot;);</span>
+<span class="nc" id="L114">            Preconditions.checkNotNull(statistics.get(baseCuboid),</span>
+                    &quot;row count should exist for base cuboid &quot; + baseCuboid);
+<span class="nc" id="L116">            Preconditions.checkState(statistics.keySet().equals(size.keySet()),</span>
+                    &quot;statistics &amp; size should own the same key set&quot;);
+<span class="nc" id="L118">            statistics = CuboidStatsUtil.adjustCuboidStats(statistics);</span>
+
+<span class="nc bnc" id="L120" title="All 4 branches missed.">            if (hitFrequencyMap != null &amp;&amp; rollingUpCountSourceMap != null) {</span>
+<span class="nc" id="L121">                Map&lt;Long, Double&gt; cuboidHitProbabilityMap = CuboidStatsUtil.calculateCuboidHitProbability(</span>
+<span class="nc" id="L122">                        hitFrequencyMap.keySet(), hitFrequencyMap, nTotalCuboids, queryUncertaintyRatio);</span>
+<span class="nc" id="L123">                Map&lt;Long, Long&gt; srcCuboidsStats = CuboidStatsUtil.generateSourceCuboidStats(statistics,</span>
+                        cuboidHitProbabilityMap, rollingUpCountSourceMap);
+
+<span class="nc" id="L126">                statistics.putAll(srcCuboidsStats);</span>
+
+<span class="nc" id="L128">                Map&lt;Long, Double&gt; estimatedSize = estimateCuboidsSize(statistics);</span>
+<span class="nc bnc" id="L129" title="All 4 branches missed.">                if (estimatedSize != null &amp;&amp; !estimatedSize.isEmpty()) {</span>
+<span class="nc" id="L130">                    size = Maps.newHashMap(estimatedSize);</span>
+                }
+            }
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">            if (mandatoryCuboids == null) {</span>
+<span class="nc" id="L135">                mandatoryCuboids = Sets.newHashSet();</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">            } else if (!mandatoryCuboids.isEmpty()) {</span>
+<span class="nc" id="L137">                statistics.putAll(CuboidStatsUtil.complementRowCountForCuboids(statistics, mandatoryCuboids));</span>
+            }
+
+<span class="nc" id="L140">            return new CuboidStats(key, baseCuboid, queryUncertaintyRatio, bpusMinBenefitRatio, mandatoryCuboids,</span>
+                    statistics, size, hitFrequencyMap, scanCountSourceMap);
+        }
+    }
+
+    private String key;
+    private long baseCuboid;
+    private double bpusMinBenefitRatio;
+    private ImmutableSet&lt;Long&gt; mandatoryCuboidSet;
+    private ImmutableSet&lt;Long&gt; selectionCuboidSet;
+    private ImmutableMap&lt;Long, Long&gt; cuboidCountMap;
+    private ImmutableMap&lt;Long, Double&gt; cuboidSizeMap;
+    private ImmutableMap&lt;Long, Double&gt; cuboidHitProbabilityMap;
+    private ImmutableMap&lt;Long, Long&gt; cuboidScanCountMap;
+
+    private ImmutableMap&lt;Long, List&lt;Long&gt;&gt; directChildrenCache;
+    private Map&lt;Long, Set&lt;Long&gt;&gt; allDescendantsCache;
+
+    private CuboidStats(String key, long baseCuboidId, double queryUncertaintyRatio, double bpusMinBenefitRatio,
+            Set&lt;Long&gt; mandatoryCuboids, Map&lt;Long, Long&gt; statistics, Map&lt;Long, Double&gt; size,
+<span class="nc" id="L160">            Map&lt;Long, Long&gt; hitFrequencyMap, Map&lt;Long, Map&lt;Long, Long&gt;&gt; scanCountSourceMap) {</span>
+
+<span class="nc" id="L162">        this.key = key;</span>
+<span class="nc" id="L163">        this.baseCuboid = baseCuboidId;</span>
+<span class="nc" id="L164">        this.bpusMinBenefitRatio = bpusMinBenefitRatio;</span>
+        /** Initial mandatory cuboids */
+<span class="nc" id="L166">        Set&lt;Long&gt; cuboidsForMandatory = Sets.newHashSet(mandatoryCuboids);</span>
+        //Always add base cuboid.
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (!cuboidsForMandatory.contains(baseCuboid)) {</span>
+<span class="nc" id="L169">            cuboidsForMandatory.add(baseCuboid);</span>
+        }
+<span class="nc" id="L171">        logger.info(&quot;Mandatory cuboids: &quot; + cuboidsForMandatory);</span>
+
+        /** Initial selection cuboids */
+<span class="nc" id="L174">        Set&lt;Long&gt; cuboidsForSelection = Sets.newHashSet(statistics.keySet());</span>
+<span class="nc" id="L175">        cuboidsForSelection.removeAll(cuboidsForMandatory);</span>
+
+        //There's no overlap between mandatoryCuboidSet and selectionCuboidSet
+<span class="nc" id="L178">        this.mandatoryCuboidSet = ImmutableSet.&lt;Long&gt; builder().addAll(cuboidsForMandatory).build();</span>
+<span class="nc" id="L179">        this.selectionCuboidSet = ImmutableSet.&lt;Long&gt; builder().addAll(cuboidsForSelection).build();</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (selectionCuboidSet.isEmpty()) {</span>
+<span class="nc" id="L181">            logger.warn(&quot;The selection set should not be empty!!!&quot;);</span>
+        }
+
+<span class="nc" id="L184">        this.cuboidCountMap = ImmutableMap.&lt;Long, Long&gt; builder().putAll(statistics).build();</span>
+<span class="nc" id="L185">        this.cuboidSizeMap = ImmutableMap.&lt;Long, Double&gt; builder().putAll(size).build();</span>
+
+        /** Initialize the hit probability for each selection cuboid */
+<span class="nc" id="L188">        Map&lt;Long, Double&gt; tmpCuboidHitProbabilityMap = CuboidStatsUtil.calculateCuboidHitProbability(selectionCuboidSet,</span>
+<span class="nc" id="L189">                hitFrequencyMap, selectionCuboidSet.size(), queryUncertaintyRatio);</span>
+<span class="nc" id="L190">        this.cuboidHitProbabilityMap = ImmutableMap.&lt;Long, Double&gt; builder().putAll(tmpCuboidHitProbabilityMap).build();</span>
+
+        /** Initialize the scan count when query for each selection cuboid + one base cuboid */
+<span class="nc" id="L193">        Map&lt;Long, Long&gt; tmpCuboidScanCountMap = Maps.newHashMapWithExpectedSize(1 + selectionCuboidSet.size());</span>
+<span class="nc" id="L194">        tmpCuboidScanCountMap.put(baseCuboid, getExpScanCount(baseCuboid, statistics, scanCountSourceMap));</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        for (Long cuboid : selectionCuboidSet) {</span>
+<span class="nc" id="L196">            tmpCuboidScanCountMap.put(cuboid, getExpScanCount(cuboid, statistics, scanCountSourceMap));</span>
+<span class="nc" id="L197">        }</span>
+<span class="nc" id="L198">        this.cuboidScanCountMap = ImmutableMap.&lt;Long, Long&gt; builder().putAll(tmpCuboidScanCountMap).build();</span>
+
+<span class="nc" id="L200">        this.directChildrenCache = ImmutableMap.&lt;Long, List&lt;Long&gt;&gt; builder()</span>
+<span class="nc" id="L201">                .putAll(CuboidStatsUtil.createDirectChildrenCache(statistics.keySet())).build();</span>
+
+<span class="nc" id="L203">        this.allDescendantsCache = Maps.newConcurrentMap();</span>
+<span class="nc" id="L204">    }</span>
+
+    private long getExpScanCount(long sourceCuboid, Map&lt;Long, Long&gt; statistics,
+            Map&lt;Long, Map&lt;Long, Long&gt;&gt; scanCountSourceMap) {
+<span class="nc" id="L208">        Preconditions.checkNotNull(statistics.get(sourceCuboid),</span>
+                &quot;The statistics for source cuboid &quot; + sourceCuboid + &quot; does not exist!!!&quot;);
+<span class="nc bnc" id="L210" title="All 4 branches missed.">        if (scanCountSourceMap == null || scanCountSourceMap.get(sourceCuboid) == null</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">                || scanCountSourceMap.get(sourceCuboid).size() &lt;= 0) {</span>
+<span class="nc" id="L212">            return statistics.get(sourceCuboid);</span>
+        } else {
+            //TODO some improvement can be done by assigning weights based on distance between source cuboid and target cuboid
+<span class="nc" id="L215">            Map&lt;Long, Long&gt; scanCountTargetMap = scanCountSourceMap.get(sourceCuboid);</span>
+<span class="nc" id="L216">            long totalEstScanCount = 0L;</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            for (Map.Entry&lt;Long, Long&gt; subEntry : scanCountTargetMap.entrySet()) {</span>
+<span class="nc" id="L218">                long targetCuboid = subEntry.getKey();</span>
+<span class="nc" id="L219">                Preconditions.checkNotNull(statistics.get(targetCuboid),</span>
+                        &quot;The statistics for target cuboid &quot; + targetCuboid + &quot; does not exist!!!&quot;);
+                // Consider the ratio of row count between source cuboid and target cuboid
+<span class="nc" id="L222">                totalEstScanCount += subEntry.getValue() * statistics.get(sourceCuboid) / statistics.get(targetCuboid);</span>
+<span class="nc" id="L223">            }</span>
+<span class="nc" id="L224">            return totalEstScanCount / scanCountTargetMap.size();</span>
+        }
+    }
+
+    public double getBpusMinBenefitRatio() {
+<span class="nc" id="L229">        return bpusMinBenefitRatio;</span>
+    }
+
+    public Set&lt;Long&gt; getAllDescendants(long cuboid) {
+<span class="nc" id="L233">        Set&lt;Long&gt; allDescendants = Sets.newLinkedHashSet();</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        if (selectionCuboidSet.contains(cuboid)) {</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">            if (allDescendantsCache.get(cuboid) != null) {</span>
+<span class="nc" id="L236">                return allDescendantsCache.get(cuboid);</span>
+            } else {
+<span class="nc" id="L238">                getAllDescendants(cuboid, allDescendants);</span>
+<span class="nc" id="L239">                allDescendantsCache.put(cuboid, allDescendants);</span>
+            }
+        }
+<span class="nc" id="L242">        return allDescendants;</span>
+    }
+
+    private void getAllDescendants(long cuboid, Set&lt;Long&gt; allDescendants) {
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (allDescendants.contains(cuboid)) {</span>
+<span class="nc" id="L247">            return;</span>
+        }
+<span class="nc" id="L249">        allDescendants.add(cuboid);</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        for (Long directChild : directChildrenCache.get(cuboid)) {</span>
+<span class="nc" id="L251">            getAllDescendants(directChild, allDescendants);</span>
+<span class="nc" id="L252">        }</span>
+<span class="nc" id="L253">    }</span>
+
+    public ImmutableSet&lt;Long&gt; getAllCuboidsForSelection() {
+<span class="nc" id="L256">        return selectionCuboidSet;</span>
+    }
+
+    public ImmutableSet&lt;Long&gt; getAllCuboidsForMandatory() {
+<span class="nc" id="L260">        return mandatoryCuboidSet;</span>
+    }
+
+    public Long getCuboidQueryCost(long cuboid) {
+<span class="nc" id="L264">        return cuboidScanCountMap.get(cuboid);</span>
+    }
+
+    public Long getCuboidCount(long cuboid) {
+<span class="nc" id="L268">        return cuboidCountMap.get(cuboid);</span>
+    }
+
+    public Double getCuboidSize(long cuboid) {
+<span class="nc" id="L272">        return cuboidSizeMap.get(cuboid);</span>
+    }
+
+    public double getCuboidHitProbability(long cuboid) {
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (mandatoryCuboidSet.contains(cuboid)) {</span>
+<span class="nc" id="L277">            return 1;</span>
+        } else {
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            return cuboidHitProbabilityMap.get(cuboid) == null ? 0 : cuboidHitProbabilityMap.get(cuboid);</span>
+        }
+    }
+
+    public Map&lt;Long, Long&gt; getStatistics() {
+<span class="nc" id="L284">        return cuboidCountMap;</span>
+    }
+
+    public double getBaseCuboidSize() {
+<span class="nc" id="L288">        return getCuboidSize(baseCuboid);</span>
+    }
+
+    public long getBaseCuboid() {
+<span class="nc" id="L292">        return baseCuboid;</span>
+    }
+
+    public String getKey() {
+<span class="nc" id="L296">        return key;</span>
+    }
+
+    public CuboidBenefitModel.CuboidModel getCuboidModel(long cuboid) {
+<span class="nc" id="L300">        return new CuboidBenefitModel.CuboidModel(cuboid, getCuboidCount(cuboid), getCuboidSize(cuboid),</span>
+<span class="nc" id="L301">                getCuboidHitProbability(cuboid), getCuboidQueryCost(cuboid));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

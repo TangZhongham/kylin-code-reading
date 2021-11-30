@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecutableDao.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.dao</a> &gt; <span class="el_source">ExecutableDao.java</span></div><h1>ExecutableDao.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.dao;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.NavigableSet;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ContentReader;
+import org.apache.kylin.common.persistence.JsonSerializer;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.Serializer;
+import org.apache.kylin.common.persistence.WriteConflictException;
+import org.apache.kylin.common.util.AutoReadWriteLock;
+import org.apache.kylin.job.exception.PersistentException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.job.execution.ExecutableState;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.CachedCrudAssist;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ */
+public class ExecutableDao {
+
+<span class="fc" id="L52">    private static final Serializer&lt;ExecutablePO&gt; JOB_SERIALIZER = new JsonSerializer&lt;ExecutablePO&gt;(ExecutablePO.class);</span>
+<span class="fc" id="L53">    private static final Serializer&lt;ExecutableOutputPO&gt; JOB_OUTPUT_SERIALIZER = new JsonSerializer&lt;ExecutableOutputPO&gt;(</span>
+            ExecutableOutputPO.class);
+<span class="fc" id="L55">    private static final Logger logger = LoggerFactory.getLogger(ExecutableDao.class);</span>
+
+    public static ExecutableDao getInstance(KylinConfig config) {
+<span class="fc" id="L58">        return config.getManager(ExecutableDao.class);</span>
+    }
+
+    // called by reflection
+    static ExecutableDao newInstance(KylinConfig config) throws IOException {
+<span class="fc" id="L63">        return new ExecutableDao(config);</span>
+    }
+
+    // ============================================================================
+
+    private ResourceStore store;
+
+    private CaseInsensitiveStringCache&lt;ExecutablePO&gt; executableDigestMap;
+
+    private CaseInsensitiveStringCache&lt;ExecutableOutputPO&gt; executableOutputDigestMap;
+
+    private CachedCrudAssist&lt;ExecutablePO&gt; executableDigestCrud;
+
+    private CachedCrudAssist&lt;ExecutableOutputPO&gt; executableOutputDigestCrud;
+
+<span class="fc" id="L78">    private AutoReadWriteLock executableDigestMapLock = new AutoReadWriteLock();</span>
+
+<span class="fc" id="L80">    private AutoReadWriteLock executableOutputDigestMapLock = new AutoReadWriteLock();</span>
+
+<span class="fc" id="L82">    private ExecutableDao(KylinConfig config) throws IOException {</span>
+<span class="fc" id="L83">        logger.info(&quot;Using metadata url: {}&quot;, config);</span>
+<span class="fc" id="L84">        this.store = ResourceStore.getStore(config);</span>
+<span class="fc" id="L85">        this.executableDigestMap = new CaseInsensitiveStringCache&lt;&gt;(config, &quot;execute&quot;);</span>
+<span class="fc" id="L86">        this.executableDigestCrud = new CachedCrudAssist&lt;ExecutablePO&gt;(store, ResourceStore.EXECUTE_RESOURCE_ROOT, &quot;&quot;,</span>
+<span class="fc" id="L87">                ExecutablePO.class, executableDigestMap, false) {</span>
+            @Override
+            public ExecutablePO reloadAt(String path) {
+                try {
+<span class="nc" id="L91">                    ExecutablePO executablePO = readJobResource(path);</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">                    if (executablePO == null) {</span>
+<span class="nc" id="L93">                        logger.warn(&quot;No job found at {}, returning null&quot;, path);</span>
+<span class="nc" id="L94">                        executableDigestMap.removeLocal(resourceName(path));</span>
+<span class="nc" id="L95">                        return null;</span>
+                    }
+
+                    // create a digest
+<span class="nc" id="L99">                    ExecutablePO digestExecutablePO = new ExecutablePO();</span>
+<span class="nc" id="L100">                    digestExecutablePO.setUuid(executablePO.getUuid());</span>
+<span class="nc" id="L101">                    digestExecutablePO.setName(executablePO.getName());</span>
+<span class="nc" id="L102">                    digestExecutablePO.setLastModified(executablePO.getLastModified());</span>
+<span class="nc" id="L103">                    digestExecutablePO.setType(executablePO.getType());</span>
+<span class="nc" id="L104">                    digestExecutablePO.setParams(executablePO.getParams());</span>
+<span class="nc" id="L105">                    executableDigestMap.putLocal(resourceName(path), digestExecutablePO);</span>
+<span class="nc" id="L106">                    return digestExecutablePO;</span>
+<span class="nc" id="L107">                } catch (Exception e) {</span>
+<span class="nc" id="L108">                    throw new IllegalStateException(&quot;Error loading execute at &quot; + path, e);</span>
+                }
+            }
+
+            @Override
+            protected ExecutablePO initEntityAfterReload(ExecutablePO entity, String resourceName) {
+<span class="fc" id="L114">                return entity;</span>
+            }
+        };
+<span class="fc" id="L117">        this.executableDigestCrud.setCheckCopyOnWrite(true);</span>
+<span class="fc" id="L118">        this.executableDigestCrud.reloadAll();</span>
+
+<span class="fc" id="L120">        this.executableOutputDigestMap = new CaseInsensitiveStringCache&lt;&gt;(config, &quot;execute_output&quot;);</span>
+<span class="fc" id="L121">        this.executableOutputDigestCrud = new CachedCrudAssist&lt;ExecutableOutputPO&gt;(store,</span>
+                ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT, &quot;&quot;, ExecutableOutputPO.class, executableOutputDigestMap,
+<span class="fc" id="L123">                false) {</span>
+            @Override
+            public void reloadAll() throws IOException {
+<span class="fc" id="L126">                logger.debug(&quot;Reloading execute_output from &quot; + ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT);</span>
+<span class="fc" id="L127">                executableOutputDigestMap.clear();</span>
+
+<span class="fc" id="L129">                NavigableSet&lt;String&gt; paths = store.listResources(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT);</span>
+
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (paths != null) {</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">                    for (String path : paths) {</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                        if (!isTaskExecutableOutput(resourceName(path)))</span>
+<span class="nc" id="L134">                            reloadAt(path);</span>
+<span class="nc" id="L135">                    }</span>
+
+<span class="nc" id="L137">                    logger.debug(&quot;Loaded {} execute_output digest(s) out of {} resource&quot;,</span>
+<span class="nc" id="L138">                            executableOutputDigestMap.size(), paths.size());</span>
+                }
+<span class="fc" id="L140">            }</span>
+
+            @Override
+            public ExecutableOutputPO reloadAt(String path) {
+                try {
+<span class="nc" id="L145">                    ExecutableOutputPO executableOutputPO = readJobOutputResource(path);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                    if (executableOutputPO == null) {</span>
+<span class="nc" id="L147">                        logger.warn(&quot;No job output found at {}, returning null&quot;, path);</span>
+<span class="nc" id="L148">                        executableOutputDigestMap.removeLocal(resourceName(path));</span>
+<span class="nc" id="L149">                        return null;</span>
+                    }
+
+                    // create a digest
+<span class="nc" id="L153">                    ExecutableOutputPO digestExecutableOutputPO = new ExecutableOutputPO();</span>
+<span class="nc" id="L154">                    digestExecutableOutputPO.setUuid(executableOutputPO.getUuid());</span>
+<span class="nc" id="L155">                    digestExecutableOutputPO.setLastModified(executableOutputPO.getLastModified());</span>
+<span class="nc" id="L156">                    digestExecutableOutputPO.setStatus(executableOutputPO.getStatus());</span>
+<span class="nc" id="L157">                    executableOutputDigestMap.putLocal(resourceName(path), digestExecutableOutputPO);</span>
+<span class="nc" id="L158">                    return digestExecutableOutputPO;</span>
+<span class="nc" id="L159">                } catch (Exception e) {</span>
+<span class="nc" id="L160">                    throw new IllegalStateException(&quot;Error loading execute at &quot; + path, e);</span>
+                }
+            }
+
+            @Override
+            protected ExecutableOutputPO initEntityAfterReload(ExecutableOutputPO entity, String resourceName) {
+<span class="nc" id="L166">                return entity;</span>
+            }
+        };
+<span class="fc" id="L169">        this.executableOutputDigestCrud.setCheckCopyOnWrite(true);</span>
+<span class="fc" id="L170">        this.executableOutputDigestCrud.reloadAll();</span>
+<span class="fc" id="L171">        Broadcaster.getInstance(config).registerListener(new JobSyncListener(), &quot;execute&quot;);</span>
+<span class="fc" id="L172">        Broadcaster.getInstance(config).registerListener(new JobOutputSyncListener(), &quot;execute_output&quot;);</span>
+<span class="fc" id="L173">    }</span>
+
+    /**
+     * Length of java.util.UUID's string representation is always 36.
+     */
+    private static final int UUID_STRING_REPRESENTATION_LENGTH = 36;
+
+    /**
+     * &lt;pre&gt;
+     *    Backgroud :
+     * 1. Each Executable has id, and id should be unique, we use java.util.UUID to create id of Executable.
+     * 2. 36(UUID_STRING_REPRESENTATION_LENGTH) is a magic number, and it is the length of string of java.util.UUID.toString(). It can verified this simply by `System.out.println(UUID.randomUUID().toString().length());`
+     * 3. All subtask of a ChainedExecutable is also a Executable, its id is a string which length is 39 (36 + 3). See DefaultChainedExecutable#addTask.
+     * 4. Any other Executable's id is a String created by UUID.toString(), so its length is 36.
+     * 5. This method may be a bit fragile/confusing because it depend on specific implementation of subclass of Executable.
+     * &lt;/pre&gt;
+     *
+     * @see DefaultChainedExecutable#addTask(AbstractExecutable)
+     * @see AbstractExecutable#AbstractExecutable()
+     *
+     * @param id id of a Executable (mostly it is a UUID)
+     * @return true if the job is a subtask of a ChainedExecutable; else return false
+     */
+    private boolean isTaskExecutableOutput(String id) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        return id.length() &gt; UUID_STRING_REPRESENTATION_LENGTH;</span>
+    }
+
+<span class="fc" id="L200">    private class JobSyncListener extends Broadcaster.Listener {</span>
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Broadcaster.Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L204">            try (AutoReadWriteLock.AutoLock l = executableDigestMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                if (event == Broadcaster.Event.DROP)</span>
+<span class="nc" id="L206">                    executableDigestMap.removeLocal(cacheKey);</span>
+                else
+<span class="nc" id="L208">                    executableDigestCrud.reloadQuietly(cacheKey);</span>
+            }
+<span class="nc" id="L210">        }</span>
+    }
+
+<span class="fc" id="L213">    private class JobOutputSyncListener extends Broadcaster.Listener {</span>
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Broadcaster.Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L217">            try (AutoReadWriteLock.AutoLock l = executableOutputDigestMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                if (!isTaskExecutableOutput(cacheKey)) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                    if (event == Broadcaster.Event.DROP)</span>
+<span class="nc" id="L220">                        executableOutputDigestMap.removeLocal(cacheKey);</span>
+                    else
+<span class="nc" id="L222">                        executableOutputDigestCrud.reloadQuietly(cacheKey);</span>
+                }
+            }
+<span class="nc" id="L225">        }</span>
+    }
+
+    private String pathOfJob(ExecutablePO job) {
+<span class="fc" id="L229">        return pathOfJob(job.getUuid());</span>
+    }
+
+    public static String pathOfJob(String uuid) {
+<span class="fc" id="L233">        return ResourceStore.EXECUTE_RESOURCE_ROOT + &quot;/&quot; + uuid;</span>
+    }
+
+    public static String pathOfJobOutput(String uuid) {
+<span class="fc" id="L237">        return ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT + &quot;/&quot; + uuid;</span>
+    }
+
+    private ExecutablePO readJobResource(String path) throws IOException {
+<span class="fc" id="L241">        return store.getResource(path, JOB_SERIALIZER);</span>
+    }
+
+    private void writeJobResource(String path, ExecutablePO job) throws IOException {
+<span class="fc" id="L245">        store.checkAndPutResource(path, job, JOB_SERIALIZER);</span>
+<span class="fc" id="L246">    }</span>
+
+    private ExecutableOutputPO readJobOutputResource(String path) throws IOException {
+<span class="fc" id="L249">        return store.getResource(path, JOB_OUTPUT_SERIALIZER);</span>
+    }
+
+    private void writeJobOutputResource(String path, ExecutableOutputPO output) throws IOException {
+<span class="fc" id="L253">        store.checkAndPutResource(path, output, JOB_OUTPUT_SERIALIZER);</span>
+<span class="fc" id="L254">    }</span>
+
+    public List&lt;ExecutableOutputPO&gt; getJobOutputs() throws PersistentException {
+        try {
+<span class="fc" id="L258">            return store.getAllResources(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT, JOB_OUTPUT_SERIALIZER);</span>
+<span class="nc" id="L259">        } catch (IOException e) {</span>
+<span class="nc" id="L260">            logger.error(&quot;error get all Jobs:&quot;, e);</span>
+<span class="nc" id="L261">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public List&lt;ExecutableOutputPO&gt; getJobOutputs(long timeStart, long timeEndExclusive) throws PersistentException {
+        try {
+<span class="nc" id="L267">            return store.getAllResources(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT, false,</span>
+                    new ResourceStore.VisitFilter(timeStart, timeEndExclusive),
+                    new ContentReader(JOB_OUTPUT_SERIALIZER));
+<span class="nc" id="L270">        } catch (IOException e) {</span>
+<span class="nc" id="L271">            logger.error(&quot;error get all Jobs:&quot;, e);</span>
+<span class="nc" id="L272">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public ExecutableOutputPO getJobOutputDigest(String uuid) {
+<span class="fc" id="L277">        return executableOutputDigestMap.get(uuid);</span>
+    }
+
+    public List&lt;ExecutableOutputPO&gt; getJobOutputDigests(long timeStart, long timeEndExclusive) {
+<span class="nc" id="L281">        List&lt;ExecutableOutputPO&gt; jobOutputDigests = Lists.newArrayList();</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">        for (ExecutableOutputPO po : executableOutputDigestMap.values()) {</span>
+<span class="nc bnc" id="L283" title="All 4 branches missed.">            if (po.getLastModified() &gt;= timeStart &amp;&amp; po.getLastModified() &lt; timeEndExclusive)</span>
+<span class="nc" id="L284">                jobOutputDigests.add(po);</span>
+<span class="nc" id="L285">        }</span>
+<span class="nc" id="L286">        return jobOutputDigests;</span>
+    }
+
+    public List&lt;ExecutablePO&gt; getJobs() throws PersistentException {
+        try {
+<span class="fc" id="L291">            return store.getAllResources(ResourceStore.EXECUTE_RESOURCE_ROOT, JOB_SERIALIZER);</span>
+<span class="nc" id="L292">        } catch (IOException e) {</span>
+<span class="nc" id="L293">            logger.error(&quot;error get all Jobs:&quot;, e);</span>
+<span class="nc" id="L294">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public List&lt;ExecutablePO&gt; getJobs(long timeStart, long timeEndExclusive) throws PersistentException {
+        try {
+<span class="nc" id="L300">            return store.getAllResources(ResourceStore.EXECUTE_RESOURCE_ROOT, false,</span>
+                    new ResourceStore.VisitFilter(timeStart, timeEndExclusive), new ContentReader(JOB_SERIALIZER));
+<span class="nc" id="L302">        } catch (IOException e) {</span>
+<span class="nc" id="L303">            logger.error(&quot;error get all Jobs:&quot;, e);</span>
+<span class="nc" id="L304">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public ExecutablePO getJobDigest(String uuid) {
+<span class="nc" id="L309">        return executableDigestMap.get(uuid);</span>
+    }
+
+    public List&lt;ExecutablePO&gt; getJobDigests(long timeStart, long timeEndExclusive) {
+<span class="nc" id="L313">        List&lt;ExecutablePO&gt; jobDigests = Lists.newArrayList();</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        for (ExecutablePO po : executableDigestMap.values()) {</span>
+<span class="nc bnc" id="L315" title="All 4 branches missed.">            if (po.getLastModified() &gt;= timeStart &amp;&amp; po.getLastModified() &lt; timeEndExclusive)</span>
+<span class="nc" id="L316">                jobDigests.add(po);</span>
+<span class="nc" id="L317">        }</span>
+<span class="nc" id="L318">        return jobDigests;</span>
+    }
+
+    public List&lt;String&gt; getJobIdsInCache() {
+<span class="fc" id="L322">        Set&lt;String&gt; idSet = executableDigestMap.keySet();</span>
+<span class="fc" id="L323">        return Lists.newArrayList(idSet);</span>
+    }
+
+    public List&lt;String&gt; getJobIds() throws PersistentException {
+        try {
+<span class="nc" id="L328">            NavigableSet&lt;String&gt; resources = store.listResources(ResourceStore.EXECUTE_RESOURCE_ROOT);</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            if (resources == null) {</span>
+<span class="nc" id="L330">                return Collections.emptyList();</span>
+            }
+<span class="nc" id="L332">            ArrayList&lt;String&gt; result = Lists.newArrayListWithExpectedSize(resources.size());</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">            for (String path : resources) {</span>
+<span class="nc" id="L334">                result.add(path.substring(path.lastIndexOf(&quot;/&quot;) + 1));</span>
+<span class="nc" id="L335">            }</span>
+<span class="nc" id="L336">            return result;</span>
+<span class="nc" id="L337">        } catch (IOException e) {</span>
+<span class="nc" id="L338">            logger.error(&quot;error get all Jobs:&quot;, e);</span>
+<span class="nc" id="L339">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public ExecutablePO getJob(String uuid) throws PersistentException {
+        try {
+<span class="fc" id="L345">            return readJobResource(pathOfJob(uuid));</span>
+<span class="nc" id="L346">        } catch (IOException e) {</span>
+<span class="nc" id="L347">            logger.error(&quot;error get job:&quot; + uuid, e);</span>
+<span class="nc" id="L348">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public ExecutablePO addJob(ExecutablePO job) throws PersistentException {
+        try {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">            if (getJob(job.getUuid()) != null) {</span>
+<span class="nc" id="L355">                throw new IllegalArgumentException(&quot;job id:&quot; + job.getUuid() + &quot; already exists&quot;);</span>
+            }
+<span class="fc" id="L357">            writeJobResource(pathOfJob(job), job);</span>
+<span class="fc" id="L358">            executableDigestMap.put(job.getId(), job);</span>
+<span class="fc" id="L359">            return job;</span>
+<span class="nc" id="L360">        } catch (IOException e) {</span>
+<span class="nc" id="L361">            logger.error(&quot;error save job:&quot; + job.getUuid(), e);</span>
+<span class="nc" id="L362">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public ExecutablePO updateJob(ExecutablePO job) throws PersistentException {
+        try {
+<span class="nc bnc" id="L368" title="All 2 branches missed.">            if (getJob(job.getUuid()) == null) {</span>
+<span class="nc" id="L369">                throw new IllegalArgumentException(&quot;job id:&quot; + job.getUuid() + &quot; does not exist&quot;);</span>
+            }
+<span class="nc" id="L371">            writeJobResource(pathOfJob(job), job);</span>
+<span class="nc" id="L372">            executableDigestMap.put(job.getId(), job);</span>
+<span class="nc" id="L373">            return job;</span>
+<span class="nc" id="L374">        } catch (IOException e) {</span>
+<span class="nc" id="L375">            logger.error(&quot;error update job:&quot; + job.getUuid(), e);</span>
+<span class="nc" id="L376">            throw new PersistentException(e);</span>
+        }
+    }
+
+    public void deleteJob(String uuid) throws PersistentException {
+        try {
+<span class="nc" id="L382">            ExecutablePO executablePO = getJob(uuid);</span>
+<span class="nc" id="L383">            store.deleteResource(pathOfJob(uuid));</span>
+<span class="nc" id="L384">            executableDigestMap.remove(uuid);</span>
+<span class="nc" id="L385">            removeJobOutput(executablePO);</span>
+<span class="nc" id="L386">        } catch (IOException e) {</span>
+<span class="nc" id="L387">            logger.error(&quot;error delete job:&quot; + uuid, e);</span>
+<span class="nc" id="L388">            throw new PersistentException(e);</span>
+<span class="nc" id="L389">        }</span>
+<span class="nc" id="L390">    }</span>
+
+    private void removeJobOutput(ExecutablePO executablePO) {
+<span class="nc" id="L393">        List&lt;String&gt; toDeletePaths = Lists.newArrayList();</span>
+        try {
+<span class="nc" id="L395">            toDeletePaths.add(pathOfJobOutput(executablePO.getUuid()));</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">            for (ExecutablePO task : executablePO.getTasks()) {</span>
+<span class="nc" id="L397">                toDeletePaths.add(pathOfJobOutput(task.getUuid()));</span>
+<span class="nc" id="L398">            }</span>
+<span class="nc bnc" id="L399" title="All 2 branches missed.">            for (String path : toDeletePaths) {</span>
+<span class="nc" id="L400">                store.deleteResource(path);</span>
+<span class="nc" id="L401">            }</span>
+<span class="nc" id="L402">        } catch (Exception e) {</span>
+<span class="nc" id="L403">            logger.warn(&quot;error delete job output:&quot; + executablePO.getUuid(), e);</span>
+<span class="nc" id="L404">        }</span>
+<span class="nc" id="L405">    }</span>
+
+    public ExecutableOutputPO getJobOutput(String uuid) throws PersistentException {
+<span class="fc" id="L408">        ExecutableOutputPO result = null;</span>
+        try {
+<span class="fc" id="L410">            result = readJobOutputResource(pathOfJobOutput(uuid));</span>
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">            if (result == null) {</span>
+<span class="nc" id="L412">                result = new ExecutableOutputPO();</span>
+<span class="nc" id="L413">                result.setUuid(uuid);</span>
+<span class="nc" id="L414">                return result;</span>
+            }
+<span class="fc" id="L416">            return result;</span>
+<span class="nc" id="L417">        } catch (IOException e) {</span>
+<span class="nc" id="L418">            logger.error(&quot;error get job output id:&quot; + uuid, e);</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">            if (e.getCause() instanceof FileNotFoundException) {</span>
+<span class="nc" id="L420">                result = new ExecutableOutputPO();</span>
+<span class="nc" id="L421">                result.setUuid(uuid);</span>
+<span class="nc" id="L422">                result.setStatus(ExecutableState.SUCCEED.name());</span>
+<span class="nc" id="L423">                return result;</span>
+            } else {
+<span class="nc" id="L425">                throw new PersistentException(e);</span>
+            }
+        }
+    }
+
+    public void addJobOutput(ExecutableOutputPO output) throws PersistentException {
+        try {
+<span class="fc" id="L432">            output.setLastModified(0);</span>
+<span class="fc" id="L433">            writeJobOutputResource(pathOfJobOutput(output.getUuid()), output);</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">            if (!isTaskExecutableOutput(output.getUuid()))</span>
+<span class="fc" id="L435">                executableOutputDigestMap.put(output.getUuid(), output);</span>
+<span class="nc" id="L436">        } catch (IOException e) {</span>
+<span class="nc" id="L437">            logger.error(&quot;error update job output id:&quot; + output.getUuid(), e);</span>
+<span class="nc" id="L438">            throw new PersistentException(e);</span>
+<span class="fc" id="L439">        }</span>
+<span class="fc" id="L440">    }</span>
+
+    public void updateJobOutput(ExecutableOutputPO output) throws PersistentException {
+        try {
+<span class="fc" id="L444">            int retry = 7;</span>
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">            while (retry-- &gt; 0) {</span>
+                try {
+<span class="fc" id="L447">                    writeJobOutputResource(pathOfJobOutput(output.getUuid()), output);</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">                    if (!isTaskExecutableOutput(output.getUuid()))</span>
+<span class="fc" id="L449">                        executableOutputDigestMap.put(output.getUuid(), output);</span>
+<span class="fc" id="L450">                    return;</span>
+<span class="nc" id="L451">                } catch (WriteConflictException e) {</span>
+<span class="nc bnc" id="L452" title="All 2 branches missed.">                    if (retry &lt;= 0) {</span>
+<span class="nc" id="L453">                        logger.error(&quot;Retry is out, till got error, abandoning...&quot;, e);</span>
+<span class="nc" id="L454">                        throw e;</span>
+                    }
+<span class="nc" id="L456">                    logger.warn(&quot;Write conflict to update  job output id:&quot; +  output.getUuid() + &quot; retry remaining &quot; + retry</span>
+                            + &quot;, will retry...&quot;);
+<span class="nc" id="L458">                }</span>
+            }
+<span class="nc" id="L460">        } catch (IOException e) {</span>
+<span class="nc" id="L461">            logger.error(&quot;error update job output id:&quot; + output.getUuid(), e);</span>
+<span class="nc" id="L462">            throw new PersistentException(e);</span>
+<span class="nc" id="L463">        }</span>
+<span class="nc" id="L464">    }</span>
+
+    public void deleteJobOutput(String uuid) throws PersistentException {
+        try {
+<span class="nc" id="L468">            store.deleteResource(pathOfJobOutput(uuid));</span>
+<span class="nc bnc" id="L469" title="All 2 branches missed.">            if (!isTaskExecutableOutput(uuid))</span>
+<span class="nc" id="L470">                executableOutputDigestMap.remove(uuid);</span>
+<span class="nc" id="L471">        } catch (IOException e) {</span>
+<span class="nc" id="L472">            logger.error(&quot;error delete job:&quot; + uuid, e);</span>
+<span class="nc" id="L473">            throw new PersistentException(e);</span>
+<span class="nc" id="L474">        }</span>
+<span class="nc" id="L475">    }</span>
+
+    public void reloadAll() throws IOException {
+<span class="nc" id="L478">        try (AutoReadWriteLock.AutoLock lock = executableDigestMapLock.lockForWrite()) {</span>
+<span class="nc" id="L479">            executableDigestCrud.reloadAll();</span>
+        }
+<span class="nc" id="L481">        try (AutoReadWriteLock.AutoLock lock = executableOutputDigestMapLock.lockForWrite()) {</span>
+<span class="nc" id="L482">            executableOutputDigestCrud.reloadAll();</span>
+        }
+<span class="nc" id="L484">    }</span>
+
+    public void syncDigestsOfJob(String uuid) throws PersistentException {
+<span class="nc" id="L487">        ExecutablePO job = getJob(uuid);</span>
+<span class="nc" id="L488">        ExecutablePO jobDigest = getJobDigest(uuid);</span>
+
+<span class="nc bnc" id="L490" title="All 4 branches missed.">        if (job == null &amp;&amp; jobDigest != null) {</span>
+<span class="nc" id="L491">            executableDigestMap.remove(uuid);</span>
+<span class="nc bnc" id="L492" title="All 4 branches missed.">        } else if (job != null &amp;&amp; jobDigest == null) {</span>
+<span class="nc" id="L493">            executableDigestMap.put(uuid, job);</span>
+        }
+
+<span class="nc" id="L496">        ExecutableOutputPO jobOutput = getJobOutput(uuid);</span>
+<span class="nc" id="L497">        ExecutableOutputPO jobOutputDigest = getJobOutputDigest(uuid);</span>
+
+<span class="nc bnc" id="L499" title="All 4 branches missed.">        if (jobOutput == null &amp;&amp; jobOutputDigest != null) {</span>
+<span class="nc" id="L500">            executableOutputDigestMap.remove(uuid);</span>
+<span class="nc bnc" id="L501" title="All 4 branches missed.">        } else if (jobOutput != null &amp;&amp; jobOutputDigest == null) {</span>
+<span class="nc" id="L502">            executableOutputDigestMap.put(uuid, jobOutput);</span>
+        }
+<span class="nc" id="L504">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

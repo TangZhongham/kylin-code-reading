@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImplementationSwitch.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ImplementationSwitch.java</span></div><h1>ImplementationSwitch.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.common.util;
+
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ * Provide switch between different implementations of a same interface.
+ * Each implementation is identified by an integer ID.
+ */
+public class ImplementationSwitch&lt;I&gt; {
+
+<span class="fc" id="L33">    private static final Logger logger = LoggerFactory.getLogger(ImplementationSwitch.class);</span>
+
+    final private Object[] instances;
+    private Class&lt;I&gt; interfaceClz;
+<span class="fc" id="L37">    private Map&lt;Integer, String&gt; impls = Maps.newHashMap();</span>
+
+<span class="fc" id="L39">    public ImplementationSwitch(Map&lt;Integer, String&gt; impls, Class&lt;I&gt; interfaceClz) {</span>
+<span class="fc" id="L40">        this.impls.putAll(impls);</span>
+<span class="fc" id="L41">        this.interfaceClz = interfaceClz;</span>
+<span class="fc" id="L42">        this.instances = initInstances(this.impls);</span>
+<span class="fc" id="L43">    }</span>
+
+    private Object[] initInstances(Map&lt;Integer, String&gt; impls) {
+<span class="fc" id="L46">        int maxId = 0;</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (Integer id : impls.keySet()) {</span>
+<span class="fc" id="L48">            maxId = Math.max(maxId, id);</span>
+<span class="fc" id="L49">        }</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        if (maxId &gt; 100)</span>
+<span class="nc" id="L51">            throw new IllegalArgumentException(&quot;you have more than 100 implementations?&quot;);</span>
+
+<span class="fc" id="L53">        Object[] result = new Object[maxId + 1];</span>
+
+<span class="fc" id="L55">        return result;</span>
+    }
+
+    public synchronized I get(int id) {
+<span class="fc" id="L59">        String clzName = impls.get(id);</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (clzName == null) {</span>
+<span class="nc" id="L61">            throw new IllegalArgumentException(&quot;Implementation class missing, ID &quot; + id + &quot;, interface &quot; + interfaceClz.getName());</span>
+        }
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L65">        I result = (I) instances[id];</span>
+
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (result == null) {</span>
+            try {
+<span class="fc" id="L69">                result = (I) ClassUtil.newInstance(clzName);</span>
+<span class="fc" id="L70">                instances[id] = result;</span>
+<span class="fc" id="L71">            } catch (Exception ex) {</span>
+<span class="fc" id="L72">                logger.warn(&quot;Implementation missing &quot; + clzName + &quot; - &quot; + ex);</span>
+<span class="fc" id="L73">            }</span>
+        }
+
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (result == null)</span>
+<span class="fc" id="L77">            throw new IllegalArgumentException(&quot;Implementations missing, ID &quot; + id + &quot;, interface &quot; + interfaceClz.getName());</span>
+
+<span class="fc" id="L79">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

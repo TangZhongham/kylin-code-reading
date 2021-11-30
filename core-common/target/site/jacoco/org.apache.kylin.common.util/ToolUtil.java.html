@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ToolUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ToolUtil.java</span></div><h1>ToolUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package org.apache.kylin.common.util;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.UnknownHostException;
+import java.util.Enumeration;
+
+public class ToolUtil {
+
+<span class="nc" id="L38">    private ToolUtil() {</span>
+<span class="nc" id="L39">        throw new IllegalStateException(&quot;Class ToolUtil is an utility class !&quot;);</span>
+    }
+
+    public static String getConfFolder() {
+<span class="nc" id="L43">        final String CONF = &quot;conf&quot;;</span>
+<span class="nc" id="L44">        String path = System.getProperty(KylinConfig.KYLIN_CONF);</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(path)) {</span>
+<span class="nc" id="L46">            return path;</span>
+        }
+<span class="nc" id="L48">        path = KylinConfig.getKylinHome();</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(path)) {</span>
+<span class="nc" id="L50">            return path + File.separator + CONF;</span>
+        }
+<span class="nc" id="L52">        throw new RuntimeException(&quot;Cannot find conf folder.&quot;);</span>
+    }
+
+    public static String getMetaStoreId() throws IOException {
+<span class="nc" id="L56">        KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L57">        ResourceStore store = ResourceStore.getStore(kylinConfig);</span>
+<span class="nc" id="L58">        return store.getMetaStoreUUID();</span>
+    }
+
+
+    public static String getHostName() {
+<span class="nc" id="L63">        String hostname = System.getenv(&quot;COMPUTERNAME&quot;);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        if (StringUtils.isEmpty(hostname)) {</span>
+<span class="nc" id="L65">            InetAddress address = null;</span>
+            try {
+<span class="nc" id="L67">                address = InetAddress.getLocalHost();</span>
+<span class="nc" id="L68">                hostname = address.getHostName();</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">                if (StringUtils.isEmpty(hostname)) {</span>
+<span class="nc" id="L70">                    hostname = address.getHostAddress();</span>
+                }
+<span class="nc" id="L72">            } catch (UnknownHostException uhe) {</span>
+<span class="nc" id="L73">                String host = uhe.getMessage(); // host = &quot;hostname: hostname&quot;</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                if (host != null) {</span>
+<span class="nc" id="L75">                    int colon = host.indexOf(':');</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                    if (colon &gt; 0) {</span>
+<span class="nc" id="L77">                        return host.substring(0, colon);</span>
+                    }
+                }
+<span class="nc" id="L80">                hostname = &quot;Unknown&quot;;</span>
+<span class="nc" id="L81">            }</span>
+        }
+<span class="nc" id="L83">        return hostname;</span>
+    }
+
+    public static InetAddress getFirstNonLoopbackAddress(boolean preferIpv4, boolean preferIPv6)
+            throws SocketException {
+<span class="fc" id="L88">        Enumeration en = NetworkInterface.getNetworkInterfaces();</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        while (en.hasMoreElements()) {</span>
+<span class="fc" id="L90">            NetworkInterface element = (NetworkInterface) en.nextElement();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            for (Enumeration en2 = element.getInetAddresses(); en2.hasMoreElements();) {</span>
+<span class="fc" id="L92">                InetAddress addr = (InetAddress) en2.nextElement();</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                if (!addr.isLoopbackAddress()) {</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                    if (addr instanceof Inet4Address) {</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                        if (preferIPv6) {</span>
+<span class="nc" id="L96">                            continue;</span>
+                        }
+<span class="fc" id="L98">                        return addr;</span>
+                    }
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                    if (addr instanceof Inet6Address) {</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                        if (preferIpv4) {</span>
+<span class="fc" id="L102">                            continue;</span>
+                        }
+<span class="nc" id="L104">                        return addr;</span>
+                    }
+                }
+<span class="nc" id="L107">            }</span>
+<span class="fc" id="L108">        }</span>
+<span class="nc" id="L109">        return null;</span>
+    }
+
+    public static InetAddress getFirstIPV4NonLoopBackAddress() throws SocketException {
+<span class="fc" id="L113">        return getFirstNonLoopbackAddress(true, false);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

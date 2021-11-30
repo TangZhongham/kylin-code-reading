@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DateFormat.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">DateFormat.java</span></div><h1>DateFormat.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.common.util;
+
+import java.text.ParseException;
+import java.util.Date;
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.commons.lang3.time.FastDateFormat;
+
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">public class DateFormat {</span>
+
+    public static final String COMPACT_DATE_PATTERN = &quot;yyyyMMdd&quot;;
+    public static final String DEFAULT_DATE_PATTERN = &quot;yyyy-MM-dd&quot;;
+    public static final String DEFAULT_TIME_PATTERN = &quot;HH:mm:ss&quot;;
+    public static final String DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS = &quot;yyyy-MM-dd HH:mm:ss&quot;;
+    public static final String DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS = &quot;yyyy-MM-dd HH:mm:ss.SSS&quot;;
+    public static final String DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS_OFFSET = &quot;yyyy-MM-dd HH:mm:ss.SSSZZ&quot;;
+    public static final String YYYY_MM_DD_HH_MM = &quot;yyyy-MM-dd HH:mm&quot;;
+    public static final String YYYY_MM_DD_HH = &quot;yyyy-MM-dd HH&quot;;
+    public static final String YYYYMMDDHHMMSS = &quot;yyyyMMddHHmmss&quot;;
+    public static final String YYYYMMDDHHMM = &quot;yyyyMMddHHmm&quot;;
+    public static final String YYYYMMDDHH = &quot;yyyyMMddHH&quot;;
+    public static final String ISO_8601_24H_FULL_FORMAT = &quot;yyyy-MM-dd'T'HH:mm:ss.SSSZZ&quot;;
+
+<span class="fc" id="L43">    public static final String[] SUPPORTED_DATETIME_PATTERN = {</span>
+            DEFAULT_DATE_PATTERN,
+            DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS,
+            DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS,
+            DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS_OFFSET,
+            COMPACT_DATE_PATTERN,
+            ISO_8601_24H_FULL_FORMAT,
+            YYYY_MM_DD_HH_MM,
+            YYYY_MM_DD_HH,
+            YYYYMMDDHHMMSS,
+            YYYYMMDDHHMM,
+            YYYYMMDDHH
+    };
+
+<span class="fc" id="L57">    static final private Map&lt;String, FastDateFormat&gt; formatMap = new ConcurrentHashMap&lt;String, FastDateFormat&gt;();</span>
+
+    public static FastDateFormat getDateFormat(String datePattern) {
+<span class="fc" id="L60">        FastDateFormat r = formatMap.get(datePattern);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (r == null) {</span>
+<span class="fc" id="L62">            r = FastDateFormat.getInstance(datePattern, TimeZone.getTimeZone(&quot;GMT&quot;)); // NOTE: this must be GMT to calculate epoch date correctly</span>
+<span class="fc" id="L63">            formatMap.put(datePattern, r);</span>
+        }
+<span class="fc" id="L65">        return r;</span>
+    }
+
+    public static String formatToCompactDateStr(long millis) {
+<span class="nc" id="L69">        return formatToDateStr(millis, COMPACT_DATE_PATTERN);</span>
+    }
+
+    public static String formatToDateStr(long millis) {
+<span class="nc" id="L73">        return formatToDateStr(millis, DEFAULT_DATE_PATTERN);</span>
+    }
+
+    public static String formatToDateStr(long millis, String pattern) {
+<span class="nc" id="L77">        return getDateFormat(pattern).format(new Date(millis));</span>
+    }
+
+    public static String formatToTimeStr(long millis) {
+<span class="nc" id="L81">        return formatToTimeStr(millis, DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS);</span>
+    }
+
+    public static String formatToTimeWithoutMilliStr(long millis) {
+<span class="nc" id="L85">        return formatToTimeStr(millis, DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS);</span>
+    }
+
+    public static String formatToTimeStr(long millis, String pattern) {
+<span class="nc" id="L89">        return getDateFormat(pattern).format(new Date(millis));</span>
+    }
+
+    public static String dateToString(Date date, String pattern) {
+<span class="fc" id="L93">        return getDateFormat(pattern).format(date);</span>
+    }
+
+    public static Date stringToDate(String str) {
+<span class="nc" id="L97">        return stringToDate(str, DEFAULT_DATE_PATTERN);</span>
+    }
+
+    public static Date stringToDate(String str, String pattern) {
+<span class="fc" id="L101">        Date date = null;</span>
+        try {
+<span class="fc" id="L103">            date = getDateFormat(pattern).parse(str);</span>
+<span class="fc" id="L104">        } catch (ParseException e) {</span>
+<span class="fc" id="L105">            throw new IllegalArgumentException(&quot;'&quot; + str + &quot;' is not a valid date of pattern '&quot; + pattern + &quot;'&quot;, e);</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">        return date;</span>
+    }
+
+    public static String formatToTimeStrWithTimeZone(TimeZone timeZone, long mills){
+<span class="nc" id="L111">        return formatToStrWithTimeZone(timeZone, mills, DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS);</span>
+    }
+
+    public static String formatToDateStrWithTimeZone(TimeZone timeZone, long mills){
+<span class="nc" id="L115">        return formatToStrWithTimeZone(timeZone, mills, DEFAULT_DATE_PATTERN);</span>
+    }
+
+    private static String formatToStrWithTimeZone(TimeZone timeZone, long mills, String pattern){
+<span class="nc" id="L119">        FastDateFormat dateFormat =  FastDateFormat.getInstance(pattern, timeZone);</span>
+<span class="nc" id="L120">        return dateFormat.format(new Date(mills));</span>
+    }
+
+    public static long stringToMillis(String str) {
+        // try to be smart and guess the date format
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (isAllDigits(str)) {</span>
+<span class="nc bnc" id="L126" title="All 4 branches missed.">            if (str.length() == 8 &amp;&amp; isInputFormatDate(str, COMPACT_DATE_PATTERN))</span>
+                //TODO: might be prolematic if an actual ts happends to be 8 digits, e.g. 1970-01-01 10:00:01.123
+<span class="nc" id="L128">                return stringToDate(str, COMPACT_DATE_PATTERN).getTime();</span>
+<span class="nc bnc" id="L129" title="All 4 branches missed.">            else if (str.length() == 10 &amp;&amp; isInputFormatDate(str, YYYYMMDDHH))</span>
+<span class="nc" id="L130">                return stringToDate(str, YYYYMMDDHH).getTime();</span>
+<span class="nc bnc" id="L131" title="All 4 branches missed.">            else if (str.length() == 12 &amp;&amp; isInputFormatDate(str, YYYYMMDDHHMM))</span>
+<span class="nc" id="L132">                return stringToDate(str, YYYYMMDDHHMM).getTime();</span>
+<span class="nc bnc" id="L133" title="All 4 branches missed.">            else if (str.length() == 14 &amp;&amp; isInputFormatDate(str, YYYYMMDDHHMMSS))</span>
+<span class="nc" id="L134">                return stringToDate(str, YYYYMMDDHHMMSS).getTime();</span>
+            else
+<span class="nc" id="L136">                return Long.parseLong(str);</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        } else if (str.length() == 10) {</span>
+<span class="nc" id="L138">            return stringToDate(str, DEFAULT_DATE_PATTERN).getTime();</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        } else if (str.length() == 13) {</span>
+<span class="nc" id="L140">            return stringToDate(str, YYYY_MM_DD_HH).getTime();</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        } else if (str.length() == 16) {</span>
+<span class="nc" id="L142">            return stringToDate(str, YYYY_MM_DD_HH_MM).getTime();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        } else if (str.length() == 19) {</span>
+<span class="nc" id="L144">            return stringToDate(str, DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS).getTime();</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        } else if (str.length() &gt; 19) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (str.contains(&quot;T&quot;)) {</span>
+<span class="nc" id="L147">                return stringToDate(str, ISO_8601_24H_FULL_FORMAT).getTime();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            } else if (str.contains(&quot;+&quot;)) {</span>
+<span class="nc" id="L149">                return stringToDate(str, DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS_OFFSET).getTime();</span>
+            } else {
+<span class="nc" id="L151">                return stringToDate(str, DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS).getTime();</span>
+            }
+        } else {
+<span class="nc" id="L154">            throw new IllegalArgumentException(&quot;there is no valid date pattern for:&quot; + str);</span>
+        }
+    }
+
+    private static boolean isAllDigits(String str) {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        for (int i = 0, n = str.length(); i &lt; n; i++) {</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if (!Character.isDigit(str.charAt(i))) {</span>
+<span class="nc bnc" id="L161" title="All 4 branches missed.">                if (i == 0 &amp;&amp; str.charAt(0) == '-') {</span>
+<span class="nc" id="L162">                    continue;</span>
+                } else {
+<span class="nc" id="L164">                    return false;</span>
+                }
+            }
+        }
+<span class="nc" id="L168">        return true;</span>
+    }
+
+    public static boolean isSupportedDateFormat(String dateStr) {
+<span class="pc bpc" id="L172" title="2 of 4 branches missed.">        assert dateStr != null;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (String formatStr : SUPPORTED_DATETIME_PATTERN) {</span>
+            try {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                if (dateStr.equals(dateToString(stringToDate(dateStr, formatStr), formatStr))) {</span>
+<span class="fc" id="L176">                    return true;</span>
+                }
+<span class="fc" id="L178">            } catch (Exception ex) {</span>
+<span class="fc" id="L179">                continue;</span>
+<span class="fc" id="L180">            }</span>
+        }
+<span class="fc" id="L182">        return false;</span>
+    }
+
+    public static boolean isInputFormatDate(String dateStr, String formatStr) {
+        try {
+<span class="nc" id="L187">            return dateStr.equals(dateToString(stringToDate(dateStr, formatStr), formatStr));</span>
+<span class="nc" id="L188">        } catch (Exception ex) {</span>
+<span class="nc" id="L189">            return false;</span>
+        }
+    }
+
+    public static boolean isDatePattern(String ptn) {
+<span class="nc bnc" id="L194" title="All 6 branches missed.">        return COMPACT_DATE_PATTERN.equals(ptn) || YYYYMMDDHH.equals(ptn) || YYYYMMDDHHMM.equals(ptn)</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                || YYYYMMDDHHMMSS.equals(ptn);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExternalFilterDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">ExternalFilterDesc.java</span></div><h1>ExternalFilterDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.model;
+
+import java.util.Locale;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.metadata.filter.function.Functions;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+/**
+ * External filter enables user to register dynamic external filters out the scope of cubes.
+ * External filters are maintained logically in a filter store (which may or may not share same physical store with cubes),
+ * and are accessed by each cube shard at runtime.
+ * 
+ * Currently the way to use external filter is 1. register external filter through REST 2. use UDF to specify conditions on external filter
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L40">public class ExternalFilterDesc extends RootPersistentEntity implements ISourceAware {</span>
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;filter_resource_identifier&quot;)
+    private String filterResourceIdentifier;
+    @JsonProperty(&quot;filter_table_type&quot;)
+    private Functions.FilterTableType filterTableType;
+<span class="fc" id="L48">    @JsonProperty(&quot;source_type&quot;)</span>
+    private int sourceType = ISourceAware.ID_EXTERNAL;
+    @JsonProperty(&quot;description&quot;)
+    private String description;
+
+    public String getResourcePath() {
+<span class="nc" id="L54">        return concatResourcePath(getName());</span>
+    }
+
+    public static String concatResourcePath(String name) {
+<span class="nc" id="L58">        return ResourceStore.EXTERNAL_FILTER_RESOURCE_ROOT + &quot;/&quot; + name + &quot;.json&quot;;</span>
+    }
+
+    // ============================================================================
+
+    @Override
+    public String resourceName() {
+<span class="fc" id="L65">        return name;</span>
+    }
+
+    public String getFilterResourceIdentifier() {
+<span class="nc" id="L69">        return filterResourceIdentifier;</span>
+    }
+
+    public void setFilterResourceIdentifier(String filterResourceIdentifier) {
+<span class="nc" id="L73">        this.filterResourceIdentifier = filterResourceIdentifier;</span>
+<span class="nc" id="L74">    }</span>
+
+    public Functions.FilterTableType getFilterTableType() {
+<span class="nc" id="L77">        return filterTableType;</span>
+    }
+
+    public void setFilterTableType(Functions.FilterTableType filterTableType) {
+<span class="nc" id="L81">        this.filterTableType = filterTableType;</span>
+<span class="nc" id="L82">    }</span>
+
+    public String getName() {
+<span class="nc" id="L85">        return this.name;</span>
+    }
+
+    public void setName(String name) {
+<span class="nc" id="L89">        this.name = name;</span>
+<span class="nc" id="L90">    }</span>
+
+    public void init() {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (name != null)</span>
+<span class="nc" id="L94">            name = name.toUpperCase(Locale.ROOT);</span>
+<span class="nc" id="L95">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L99">        return &quot;ExternalFilterDesc [ name=&quot; + name + &quot; filter table resource identifier &quot;</span>
+                + this.filterResourceIdentifier + &quot;]&quot;;
+    }
+
+    /** create a mockup table for unit test */
+    public static ExternalFilterDesc mockup(String tableName) {
+<span class="nc" id="L105">        ExternalFilterDesc mockup = new ExternalFilterDesc();</span>
+<span class="nc" id="L106">        mockup.setName(tableName);</span>
+<span class="nc" id="L107">        return mockup;</span>
+    }
+
+    public void setSourceType(int sourceType) {
+<span class="nc" id="L111">        this.sourceType = sourceType;</span>
+<span class="nc" id="L112">    }</span>
+
+    public String getDescription() {
+<span class="nc" id="L115">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="nc" id="L119">        this.description = description;</span>
+<span class="nc" id="L120">    }</span>
+
+    @Override
+    public int getSourceType() {
+<span class="nc" id="L124">        return sourceType;</span>
+    }
+
+    @Override
+    public KylinConfig getConfig() {
+<span class="nc" id="L129">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

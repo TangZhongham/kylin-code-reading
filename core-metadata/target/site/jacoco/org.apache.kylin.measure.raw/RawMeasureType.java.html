@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RawMeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.raw</a> &gt; <span class="el_source">RawMeasureType.java</span></div><h1>RawMeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.raw;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.CapabilityResult;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class RawMeasureType extends MeasureType&lt;List&lt;ByteArray&gt;&gt; {
+    private static final long serialVersionUID = 1L;
+
+<span class="fc" id="L51">    private static final Logger logger = LoggerFactory.getLogger(RawMeasureType.class);</span>
+
+    public static final String FUNC_RAW = &quot;RAW&quot;;
+    public static final String DATATYPE_RAW = &quot;raw&quot;;
+
+<span class="fc" id="L56">    public static class Factory extends MeasureTypeFactory&lt;List&lt;ByteArray&gt;&gt; {</span>
+
+        @Override
+        public MeasureType&lt;List&lt;ByteArray&gt;&gt; createMeasureType(String funcName, DataType dataType) {
+<span class="fc" id="L60">            return new RawMeasureType();</span>
+        }
+
+        @Override
+        public String getAggrFunctionName() {
+<span class="fc" id="L65">            return FUNC_RAW;</span>
+        }
+
+        @Override
+        public String getAggrDataTypeName() {
+<span class="fc" id="L70">            return DATATYPE_RAW;</span>
+        }
+
+        @Override
+        public Class&lt;? extends DataTypeSerializer&lt;List&lt;ByteArray&gt;&gt;&gt; getAggrDataTypeSerializer() {
+<span class="fc" id="L75">            return RawSerializer.class;</span>
+        }
+    }
+
+<span class="fc" id="L79">    public RawMeasureType() {</span>
+<span class="fc" id="L80">    }</span>
+
+    public void validate(FunctionDesc functionDesc) throws IllegalArgumentException {
+<span class="nc" id="L83">        validate(functionDesc.getExpression(), functionDesc.getReturnDataType(), true);</span>
+<span class="nc" id="L84">    }</span>
+
+    private void validate(String funcName, DataType dataType, boolean checkDataType) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (FUNC_RAW.equals(funcName) == false)</span>
+<span class="nc" id="L88">            throw new IllegalArgumentException();</span>
+
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        if (DATATYPE_RAW.equals(dataType.getName()) == false)</span>
+<span class="nc" id="L91">            throw new IllegalArgumentException();</span>
+
+<span class="nc" id="L93">    }</span>
+
+    @Override
+    public boolean isMemoryHungry() {
+<span class="nc" id="L97">        return true;</span>
+    }
+
+    @Override
+    public MeasureIngester&lt;List&lt;ByteArray&gt;&gt; newIngester() {
+<span class="nc" id="L102">        return new MeasureIngester&lt;List&lt;ByteArray&gt;&gt;() {</span>
+            private static final long serialVersionUID = 1L;
+
+            //encode measure value to dictionary
+            @Override
+            public List&lt;ByteArray&gt; valueOf(String[] values, MeasureDesc measureDesc, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                if (values.length != 1)</span>
+<span class="nc" id="L109">                    throw new IllegalArgumentException();</span>
+
+                //source input column value
+<span class="nc" id="L112">                String literal = values[0];</span>
+                // encode literal using dictionary
+<span class="nc" id="L114">                TblColRef literalCol = getRawColumn(measureDesc.getFunction());</span>
+<span class="nc" id="L115">                Dictionary&lt;String&gt; dictionary = dictionaryMap.get(literalCol);</span>
+<span class="nc" id="L116">                int keyEncodedValue = dictionary.getIdFromValue(literal);</span>
+
+<span class="nc" id="L118">                ByteArray key = new ByteArray(dictionary.getSizeOfId());</span>
+<span class="nc" id="L119">                BytesUtil.writeUnsigned(keyEncodedValue, key.array(), key.offset(), dictionary.getSizeOfId());</span>
+
+<span class="nc" id="L121">                List&lt;ByteArray&gt; valueList = new ArrayList&lt;ByteArray&gt;(1);</span>
+<span class="nc" id="L122">                valueList.add(key);</span>
+<span class="nc" id="L123">                return valueList;</span>
+            }
+
+            @Override
+            public void reset() {
+
+<span class="nc" id="L129">            }</span>
+
+            //merge measure dictionary
+            @Override
+            public List&lt;ByteArray&gt; reEncodeDictionary(List&lt;ByteArray&gt; value, MeasureDesc measureDesc, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; oldDicts, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; newDicts) {
+<span class="nc" id="L134">                TblColRef colRef = getRawColumn(measureDesc.getFunction());</span>
+<span class="nc" id="L135">                Dictionary&lt;String&gt; sourceDict = oldDicts.get(colRef);</span>
+<span class="nc" id="L136">                Dictionary&lt;String&gt; mergedDict = newDicts.get(colRef);</span>
+
+<span class="nc" id="L138">                int valueSize = value.size();</span>
+<span class="nc" id="L139">                byte[] newIdBuf = new byte[valueSize * mergedDict.getSizeOfId()];</span>
+
+<span class="nc" id="L141">                int bufOffset = 0;</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                for (ByteArray c : value) {</span>
+<span class="nc" id="L143">                    int oldId = BytesUtil.readUnsigned(c.array(), c.offset(), c.length());</span>
+                    int newId;
+<span class="nc" id="L145">                    String v = sourceDict.getValueFromId(oldId);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                    if (v == null) {</span>
+<span class="nc" id="L147">                        newId = mergedDict.nullId();</span>
+                    } else {
+<span class="nc" id="L149">                        newId = mergedDict.getIdFromValue(v);</span>
+                    }
+<span class="nc" id="L151">                    BytesUtil.writeUnsigned(newId, newIdBuf, bufOffset, mergedDict.getSizeOfId());</span>
+<span class="nc" id="L152">                    c.reset(newIdBuf, bufOffset, mergedDict.getSizeOfId());</span>
+<span class="nc" id="L153">                    bufOffset += mergedDict.getSizeOfId();</span>
+<span class="nc" id="L154">                }</span>
+<span class="nc" id="L155">                return value;</span>
+            }
+        };
+    }
+
+    @Override
+    public MeasureAggregator&lt;List&lt;ByteArray&gt;&gt; newAggregator() {
+<span class="nc" id="L162">        return new RawAggregator();</span>
+    }
+
+    @Override
+    public List&lt;TblColRef&gt; getColumnsNeedDictionary(FunctionDesc functionDesc) {
+<span class="nc" id="L167">        TblColRef literalCol = functionDesc.getParameter().getColRefs().get(0);</span>
+<span class="nc" id="L168">        return Collections.singletonList(literalCol);</span>
+    }
+
+    public CapabilityResult.CapabilityInfluence influenceCapabilityCheck(Collection&lt;TblColRef&gt; unmatchedDimensions, Collection&lt;FunctionDesc&gt; unmatchedAggregations, SQLDigest digest, final MeasureDesc measureDesc) {
+        //is raw query
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        if (!digest.isRawQuery)</span>
+<span class="nc" id="L174">            return null;</span>
+
+<span class="nc" id="L176">        TblColRef rawColumn = getRawColumn(measureDesc.getFunction());</span>
+<span class="nc bnc" id="L177" title="All 4 branches missed.">        if (!digest.allColumns.isEmpty() &amp;&amp; !digest.allColumns.contains(rawColumn)) {</span>
+<span class="nc" id="L178">            return null;</span>
+        }
+
+<span class="nc" id="L181">        unmatchedAggregations.remove(measureDesc.getFunction());</span>
+
+        //contain one raw measure : cost * 0.9
+<span class="nc" id="L184">        return new CapabilityResult.CapabilityInfluence() {</span>
+            @Override
+            public double suggestCostMultiplier() {
+<span class="nc" id="L187">                return 0.9;</span>
+            }
+
+            @Override
+            public MeasureDesc getInvolvedMeasure() {
+<span class="nc" id="L192">                return measureDesc;</span>
+            }
+        };
+    }
+
+    @Override
+    public boolean needRewrite() {
+<span class="fc" id="L199">        return false;</span>
+    }
+
+    @Override
+    public void adjustSqlDigest(List&lt;MeasureDesc&gt; measureDescs, SQLDigest sqlDigest) {
+
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (sqlDigest.isRawQuery) {</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            for (MeasureDesc measureDesc : measureDescs) {</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                if (!sqlDigest.involvedMeasure.contains(measureDesc)) {</span>
+<span class="nc" id="L208">                    continue;</span>
+                }
+<span class="nc" id="L210">                TblColRef col = this.getRawColumn(measureDesc.getFunction());</span>
+<span class="nc" id="L211">                ParameterDesc colParameter = ParameterDesc.newInstance(col);</span>
+<span class="nc" id="L212">                FunctionDesc rawFunc = FunctionDesc.newInstance(&quot;RAW&quot;, colParameter, null);</span>
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">                if (sqlDigest.allColumns.contains(col)) {</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">                    if (measureDesc.getFunction().equals(rawFunc)) {</span>
+<span class="nc" id="L216">                        FunctionDesc sumFunc = FunctionDesc.newInstance(&quot;SUM&quot;, colParameter, null);</span>
+<span class="nc" id="L217">                        sqlDigest.aggregations.remove(sumFunc);</span>
+<span class="nc" id="L218">                        sqlDigest.aggregations.add(rawFunc);</span>
+<span class="nc" id="L219">                        logger.info(&quot;Add RAW measure on column &quot; + col);</span>
+                    }
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                    if (!sqlDigest.metricColumns.contains(col)) {</span>
+<span class="nc" id="L222">                        sqlDigest.metricColumns.add(col);</span>
+                    }
+                }
+<span class="nc" id="L225">            }</span>
+        }
+<span class="nc" id="L227">    }</span>
+
+    @Override
+    public boolean needAdvancedTupleFilling() {
+<span class="nc" id="L231">        return true;</span>
+    }
+
+    @Override
+    public void fillTupleSimply(Tuple tuple, int indexInTuple, Object measureValue) {
+<span class="nc" id="L236">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public IAdvMeasureFiller getAdvancedTupleFiller(FunctionDesc function, TupleInfo tupleInfo, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L241">        final TblColRef literalCol = getRawColumn(function);</span>
+<span class="nc" id="L242">        final Dictionary&lt;String&gt; rawColDict = dictionaryMap.get(literalCol);</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        final int literalTupleIdx = tupleInfo.hasColumn(literalCol) ? tupleInfo.getColumnIndex(literalCol) : -1;</span>
+
+<span class="nc" id="L245">        return new IAdvMeasureFiller() {</span>
+            private List&lt;ByteArray&gt; rawList;
+            private Iterator&lt;ByteArray&gt; rawIterator;
+<span class="nc" id="L248">            private int expectRow = 0;</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void reload(Object measureValue) {
+<span class="nc" id="L253">                this.rawList = (List&lt;ByteArray&gt;) measureValue;</span>
+<span class="nc" id="L254">                this.rawIterator = rawList.iterator();</span>
+<span class="nc" id="L255">                this.expectRow = 0;</span>
+<span class="nc" id="L256">            }</span>
+
+            @Override
+            public int getNumOfRows() {
+<span class="nc" id="L260">                return rawList.size();</span>
+            }
+
+            @Override
+            public void fillTuple(Tuple tuple, int row) {
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                if (expectRow++ != row)</span>
+<span class="nc" id="L266">                    throw new IllegalStateException();</span>
+
+<span class="nc" id="L268">                ByteArray raw = rawIterator.next();</span>
+<span class="nc" id="L269">                int key = BytesUtil.readUnsigned(raw.array(), raw.offset(), raw.length());</span>
+<span class="nc" id="L270">                String colValue = rawColDict.getValueFromId(key);</span>
+<span class="nc" id="L271">                tuple.setDimensionValue(literalTupleIdx, colValue);</span>
+<span class="nc" id="L272">            }</span>
+        };
+    }
+
+    private TblColRef getRawColumn(FunctionDesc functionDesc) {
+<span class="nc" id="L277">        return functionDesc.getParameter().getColRefs().get(0);</span>
+    }
+
+    @Override
+    public boolean onlyAggrInBaseCuboid() {
+<span class="nc" id="L282">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

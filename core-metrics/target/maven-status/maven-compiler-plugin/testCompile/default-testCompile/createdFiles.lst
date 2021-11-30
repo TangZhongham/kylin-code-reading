@@ -1,0 +1,6 @@
+org/apache/kylin/metrics/lib/impl/InstantReservoirTest.class
+org/apache/kylin/metrics/property/MetricsPropertyEnumTest.class
+org/apache/kylin/metrics/lib/impl/RecordEventTimeDetailTest.class
+org/apache/kylin/metrics/lib/impl/MetricsSystemTest.class
+org/apache/kylin/metrics/lib/impl/BlockingReservoirTest.class
+org/apache/kylin/metrics/lib/impl/RecordEventTest.class

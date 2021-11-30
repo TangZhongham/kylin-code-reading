@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RestClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.restclient</a> &gt; <span class="el_source">RestClient.java</span></div><h1>RestClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.restclient;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.xml.bind.DatatypeConverter;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.PoolingClientConnectionManager;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.params.HttpParams;
+import org.apache.http.util.EntityUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.JsonUtil;
+import org.apache.kylin.common.util.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+
+/**
+ */
+public class RestClient {
+
+<span class="fc" id="L63">    private static final Logger logger = LoggerFactory.getLogger(RestClient.class);</span>
+    protected static final String UTF_8 = &quot;UTF-8&quot;;
+    private static final String APPLICATION_JSON = &quot;application/json&quot;;
+    protected static final String INVALID_RESPONSE = &quot;Invalid response &quot;;
+    protected static final String CUBES = &quot;/cubes/&quot;;
+    private static final String WITH_URL = &quot; with url &quot;;
+
+<span class="fc" id="L70">    protected static Pattern fullRestPattern = Pattern.compile(&quot;(?:([^:]+)[:]([^@]+)[@])?([^:]+)(?:[:](\\d+))?&quot;);</span>
+
+<span class="pc" id="L72">    private int httpConnectionTimeoutMs = 30000;</span>
+<span class="pc" id="L73">    private int httpSocketTimeoutMs = 120000;</span>
+
+    public static final String SCHEME_HTTP = &quot;http://&quot;;
+
+    public static final String KYLIN_API_PATH = &quot;/kylin/api&quot;;
+
+    public static boolean matchFullRestPattern(String uri) {
+<span class="fc" id="L80">        Matcher m = fullRestPattern.matcher(uri);</span>
+<span class="fc" id="L81">        return m.matches();</span>
+    }
+
+    // ============================================================================
+
+    protected String host;
+    protected int port;
+    protected String baseUrl;
+    protected String userName;
+    protected String password;
+    protected DefaultHttpClient client;
+
+    /**
+     * @param uri &quot;user:pwd@host:port&quot;
+     */
+    public RestClient(String uri) {
+<span class="fc" id="L97">        this(uri, null, null);</span>
+<span class="fc" id="L98">    }</span>
+
+<span class="fc" id="L100">    public RestClient(String uri, Integer httpConnectionTimeoutMs, Integer httpSocketTimeoutMs) {</span>
+<span class="fc" id="L101">        Matcher m = fullRestPattern.matcher(uri);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (!m.matches())</span>
+<span class="nc" id="L103">            throw new IllegalArgumentException(&quot;URI: &quot; + uri.replaceAll(&quot;:.+@&quot;, &quot;:*****@&quot;) + &quot; -- does not match pattern &quot; + fullRestPattern);</span>
+
+<span class="fc" id="L105">        String user = m.group(1);</span>
+<span class="fc" id="L106">        String pwd = m.group(2);</span>
+<span class="fc" id="L107">        String host = m.group(3);</span>
+<span class="fc" id="L108">        String portStr = m.group(4);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        int port = Integer.parseInt(portStr == null ? &quot;7070&quot; : portStr);</span>
+
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (httpConnectionTimeoutMs != null)</span>
+<span class="nc" id="L112">            this.httpConnectionTimeoutMs = httpConnectionTimeoutMs;</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (httpSocketTimeoutMs != null)</span>
+<span class="nc" id="L114">            this.httpSocketTimeoutMs = httpSocketTimeoutMs;</span>
+
+<span class="fc" id="L116">        init(host, port, user, pwd);</span>
+<span class="fc" id="L117">    }</span>
+
+    public RestClient(String host, int port, String userName, String password) {
+<span class="nc" id="L120">        this(host, port, userName, password, null, null);</span>
+<span class="nc" id="L121">    }</span>
+
+    public RestClient(String host, int port, String userName, String password, Integer httpConnectionTimeoutMs,
+<span class="nc" id="L124">            Integer httpSocketTimeoutMs) {</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (httpConnectionTimeoutMs != null)</span>
+<span class="nc" id="L126">            this.httpConnectionTimeoutMs = httpConnectionTimeoutMs;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (httpSocketTimeoutMs != null)</span>
+<span class="nc" id="L128">            this.httpSocketTimeoutMs = httpSocketTimeoutMs;</span>
+
+<span class="nc" id="L130">        init(host, port, userName, password);</span>
+<span class="nc" id="L131">    }</span>
+
+    private void init(String host, int port, String userName, String password) {
+<span class="fc" id="L134">        this.host = host;</span>
+<span class="fc" id="L135">        this.port = port;</span>
+<span class="fc" id="L136">        this.userName = userName;</span>
+<span class="fc" id="L137">        this.password = password;</span>
+<span class="fc" id="L138">        this.baseUrl = SCHEME_HTTP + host + &quot;:&quot; + port + KYLIN_API_PATH;</span>
+
+<span class="fc" id="L140">        final HttpParams httpParams = new BasicHttpParams();</span>
+<span class="fc" id="L141">        HttpConnectionParams.setSoTimeout(httpParams, httpSocketTimeoutMs);</span>
+<span class="fc" id="L142">        HttpConnectionParams.setConnectionTimeout(httpParams, httpConnectionTimeoutMs);</span>
+
+<span class="fc" id="L144">        final PoolingClientConnectionManager cm = new PoolingClientConnectionManager();</span>
+<span class="fc" id="L145">        KylinConfig config = KylinConfig.getInstanceFromEnv(true);</span>
+<span class="fc" id="L146">        cm.setDefaultMaxPerRoute(config.getRestClientDefaultMaxPerRoute());</span>
+<span class="fc" id="L147">        cm.setMaxTotal(config.getRestClientMaxTotal());</span>
+
+<span class="fc" id="L149">        client = new DefaultHttpClient(cm, httpParams);</span>
+
+<span class="pc bpc" id="L151" title="3 of 4 branches missed.">        if (userName != null &amp;&amp; password != null) {</span>
+<span class="nc" id="L152">            CredentialsProvider provider = new BasicCredentialsProvider();</span>
+<span class="nc" id="L153">            UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(userName, password);</span>
+<span class="nc" id="L154">            provider.setCredentials(AuthScope.ANY, credentials);</span>
+<span class="nc" id="L155">            client.setCredentialsProvider(provider);</span>
+        }
+<span class="fc" id="L157">    }</span>
+
+    // return pair {serverAddress, isActiveJobNode}
+    public Pair&lt;String, String&gt; getJobServerWithState() throws IOException {
+<span class="nc" id="L161">        String url = baseUrl + &quot;/service_discovery/state/is_active_job_node&quot;;</span>
+<span class="nc" id="L162">        HttpGet get = new HttpGet(url);</span>
+<span class="nc" id="L163">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L165">            response = client.execute(get);</span>
+<span class="nc" id="L166">            String msg = EntityUtils.toString(response.getEntity());</span>
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L169">                throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode()</span>
+                        + &quot; with getting job server state  &quot; + url + &quot;\n&quot; + msg);
+            }
+<span class="nc" id="L172">            return Pair.newPair(host + &quot;:&quot; + port, msg);</span>
+        } finally {
+<span class="nc" id="L174">            cleanup(get, response);</span>
+        }
+    }
+
+    public void announceWipeCache(String entity, String event, String cacheKey) throws IOException {
+<span class="nc" id="L179">        String url = baseUrl + &quot;/cache/announce/&quot; + entity + &quot;/&quot; + cacheKey + &quot;/&quot; + event;</span>
+<span class="nc" id="L180">        HttpPut request = new HttpPut(url);</span>
+
+        try {
+<span class="nc" id="L183">            HttpResponse response = client.execute(request);</span>
+
+<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L186">                String msg = EntityUtils.toString(response.getEntity());</span>
+<span class="nc" id="L187">                throw new IOException(&quot;Invalid response &quot; + response.getStatusLine().getStatusCode()</span>
+                        + &quot; with announce cache wipe url &quot; + url + &quot;\n&quot; + msg);
+            }
+<span class="nc" id="L190">        } catch (Exception ex) {</span>
+<span class="nc" id="L191">            throw new IOException(ex);</span>
+        } finally {
+<span class="nc" id="L193">            request.releaseConnection();</span>
+        }
+<span class="nc" id="L195">    }</span>
+    
+    public void wipeCache(String entity, String event, String cacheKey) throws IOException {
+        HttpPut request;
+        String url;
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (cacheKey.contains(&quot;/&quot;)) {</span>
+<span class="nc" id="L201">            url = baseUrl + &quot;/cache/&quot; + entity + &quot;/&quot; + event;</span>
+<span class="nc" id="L202">            request = new HttpPut(url);</span>
+<span class="nc" id="L203">            request.setEntity(new StringEntity(cacheKey, ContentType.create(APPLICATION_JSON, UTF_8)));</span>
+        } else {
+<span class="nc" id="L205">            url = baseUrl + &quot;/cache/&quot; + entity + &quot;/&quot; + cacheKey + &quot;/&quot; + event;</span>
+<span class="nc" id="L206">            request = new HttpPut(url);</span>
+        }
+
+<span class="nc" id="L209">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L211">            response = client.execute(request);</span>
+
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L214">                String msg = EntityUtils.toString(response.getEntity());</span>
+<span class="nc" id="L215">                throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode()</span>
+                        + &quot; with cache wipe url &quot; + url + &quot;\n&quot; + msg);
+            }
+        } finally {
+<span class="nc" id="L219">            cleanup(request, response);</span>
+        }
+<span class="nc" id="L221">    }</span>
+
+    public String getKylinProperties() throws IOException {
+<span class="nc" id="L224">        return getConfiguration(baseUrl + &quot;/admin/config&quot;, true);</span>
+    }
+
+    public String getHDFSConfiguration() throws IOException {
+<span class="nc" id="L228">        return getConfiguration(baseUrl + &quot;/admin/config/hdfs&quot;, true);</span>
+    }
+
+    public String getHBaseConfiguration() throws IOException {
+<span class="nc" id="L232">        return getConfiguration(baseUrl + &quot;/admin/config/hbase&quot;, true);</span>
+    }
+
+    private String getConfiguration(String url, boolean ifAuth) throws IOException {
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        HttpGet request = ifAuth ? newGet(url) : new HttpGet(url);</span>
+<span class="fc" id="L237">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L239">            response = client.execute(request);</span>
+<span class="nc" id="L240">            String msg = EntityUtils.toString(response.getEntity());</span>
+
+<span class="nc bnc" id="L242" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200)</span>
+<span class="nc" id="L243">                throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode()</span>
+                        + &quot; with cache wipe url &quot; + url + &quot;\n&quot; + msg);
+
+<span class="nc" id="L246">            Map&lt;String, String&gt; map = JsonUtil.readValueAsMap(msg);</span>
+<span class="nc" id="L247">            msg = map.get(&quot;config&quot;);</span>
+<span class="nc" id="L248">            return msg;</span>
+        } finally {
+<span class="fc" id="L250">            cleanup(request, response);</span>
+        }
+    }
+
+    public boolean enableCache() throws IOException {
+<span class="nc" id="L255">        return setCache(true);</span>
+    }
+
+    public boolean disableCache() throws IOException {
+<span class="nc" id="L259">        return setCache(false);</span>
+    }
+
+    public boolean buildCube(String cubeName, long startTime, long endTime, String buildType) throws Exception {
+<span class="nc" id="L263">        String url = baseUrl + CUBES + cubeName + &quot;/build&quot;;</span>
+<span class="nc" id="L264">        HttpPut put = newPut(url);</span>
+<span class="nc" id="L265">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L267">            HashMap&lt;String, String&gt; paraMap = new HashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L268">            paraMap.put(&quot;startTime&quot;, startTime + &quot;&quot;);</span>
+<span class="nc" id="L269">            paraMap.put(&quot;endTime&quot;, endTime + &quot;&quot;);</span>
+<span class="nc" id="L270">            paraMap.put(&quot;buildType&quot;, buildType);</span>
+<span class="nc" id="L271">            String jsonMsg = new ObjectMapper().writeValueAsString(paraMap);</span>
+<span class="nc" id="L272">            put.setEntity(new StringEntity(jsonMsg, UTF_8));</span>
+<span class="nc" id="L273">            response = client.execute(put);</span>
+<span class="nc" id="L274">            getContent(response);</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L276">                throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode()</span>
+                        + &quot; with build cube url &quot; + url + &quot;\n&quot; + jsonMsg);
+            } else {
+<span class="nc" id="L279">                return true;</span>
+            }
+        } finally {
+<span class="nc" id="L282">            cleanup(put, response);</span>
+        }
+    }
+
+    public boolean disableCube(String cubeName) throws Exception {
+<span class="nc" id="L287">        return changeCubeStatus(baseUrl + CUBES + cubeName + &quot;/disable&quot;);</span>
+    }
+
+    public boolean enableCube(String cubeName) throws Exception {
+<span class="nc" id="L291">        return changeCubeStatus(baseUrl + CUBES + cubeName + &quot;/enable&quot;);</span>
+    }
+
+    public boolean purgeCube(String cubeName) throws Exception {
+<span class="nc" id="L295">        return changeCubeStatus(baseUrl + CUBES + cubeName + &quot;/purge&quot;);</span>
+    }
+
+    public HashMap getCube(String cubeName) throws Exception {
+<span class="nc" id="L299">        String url = baseUrl + CUBES + cubeName;</span>
+<span class="nc" id="L300">        HttpGet get = newGet(url);</span>
+<span class="nc" id="L301">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L303">            get.setURI(new URI(url));</span>
+<span class="nc" id="L304">            response = client.execute(get);</span>
+<span class="nc" id="L305">            return dealResponse(response);</span>
+        } finally {
+<span class="nc" id="L307">            cleanup(get, response);</span>
+        }
+    }
+
+    private boolean changeCubeStatus(String url) throws Exception {
+<span class="nc" id="L312">        HttpPut put = newPut(url);</span>
+<span class="nc" id="L313">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L315">            HashMap&lt;String, String&gt; paraMap = new HashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L316">            String jsonMsg = new ObjectMapper().writeValueAsString(paraMap);</span>
+<span class="nc" id="L317">            put.setEntity(new StringEntity(jsonMsg, UTF_8));</span>
+<span class="nc" id="L318">            response = client.execute(put);</span>
+<span class="nc" id="L319">            getContent(response);</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L321">                throw new IOException(</span>
+<span class="nc" id="L322">                        INVALID_RESPONSE + response.getStatusLine().getStatusCode() + WITH_URL + url + &quot;\n&quot; + jsonMsg);</span>
+            } else {
+<span class="nc" id="L324">                return true;</span>
+            }
+        } finally {
+<span class="nc" id="L327">            cleanup(put, response);</span>
+        }
+    }
+
+    public HttpResponse query(String sql, String project) throws IOException {
+<span class="nc" id="L332">        String url = baseUrl + &quot;/query&quot;;</span>
+<span class="nc" id="L333">        HttpPost post = newPost(url);</span>
+<span class="nc" id="L334">        HashMap&lt;String, String&gt; paraMap = new HashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L335">        paraMap.put(&quot;sql&quot;, sql);</span>
+<span class="nc" id="L336">        paraMap.put(&quot;project&quot;, project);</span>
+<span class="nc" id="L337">        String jsonMsg = new ObjectMapper().writeValueAsString(paraMap);</span>
+<span class="nc" id="L338">        post.setEntity(new StringEntity(jsonMsg, UTF_8));</span>
+<span class="nc" id="L339">        HttpResponse response = client.execute(post);</span>
+<span class="nc" id="L340">        return response;</span>
+    }
+
+    public void clearCacheForCubeMigration(String cube, String project, String model,
+            Map&lt;String, String&gt; tableToProjects) throws IOException {
+<span class="nc" id="L345">        String url = baseUrl + &quot;/cache/migration&quot;;</span>
+<span class="nc" id="L346">        HttpPost post = new HttpPost(url);</span>
+
+<span class="nc" id="L348">        post.addHeader(&quot;Accept&quot;, &quot;application/json, text/plain, */*&quot;);</span>
+<span class="nc" id="L349">        post.addHeader(&quot;Content-Type&quot;, APPLICATION_JSON);</span>
+
+<span class="nc" id="L351">        HashMap&lt;String, Object&gt; paraMap = new HashMap&lt;String, Object&gt;();</span>
+<span class="nc" id="L352">        paraMap.put(&quot;cube&quot;, cube);</span>
+<span class="nc" id="L353">        paraMap.put(&quot;project&quot;, project);</span>
+<span class="nc" id="L354">        paraMap.put(&quot;model&quot;, model);</span>
+<span class="nc" id="L355">        paraMap.put(&quot;tableToProjects&quot;, tableToProjects);</span>
+<span class="nc" id="L356">        String jsonMsg = JsonUtil.writeValueAsString(paraMap);</span>
+<span class="nc" id="L357">        post.setEntity(new StringEntity(jsonMsg, UTF_8));</span>
+<span class="nc" id="L358">        HttpResponse response = client.execute(post);</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L360">            throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode());</span>
+        }
+<span class="nc" id="L362">    }</span>
+
+    public void buildLookupSnapshotCache(String project, String lookupTableName, String snapshotID) throws IOException {
+<span class="nc" id="L365">        String url = baseUrl + &quot;/tables/&quot; + project + &quot;/&quot; + lookupTableName + &quot;/&quot; + snapshotID + &quot;/snapshotLocalCache&quot;;</span>
+<span class="nc" id="L366">        HttpPut put = new HttpPut(url);</span>
+<span class="nc" id="L367">        HttpResponse response = client.execute(put);</span>
+<span class="nc" id="L368">        getContent(response);</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L370">            throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode() + WITH_URL + url + &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L372">    }</span>
+
+    public String getLookupSnapshotCacheState(String lookupTableName, String snapshotID) throws IOException {
+<span class="nc" id="L375">        String url = baseUrl + &quot;/tables/&quot; + lookupTableName + &quot;/&quot; + snapshotID + &quot;/snapshotLocalCache/state&quot;;</span>
+<span class="nc" id="L376">        HttpGet get = new HttpGet(url);</span>
+<span class="nc" id="L377">        HttpResponse response = client.execute(get);</span>
+<span class="nc" id="L378">        String content = getContent(response);</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L380">            throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode() + WITH_URL + url + &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L382">        return content;</span>
+    }
+
+    public void checkCompatibility(String jsonRequest) throws IOException {
+<span class="nc" id="L386">        checkCompatibility(jsonRequest, false);</span>
+<span class="nc" id="L387">    }</span>
+
+    public void checkCompatibility(String jsonRequest, boolean ifHiveCheck) throws IOException {
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        if (ifHiveCheck) {</span>
+<span class="nc" id="L391">            checkCompatibility(jsonRequest, baseUrl + &quot;/cubes/checkCompatibility/hiveTable&quot;);</span>
+        }
+<span class="nc" id="L393">        checkCompatibility(jsonRequest, baseUrl + &quot;/cubes/checkCompatibility&quot;);</span>
+<span class="nc" id="L394">    }</span>
+
+    private void checkCompatibility(String jsonRequest, String url) throws IOException {
+<span class="nc" id="L397">        HttpPost post = newPost(url);</span>
+        try {
+<span class="nc" id="L399">            post.setEntity(new StringEntity(jsonRequest, &quot;UTF-8&quot;));</span>
+<span class="nc" id="L400">            HttpResponse response = client.execute(post);</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L402">                String msg = getContent(response);</span>
+<span class="nc" id="L403">                Map&lt;String, String&gt; kvMap = JsonUtil.readValueAsMap(msg);</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">                String exception = kvMap.containsKey(&quot;exception&quot;) ? kvMap.get(&quot;exception&quot;) : &quot;unknown&quot;;</span>
+<span class="nc" id="L405">                throw new IOException(&quot;Error code: &quot; + response.getStatusLine().getStatusCode() + &quot;\n&quot; + exception);</span>
+            }
+        } finally {
+<span class="nc" id="L408">            post.releaseConnection();</span>
+        }
+<span class="nc" id="L410">    }</span>
+    
+    private HashMap dealResponse(HttpResponse response) throws IOException {
+<span class="nc bnc" id="L413" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L414">            throw new IOException(INVALID_RESPONSE + response.getStatusLine().getStatusCode());</span>
+        }
+<span class="nc" id="L416">        String result = getContent(response);</span>
+<span class="nc" id="L417">        HashMap resultMap = new ObjectMapper().readValue(result, HashMap.class);</span>
+<span class="nc" id="L418">        return resultMap;</span>
+    }
+
+    private void addHttpHeaders(HttpRequestBase method) {
+<span class="fc" id="L422">        method.addHeader(&quot;Accept&quot;, &quot;application/json, text/plain, */*&quot;);</span>
+<span class="fc" id="L423">        method.addHeader(&quot;Content-Type&quot;, APPLICATION_JSON);</span>
+<span class="pc bpc" id="L424" title="3 of 4 branches missed.">        if (!Strings.isNullOrEmpty(this.userName) &amp;&amp; !Strings.isNullOrEmpty(this.password)) {</span>
+<span class="nc" id="L425">            String basicAuth = DatatypeConverter</span>
+<span class="nc" id="L426">                    .printBase64Binary((this.userName + &quot;:&quot; + this.password).getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L427">            method.addHeader(&quot;Authorization&quot;, &quot;Basic &quot; + basicAuth);</span>
+        }
+<span class="fc" id="L429">    }</span>
+
+    private HttpPost newPost(String url) {
+<span class="nc" id="L432">        HttpPost post = new HttpPost(url);</span>
+<span class="nc" id="L433">        addHttpHeaders(post);</span>
+<span class="nc" id="L434">        return post;</span>
+    }
+
+    protected HttpPut newPut(String url) {
+<span class="nc" id="L438">        HttpPut put = new HttpPut(url);</span>
+<span class="nc" id="L439">        addHttpHeaders(put);</span>
+<span class="nc" id="L440">        return put;</span>
+    }
+
+    protected HttpGet newGet(String url) {
+<span class="fc" id="L444">        HttpGet get = new HttpGet(url);</span>
+<span class="fc" id="L445">        addHttpHeaders(get);</span>
+<span class="fc" id="L446">        return get;</span>
+    }
+
+    private boolean setCache(boolean flag) throws IOException {
+<span class="nc" id="L450">        String url = baseUrl + &quot;/admin/config&quot;;</span>
+<span class="nc" id="L451">        HttpPut put = newPut(url);</span>
+<span class="nc" id="L452">        HttpResponse response = null;</span>
+        try {
+<span class="nc" id="L454">            HashMap&lt;String, String&gt; paraMap = new HashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L455">            paraMap.put(&quot;key&quot;, &quot;kylin.query.cache-enabled&quot;);</span>
+<span class="nc" id="L456">            paraMap.put(&quot;value&quot;, flag + &quot;&quot;);</span>
+<span class="nc" id="L457">            put.setEntity(new StringEntity(new ObjectMapper().writeValueAsString(paraMap), UTF_8));</span>
+<span class="nc" id="L458">            response = client.execute(put);</span>
+<span class="nc" id="L459">            EntityUtils.consume(response.getEntity());</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">            if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L461">                return false;</span>
+            } else {
+<span class="nc" id="L463">                return true;</span>
+            }
+        } finally {
+<span class="nc" id="L466">            cleanup(put, response);</span>
+        }
+    }
+
+    protected String getContent(HttpResponse response) throws IOException {
+<span class="nc" id="L471">        StringBuffer result = new StringBuffer();</span>
+<span class="nc" id="L472">        try (BufferedReader rd = new BufferedReader(</span>
+<span class="nc" id="L473">                new InputStreamReader(response.getEntity().getContent(), StandardCharsets.UTF_8))) {</span>
+            String line;
+<span class="nc bnc" id="L475" title="All 2 branches missed.">            while ((line = rd.readLine()) != null) {</span>
+<span class="nc" id="L476">                result.append(line);</span>
+            }
+        }
+
+<span class="nc" id="L480">        return result.toString();</span>
+    }
+
+    protected void cleanup(HttpRequestBase request, HttpResponse response) {
+        try {
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">            if (response != null)</span>
+<span class="nc" id="L486">                EntityUtils.consume(response.getEntity());</span>
+<span class="nc" id="L487">        } catch (Exception ex) {</span>
+<span class="nc" id="L488">            logger.error(&quot;Error during HTTP connection cleanup&quot;, ex);</span>
+<span class="fc" id="L489">        }</span>
+<span class="fc" id="L490">        request.releaseConnection();</span>
+<span class="fc" id="L491">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InMemCubeBuilderUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.inmemcubing</a> &gt; <span class="el_source">InMemCubeBuilderUtils.java</span></div><h1>InMemCubeBuilderUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.kylin.cube.inmemcubing;
+
+import java.util.BitSet;
+
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.common.util.Pair;
+
+/**
+ */
+<span class="nc" id="L27">public final class InMemCubeBuilderUtils {</span>
+
+    public static final Pair&lt;ImmutableBitSet, ImmutableBitSet&gt; getDimensionAndMetricColumnBitSet(final long cuboidId, final int measureCount) {
+<span class="nc" id="L30">        int cardinality = Long.bitCount(cuboidId);</span>
+<span class="nc" id="L31">        BitSet dimension = new BitSet();</span>
+<span class="nc" id="L32">        dimension.set(0, cardinality);</span>
+<span class="nc" id="L33">        BitSet metrics = new BitSet();</span>
+<span class="nc" id="L34">        metrics.set(cardinality, cardinality + measureCount);</span>
+<span class="nc" id="L35">        return Pair.newPair(new ImmutableBitSet(dimension), new ImmutableBitSet(metrics));</span>
+    }
+
+    public static final Pair&lt;ImmutableBitSet, ImmutableBitSet&gt; getDimensionAndMetricColumnBitSet(final long baseCuboidId, final long childCuboidId, final int measureCount) {
+<span class="nc" id="L39">        final Pair&lt;ImmutableBitSet, ImmutableBitSet&gt; parentDimensionAndMetricColumnBitSet = getDimensionAndMetricColumnBitSet(baseCuboidId, measureCount);</span>
+<span class="nc" id="L40">        ImmutableBitSet parentDimensions = parentDimensionAndMetricColumnBitSet.getFirst();</span>
+<span class="nc" id="L41">        ImmutableBitSet measureColumns = parentDimensionAndMetricColumnBitSet.getSecond();</span>
+<span class="nc" id="L42">        ImmutableBitSet childDimensions = parentDimensions;</span>
+<span class="nc" id="L43">        long mask = Long.highestOneBit(baseCuboidId);</span>
+<span class="nc" id="L44">        long parentCuboidIdActualLength = (long)Long.SIZE - Long.numberOfLeadingZeros(baseCuboidId);</span>
+<span class="nc" id="L45">        int index = 0;</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        for (int i = 0; i &lt; parentCuboidIdActualLength; i++) {</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">            if ((mask &amp; baseCuboidId) &gt; 0) {</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">                if ((mask &amp; childCuboidId) == 0) {</span>
+                    // this dim will be aggregated
+<span class="nc" id="L50">                    childDimensions = childDimensions.set(index, false);</span>
+                }
+<span class="nc" id="L52">                index++;</span>
+            }
+<span class="nc" id="L54">            mask = mask &gt;&gt; 1;</span>
+        }
+<span class="nc" id="L56">        return Pair.newPair(childDimensions, measureColumns);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

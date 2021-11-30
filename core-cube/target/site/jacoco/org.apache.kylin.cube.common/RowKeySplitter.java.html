@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RowKeySplitter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.common</a> &gt; <span class="el_source">RowKeySplitter.java</span></div><h1>RowKeySplitter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.common;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.kv.CubeDimEncMap;
+import org.apache.kylin.cube.kv.RowConstants;
+import org.apache.kylin.cube.kv.RowKeyColumnIO;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.RowKeyColDesc;
+import org.apache.kylin.dimension.IDimensionEncodingMap;
+import org.apache.kylin.metadata.model.TblColRef;
+
+public class RowKeySplitter implements java.io.Serializable {
+
+    private CubeDesc cubeDesc;
+    private RowKeyColumnIO colIO;
+
+    private ByteArray[] splitBuffers;
+    private int[] splitOffsets;
+    private int bufferSize;
+
+    private boolean enableSharding;
+    private short shardId;
+
+    public ByteArray[] getSplitBuffers() {
+<span class="nc" id="L46">        return splitBuffers;</span>
+    }
+
+    public int[] getSplitOffsets() {
+<span class="nc" id="L50">        return splitOffsets;</span>
+    }
+
+    public int getBodySplitOffset() {
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if (enableSharding) {</span>
+<span class="nc" id="L55">            return 2;//shard+cuboid</span>
+        } else {
+<span class="nc" id="L57">            return 1;//cuboid</span>
+        }
+    }
+
+    public int getBufferSize() {
+<span class="nc" id="L62">        return bufferSize;</span>
+    }
+
+    public RowKeySplitter(CubeSegment cubeSeg) {
+<span class="nc" id="L66">        this(cubeSeg, cubeSeg.getCubeDesc().getRowkey().getRowKeyColumns().length + 2, cubeSeg.getConfig().getDimensionEncodingMaxLength());</span>
+<span class="nc" id="L67">    }</span>
+<span class="nc" id="L68">    public RowKeySplitter(CubeSegment cubeSeg, int splitLen, int bytesLen) {</span>
+<span class="nc" id="L69">        this.enableSharding = cubeSeg.isEnableSharding();</span>
+<span class="nc" id="L70">        this.cubeDesc = cubeSeg.getCubeDesc();</span>
+<span class="nc" id="L71">        IDimensionEncodingMap dimEncoding = new CubeDimEncMap(cubeSeg);</span>
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        for (RowKeyColDesc rowKeyColDesc : cubeDesc.getRowkey().getRowKeyColumns()) {</span>
+<span class="nc" id="L74">            dimEncoding.get(rowKeyColDesc.getColRef());</span>
+        }
+
+<span class="nc" id="L77">        this.colIO = new RowKeyColumnIO(dimEncoding);</span>
+
+<span class="nc" id="L79">        this.splitBuffers = new ByteArray[splitLen];</span>
+<span class="nc" id="L80">        this.splitOffsets = new int[splitLen];</span>
+<span class="nc" id="L81">        this.bufferSize = 0;</span>
+<span class="nc" id="L82">    }</span>
+
+    public Short getShardId() {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (enableSharding) {</span>
+<span class="nc" id="L86">            return shardId;</span>
+        }
+<span class="nc" id="L88">        return null;</span>
+    }
+
+
+    public long parseCuboid(byte[] bytes) {
+<span class="nc" id="L93">        return getCuboidId(bytes, enableSharding);</span>
+    }
+
+    public static long getCuboidId(byte[] bytes, boolean enableSharding) {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        int offset = enableSharding ? RowConstants.ROWKEY_SHARDID_LEN : 0;</span>
+<span class="nc" id="L98">        return Bytes.toLong(bytes, offset, RowConstants.ROWKEY_CUBOIDID_LEN);</span>
+    }
+
+    /**
+     * @param bytes
+     * @return cuboid ID
+     */
+    public long split(byte[] bytes) {
+<span class="nc" id="L106">        this.bufferSize = 0;</span>
+<span class="nc" id="L107">        int offset = 0;</span>
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (enableSharding) {</span>
+            // extract shard
+<span class="nc" id="L111">            ByteArray shardSplit = new ByteArray(bytes, offset, RowConstants.ROWKEY_SHARDID_LEN);</span>
+<span class="nc" id="L112">            this.splitBuffers[this.bufferSize++] = shardSplit;</span>
+<span class="nc" id="L113">            offset += RowConstants.ROWKEY_SHARDID_LEN;</span>
+            //lastSplittedShard = Bytes.toShort(shardSplit.value, 0, shardSplit.length);
+<span class="nc" id="L115">            shardId = Bytes.toShort(shardSplit.array(), shardSplit.offset());</span>
+        }
+
+        // extract cuboid id
+<span class="nc" id="L119">        ByteArray cuboidIdSplit = new ByteArray(bytes, offset, RowConstants.ROWKEY_CUBOIDID_LEN);</span>
+<span class="nc" id="L120">        this.splitBuffers[this.bufferSize++] = cuboidIdSplit;</span>
+<span class="nc" id="L121">        offset += RowConstants.ROWKEY_CUBOIDID_LEN;</span>
+<span class="nc" id="L122">        long lastSplittedCuboidId = Bytes.toLong(cuboidIdSplit.array(), cuboidIdSplit.offset(), RowConstants.ROWKEY_CUBOIDID_LEN);</span>
+<span class="nc" id="L123">        Cuboid cuboid = Cuboid.findForMandatory(cubeDesc, lastSplittedCuboidId);</span>
+
+        // rowkey columns
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        for (int i = 0; i &lt; cuboid.getColumns().size(); i++) {</span>
+<span class="nc" id="L127">            splitOffsets[i] = offset;</span>
+<span class="nc" id="L128">            TblColRef col = cuboid.getColumns().get(i);</span>
+<span class="nc" id="L129">            int colLength = colIO.getColumnLength(col);</span>
+<span class="nc" id="L130">            ByteArray split = new ByteArray(bytes, offset, colLength);</span>
+<span class="nc" id="L131">            this.splitBuffers[this.bufferSize++] = split;</span>
+<span class="nc" id="L132">            offset += colLength;</span>
+        }
+
+<span class="nc" id="L135">        return lastSplittedCuboidId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

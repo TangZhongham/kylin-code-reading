@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RecordEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metrics</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.lib.impl</a> &gt; <span class="el_source">RecordEvent.java</span></div><h1>RecordEvent.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metrics.lib.impl;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.Serializable;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.JsonUtil;
+import org.apache.kylin.metrics.lib.Record;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class RecordEvent implements Record, Map&lt;String, Object&gt;, Serializable {
+
+<span class="fc" id="L40">    private static final Logger logger = LoggerFactory.getLogger(RecordEvent.class);</span>
+
+<span class="fc" id="L42">    private static final ThreadLocal&lt;ByteArrayOutputStream&gt; _localBaos = new ThreadLocal&lt;&gt;();</span>
+
+    public static final String LOCAL_HOSTNAME;
+
+    static {
+        String localHostname1;
+        try {
+<span class="fc" id="L49">            InetAddress addr = InetAddress.getLocalHost();</span>
+<span class="fc" id="L50">            localHostname1 = addr.getHostName() + &quot;:&quot; + addr.getHostAddress();</span>
+<span class="fc" id="L51">            logger.info(&quot;RecordEvent using hostname : {}.&quot;, localHostname1);</span>
+<span class="nc" id="L52">        } catch (UnknownHostException e) {</span>
+<span class="nc" id="L53">            logger.info(&quot;Unexpected &quot;, e);</span>
+<span class="nc" id="L54">            localHostname1 = &quot;Unknown&quot;;</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        LOCAL_HOSTNAME = localHostname1;</span>
+<span class="fc" id="L57">    }</span>
+
+    private final Map&lt;String, Object&gt; backingMap;
+
+<span class="fc" id="L61">    private RecordEvent(Map&lt;String, Object&gt; map) {</span>
+<span class="fc" id="L62">        this.backingMap = map;</span>
+<span class="fc" id="L63">    }</span>
+
+    public RecordEvent(String eventType) {
+<span class="fc" id="L66">        this(eventType, LOCAL_HOSTNAME);</span>
+<span class="fc" id="L67">    }</span>
+
+    public RecordEvent(String eventType, long time) {
+<span class="nc" id="L70">        this(eventType, LOCAL_HOSTNAME, time);</span>
+<span class="nc" id="L71">    }</span>
+    
+    public RecordEvent(String eventType, String host) {
+<span class="fc" id="L74">        this(eventType, host, System.currentTimeMillis());</span>
+<span class="fc" id="L75">    }</span>
+
+    public RecordEvent(String eventType, String host, long time) {
+<span class="fc" id="L78">        this(null, eventType, host, time);</span>
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * @param map
+     * @param eventType mandatory   with null check
+     * @param host      mandatory   without null check
+     * @param time      mandatory   with null check
+     */
+<span class="fc" id="L87">    public RecordEvent(Map&lt;String, Object&gt; map, String eventType, String host, long time) {</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        backingMap = map != null ? map : Maps.&lt;String, Object&gt;newHashMap();</span>
+<span class="fc" id="L89">        setEventType(eventType);</span>
+<span class="fc" id="L90">        setHost(host);</span>
+<span class="fc" id="L91">        setTime(time);</span>
+<span class="fc" id="L92">    }</span>
+
+    public String getEventType() {
+<span class="fc" id="L95">        return (String) get(RecordReserveKeyEnum.EVENT_SUBJECT.toString());</span>
+    }
+
+    private void setEventType(String eventType) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (eventType == null) {</span>
+<span class="fc" id="L100">            throw new IllegalArgumentException(&quot;EventType cannot be null.&quot;);</span>
+        }
+<span class="fc" id="L102">        put(RecordReserveKeyEnum.EVENT_SUBJECT.toString(), eventType);</span>
+<span class="fc" id="L103">    }</span>
+
+    public String getHost() {
+<span class="fc" id="L106">        return (String) get(RecordReserveKeyEnum.HOST.toString());</span>
+    }
+
+    private void setHost(String host) {
+<span class="fc" id="L110">        put(RecordReserveKeyEnum.HOST.toString(), host);</span>
+<span class="fc" id="L111">    }</span>
+
+    public Long getTime() {
+<span class="fc" id="L114">        return (Long) get(RecordReserveKeyEnum.TIME.toString());</span>
+    }
+
+    private void setTime(Long time) {
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        if (time == null) {</span>
+<span class="nc" id="L119">            throw new IllegalArgumentException(&quot;Time cannot be null.&quot;);</span>
+        }
+<span class="fc" id="L121">        put(RecordReserveKeyEnum.TIME.toString(), time);</span>
+<span class="fc" id="L122">    }</span>
+
+    public void resetTime() {
+<span class="nc" id="L125">        setTime(System.currentTimeMillis());</span>
+<span class="nc" id="L126">    }</span>
+
+    public String getID() {
+<span class="nc" id="L129">        return (String) get(RecordReserveKeyEnum.ID.toString());</span>
+    }
+
+    public void setID(String id) {
+<span class="nc" id="L133">        put(RecordReserveKeyEnum.ID.toString(), id);</span>
+<span class="nc" id="L134">    }</span>
+
+    @Override
+    public void clear() {
+<span class="fc" id="L138">        backingMap.clear();</span>
+<span class="fc" id="L139">    }</span>
+
+    @Override
+    public boolean containsKey(Object key) {
+<span class="nc" id="L143">        return backingMap.containsKey(key);</span>
+    }
+
+    @Override
+    public boolean containsValue(Object value) {
+<span class="nc" id="L148">        return backingMap.containsValue(value);</span>
+    }
+
+    @Override
+    public Set&lt;Entry&lt;String, Object&gt;&gt; entrySet() {
+<span class="nc" id="L153">        return backingMap.entrySet();</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L158" title="2 of 4 branches missed.">        return super.equals(o) || backingMap.equals(o);</span>
+    }
+
+    @Override
+    public Object get(Object key) {
+<span class="fc" id="L163">        return backingMap.get(key);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L168">        return backingMap.hashCode();</span>
+    }
+
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L173">        return backingMap.isEmpty();</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; keySet() {
+<span class="nc" id="L178">        return backingMap.keySet();</span>
+    }
+
+    @Override
+    public Object put(String key, Object value) {
+<span class="fc" id="L183">        return backingMap.put(key, value);</span>
+    }
+
+    @Override
+    public void putAll(Map&lt;? extends String, ? extends Object&gt; t) {
+<span class="fc" id="L188">        backingMap.putAll(t);</span>
+<span class="fc" id="L189">    }</span>
+
+    @Override
+    public Object remove(Object key) {
+<span class="fc" id="L193">        return backingMap.remove(key);</span>
+    }
+
+    @Override
+    public int size() {
+<span class="fc" id="L198">        return backingMap.size();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L203">        return backingMap.toString();</span>
+    }
+
+    @Override
+    public Collection&lt;Object&gt; values() {
+<span class="nc" id="L208">        return backingMap.values();</span>
+    }
+
+    @Override
+    public String getSubject() {
+<span class="nc" id="L213">        return getEventType();</span>
+    }
+
+    @Override
+    public byte[] getKey() {
+<span class="nc" id="L218">        return (getHost() + &quot;-&quot; + getTime() + &quot;-&quot; + getID()).getBytes(StandardCharsets.UTF_8);</span>
+    }
+
+    /**
+     * Event type and time does not belong to value part
+     */
+    @Override
+    public Map&lt;String, Object&gt; getValueRaw() {
+<span class="fc" id="L226">        Map&lt;String, Object&gt; cloneMap = Maps.newHashMap(backingMap);</span>
+<span class="fc" id="L227">        cloneMap.remove(RecordReserveKeyEnum.EVENT_SUBJECT.toString());</span>
+<span class="fc" id="L228">        return cloneMap;</span>
+    }
+
+    /**
+     * Event type does not belong to value part, it's for classification
+     */
+    @Override
+    public byte[] getValue() {
+        try {
+<span class="fc" id="L237">            ByteArrayOutputStream baos = _localBaos.get();</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            if (baos == null) {</span>
+<span class="fc" id="L239">                baos = new ByteArrayOutputStream();</span>
+<span class="fc" id="L240">                _localBaos.set(baos);</span>
+            }
+<span class="fc" id="L242">            baos.reset();</span>
+<span class="fc" id="L243">            JsonUtil.writeValue(baos, getValueRaw());</span>
+<span class="fc" id="L244">            return baos.toByteArray();</span>
+<span class="nc" id="L245">        } catch (IOException e) {</span>
+<span class="nc" id="L246">            throw new RuntimeException(e);//in mem, should not happen</span>
+        }
+    }
+
+    @Override
+    public RecordEvent clone() {
+<span class="fc" id="L252">        Map&lt;String, Object&gt; cloneMap = Maps.newHashMap();</span>
+<span class="fc" id="L253">        cloneMap.putAll(backingMap);</span>
+<span class="fc" id="L254">        return new RecordEvent(cloneMap);</span>
+    }
+
+<span class="fc" id="L257">    public enum RecordReserveKeyEnum {</span>
+
+<span class="fc" id="L259">        EVENT_SUBJECT(&quot;EVENT_TYPE&quot;)</span>
+<span class="fc" id="L260">        , ID(&quot;EVENT_ID&quot;) // Not used currently</span>
+<span class="fc" id="L261">        , HOST(&quot;HOST&quot;)</span>
+<span class="fc" id="L262">        , TIME(&quot;KTIMESTAMP&quot;);</span>
+
+        private final String reserveKey;
+
+<span class="fc" id="L266">        RecordReserveKeyEnum(String key) {</span>
+<span class="fc" id="L267">            this.reserveKey = key;</span>
+<span class="fc" id="L268">        }</span>
+
+        @Override
+        public String toString() {
+<span class="fc" id="L272">            return reserveKey;</span>
+        }
+
+        public static RecordReserveKeyEnum getByKey(String key) {
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            for (RecordReserveKeyEnum reserveKey : RecordReserveKeyEnum.values()) {</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                if (reserveKey.reserveKey.equalsIgnoreCase(key)) {</span>
+<span class="fc" id="L278">                    return reserveKey;</span>
+                }
+            }
+<span class="fc" id="L281">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

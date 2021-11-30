@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PercentileCounter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.percentile</a> &gt; <span class="el_source">PercentileCounter.java</span></div><h1>PercentileCounter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.percentile;
+
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+
+import com.tdunning.math.stats.AVLTreeDigest;
+import com.tdunning.math.stats.TDigest;
+
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">public class PercentileCounter implements Serializable {</span>
+    private static final double INVALID_QUANTILE_RATIO = -1;
+
+    double compression;
+    double quantileRatio;
+
+    transient TDigest registers;
+
+    public PercentileCounter(double compression) {
+<span class="fc" id="L36">        this(compression, INVALID_QUANTILE_RATIO);</span>
+<span class="fc" id="L37">    }</span>
+
+    public PercentileCounter(PercentileCounter another) {
+<span class="fc" id="L40">        this(another.compression, another.quantileRatio);</span>
+<span class="fc" id="L41">        merge(another);</span>
+<span class="fc" id="L42">    }</span>
+
+<span class="fc" id="L44">    public PercentileCounter(double compression, double quantileRatio) {</span>
+<span class="fc" id="L45">        this.compression = compression;</span>
+<span class="fc" id="L46">        this.quantileRatio = quantileRatio;</span>
+<span class="fc" id="L47">        reInitRegisters();</span>
+<span class="fc" id="L48">    }</span>
+
+    private void reInitRegisters() {
+<span class="fc" id="L51">        this.registers = TDigest.createAvlTreeDigest(this.compression);</span>
+<span class="fc" id="L52">    }</span>
+
+    public void add(double v) {
+<span class="fc" id="L55">        registers.add(v);</span>
+<span class="fc" id="L56">    }</span>
+
+    public void merge(PercentileCounter counter) {
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">        assert this.compression == counter.compression;</span>
+<span class="fc" id="L60">        registers.add(counter.registers);</span>
+<span class="fc" id="L61">    }</span>
+
+    public double getResultEstimate() {
+<span class="fc" id="L64">        return registers.quantile(quantileRatio);</span>
+    }
+
+    public void writeRegisters(ByteBuffer out) {
+<span class="fc" id="L68">        registers.compress();</span>
+<span class="fc" id="L69">        registers.asSmallBytes(out);</span>
+<span class="fc" id="L70">    }</span>
+
+    public void readRegisters(ByteBuffer in) {
+<span class="fc" id="L73">        registers = AVLTreeDigest.fromBytes(in);</span>
+<span class="fc" id="L74">        compression = registers.compression();</span>
+<span class="fc" id="L75">    }</span>
+
+    public int getBytesEstimate() {
+<span class="fc" id="L78">        return maxLength();</span>
+    }
+
+    /**
+     * the Percentile is non-fixed length that is affected by the count and compression mainly. so we collect some statistics
+     * about it and do some analysis, which get from test and the T-digest Paper
+     *
+     * As a result, we conclude its regular pattern by Stata , a tool help construct function model.
+     * 0 - 2 * compression it grows a linear function which is easily derived from T-digest Algorithm
+     * 2 * compression - 50000000 it grows roughly a log and the accuracy increases with the number of samples observed
+     *
+     * @param count
+     * @return
+     */
+    public double getBytesEstimate(double count) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (count &lt;= 2 * compression)</span>
+<span class="fc" id="L94">            return 16 + count * 5;</span>
+
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">        switch ((int) compression) {</span>
+        case 100:
+<span class="fc" id="L98">            return 597.9494 * Math.log1p(count) - 2358.987;</span>
+        case 1000:
+<span class="fc" id="L100">            return 5784.34 * Math.log1p(count) - 35030.97;</span>
+        case 10000:
+<span class="fc" id="L102">            return 54313.96 * Math.log1p(count) - 438988.8;</span>
+        default:
+<span class="nc" id="L104">            return 0.0;</span>
+        }
+    }
+
+    public int maxLength() {
+<span class="pc bpc" id="L109" title="3 of 4 branches missed.">        switch ((int) compression) {</span>
+        case 100:
+<span class="fc" id="L111">            return 16 * 1024;</span>
+        case 1000:
+<span class="nc" id="L113">            return 128 * 1024;</span>
+        case 10000:
+<span class="nc" id="L115">            return 1024 * 1024;</span>
+        default:
+<span class="nc" id="L117">            return 16 * 1024;</span>
+        }
+    }
+
+    public int peekLength(ByteBuffer in) {
+<span class="nc" id="L122">        int mark = in.position();</span>
+<span class="nc" id="L123">        AVLTreeDigest.fromBytes(in);</span>
+<span class="nc" id="L124">        int total = in.position() - mark;</span>
+<span class="nc" id="L125">        in.position(mark);</span>
+<span class="nc" id="L126">        return total;</span>
+    }
+
+    public void clear() {
+<span class="nc" id="L130">        reInitRegisters();</span>
+<span class="nc" id="L131">    }</span>
+
+    public double getCompression() {
+<span class="nc" id="L134">        return compression;</span>
+    }
+
+    public double getQuantileRatio() {
+<span class="nc" id="L138">        return quantileRatio;</span>
+    }
+
+    public TDigest getRegisters() {
+<span class="fc" id="L142">        return registers;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BooleanDimEnc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">BooleanDimEnc.java</span></div><h1>BooleanDimEnc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.dimension;
+
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Map;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ * Encoding Boolean values to bytes
+ */
+public class BooleanDimEnc extends DimensionEncoding implements Serializable{
+    private static final long serialVersionUID = 1L;
+
+    public static final String ENCODING_NAME = &quot;boolean&quot;;
+
+    //NOTE: when add new value, append to the array tail, DO NOT insert!
+<span class="fc" id="L43">    public static String[] ALLOWED_VALUES = new String[] { &quot;&quot;, &quot;true&quot;, &quot;false&quot;, &quot;TRUE&quot;, &quot;FALSE&quot;, &quot;True&quot;, &quot;False&quot;, &quot;t&quot;, &quot;f&quot;, &quot;T&quot;, &quot;F&quot;, &quot;yes&quot;, &quot;no&quot;, &quot;YES&quot;, &quot;NO&quot;, &quot;Yes&quot;, &quot;No&quot;, &quot;y&quot;, &quot;n&quot;, &quot;Y&quot;, &quot;N&quot;, &quot;1&quot;, &quot;0&quot; };</span>
+
+<span class="fc" id="L45">    public static final Map&lt;String, Integer&gt; map = Maps.newHashMap();</span>
+
+    static {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (int i = 0; i &lt; ALLOWED_VALUES.length; i++) {</span>
+<span class="fc" id="L49">            map.put(ALLOWED_VALUES[i], i);</span>
+        }
+<span class="fc" id="L51">    }</span>
+
+<span class="nc" id="L53">    public static class Factory extends DimensionEncodingFactory {</span>
+        @Override
+        public String getSupportedEncodingName() {
+<span class="nc" id="L56">            return ENCODING_NAME;</span>
+        }
+
+        @Override
+        public DimensionEncoding createDimensionEncoding(String encodingName, String[] args) {
+<span class="nc" id="L61">            return new BooleanDimEnc();</span>
+        }
+
+        @Override
+        public boolean isValidDimensionEncoding(String encodingName, String[] args) {
+<span class="nc" id="L66">            return true;</span>
+        }
+    };
+
+    // ============================================================================
+
+<span class="fc" id="L72">    private int fixedLen = 1;</span>
+
+    //no-arg constructor is required for Externalizable
+<span class="fc" id="L75">    public BooleanDimEnc() {</span>
+<span class="fc" id="L76">    }</span>
+
+    @Override
+    public int getLengthOfEncoding() {
+<span class="fc" id="L80">        return fixedLen;</span>
+    }
+
+    @Override
+    public void encode(String value, byte[] output, int outputOffset) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L86">            Arrays.fill(output, outputOffset, outputOffset + fixedLen, NULL);</span>
+<span class="fc" id="L87">            return;</span>
+        }
+
+<span class="fc" id="L90">        Integer encodeValue = map.get(value);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (encodeValue == null) {</span>
+<span class="fc" id="L92">            throw new IllegalArgumentException(&quot;Value '&quot; + value + &quot;' is not a recognized boolean value.&quot;);</span>
+        }
+
+<span class="fc" id="L95">        BytesUtil.writeLong(encodeValue, output, outputOffset, fixedLen);</span>
+<span class="fc" id="L96">    }</span>
+
+    @Override
+    public String decode(byte[] bytes, int offset, int len) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (isNull(bytes, offset, len)) {</span>
+<span class="fc" id="L101">            return null;</span>
+        }
+
+<span class="fc" id="L104">        int x = (int) BytesUtil.readLong(bytes, offset, len);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (x &gt;= ALLOWED_VALUES.length) {</span>
+<span class="nc" id="L106">            throw new IllegalStateException();</span>
+        }
+
+<span class="fc" id="L109">        return ALLOWED_VALUES[x];</span>
+    }
+
+    @Override
+    public DataTypeSerializer&lt;Object&gt; asDataTypeSerializer() {
+<span class="fc" id="L114">        return new BooleanSerializer();</span>
+    }
+
+<span class="fc" id="L117">    public class BooleanSerializer extends DataTypeSerializer&lt;Object&gt; {</span>
+
+        private byte[] currentBuf() {
+<span class="fc" id="L120">            byte[] buf = (byte[]) current.get();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (buf == null) {</span>
+<span class="fc" id="L122">                buf = new byte[fixedLen];</span>
+<span class="fc" id="L123">                current.set(buf);</span>
+            }
+<span class="fc" id="L125">            return buf;</span>
+        }
+
+        @Override
+        public void serialize(Object value, ByteBuffer out) {
+<span class="fc" id="L130">            byte[] buf = currentBuf();</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            String valueStr = value == null ? null : value.toString();</span>
+<span class="fc" id="L132">            encode(valueStr, buf, 0);</span>
+<span class="fc" id="L133">            out.put(buf);</span>
+<span class="fc" id="L134">        }</span>
+
+        @Override
+        public Object deserialize(ByteBuffer in) {
+<span class="fc" id="L138">            byte[] buf = currentBuf();</span>
+<span class="fc" id="L139">            in.get(buf);</span>
+<span class="fc" id="L140">            return decode(buf, 0, buf.length);</span>
+        }
+
+        @Override
+        public int peekLength(ByteBuffer in) {
+<span class="nc" id="L145">            return fixedLen;</span>
+        }
+
+        @Override
+        public int maxLength() {
+<span class="nc" id="L150">            return fixedLen;</span>
+        }
+
+        @Override
+        public int getStorageBytesEstimate() {
+<span class="nc" id="L155">            return fixedLen;</span>
+        }
+
+        @Override
+        public Object valueOf(String str) {
+<span class="nc" id="L160">            return str;</span>
+        }
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+<span class="nc" id="L166">        out.writeShort(fixedLen);</span>
+<span class="nc" id="L167">    }</span>
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+<span class="nc" id="L171">        fixedLen = in.readShort();</span>
+<span class="nc" id="L172">    }</span>
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L177">            return true;</span>
+<span class="nc bnc" id="L178" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L179">            return false;</span>
+<span class="nc" id="L180">        return true;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L185">        return fixedLen;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

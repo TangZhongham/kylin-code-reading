@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BigDecimalSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.datatype</a> &gt; <span class="el_source">BigDecimalSerializer.java</span></div><h1>BigDecimalSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.datatype;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class BigDecimalSerializer extends DataTypeSerializer&lt;BigDecimal&gt; {
+
+<span class="fc" id="L34">    private static final Logger logger = LoggerFactory.getLogger(BigDecimalSerializer.class);</span>
+
+    final DataType type;
+    final int maxLength;
+
+<span class="fc" id="L39">    transient int avoidVerbose = 0;</span>
+
+<span class="fc" id="L41">    public BigDecimalSerializer(DataType type) {</span>
+<span class="fc" id="L42">        this.type = type;</span>
+        // see serialize(): 1 byte scale, 1 byte length, assume every 2 digits takes 1 byte
+<span class="fc" id="L44">        this.maxLength = 1 + 1 + (type.getPrecision() + 1) / 2;</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public void serialize(BigDecimal value, ByteBuffer out) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L50">            BytesUtil.writeVInt(0, out);</span>
+<span class="fc" id="L51">            BytesUtil.writeVInt(-1, out);</span>
+<span class="fc" id="L52">            return;</span>
+        }
+
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (value.scale() &gt; type.getScale()) {</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">            if (avoidVerbose++ % 10000 == 0) {</span>
+<span class="fc" id="L57">                logger.warn(&quot;value's scale has exceeded the &quot; + type.getScale() + &quot;, cut it off, to ensure encoded value do not exceed maxLength &quot; + maxLength + &quot; times:&quot; + (avoidVerbose));</span>
+            }
+<span class="fc" id="L59">            value = value.setScale(type.getScale(), BigDecimal.ROUND_HALF_EVEN);</span>
+        }
+<span class="fc" id="L61">        byte[] bytes = value.unscaledValue().toByteArray();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (bytes.length + 2 &gt; maxLength) {</span>
+<span class="fc" id="L63">            throw new IllegalArgumentException(&quot;'&quot; + value + &quot;' exceeds the expected length for type &quot; + type);</span>
+        }
+
+<span class="fc" id="L66">        BytesUtil.writeVInt(value.scale(), out);</span>
+<span class="fc" id="L67">        BytesUtil.writeVInt(bytes.length, out);</span>
+<span class="fc" id="L68">        out.put(bytes);</span>
+<span class="fc" id="L69">    }</span>
+
+    @Override
+    public BigDecimal deserialize(ByteBuffer in) {
+<span class="fc" id="L73">        int scale = BytesUtil.readVInt(in);</span>
+<span class="fc" id="L74">        int n = BytesUtil.readVInt(in);</span>
+
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (n &lt; 0) {</span>
+<span class="fc" id="L77">            return null;</span>
+        }
+
+<span class="fc" id="L80">        byte[] bytes = new byte[n];</span>
+<span class="fc" id="L81">        in.get(bytes);</span>
+
+<span class="fc" id="L83">        return new BigDecimal(new BigInteger(bytes), scale);</span>
+    }
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="nc" id="L88">        int mark = in.position();</span>
+
+        @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L91">        int scale = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L92">        int n = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L93">        int len = in.position() - mark + n;</span>
+
+<span class="nc" id="L95">        in.position(mark);</span>
+<span class="nc" id="L96">        return len;</span>
+    }
+
+    @Override
+    public int maxLength() {
+<span class="nc" id="L101">        return maxLength;</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+<span class="nc" id="L106">        return 8;</span>
+    }
+
+    @Override
+    public BigDecimal valueOf(String str) {
+<span class="nc" id="L111">        return new BigDecimal(str);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

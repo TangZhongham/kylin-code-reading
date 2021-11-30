@@ -1,0 +1,12 @@
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/routing/RealizationCheckTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/DefaultQueryTransformerTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/udf/VersionUDFTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/calcite/KylinRelDataTypeSystemTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/aggregate/DimCountDistinctAggFuncTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/PushDownUtilTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/TempStatementUtilTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/schema/OLAPTableTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/KeywordDefaultDirtyHackTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/QueryConnectionTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/QueryUtilTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/relnode/visitor/TupleFilterVisitorTest.java

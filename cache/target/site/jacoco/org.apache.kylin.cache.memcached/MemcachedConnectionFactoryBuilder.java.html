@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemcachedConnectionFactoryBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.memcached</a> &gt; <span class="el_source">MemcachedConnectionFactoryBuilder.java</span></div><h1>MemcachedConnectionFactoryBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.memcached;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+
+import net.spy.memcached.ArrayModNodeLocator;
+import net.spy.memcached.ConnectionFactory;
+import net.spy.memcached.ConnectionFactoryBuilder;
+import net.spy.memcached.ConnectionObserver;
+import net.spy.memcached.DefaultConnectionFactory;
+import net.spy.memcached.FailureMode;
+import net.spy.memcached.HashAlgorithm;
+import net.spy.memcached.MemcachedNode;
+import net.spy.memcached.NodeLocator;
+import net.spy.memcached.OperationFactory;
+import net.spy.memcached.RefinedKetamaNodeLocator;
+import net.spy.memcached.auth.AuthDescriptor;
+import net.spy.memcached.metrics.MetricCollector;
+import net.spy.memcached.metrics.MetricType;
+import net.spy.memcached.ops.Operation;
+import net.spy.memcached.transcoders.Transcoder;
+
+<span class="fc" id="L43">public class MemcachedConnectionFactoryBuilder extends ConnectionFactoryBuilder {</span>
+    /**
+     * Get the ConnectionFactory set up with the provided parameters.
+     */
+    public ConnectionFactory build() {
+<span class="fc" id="L48">        return new DefaultConnectionFactory() {</span>
+
+            @Override
+            public BlockingQueue&lt;Operation&gt; createOperationQueue() {
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                return opQueueFactory == null ? super.createOperationQueue() : opQueueFactory.create();</span>
+            }
+
+            @Override
+            public BlockingQueue&lt;Operation&gt; createReadOperationQueue() {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                return readQueueFactory == null ? super.createReadOperationQueue() : readQueueFactory.create();</span>
+            }
+
+            @Override
+            public BlockingQueue&lt;Operation&gt; createWriteOperationQueue() {
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                return writeQueueFactory == null ? super.createReadOperationQueue() : writeQueueFactory.create();</span>
+            }
+
+            @Override
+            public NodeLocator createLocator(List&lt;MemcachedNode&gt; nodes) {
+<span class="pc bpc" id="L67" title="2 of 3 branches missed.">                switch (locator) {</span>
+                case ARRAY_MOD:
+<span class="nc" id="L69">                    return new ArrayModNodeLocator(nodes, getHashAlg());</span>
+                case CONSISTENT:
+<span class="fc" id="L71">                    return new RefinedKetamaNodeLocator(nodes, getHashAlg());</span>
+                default:
+<span class="nc" id="L73">                    throw new IllegalStateException(&quot;Unhandled locator type: &quot; + locator);</span>
+                }
+            }
+
+            @Override
+            public Transcoder&lt;Object&gt; getDefaultTranscoder() {
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                return transcoder == null ? super.getDefaultTranscoder() : transcoder;</span>
+            }
+
+            @Override
+            public FailureMode getFailureMode() {
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                return failureMode == null ? super.getFailureMode() : failureMode;</span>
+            }
+
+            @Override
+            public HashAlgorithm getHashAlg() {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                return hashAlg == null ? super.getHashAlg() : hashAlg;</span>
+            }
+
+            public Collection&lt;ConnectionObserver&gt; getInitialObservers() {
+<span class="fc" id="L93">                return initialObservers;</span>
+            }
+
+            @Override
+            public OperationFactory getOperationFactory() {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                return opFact == null ? super.getOperationFactory() : opFact;</span>
+            }
+
+            @Override
+            public long getOperationTimeout() {
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                return opTimeout == -1 ? super.getOperationTimeout() : opTimeout;</span>
+            }
+
+            @Override
+            public int getReadBufSize() {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                return readBufSize == -1 ? super.getReadBufSize() : readBufSize;</span>
+            }
+
+            @Override
+            public boolean isDaemon() {
+<span class="fc" id="L113">                return isDaemon;</span>
+            }
+
+            @Override
+            public boolean shouldOptimize() {
+<span class="fc" id="L118">                return shouldOptimize;</span>
+            }
+
+            @Override
+            public boolean useNagleAlgorithm() {
+<span class="fc" id="L123">                return useNagle;</span>
+            }
+
+            @Override
+            public long getMaxReconnectDelay() {
+<span class="fc" id="L128">                return maxReconnectDelay;</span>
+            }
+
+            @Override
+            public AuthDescriptor getAuthDescriptor() {
+<span class="fc" id="L133">                return authDescriptor;</span>
+            }
+
+            @Override
+            public long getOpQueueMaxBlockTime() {
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                return opQueueMaxBlockTime &gt; -1 ? opQueueMaxBlockTime : super.getOpQueueMaxBlockTime();</span>
+            }
+
+            @Override
+            public int getTimeoutExceptionThreshold() {
+<span class="fc" id="L143">                return timeoutExceptionThreshold;</span>
+            }
+
+            @Override
+            public MetricType enableMetrics() {
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                return metricType == null ? super.enableMetrics() : metricType;</span>
+            }
+
+            @Override
+            public MetricCollector getMetricCollector() {
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                return collector == null ? super.getMetricCollector() : collector;</span>
+            }
+
+            @Override
+            public ExecutorService getListenerExecutorService() {
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                return executorService == null ? super.getListenerExecutorService() : executorService;</span>
+            }
+
+            @Override
+            public boolean isDefaultExecutorService() {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                return executorService == null;</span>
+            }
+
+            @Override
+            public long getAuthWaitTime() {
+<span class="fc" id="L168">                return authWaitTime;</span>
+            }
+        };
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

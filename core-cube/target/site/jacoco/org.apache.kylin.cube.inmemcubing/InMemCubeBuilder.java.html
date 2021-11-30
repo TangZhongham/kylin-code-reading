@@ -1,0 +1,538 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InMemCubeBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.inmemcubing</a> &gt; <span class="el_source">InMemCubeBuilder.java</span></div><h1>InMemCubeBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.inmemcubing;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeSet;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.common.util.MemoryBudgetController;
+import org.apache.kylin.common.util.MemoryBudgetController.MemoryWaterLevel;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.cube.gridtable.CubeGridTable;
+import org.apache.kylin.cube.kv.CubeDimEncMap;
+import org.apache.kylin.gridtable.GTAggregateScanner;
+import org.apache.kylin.gridtable.GTBuilder;
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.gridtable.GTScanRequestBuilder;
+import org.apache.kylin.gridtable.GridTable;
+import org.apache.kylin.gridtable.IGTScanner;
+import org.apache.kylin.gridtable.IGTStore;
+import org.apache.kylin.measure.topn.Counter;
+import org.apache.kylin.measure.topn.TopNCounter;
+import org.apache.kylin.metadata.datatype.DoubleMutable;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * Build a cube (many cuboids) in memory. Calculating multiple cuboids at the same time as long as memory permits.
+ * Assumes base cuboid fits in memory or otherwise OOM exception will occur.
+ */
+public class InMemCubeBuilder extends AbstractInMemCubeBuilder {
+
+<span class="nc" id="L67">    private static Logger logger = LoggerFactory.getLogger(InMemCubeBuilder.class);</span>
+
+    // by experience
+    private static final double DERIVE_AGGR_CACHE_CONSTANT_FACTOR = 0.1;
+    private static final double DERIVE_AGGR_CACHE_VARIABLE_FACTOR = 0.9;
+
+    private final long baseCuboidId;
+    private final int totalCuboidCount;
+    private final String[] metricsAggrFuncs;
+    private final MeasureDesc[] measureDescs;
+    private final int measureCount;
+
+    private MemoryBudgetController memBudget;
+    private MemoryWaterLevel baseCuboidMemTracker;
+
+    private Thread[] taskThreads;
+    private Throwable[] taskThreadExceptions;
+    private TreeSet&lt;CuboidTask&gt; taskPending;
+<span class="nc" id="L85">    private AtomicInteger taskCuboidCompleted = new AtomicInteger(0);</span>
+
+    private CuboidResult baseResult;
+    private Object[] totalSumForSanityCheck;
+    private ICuboidCollector resultCollector;
+
+    public InMemCubeBuilder(CuboidScheduler cuboidScheduler, IJoinedFlatTableDesc flatDesc,
+            Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L93">        super(cuboidScheduler, flatDesc, dictionaryMap);</span>
+<span class="nc" id="L94">        this.baseCuboidId = Cuboid.getBaseCuboidId(cubeDesc);</span>
+<span class="nc" id="L95">        this.totalCuboidCount = cuboidScheduler.getCuboidCount();</span>
+
+<span class="nc" id="L97">        this.measureCount = cubeDesc.getMeasures().size();</span>
+<span class="nc" id="L98">        this.measureDescs = cubeDesc.getMeasures().toArray(new MeasureDesc[measureCount]);</span>
+
+<span class="nc" id="L100">        List&lt;String&gt; metricsAggrFuncsList = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        for (int i = 0; i &lt; measureCount; i++) {</span>
+<span class="nc" id="L103">            MeasureDesc measureDesc = measureDescs[i];</span>
+<span class="nc" id="L104">            metricsAggrFuncsList.add(measureDesc.getFunction().getExpression());</span>
+        }
+<span class="nc" id="L106">        this.metricsAggrFuncs = metricsAggrFuncsList.toArray(new String[metricsAggrFuncsList.size()]);</span>
+<span class="nc" id="L107">    }</span>
+
+    private GridTable newGridTableByCuboidID(long cuboidID) throws IOException {
+<span class="nc" id="L110">        GTInfo info = CubeGridTable.newGTInfo(Cuboid.findForMandatory(cubeDesc, cuboidID),</span>
+                new CubeDimEncMap(cubeDesc, dictionaryMap)
+        );
+
+        // Below several store implementation are very similar in performance. The ConcurrentDiskStore is the simplest.
+        // MemDiskStore store = new MemDiskStore(info, memBudget == null ? MemoryBudgetController.ZERO_BUDGET : memBudget);
+        // MemDiskStore store = new MemDiskStore(info, MemoryBudgetController.ZERO_BUDGET);
+<span class="nc" id="L117">        IGTStore store = new ConcurrentDiskStore(info);</span>
+
+<span class="nc" id="L119">        GridTable gridTable = new GridTable(info, store);</span>
+<span class="nc" id="L120">        return gridTable;</span>
+    }
+
+    @Override
+    public &lt;T&gt; void build(BlockingQueue&lt;T&gt; input, InputConverterUnit&lt;T&gt; inputConverterUnit, ICuboidWriter output)
+            throws IOException {
+<span class="nc" id="L126">        NavigableMap&lt;Long, CuboidResult&gt; result = build(</span>
+<span class="nc" id="L127">                RecordConsumeBlockingQueueController.getQueueController(inputConverterUnit, input));</span>
+        try {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            for (CuboidResult cuboidResult : result.values()) {</span>
+<span class="nc" id="L130">                outputCuboid(cuboidResult.cuboidId, cuboidResult.table, output);</span>
+<span class="nc" id="L131">                cuboidResult.table.close();</span>
+<span class="nc" id="L132">            }</span>
+        } finally {
+<span class="nc" id="L134">            output.close();</span>
+        }
+<span class="nc" id="L136">    }</span>
+
+    public &lt;T&gt; NavigableMap&lt;Long, CuboidResult&gt; build(RecordConsumeBlockingQueueController&lt;T&gt; input)
+            throws IOException {
+<span class="nc" id="L140">        final NavigableMap&lt;Long, CuboidResult&gt; result = new ConcurrentSkipListMap&lt;Long, CuboidResult&gt;();</span>
+<span class="nc" id="L141">        build(input, new ICuboidCollector() {</span>
+            @Override
+            public void collect(CuboidResult cuboidResult) {
+<span class="nc" id="L144">                logger.info(&quot;collecting CuboidResult cuboid id:&quot; + cuboidResult.cuboidId);</span>
+<span class="nc" id="L145">                result.put(cuboidResult.cuboidId, cuboidResult);</span>
+<span class="nc" id="L146">            }</span>
+        });
+<span class="nc" id="L148">        logger.info(&quot;total CuboidResult count:&quot; + result.size());</span>
+<span class="nc" id="L149">        return result;</span>
+    }
+
+    interface ICuboidCollector {
+        void collect(CuboidResult result);
+    }
+
+    private &lt;T&gt; void build(RecordConsumeBlockingQueueController&lt;T&gt; input, ICuboidCollector collector)
+            throws IOException {
+<span class="nc" id="L158">        long startTime = System.currentTimeMillis();</span>
+<span class="nc" id="L159">        logger.info(&quot;In Mem Cube Build start, {}&quot;, cubeDesc.getName());</span>
+
+<span class="nc" id="L161">        baseCuboidMemTracker = new MemoryWaterLevel();</span>
+<span class="nc" id="L162">        baseCuboidMemTracker.markLow();</span>
+
+        // multiple threads to compute cuboid in parallel
+<span class="nc" id="L165">        taskPending = new TreeSet&lt;CuboidTask&gt;();</span>
+<span class="nc" id="L166">        taskCuboidCompleted.set(0);</span>
+<span class="nc" id="L167">        taskThreads = prepareTaskThreads();</span>
+<span class="nc" id="L168">        taskThreadExceptions = new Throwable[taskThreadCount];</span>
+
+        // build base cuboid
+<span class="nc" id="L171">        resultCollector = collector;</span>
+<span class="nc" id="L172">        totalSumForSanityCheck = null;</span>
+<span class="nc" id="L173">        baseResult = createBaseCuboid(input);</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (baseResult.nRows == 0)</span>
+<span class="nc" id="L175">            return;</span>
+
+        // plan memory budget
+<span class="nc" id="L178">        baseCuboidMemTracker.markLow();</span>
+<span class="nc" id="L179">        makeMemoryBudget();</span>
+
+        // kick off N-D cuboid tasks and output
+<span class="nc" id="L182">        addChildTasks(baseResult);</span>
+<span class="nc" id="L183">        start(taskThreads);</span>
+
+        // wait complete
+<span class="nc" id="L186">        join(taskThreads);</span>
+
+<span class="nc" id="L188">        long endTime = System.currentTimeMillis();</span>
+<span class="nc" id="L189">        logger.info(&quot;In Mem Cube Build end, {}, takes {} ms&quot;, cubeDesc.getName(), (endTime - startTime));</span>
+
+<span class="nc" id="L191">        throwExceptionIfAny();</span>
+<span class="nc" id="L192">    }</span>
+
+    public void abort() {
+<span class="nc" id="L195">        interrupt(taskThreads);</span>
+<span class="nc" id="L196">    }</span>
+
+    private void start(Thread... threads) {
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        for (Thread t : threads)</span>
+<span class="nc" id="L200">            t.start();</span>
+<span class="nc" id="L201">    }</span>
+
+    private void interrupt(Thread... threads) {
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        for (Thread t : threads)</span>
+<span class="nc" id="L205">            t.interrupt();</span>
+<span class="nc" id="L206">    }</span>
+
+    private void join(Thread... threads) throws IOException {
+        try {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            for (Thread t : threads)</span>
+<span class="nc" id="L211">                t.join();</span>
+<span class="nc" id="L212">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L213">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L214">            throw new IOException(&quot;interrupted while waiting task and output complete&quot;, e);</span>
+<span class="nc" id="L215">        }</span>
+<span class="nc" id="L216">    }</span>
+
+    private void throwExceptionIfAny() throws IOException {
+<span class="nc" id="L219">        List&lt;Throwable&gt; errors = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        for (int i = 0; i &lt; taskThreadCount; i++) {</span>
+<span class="nc" id="L222">            Throwable t = taskThreadExceptions[i];</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            if (t != null)</span>
+<span class="nc" id="L224">                errors.add(t);</span>
+        }
+<span class="nc" id="L226">        processErrors(errors);</span>
+<span class="nc" id="L227">    }</span>
+
+    static void processErrors(List&lt;Throwable&gt; errors) throws IOException{
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        if (errors.isEmpty()) {</span>
+<span class="nc" id="L231">            return;</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        } else if (errors.size() == 1) {</span>
+<span class="nc" id="L233">            Throwable t = errors.get(0);</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (t instanceof IOException)</span>
+<span class="nc" id="L235">                throw (IOException) t;</span>
+            else
+<span class="nc" id="L237">                throw new IOException(t);</span>
+        } else {
+<span class="nc bnc" id="L239" title="All 2 branches missed.">            for (Throwable t : errors)</span>
+<span class="nc" id="L240">                logger.error(&quot;Exception during in-mem cube build&quot;, t);</span>
+<span class="nc" id="L241">            throw new IOException(errors.size() + &quot; exceptions during in-mem cube build, cause set to the first, check log for more&quot;, errors.get(0));</span>
+        }
+    }
+
+    private Thread[] prepareTaskThreads() {
+<span class="nc" id="L246">        Thread[] result = new Thread[taskThreadCount];</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        for (int i = 0; i &lt; taskThreadCount; i++) {</span>
+<span class="nc" id="L248">            result[i] = new CuboidTaskThread(i);</span>
+        }
+<span class="nc" id="L250">        return result;</span>
+    }
+
+    public boolean isAllCuboidDone() {
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        return taskCuboidCompleted.get() == totalCuboidCount;</span>
+    }
+
+    private class CuboidTaskThread extends Thread {
+        private int id;
+
+<span class="nc" id="L260">        CuboidTaskThread(int id) {</span>
+<span class="nc" id="L261">            super(&quot;CuboidTask-&quot; + id);</span>
+<span class="nc" id="L262">            this.id = id;</span>
+<span class="nc" id="L263">        }</span>
+
+        @Override
+        public void run() {
+            try {
+<span class="nc bnc" id="L268" title="All 2 branches missed.">                while (!isAllCuboidDone()) {</span>
+<span class="nc" id="L269">                    CuboidTask task = null;</span>
+<span class="nc" id="L270">                    synchronized (taskPending) {</span>
+<span class="nc bnc" id="L271" title="All 4 branches missed.">                        while (task == null &amp;&amp; taskHasNoException()) {</span>
+<span class="nc" id="L272">                            task = taskPending.pollFirst();</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">                            if (task == null)</span>
+<span class="nc" id="L274">                                taskPending.wait(60000);</span>
+                        }
+<span class="nc" id="L276">                    }</span>
+                    // if task error occurs
+<span class="nc bnc" id="L278" title="All 2 branches missed.">                    if (task == null)</span>
+<span class="nc" id="L279">                        break;</span>
+
+<span class="nc" id="L281">                    CuboidResult newCuboid = buildCuboid(task.parent, task.childCuboidId);</span>
+<span class="nc" id="L282">                    addChildTasks(newCuboid);</span>
+
+<span class="nc bnc" id="L284" title="All 2 branches missed.">                    if (isAllCuboidDone()) {</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">                        for (Thread t : taskThreads) {</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">                            if (t != Thread.currentThread())</span>
+<span class="nc" id="L287">                                t.interrupt();</span>
+                        }
+                    }
+<span class="nc" id="L290">                }</span>
+<span class="nc" id="L291">            } catch (Throwable ex) {</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                if (!isAllCuboidDone()) {</span>
+<span class="nc" id="L293">                    logger.error(&quot;task thread exception&quot;, ex);</span>
+<span class="nc" id="L294">                    taskThreadExceptions[id] = ex;</span>
+                }
+<span class="nc" id="L296">            }</span>
+<span class="nc" id="L297">        }</span>
+    }
+
+    private boolean taskHasNoException() {
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        for (int i = 0; i &lt; taskThreadExceptions.length; i++)</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            if (taskThreadExceptions[i] != null)</span>
+<span class="nc" id="L303">                return false;</span>
+<span class="nc" id="L304">        return true;</span>
+    }
+
+    private void addChildTasks(CuboidResult parent) {
+<span class="nc" id="L308">        List&lt;Long&gt; children = cuboidScheduler.getSpanningCuboid(parent.cuboidId);</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        if (!children.isEmpty()) {</span>
+<span class="nc" id="L310">            synchronized (taskPending) {</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                for (Long child : children) {</span>
+<span class="nc" id="L312">                    taskPending.add(new CuboidTask(parent, child));</span>
+<span class="nc" id="L313">                }</span>
+<span class="nc" id="L314">                taskPending.notifyAll();</span>
+<span class="nc" id="L315">            }</span>
+        }
+<span class="nc" id="L317">    }</span>
+
+    private void makeMemoryBudget() {
+<span class="nc" id="L320">        baseResult.aggrCacheMB = Math.max(baseCuboidMemTracker.getEstimateMB(), 10); // 10 MB at minimal</span>
+<span class="nc" id="L321">        logger.debug(&quot;Base cuboid aggr cache is {} MB&quot;, baseResult.aggrCacheMB);</span>
+<span class="nc" id="L322">        int systemAvailMB = MemoryBudgetController.gcAndGetSystemAvailMB();</span>
+<span class="nc" id="L323">        logger.debug(&quot;System avail {} MB&quot;, systemAvailMB);</span>
+<span class="nc" id="L324">        int reserve = reserveMemoryMB;</span>
+<span class="nc" id="L325">        logger.debug(&quot;Reserve {} MB for system basics&quot;, reserve);</span>
+
+<span class="nc" id="L327">        int budget = systemAvailMB - reserve;</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        if (budget &lt; baseResult.aggrCacheMB) {</span>
+            // make sure we have base aggr cache as minimal
+<span class="nc" id="L330">            budget = baseResult.aggrCacheMB;</span>
+<span class="nc" id="L331">            logger.warn(&quot;System avail memory ({} MB) is less than base aggr cache ({} MB) + minimal reservation ({} MB), consider increase JVM heap -Xmx&quot;, systemAvailMB, baseResult.aggrCacheMB, reserve);</span>
+        }
+
+<span class="nc" id="L334">        logger.debug(&quot;Memory Budget is {} MB&quot;, budget);</span>
+<span class="nc" id="L335">        memBudget = new MemoryBudgetController(budget);</span>
+<span class="nc" id="L336">    }</span>
+
+    private &lt;T&gt; CuboidResult createBaseCuboid(RecordConsumeBlockingQueueController&lt;T&gt; input) throws IOException {
+<span class="nc" id="L339">        long startTime = System.currentTimeMillis();</span>
+<span class="nc" id="L340">        logger.info(&quot;Calculating base cuboid {}&quot;, baseCuboidId);</span>
+
+<span class="nc" id="L342">        GridTable baseCuboid = newGridTableByCuboidID(baseCuboidId);</span>
+<span class="nc" id="L343">        GTBuilder baseBuilder = baseCuboid.rebuild();</span>
+<span class="nc" id="L344">        IGTScanner baseInput = new InputConverter(baseCuboid.getInfo(), input);</span>
+
+<span class="nc" id="L346">        Pair&lt;ImmutableBitSet, ImmutableBitSet&gt; dimensionMetricsBitSet = InMemCubeBuilderUtils.getDimensionAndMetricColumnBitSet(baseCuboidId, measureCount);</span>
+<span class="nc" id="L347">        GTScanRequest req = new GTScanRequestBuilder().setInfo(baseCuboid.getInfo()).setRanges(null).setDimensions(null).setAggrGroupBy(dimensionMetricsBitSet.getFirst()).setAggrMetrics(dimensionMetricsBitSet.getSecond()).setAggrMetricsFuncs(metricsAggrFuncs).setFilterPushDown(null).createGTScanRequest();</span>
+<span class="nc" id="L348">        GTAggregateScanner aggregationScanner = new GTAggregateScanner(baseInput, req);</span>
+<span class="nc" id="L349">        aggregationScanner.trackMemoryLevel(baseCuboidMemTracker);</span>
+
+<span class="nc" id="L351">        int count = 0;</span>
+        try {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            for (GTRecord r : aggregationScanner) {</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                if (count == 0) {</span>
+<span class="nc" id="L355">                    baseCuboidMemTracker.markHigh();</span>
+                }
+<span class="nc" id="L357">                baseBuilder.write(r);</span>
+<span class="nc" id="L358">                count++;</span>
+<span class="nc" id="L359">            }</span>
+        } finally {
+<span class="nc" id="L361">            aggregationScanner.close();</span>
+<span class="nc" id="L362">            baseBuilder.close();</span>
+        }
+
+<span class="nc" id="L365">        long timeSpent = System.currentTimeMillis() - startTime;</span>
+<span class="nc" id="L366">        logger.info(&quot;Cuboid {} has {} rows, build takes {}ms&quot;, baseCuboidId, count, timeSpent);</span>
+
+<span class="nc" id="L368">        int mbEstimateBaseAggrCache = (int) (aggregationScanner.getEstimateSizeOfAggrCache() / MemoryBudgetController.ONE_MB);</span>
+<span class="nc" id="L369">        logger.info(&quot;Wild estimate of base aggr cache is {} MB&quot;, mbEstimateBaseAggrCache);</span>
+
+<span class="nc" id="L371">        return updateCuboidResult(baseCuboidId, baseCuboid, count, timeSpent, 0, input.inputConverterUnit.ifChange());</span>
+    }
+
+    private CuboidResult updateCuboidResult(long cuboidId, GridTable table, int nRows, long timeSpent, int aggrCacheMB) {
+<span class="nc" id="L375">        return updateCuboidResult(cuboidId, table, nRows, timeSpent, aggrCacheMB, true);</span>
+    }
+
+    private CuboidResult updateCuboidResult(long cuboidId, GridTable table, int nRows, long timeSpent, int aggrCacheMB,
+            boolean ifCollect) {
+<span class="nc bnc" id="L380" title="All 4 branches missed.">        if (aggrCacheMB &lt;= 0 &amp;&amp; baseResult != null) {</span>
+<span class="nc" id="L381">            aggrCacheMB = (int) Math.round(//</span>
+                    (DERIVE_AGGR_CACHE_CONSTANT_FACTOR + DERIVE_AGGR_CACHE_VARIABLE_FACTOR * nRows / baseResult.nRows) //
+                            * baseResult.aggrCacheMB);
+        }
+
+<span class="nc" id="L386">        CuboidResult result = new CuboidResult(cuboidId, table, nRows, timeSpent, aggrCacheMB);</span>
+<span class="nc" id="L387">        taskCuboidCompleted.incrementAndGet();</span>
+
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (ifCollect) {</span>
+<span class="nc" id="L390">            resultCollector.collect(result);</span>
+        }
+<span class="nc" id="L392">        return result;</span>
+    }
+
+    private CuboidResult buildCuboid(CuboidResult parent, long cuboidId) throws IOException {
+<span class="nc" id="L396">        final String consumerName = &quot;AggrCache@Cuboid &quot; + cuboidId;</span>
+<span class="nc" id="L397">        MemoryBudgetController.MemoryConsumer consumer = new MemoryBudgetController.MemoryConsumer() {</span>
+            @Override
+            public int freeUp(int mb) {
+<span class="nc" id="L400">                return 0; // cannot free up on demand</span>
+            }
+
+            @Override
+            public String toString() {
+<span class="nc" id="L405">                return consumerName;</span>
+            }
+        };
+
+        // reserve memory for aggregation cache, can't be larger than the parent
+<span class="nc" id="L410">        memBudget.reserveInsist(consumer, parent.aggrCacheMB);</span>
+        try {
+<span class="nc" id="L412">            return aggregateCuboid(parent, cuboidId);</span>
+        } finally {
+<span class="nc" id="L414">            memBudget.reserve(consumer, 0);</span>
+        }
+    }
+
+    private CuboidResult aggregateCuboid(CuboidResult parent, long cuboidId) throws IOException {
+<span class="nc" id="L419">        final Pair&lt;ImmutableBitSet, ImmutableBitSet&gt; allNeededColumns = InMemCubeBuilderUtils.getDimensionAndMetricColumnBitSet(parent.cuboidId, cuboidId, measureCount);</span>
+<span class="nc" id="L420">        return scanAndAggregateGridTable(parent.table, parent.cuboidId, cuboidId, allNeededColumns.getFirst(), allNeededColumns.getSecond());</span>
+    }
+
+    private GTAggregateScanner prepareGTAggregationScanner(GridTable gridTable, long parentId, long cuboidId, ImmutableBitSet aggregationColumns, ImmutableBitSet measureColumns) throws IOException {
+<span class="nc" id="L424">        GTInfo info = gridTable.getInfo();</span>
+<span class="nc" id="L425">        GTScanRequest req = new GTScanRequestBuilder().setInfo(info).setRanges(null).setDimensions(null).setAggrGroupBy(aggregationColumns).setAggrMetrics(measureColumns).setAggrMetricsFuncs(metricsAggrFuncs).setFilterPushDown(null).createGTScanRequest();</span>
+<span class="nc" id="L426">        GTAggregateScanner scanner = (GTAggregateScanner) gridTable.scan(req);</span>
+
+        // for child cuboid, some measures don't need aggregation.
+<span class="nc bnc" id="L429" title="All 2 branches missed.">        if (parentId != cuboidId) {</span>
+<span class="nc" id="L430">            boolean[] aggrMask = new boolean[measureDescs.length];</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">            for (int i = 0; i &lt; measureDescs.length; i++) {</span>
+<span class="nc bnc" id="L432" title="All 2 branches missed.">                aggrMask[i] = !measureDescs[i].getFunction().getMeasureType().onlyAggrInBaseCuboid();</span>
+
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                if (!aggrMask[i]) {</span>
+<span class="nc" id="L435">                    logger.info(&quot;{} doesn't need aggregation.&quot;, measureDescs[i]);</span>
+                }
+            }
+<span class="nc" id="L438">            scanner.setAggrMask(aggrMask);</span>
+        }
+
+<span class="nc" id="L441">        return scanner;</span>
+    }
+
+    private CuboidResult scanAndAggregateGridTable(GridTable gridTable, long parentId, long cuboidId, ImmutableBitSet aggregationColumns, ImmutableBitSet measureColumns) throws IOException {
+<span class="nc" id="L445">        long startTime = System.currentTimeMillis();</span>
+<span class="nc" id="L446">        logger.info(&quot;Calculating cuboid {}&quot;, cuboidId);</span>
+
+
+<span class="nc" id="L449">        GridTable newGridTable = newGridTableByCuboidID(cuboidId);</span>
+<span class="nc" id="L450">        ImmutableBitSet allNeededColumns = aggregationColumns.or(measureColumns);</span>
+
+<span class="nc" id="L452">        GTRecord newRecord = new GTRecord(newGridTable.getInfo());</span>
+<span class="nc" id="L453">        int count = 0;</span>
+<span class="nc" id="L454">        try (GTAggregateScanner scanner = prepareGTAggregationScanner(gridTable, parentId, cuboidId, aggregationColumns, measureColumns);</span>
+<span class="nc" id="L455">             GTBuilder builder = newGridTable.rebuild()) {</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">            for (GTRecord record : scanner) {</span>
+<span class="nc" id="L457">                count++;</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">                for (int i = 0; i &lt; allNeededColumns.trueBitCount(); i++) {</span>
+<span class="nc" id="L459">                    int c = allNeededColumns.trueBitAt(i);</span>
+<span class="nc" id="L460">                    newRecord.set(i, record.get(c));</span>
+                }
+<span class="nc" id="L462">                builder.write(newRecord);</span>
+<span class="nc" id="L463">            }</span>
+        }
+
+<span class="nc" id="L466">        long timeSpent = System.currentTimeMillis() - startTime;</span>
+<span class="nc" id="L467">        logger.info(&quot;Cuboid {} has {} rows, build takes {}ms&quot;, cuboidId, count, timeSpent);</span>
+
+<span class="nc" id="L469">        return updateCuboidResult(cuboidId, newGridTable, count, timeSpent, 0);</span>
+    }
+
+    @SuppressWarnings({ &quot;unused&quot;, &quot;rawtypes&quot;, &quot;unchecked&quot; })
+    private void sanityCheck(long parentId, long cuboidId, Object[] totalSum) {
+        // double sum introduces error and causes result not exactly equal
+<span class="nc bnc" id="L475" title="All 2 branches missed.">        for (int i = 0; i &lt; totalSum.length; i++) {</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">            if (totalSum[i] instanceof DoubleMutable) {</span>
+<span class="nc" id="L477">                totalSum[i] = Math.round(((DoubleMutable) totalSum[i]).get());</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            } else if (totalSum[i] instanceof Double) {</span>
+<span class="nc" id="L479">                totalSum[i] = Math.round(((Double) totalSum[i]).doubleValue());</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">            } else if (totalSum[i] instanceof TopNCounter) {</span>
+<span class="nc" id="L481">                TopNCounter counter = (TopNCounter) totalSum[i];</span>
+<span class="nc" id="L482">                Iterator&lt;Counter&gt; iterator = counter.iterator();</span>
+<span class="nc" id="L483">                double total = 0.0;</span>
+<span class="nc bnc" id="L484" title="All 2 branches missed.">                while (iterator.hasNext()) {</span>
+<span class="nc" id="L485">                    Counter aCounter = iterator.next();</span>
+<span class="nc" id="L486">                    total += aCounter.getCount();</span>
+<span class="nc" id="L487">                }</span>
+<span class="nc" id="L488">                totalSum[i] = Math.round(total);</span>
+            }
+
+        }
+
+<span class="nc bnc" id="L493" title="All 2 branches missed.">        if (totalSumForSanityCheck == null) {</span>
+<span class="nc" id="L494">            totalSumForSanityCheck = totalSum;</span>
+<span class="nc" id="L495">            return;</span>
+        }
+<span class="nc bnc" id="L497" title="All 2 branches missed.">        if (Arrays.equals(totalSumForSanityCheck, totalSum) == false) {</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">            if(logger.isInfoEnabled()){</span>
+<span class="nc" id="L499">                logger.info(&quot;sanityCheck failed when calculate{} from parent {}&quot;, cuboidId, parentId);</span>
+<span class="nc" id="L500">                logger.info(&quot;Expected: {}&quot;, Arrays.toString(totalSumForSanityCheck));</span>
+<span class="nc" id="L501">                logger.info(&quot;Actually: {}&quot;, Arrays.toString(totalSum));</span>
+            }
+<span class="nc" id="L503">            throw new IllegalStateException();</span>
+        }
+<span class="nc" id="L505">    }</span>
+
+    // ===========================================================================
+
+    private static class CuboidTask implements Comparable&lt;CuboidTask&gt; {
+        final CuboidResult parent;
+        final long childCuboidId;
+
+<span class="nc" id="L513">        CuboidTask(CuboidResult parent, long childCuboidId) {</span>
+<span class="nc" id="L514">            this.parent = parent;</span>
+<span class="nc" id="L515">            this.childCuboidId = childCuboidId;</span>
+<span class="nc" id="L516">        }</span>
+
+        @Override
+        public int compareTo(CuboidTask o) {
+<span class="nc" id="L520">            long comp = this.childCuboidId - o.childCuboidId;</span>
+<span class="nc bnc" id="L521" title="All 4 branches missed.">            return comp &lt; 0 ? -1 : (comp &gt; 0 ? 1 : 0);</span>
+        }
+
+        @Override
+        public boolean equals(Object o) {
+<span class="nc bnc" id="L526" title="All 2 branches missed.">            if (this == o) return true;</span>
+<span class="nc bnc" id="L527" title="All 4 branches missed.">            if (o == null || getClass() != o.getClass()) return false;</span>
+<span class="nc" id="L528">            CuboidTask that = (CuboidTask) o;</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">            return compareTo(that) == 0;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L534">            return Long.hashCode(childCuboidId);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

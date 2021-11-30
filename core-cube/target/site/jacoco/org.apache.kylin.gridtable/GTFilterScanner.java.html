@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTFilterScanner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTFilterScanner.java</span></div><h1>GTFilterScanner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.util.BitSet;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+
+public class GTFilterScanner extends GTForwardingScanner {
+
+    private TupleFilter filter;
+    private IFilterCodeSystem&lt;ByteArray&gt; filterCodeSystem;
+    private IEvaluatableTuple oneTuple; // avoid instance creation
+
+<span class="fc" id="L41">    private GTRecord next = null;</span>
+<span class="fc" id="L42">    private long inputRowCount = 0L;</span>
+
+<span class="fc" id="L44">    private IGTBypassChecker checker = null;</span>
+
+    public GTFilterScanner(IGTScanner delegated, GTScanRequest req, IGTBypassChecker checker) {
+<span class="fc" id="L47">        super(delegated);</span>
+<span class="fc" id="L48">        this.checker = checker;</span>
+
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        if (req != null) {</span>
+<span class="nc" id="L51">            this.filter = req.getFilterPushDown();</span>
+<span class="nc" id="L52">            this.filterCodeSystem = GTUtil.wrap(getInfo().codeSystem.getComparator());</span>
+<span class="nc" id="L53">            this.oneTuple = new IEvaluatableTuple() {</span>
+                @Override
+                public Object getValue(TblColRef col) {
+<span class="nc" id="L56">                    return next.get(col.getColumnDesc().getZeroBasedIndex());</span>
+                }
+            };
+
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            if (!TupleFilter.isEvaluableRecursively(filter))</span>
+<span class="nc" id="L61">                throw new IllegalArgumentException();</span>
+        }
+<span class="fc" id="L63">    }</span>
+
+    public void setChecker(IGTBypassChecker checker) {
+<span class="nc" id="L66">        this.checker = checker;</span>
+<span class="nc" id="L67">    }</span>
+
+    public long getInputRowCount() {
+<span class="nc" id="L70">        return inputRowCount;</span>
+    }
+
+    @Override
+    public Iterator&lt;GTRecord&gt; iterator() {
+<span class="fc" id="L75">        return new GTFilterScannerIterator();</span>
+    }
+
+<span class="fc" id="L78">    private class GTFilterScannerIterator implements Iterator&lt;GTRecord&gt; {</span>
+<span class="fc" id="L79">        private Iterator&lt;GTRecord&gt; inputIterator = delegated.iterator();</span>
+<span class="fc" id="L80">        private FilterResultCache resultCache = new FilterResultCache(getInfo(), filter);</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            if (next != null)</span>
+<span class="nc" id="L85">                return true;</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            while (inputIterator.hasNext()) {</span>
+<span class="fc" id="L88">                next = inputIterator.next();</span>
+<span class="fc" id="L89">                inputRowCount++;</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                if (!evaluate()) {</span>
+<span class="nc" id="L91">                    continue;</span>
+                }
+<span class="fc" id="L93">                return true;</span>
+            }
+<span class="fc" id="L95">            next = null;</span>
+<span class="fc" id="L96">            return false;</span>
+        }
+
+        private boolean evaluate() {
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">            if (checker != null &amp;&amp; checker.shouldBypass(next)) {</span>
+<span class="nc" id="L101">                return false;</span>
+            }
+
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (filter == null)</span>
+<span class="fc" id="L105">                return true;</span>
+
+            // 'next' and 'oneTuple' are referring to the same record
+<span class="nc" id="L108">            boolean[] cachedResult = resultCache.checkCache(next);</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            if (cachedResult != null)</span>
+<span class="nc" id="L110">                return cachedResult[0];</span>
+
+<span class="nc" id="L112">            boolean result = filter.evaluate(oneTuple, filterCodeSystem);</span>
+<span class="nc" id="L113">            resultCache.setLastResult(result);</span>
+<span class="nc" id="L114">            return result;</span>
+        }
+
+        @Override
+        public GTRecord next() {
+            // fetch next record
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            if (next == null) {</span>
+<span class="nc" id="L121">                hasNext();</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">                if (next == null)</span>
+<span class="nc" id="L123">                    throw new NoSuchElementException();</span>
+            }
+
+<span class="fc" id="L126">            GTRecord result = next;</span>
+<span class="fc" id="L127">            next = null;</span>
+<span class="fc" id="L128">            return result;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc" id="L133">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    // cache the last one input and result, can reuse because rowkey are ordered, and same input could come in small group
+    public static class FilterResultCache {
+        static final int CHECKPOINT = 10000;
+        static final double HIT_RATE_THRESHOLD = 0.5;
+        public static final boolean DEFAULT_OPTION = true; // enable cache by default
+<span class="fc" id="L142">        private boolean enabled = DEFAULT_OPTION;</span>
+        ImmutableBitSet colsInFilter;
+        int count;
+        int hit;
+        byte[] lastValues;
+        boolean[] lastResult;
+
+<span class="fc" id="L149">        public FilterResultCache(GTInfo info, TupleFilter filter) {</span>
+<span class="fc" id="L150">            colsInFilter = collectColumnsInFilter(filter);</span>
+<span class="fc" id="L151">            lastValues = new byte[info.getMaxColumnLength(colsInFilter)];</span>
+<span class="fc" id="L152">            lastResult = new boolean[1];</span>
+<span class="fc" id="L153">        }</span>
+
+        public boolean[] checkCache(GTRecord record) {
+<span class="nc bnc" id="L156" title="All 2 branches missed.">            if (!enabled)</span>
+<span class="nc" id="L157">                return null;</span>
+
+<span class="nc" id="L159">            count++;</span>
+
+            // disable the cache if the hit rate is bad
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            if (count == CHECKPOINT) {</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                if ((double) hit / (double) count &lt; HIT_RATE_THRESHOLD) {</span>
+<span class="nc" id="L164">                    enabled = false;</span>
+                }
+            }
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">            boolean match = count &gt; 1;</span>
+<span class="nc" id="L169">            int p = 0;</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            for (int i = 0; i &lt; colsInFilter.trueBitCount(); i++) {</span>
+<span class="nc" id="L171">                int c = colsInFilter.trueBitAt(i);</span>
+<span class="nc" id="L172">                ByteArray col = record.get(c);</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                if (match) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                    match = BytesUtil.compareBytes(col.array(), col.offset(), lastValues, p, col.length()) == 0;</span>
+                }
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                if (!match) {</span>
+<span class="nc" id="L177">                    System.arraycopy(col.array(), col.offset(), lastValues, p, col.length());</span>
+                }
+<span class="nc" id="L179">                p += col.length();</span>
+            }
+
+<span class="nc bnc" id="L182" title="All 2 branches missed.">            if (match) {</span>
+<span class="nc" id="L183">                hit++;</span>
+<span class="nc" id="L184">                return lastResult;</span>
+            } else {
+<span class="nc" id="L186">                return null;</span>
+            }
+        }
+
+        public void setLastResult(boolean evalResult) {
+<span class="nc" id="L191">            lastResult[0] = evalResult;</span>
+<span class="nc" id="L192">        }</span>
+
+        private ImmutableBitSet collectColumnsInFilter(TupleFilter filter) {
+<span class="fc" id="L195">            Set&lt;TblColRef&gt; columnsInFilter = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L196">            TupleFilter.collectColumns(filter, columnsInFilter);</span>
+<span class="fc" id="L197">            BitSet result = new BitSet();</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">            for (TblColRef col : columnsInFilter)</span>
+<span class="nc" id="L199">                result.set(col.getColumnDesc().getZeroBasedIndex());</span>
+<span class="fc" id="L200">            return new ImmutableBitSet(result);</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

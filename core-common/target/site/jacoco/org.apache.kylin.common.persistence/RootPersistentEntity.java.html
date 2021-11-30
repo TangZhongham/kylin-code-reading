@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RootPersistentEntity.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">RootPersistentEntity.java</span></div><h1>RootPersistentEntity.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.persistence;
+
+import java.io.Serializable;
+
+import org.apache.commons.lang.time.FastDateFormat;
+import org.apache.kylin.common.KylinVersion;
+import org.apache.kylin.common.util.RandomUtil;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+/**
+ * Marks the root entity of JSON persistence. Unit of read, write, cache, and
+ * refresh.
+ * 
+ * - CubeInstance - CubeDesc - SourceTable - JobMeta - Dictionary (not JSON but
+ * also top level persistence)
+ * 
+ * @author yangli9
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L42">abstract public class RootPersistentEntity implements AclEntity, Serializable {</span>
+
+    static final String DATE_PATTERN = &quot;yyyy-MM-dd HH:mm:ss z&quot;;
+<span class="fc" id="L45">    static FastDateFormat format = FastDateFormat.getInstance(DATE_PATTERN);</span>
+
+    public static String formatTime(long millis) {
+<span class="nc" id="L48">        return format.format(millis);</span>
+    }
+
+    // ============================================================================
+
+    @JsonProperty(&quot;uuid&quot;)
+    protected String uuid;
+
+    @JsonProperty(&quot;last_modified&quot;)
+    protected long lastModified;
+
+    // if cached and shared, the object MUST NOT be modified (call setXXX() for example)
+<span class="fc" id="L60">    protected boolean isCachedAndShared = false;</span>
+
+    /**
+     * Metadata model version
+     *
+     * User info only, we don't do version control
+     */
+<span class="fc" id="L67">    @JsonProperty(&quot;version&quot;)</span>
+<span class="fc" id="L68">    protected String version = KylinVersion.getCurrentVersion().toString();</span>
+
+    public String getVersion() {
+<span class="nc" id="L71">        return version;</span>
+    }
+
+    public void setVersion(String version) {
+<span class="nc" id="L75">        this.version = version;</span>
+<span class="nc" id="L76">    }</span>
+
+    public String getUuid() {
+<span class="nc" id="L79">        return uuid;</span>
+    }
+
+    public void setUuid(String uuid) {
+<span class="nc" id="L83">        this.uuid = uuid;</span>
+<span class="nc" id="L84">    }</span>
+
+    public String getId() {
+<span class="nc" id="L87">        return uuid;</span>
+    }
+
+    public long getLastModified() {
+<span class="fc" id="L91">        return lastModified;</span>
+    }
+
+    public void setLastModified(long lastModified) {
+<span class="fc" id="L95">        this.lastModified = lastModified;</span>
+<span class="fc" id="L96">    }</span>
+
+    public void updateRandomUuid() {
+<span class="nc" id="L99">        setUuid(RandomUtil.randomUUID().toString());</span>
+<span class="nc" id="L100">    }</span>
+
+    public boolean isCachedAndShared() {
+<span class="nc" id="L103">        return isCachedAndShared;</span>
+    }
+
+    public void checkIsNotCachedAndShared() {
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (isCachedAndShared)</span>
+<span class="nc" id="L108">            throw new IllegalStateException();</span>
+<span class="nc" id="L109">    }</span>
+
+    public void setCachedAndShared(boolean isCachedAndShared) {
+<span class="nc" id="L112">        this.isCachedAndShared = isCachedAndShared;</span>
+<span class="nc" id="L113">    }</span>
+
+    /**
+     * The name as a part of the resource path used to save the entity.
+     * 
+     * E.g. /resource-root-dir/{RESOURCE_NAME}.json
+     */
+    public String resourceName() {
+<span class="nc" id="L121">        return uuid;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L126">        final int prime = 31;</span>
+<span class="nc" id="L127">        int result = 1;</span>
+<span class="nc" id="L128">        result = prime * result + (int) (lastModified ^ (lastModified &gt;&gt;&gt; 32));</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        result = prime * result + ((uuid == null) ? 0 : uuid.hashCode());</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        result = prime * result + ((version == null) ? 0 : version.hashCode());</span>
+<span class="nc" id="L131">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L137">            return true;</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L139">            return false;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L141">            return false;</span>
+<span class="nc" id="L142">        RootPersistentEntity other = (RootPersistentEntity) obj;</span>
+<span class="nc bnc" id="L143" title="All 6 branches missed.">        if (lastModified != other.lastModified || !(version == null || version.equals(other.getVersion())))</span>
+<span class="nc" id="L144">            return false;</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (uuid == null) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (other.uuid != null)</span>
+<span class="nc" id="L147">                return false;</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        } else if (!uuid.equals(other.uuid))</span>
+<span class="nc" id="L149">            return false;</span>
+<span class="nc" id="L150">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

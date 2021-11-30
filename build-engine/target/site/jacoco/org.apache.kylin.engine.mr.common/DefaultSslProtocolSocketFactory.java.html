@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultSslProtocolSocketFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">DefaultSslProtocolSocketFactory.java</span></div><h1>DefaultSslProtocolSocketFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.net.UnknownHostException;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+
+import org.apache.commons.httpclient.ConnectTimeoutException;
+import org.apache.commons.httpclient.HttpClientError;
+import org.apache.commons.httpclient.params.HttpConnectionParams;
+import org.apache.commons.httpclient.protocol.ControllerThreadSocketFactory;
+import org.apache.commons.httpclient.protocol.SecureProtocolSocketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * @author xduo
+ * 
+ */
+public class DefaultSslProtocolSocketFactory implements SecureProtocolSocketFactory {
+    /** Log object for this class. */
+<span class="nc" id="L43">    private static Logger logger = LoggerFactory.getLogger(DefaultSslProtocolSocketFactory.class);</span>
+<span class="nc" id="L44">    private SSLContext sslcontext = null;</span>
+
+    /**
+     * Constructor for DefaultSslProtocolSocketFactory.
+     */
+    public DefaultSslProtocolSocketFactory() {
+<span class="nc" id="L50">        super();</span>
+<span class="nc" id="L51">    }</span>
+
+    /**
+     * @see SecureProtocolSocketFactory#createSocket(java.lang.String,int,java.net.InetAddress,int)
+     */
+    public Socket createSocket(String host, int port, InetAddress clientHost, int clientPort) throws IOException, UnknownHostException {
+<span class="nc" id="L57">        return getSSLContext().getSocketFactory().createSocket(host, port, clientHost, clientPort);</span>
+    }
+
+    /**
+     * Attempts to get a new socket connection to the given host within the
+     * given time limit.
+     * 
+     * &lt;p&gt;
+     * To circumvent the limitations of older JREs that do not support connect
+     * timeout a controller thread is executed. The controller thread attempts
+     * to create a new socket within the given limit of time. If socket
+     * constructor does not return until the timeout expires, the controller
+     * terminates and throws an {@link ConnectTimeoutException}
+     * &lt;/p&gt;
+     * 
+     * @param host
+     *            the host name/IP
+     * @param port
+     *            the port on the host
+     * @param localAddress
+     *            the local host name/IP to bind the socket to
+     * @param localPort
+     *            the port on the local machine
+     * @param params
+     *            {@link HttpConnectionParams Http connection parameters}
+     * 
+     * @return Socket a new socket
+     * 
+     * @throws IOException
+     *             if an I/O error occurs while creating the socket
+     * @throws UnknownHostException
+     *             if the IP address of the host cannot be determined
+     * @throws ConnectTimeoutException
+     *             DOCUMENT ME!
+     * @throws IllegalArgumentException
+     *             DOCUMENT ME!
+     */
+    public Socket createSocket(final String host, final int port, final InetAddress localAddress, final int localPort, final HttpConnectionParams params) throws IOException, UnknownHostException, ConnectTimeoutException {
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (params == null) {</span>
+<span class="nc" id="L96">            throw new IllegalArgumentException(&quot;Parameters may not be null&quot;);</span>
+        }
+
+<span class="nc" id="L99">        int timeout = params.getConnectionTimeout();</span>
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        if (timeout == 0) {</span>
+<span class="nc" id="L102">            return createSocket(host, port, localAddress, localPort);</span>
+        } else {
+            // To be eventually deprecated when migrated to Java 1.4 or above
+<span class="nc" id="L105">            return ControllerThreadSocketFactory.createSocket(this, host, port, localAddress, localPort, timeout);</span>
+        }
+    }
+
+    /**
+     * @see SecureProtocolSocketFactory#createSocket(java.lang.String,int)
+     */
+    public Socket createSocket(String host, int port) throws IOException, UnknownHostException {
+<span class="nc" id="L113">        return getSSLContext().getSocketFactory().createSocket(host, port);</span>
+    }
+
+    /**
+     * @see SecureProtocolSocketFactory#createSocket(java.net.Socket,java.lang.String,int,boolean)
+     */
+    public Socket createSocket(Socket socket, String host, int port, boolean autoClose) throws IOException, UnknownHostException {
+<span class="nc" id="L120">        return getSSLContext().getSocketFactory().createSocket(socket, host, port, autoClose);</span>
+    }
+
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L124" title="All 4 branches missed.">        return ((obj != null) &amp;&amp; obj.getClass().equals(DefaultX509TrustManager.class));</span>
+    }
+
+    public int hashCode() {
+<span class="nc" id="L128">        return DefaultX509TrustManager.class.hashCode();</span>
+    }
+
+    private static SSLContext createEasySSLContext() {
+        try {
+<span class="nc" id="L133">            SSLContext context = SSLContext.getInstance(&quot;TLS&quot;);</span>
+<span class="nc" id="L134">            context.init(null, new TrustManager[] { new DefaultX509TrustManager(null) }, null);</span>
+
+<span class="nc" id="L136">            return context;</span>
+<span class="nc" id="L137">        } catch (Exception e) {</span>
+<span class="nc" id="L138">            logger.error(e.getMessage(), e);</span>
+<span class="nc" id="L139">            throw new HttpClientError(e.toString());</span>
+        }
+    }
+
+    private SSLContext getSSLContext() {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (this.sslcontext == null) {</span>
+<span class="nc" id="L145">            this.sslcontext = createEasySSLContext();</span>
+        }
+
+<span class="nc" id="L148">        return this.sslcontext;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

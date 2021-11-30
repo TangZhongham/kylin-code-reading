@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.datatype</a> &gt; <span class="el_source">DataType.java</span></div><h1>DataType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.datatype;
+
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.BytesSerializer;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.model.TblColRef.InnerDataTypeEnum;
+
+/**
+ */
+public class DataType implements Serializable {
+    private static final long serialVersionUID = -8891652700267537109L;
+<span class="fc" id="L45">    private static final LinkedHashSet&lt;String&gt; VALID_TYPES = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L46">    private static final LinkedHashSet&lt;String&gt; COMPLEX_TYPES = new LinkedHashSet&lt;String&gt;();</span>
+
+<span class="fc" id="L48">    private static Pattern TYPE_PATTERN = null;</span>
+<span class="fc" id="L49">    private static Pattern COMPLEX_TYPE_PATTERN = null;</span>
+    private static final String TYPE_PATTEN_TAIL = &quot;\\s*&quot; //
+            + &quot;(?:&quot; + &quot;[(]&quot; + &quot;([\\d\\s,]+)&quot; + &quot;[)]&quot; + &quot;)?&quot;;
+
+    public static synchronized void register(String... typeNames) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (String typeName : typeNames) {</span>
+<span class="fc" id="L55">            VALID_TYPES.add(typeName);</span>
+        }
+
+<span class="fc" id="L58">        TYPE_PATTERN = Pattern.compile(//</span>
+<span class="fc" id="L59">                &quot;(&quot; + StringUtils.join(VALID_TYPES, &quot;|&quot;) + &quot;)&quot; //</span>
+                        + TYPE_PATTEN_TAIL,
+                Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L62">    }</span>
+
+    public static synchronized void registerComplex(String... typeNames) {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (String typeName : typeNames) {</span>
+<span class="fc" id="L66">            COMPLEX_TYPES.add(typeName);</span>
+        }
+<span class="fc" id="L68">        COMPLEX_TYPE_PATTERN = Pattern.compile(//</span>
+<span class="fc" id="L69">                &quot;(&quot; + StringUtils.join(COMPLEX_TYPES, &quot;|&quot;) + &quot;)&quot; //</span>
+                        + TYPE_PATTEN_TAIL,
+                Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L72">    }</span>
+
+    static {
+        // standard sql types, ref: http://www.w3schools.com/sql/sql_datatypes_general.asp
+<span class="fc" id="L76">        register(&quot;any&quot;, &quot;char&quot;, &quot;varchar&quot;, &quot;string&quot;, //</span>
+                &quot;boolean&quot;, &quot;byte&quot;, &quot;binary&quot;, //
+                &quot;int&quot;, &quot;short&quot;, &quot;long&quot;, &quot;integer&quot;, &quot;tinyint&quot;, &quot;smallint&quot;, &quot;bigint&quot;, //
+                &quot;int4&quot;, &quot;long8&quot;, // for test only
+                &quot;float&quot;, &quot;real&quot;, &quot;double&quot;, &quot;decimal&quot;, &quot;numeric&quot;, //
+                &quot;date&quot;, &quot;time&quot;, &quot;datetime&quot;, &quot;timestamp&quot;, //
+<span class="fc" id="L82">                InnerDataTypeEnum.LITERAL.getDataType(), InnerDataTypeEnum.DERIVED.getDataType());</span>
+
+<span class="fc" id="L84">        registerComplex(&quot;array\\&lt;.*\\&gt;&quot;);</span>
+    }
+
+<span class="fc" id="L87">    public static final Set&lt;String&gt; INTEGER_FAMILY = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L88">    public static final Set&lt;String&gt; NUMBER_FAMILY = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L89">    public static final Set&lt;String&gt; DATETIME_FAMILY = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L90">    public static final Set&lt;String&gt; STRING_FAMILY = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L91">    private static final Map&lt;String, String&gt; LEGACY_TYPE_MAP = new HashMap&lt;String, String&gt;();</span>
+    static {
+<span class="fc" id="L93">        INTEGER_FAMILY.add(&quot;tinyint&quot;);</span>
+<span class="fc" id="L94">        INTEGER_FAMILY.add(&quot;smallint&quot;);</span>
+<span class="fc" id="L95">        INTEGER_FAMILY.add(&quot;integer&quot;);</span>
+<span class="fc" id="L96">        INTEGER_FAMILY.add(&quot;bigint&quot;);</span>
+<span class="fc" id="L97">        INTEGER_FAMILY.add(&quot;int4&quot;);</span>
+<span class="fc" id="L98">        INTEGER_FAMILY.add(&quot;long8&quot;);</span>
+
+<span class="fc" id="L100">        NUMBER_FAMILY.addAll(INTEGER_FAMILY);</span>
+<span class="fc" id="L101">        NUMBER_FAMILY.add(&quot;float&quot;);</span>
+<span class="fc" id="L102">        NUMBER_FAMILY.add(&quot;double&quot;);</span>
+<span class="fc" id="L103">        NUMBER_FAMILY.add(&quot;decimal&quot;);</span>
+<span class="fc" id="L104">        NUMBER_FAMILY.add(&quot;real&quot;);</span>
+<span class="fc" id="L105">        NUMBER_FAMILY.add(&quot;numeric&quot;);</span>
+
+<span class="fc" id="L107">        DATETIME_FAMILY.add(&quot;date&quot;);</span>
+<span class="fc" id="L108">        DATETIME_FAMILY.add(&quot;time&quot;);</span>
+<span class="fc" id="L109">        DATETIME_FAMILY.add(&quot;datetime&quot;);</span>
+<span class="fc" id="L110">        DATETIME_FAMILY.add(&quot;timestamp&quot;);</span>
+
+<span class="fc" id="L112">        STRING_FAMILY.add(&quot;varchar&quot;);</span>
+<span class="fc" id="L113">        STRING_FAMILY.add(&quot;char&quot;);</span>
+
+<span class="fc" id="L115">        LEGACY_TYPE_MAP.put(&quot;byte&quot;, &quot;tinyint&quot;);</span>
+<span class="fc" id="L116">        LEGACY_TYPE_MAP.put(&quot;int&quot;, &quot;integer&quot;);</span>
+<span class="fc" id="L117">        LEGACY_TYPE_MAP.put(&quot;short&quot;, &quot;smallint&quot;);</span>
+<span class="fc" id="L118">        LEGACY_TYPE_MAP.put(&quot;long&quot;, &quot;bigint&quot;);</span>
+<span class="fc" id="L119">        LEGACY_TYPE_MAP.put(&quot;string&quot;, &quot;varchar&quot;);</span>
+<span class="fc" id="L120">        LEGACY_TYPE_MAP.put(&quot;hllc10&quot;, &quot;hllc(10)&quot;);</span>
+<span class="fc" id="L121">        LEGACY_TYPE_MAP.put(&quot;hllc12&quot;, &quot;hllc(12)&quot;);</span>
+<span class="fc" id="L122">        LEGACY_TYPE_MAP.put(&quot;hllc14&quot;, &quot;hllc(14)&quot;);</span>
+<span class="fc" id="L123">        LEGACY_TYPE_MAP.put(&quot;hllc15&quot;, &quot;hllc(15)&quot;);</span>
+<span class="fc" id="L124">        LEGACY_TYPE_MAP.put(&quot;hllc16&quot;, &quot;hllc(16)&quot;);</span>
+    }
+
+<span class="fc" id="L127">    private static final ConcurrentMap&lt;String, DataType&gt; CACHE = new ConcurrentHashMap&lt;String, DataType&gt;();</span>
+
+<span class="fc" id="L129">    public static final DataType ANY = DataType.getType(&quot;any&quot;);</span>
+
+    static {
+        //to ensure the MeasureTypeFactory class has initialized
+<span class="fc" id="L133">        MeasureTypeFactory.getUDAFs();</span>
+    }
+
+    public static boolean isComplexType(DataType type) {
+<span class="fc" id="L137">        Matcher m = COMPLEX_TYPE_PATTERN.matcher(type.getName());</span>
+<span class="fc" id="L138">        return m.matches();</span>
+    }
+
+    public static DataType getType(String type) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (type == null)</span>
+<span class="nc" id="L143">            return null;</span>
+
+<span class="fc" id="L145">        DataType cached = CACHE.get(type);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (cached == null) {</span>
+<span class="fc" id="L147">            DataType dataType = new DataType(type);</span>
+<span class="fc" id="L148">            CACHE.put(type, dataType);</span>
+<span class="fc" id="L149">            cached = dataType;</span>
+        }
+<span class="fc" id="L151">        return cached;</span>
+    }
+
+    public static boolean isKylinSupported(String typeName) {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (typeName == null) {</span>
+<span class="fc" id="L156">            return false;</span>
+        }
+
+<span class="fc" id="L159">        String formattedTypeName = typeName.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L160">        formattedTypeName = replaceLegacy(formattedTypeName);</span>
+
+<span class="fc" id="L162">        return TYPE_PATTERN.matcher(formattedTypeName).matches();</span>
+    }
+
+    public static boolean isNumberFamily(String name) {
+<span class="nc" id="L166">        return NUMBER_FAMILY.contains(name);</span>
+    }
+
+    // ============================================================================
+
+    private String name;
+    private int precision;
+    private int scale;
+    private transient DataTypeOrder order;
+
+<span class="fc" id="L176">    public DataType(String name, int precision, int scale) {</span>
+<span class="fc" id="L177">        this.name = name;</span>
+<span class="fc" id="L178">        this.precision = precision;</span>
+<span class="fc" id="L179">        this.scale = scale;</span>
+<span class="fc" id="L180">    }</span>
+
+<span class="fc" id="L182">    private DataType(String datatype) {</span>
+<span class="fc" id="L183">        datatype = datatype.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L184">        datatype = replaceLegacy(datatype);</span>
+
+<span class="fc" id="L186">        Pattern pattern = TYPE_PATTERN;</span>
+<span class="fc" id="L187">        Pattern complexPattern = COMPLEX_TYPE_PATTERN;</span>
+<span class="fc" id="L188">        Matcher m = pattern.matcher(datatype);</span>
+<span class="fc" id="L189">        Matcher m2 = complexPattern.matcher(datatype);</span>
+<span class="pc bpc" id="L190" title="1 of 4 branches missed.">        if (m.matches() == false &amp;&amp; m2.matches() == false)</span>
+<span class="nc" id="L191">            throw new IllegalArgumentException(&quot;bad data type -- &quot; + datatype + &quot;, does not match &quot; + pattern);</span>
+
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (m2.matches()) {</span>
+<span class="fc" id="L194">            m = m2;</span>
+        }
+
+<span class="fc" id="L197">        name = replaceLegacy(m.group(1));</span>
+<span class="fc" id="L198">        precision = -1;</span>
+<span class="fc" id="L199">        scale = -1;</span>
+
+<span class="fc" id="L201">        String leftover = m.group(2);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (leftover != null) {</span>
+<span class="fc" id="L203">            String[] parts = leftover.split(&quot;\\s*,\\s*&quot;);</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            for (int i = 0; i &lt; parts.length; i++) {</span>
+                int n;
+                try {
+<span class="fc" id="L207">                    n = Integer.parseInt(parts[i]);</span>
+<span class="nc" id="L208">                } catch (NumberFormatException e) {</span>
+<span class="nc" id="L209">                    throw new IllegalArgumentException(</span>
+                            &quot;bad data type -- &quot; + datatype + &quot;, precision/scale not numeric&quot;);
+<span class="fc" id="L211">                }</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                if (i == 0)</span>
+<span class="fc" id="L213">                    precision = n;</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">                else if (i == 1)</span>
+<span class="fc" id="L215">                    scale = n;</span>
+                else
+<span class="nc" id="L217">                    throw new IllegalArgumentException(</span>
+                            &quot;bad data type -- &quot; + datatype + &quot;, too many precision/scale parts&quot;);
+            }
+        }
+
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (precision == -1) {</span>
+            // FIXME 256 for unknown string precision
+
+            // why 256(255) as default? 
+            // to save memory at frontend, e.g. tableau will
+            // allocate memory according to this
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            if (name.equals(&quot;char&quot;)) {</span>
+<span class="nc" id="L229">                precision = KylinConfig.getInstanceFromEnv().getDefaultCharPrecision();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">            } else if (name.equals(&quot;varchar&quot;)) {</span>
+<span class="fc" id="L231">                precision = KylinConfig.getInstanceFromEnv().getDefaultVarcharPrecision();</span>
+<span class="pc bpc" id="L232" title="1 of 4 branches missed.">            } else if ((name.equals(&quot;decimal&quot;) || name.equals(&quot;numeric&quot;))) {</span>
+<span class="fc" id="L233">                precision = KylinConfig.getInstanceFromEnv().getDefaultDecimalPrecision();</span>
+<span class="fc" id="L234">                scale = KylinConfig.getInstanceFromEnv().getDefaultDecimalScale();</span>
+            }
+        }
+<span class="fc" id="L237">    }</span>
+
+    public DataTypeOrder getOrder() {
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        if (order == null)</span>
+<span class="fc" id="L241">            order = DataTypeOrder.getInstance(this);</span>
+        
+<span class="fc" id="L243">        return order;</span>
+    }
+    
+    public int compare(String value1, String value2) {
+<span class="nc" id="L247">        return getOrder().compare(value1,  value2);</span>
+    }
+
+    public boolean needCompare() {
+<span class="nc bnc" id="L251" title="All 4 branches missed.">        if (isComplexType(this) || isBoolean()) {</span>
+<span class="nc" id="L252">            return false;</span>
+        }
+<span class="nc" id="L254">        return true;</span>
+    }
+
+    private static String replaceLegacy(String str) {
+<span class="fc" id="L258">        String replace = LEGACY_TYPE_MAP.get(str);</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        return replace == null ? str : replace;</span>
+    }
+
+    public int getStorageBytesEstimate() {
+<span class="nc" id="L263">        return DataTypeSerializer.create(this).getStorageBytesEstimate();</span>
+    }
+
+    public double getStorageBytesEstimate(double count) {
+<span class="nc" id="L267">        return DataTypeSerializer.create(this).getStorageBytesEstimate(count);</span>
+    }
+
+    public boolean isStringFamily() {
+<span class="fc" id="L271">        return STRING_FAMILY.contains(name);</span>
+    }
+
+    public boolean isIntegerFamily() {
+<span class="fc" id="L275">        return INTEGER_FAMILY.contains(name);</span>
+    }
+
+    public boolean isNumberFamily() {
+<span class="fc" id="L279">        return NUMBER_FAMILY.contains(name);</span>
+    }
+
+    public boolean isDateTimeFamily() {
+<span class="fc" id="L283">        return DATETIME_FAMILY.contains(name);</span>
+    }
+
+    public boolean isTimeFamily() {
+<span class="fc bfc" id="L287" title="All 4 branches covered.">        return DATETIME_FAMILY.contains(name) &amp;&amp; !isDate();</span>
+    }
+
+    public boolean isDate() {
+<span class="fc" id="L291">        return name.equals(&quot;date&quot;);</span>
+    }
+
+    public boolean isTime() {
+<span class="nc" id="L295">        return name.equals(&quot;time&quot;);</span>
+    }
+
+    public boolean isTimestamp() {
+<span class="nc" id="L299">        return name.equals(&quot;timestamp&quot;);</span>
+    }
+
+    public boolean isDatetime() {
+<span class="nc" id="L303">        return name.equals(&quot;datetime&quot;);</span>
+    }
+
+    public boolean isTinyInt() {
+<span class="nc" id="L307">        return name.equals(&quot;tinyint&quot;);</span>
+    }
+
+    public boolean isSmallInt() {
+<span class="nc" id="L311">        return name.equals(&quot;smallint&quot;);</span>
+    }
+
+    public boolean isInt() {
+<span class="fc" id="L315">        return name.equals(&quot;integer&quot;);</span>
+    }
+
+    public boolean isBigInt() {
+<span class="fc" id="L319">        return name.equals(&quot;bigint&quot;);</span>
+    }
+
+    public boolean isFloat() {
+<span class="fc" id="L323">        return name.equals(&quot;float&quot;);</span>
+    }
+
+    public boolean isDouble() {
+<span class="fc" id="L327">        return name.equals(&quot;double&quot;);</span>
+    }
+
+    public boolean isDecimal() {
+<span class="nc" id="L331">        return name.equals(&quot;decimal&quot;);</span>
+    }
+
+    public boolean isBoolean() {
+<span class="nc" id="L335">        return name.equals(&quot;boolean&quot;);</span>
+    }
+
+    public String getName() {
+<span class="fc" id="L339">        return name;</span>
+    }
+
+    public int getPrecision() {
+<span class="fc" id="L343">        return precision;</span>
+    }
+
+    public int getScale() {
+<span class="fc" id="L347">        return scale;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L352">        final int prime = 31;</span>
+<span class="nc" id="L353">        int result = 1;</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="nc" id="L355">        result = prime * result + precision;</span>
+<span class="nc" id="L356">        result = prime * result + scale;</span>
+<span class="nc" id="L357">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        if (this == obj)</span>
+<span class="fc" id="L363">            return true;</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L365">            return false;</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L367">            return false;</span>
+<span class="fc" id="L368">        DataType other = (DataType) obj;</span>
+<span class="pc bpc" id="L369" title="1 of 2 branches missed.">        if (name == null) {</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            if (other.name != null)</span>
+<span class="nc" id="L371">                return false;</span>
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">        } else if (!name.equals(other.name))</span>
+<span class="nc" id="L373">            return false;</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">        if (precision != other.precision)</span>
+<span class="nc" id="L375">            return false;</span>
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">        if (scale != other.scale)</span>
+<span class="nc" id="L377">            return false;</span>
+<span class="fc" id="L378">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="pc bpc" id="L383" title="1 of 4 branches missed.">        if (precision &lt; 0 &amp;&amp; scale &lt; 0)</span>
+<span class="fc" id="L384">            return name;</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">        else if (scale &lt; 0)</span>
+<span class="fc" id="L386">            return name + &quot;(&quot; + precision + &quot;)&quot;;</span>
+        else
+<span class="fc" id="L388">            return name + &quot;(&quot; + precision + &quot;,&quot; + scale + &quot;)&quot;;</span>
+    }
+
+<span class="fc" id="L391">    public static final BytesSerializer&lt;DataType&gt; serializer = new BytesSerializer&lt;DataType&gt;() {</span>
+        @Override
+        public void serialize(DataType value, ByteBuffer out) {
+<span class="nc" id="L394">            BytesUtil.writeUTFString(value.name, out);</span>
+<span class="nc" id="L395">            BytesUtil.writeVInt(value.precision, out);</span>
+<span class="nc" id="L396">            BytesUtil.writeVInt(value.scale, out);</span>
+
+<span class="nc" id="L398">        }</span>
+
+        @Override
+        public DataType deserialize(ByteBuffer in) {
+<span class="nc" id="L402">            String name = BytesUtil.readUTFString(in);</span>
+<span class="nc" id="L403">            int precision = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L404">            int scale = BytesUtil.readVInt(in);</span>
+
+<span class="nc" id="L406">            return new DataType(name, precision, scale);</span>
+        }
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

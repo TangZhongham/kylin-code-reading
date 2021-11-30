@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeScanRangePlanner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">CubeScanRangePlanner.java</span></div><h1>CubeScanRangePlanner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.debug.BackdoorToggles;
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.common.FuzzyValueCombination;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.gridtable.CubeGridTable;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMapping;
+import org.apache.kylin.cube.gridtable.RecordComparators;
+import org.apache.kylin.cube.gridtable.ScanRangePlannerBase;
+import org.apache.kylin.cube.kv.CubeDimEncMap;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.gridtable.GTScanRange;
+import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.gridtable.GTScanRequestBuilder;
+import org.apache.kylin.gridtable.GTUtil;
+import org.apache.kylin.gridtable.IGTComparator;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.DynamicFunctionDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.storage.StorageContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class CubeScanRangePlanner extends ScanRangePlannerBase {
+
+<span class="nc" id="L66">    private static final Logger logger = LoggerFactory.getLogger(CubeScanRangePlanner.class);</span>
+
+    protected int maxScanRanges;
+    protected int maxFuzzyKeysPerSplit;
+    protected int maxFuzzyKeys;
+
+    //non-GT
+    protected CubeSegment cubeSegment;
+    protected CubeDesc cubeDesc;
+    protected Cuboid cuboid;
+
+    public CubeScanRangePlanner(CubeSegment cubeSegment, Cuboid cuboid, TupleFilter filter, Set&lt;TblColRef&gt; dimensions, //
+            Set&lt;TblColRef&gt; groupByDims, List&lt;TblColRef&gt; dynGroupsDims, List&lt;TupleExpression&gt; dynGroupExprs, //
+            Collection&lt;FunctionDesc&gt; metrics, List&lt;DynamicFunctionDesc&gt; dynFuncs, //
+<span class="nc" id="L80">            TupleFilter havingFilter, StorageContext context) {</span>
+<span class="nc" id="L81">        this.context = context;</span>
+
+<span class="nc" id="L83">        this.maxScanRanges = cubeSegment.getConfig().getQueryStorageVisitScanRangeMax();</span>
+<span class="nc" id="L84">        this.maxFuzzyKeysPerSplit = cubeSegment.getConfig().getQueryScanFuzzyKeyMax();</span>
+<span class="nc" id="L85">        this.maxFuzzyKeys = maxFuzzyKeysPerSplit * cubeSegment.getConfig().getQueryScanFuzzyKeySplitMax();</span>
+
+<span class="nc" id="L87">        this.cubeSegment = cubeSegment;</span>
+<span class="nc" id="L88">        this.cubeDesc = cubeSegment.getCubeDesc();</span>
+<span class="nc" id="L89">        this.cuboid = cuboid;</span>
+
+<span class="nc" id="L91">        final CuboidToGridTableMapping mapping = context.getMapping();</span>
+
+<span class="nc" id="L93">        this.gtInfo = CubeGridTable.newGTInfo(cuboid, new CubeDimEncMap(cubeSegment), mapping);</span>
+
+<span class="nc" id="L95">        IGTComparator comp = gtInfo.getCodeSystem().getComparator();</span>
+        //start key GTRecord compare to start key GTRecord
+<span class="nc" id="L97">        this.rangeStartComparator = RecordComparators.getRangeStartComparator(comp);</span>
+        //stop key GTRecord compare to stop key GTRecord
+<span class="nc" id="L99">        this.rangeEndComparator = RecordComparators.getRangeEndComparator(comp);</span>
+        //start key GTRecord compare to stop key GTRecord
+<span class="nc" id="L101">        this.rangeStartEndComparator = RecordComparators.getRangeStartEndComparator(comp);</span>
+
+        //replace the constant values in filter to dictionary codes
+<span class="nc" id="L104">        Set&lt;TblColRef&gt; groupByPushDown = Sets.newHashSet(groupByDims);</span>
+<span class="nc" id="L105">        groupByPushDown.addAll(dynGroupsDims);</span>
+<span class="nc" id="L106">        this.gtFilter = GTUtil.convertFilterColumnsAndConstants(filter, gtInfo, mapping.getDim2gt(), groupByPushDown);</span>
+<span class="nc" id="L107">        this.havingFilter = havingFilter;</span>
+
+<span class="nc" id="L109">        this.gtDimensions = mapping.makeGridTableColumns(dimensions);</span>
+<span class="nc" id="L110">        this.gtAggrGroups = mapping.makeGridTableColumns(replaceDerivedColumns(groupByPushDown, cubeSegment.getCubeDesc()));</span>
+<span class="nc" id="L111">        this.gtAggrMetrics = mapping.makeGridTableColumns(metrics);</span>
+<span class="nc" id="L112">        this.gtAggrFuncs = mapping.makeAggrFuncs(metrics);</span>
+
+        // for dynamic cols, which are as appended columns to GTInfo
+<span class="nc" id="L115">        BitSet tmpGtDynCols = new BitSet();</span>
+
+<span class="nc" id="L117">        this.tupleExpressionMap = Maps.newHashMap();</span>
+        // for dynamic dimensions
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        for (int i = 0; i &lt; dynGroupsDims.size(); i++) {</span>
+<span class="nc" id="L120">            int c = mapping.getIndexOf(dynGroupsDims.get(i));</span>
+<span class="nc" id="L121">            tmpGtDynCols.set(c);</span>
+<span class="nc" id="L122">            TupleExpression tupleExpr = GTUtil.convertFilterColumnsAndConstants(dynGroupExprs.get(i), gtInfo, mapping,</span>
+                    groupByPushDown);
+<span class="nc" id="L124">            this.tupleExpressionMap.put(c, tupleExpr);</span>
+        }
+
+        // for dynamic measures
+<span class="nc" id="L128">        Set&lt;FunctionDesc&gt; tmpRtAggrMetrics = Sets.newHashSet();</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        for (DynamicFunctionDesc dynFunc : dynFuncs) {</span>
+<span class="nc" id="L130">            tmpRtAggrMetrics.addAll(dynFunc.getRuntimeFuncs());</span>
+<span class="nc" id="L131">            int c = mapping.getIndexOf(dynFunc);</span>
+<span class="nc" id="L132">            tmpGtDynCols.set(c);</span>
+<span class="nc" id="L133">            this.tupleExpressionMap.put(c, GTUtil.convertFilterColumnsAndConstants(dynFunc.getTupleExpression(), gtInfo,</span>
+<span class="nc" id="L134">                    mapping, dynFunc.getRuntimeFuncMap(), groupByPushDown));</span>
+<span class="nc" id="L135">        }</span>
+<span class="nc" id="L136">        this.gtDynColumns = new ImmutableBitSet(tmpGtDynCols);</span>
+<span class="nc" id="L137">        this.gtRtAggrMetrics = mapping.makeGridTableColumns(tmpRtAggrMetrics);</span>
+
+<span class="nc" id="L139">        this.gtAggrGroups = mapping.makeGridTableColumns(replaceDerivedColumns(groupByPushDown, cubeSegment.getCubeDesc()));</span>
+<span class="nc" id="L140">        this.gtAggrMetrics = mapping.makeGridTableColumns(metrics);</span>
+<span class="nc" id="L141">        this.gtAggrFuncs = mapping.makeAggrFuncs(metrics);</span>
+<span class="nc" id="L142">    }</span>
+
+    protected StorageContext context;
+
+    /**
+     * Construct  GTScanRangePlanner with incomplete information. For UT only.
+     */
+<span class="nc" id="L149">    public CubeScanRangePlanner(GTInfo info, TblColRef gtPartitionCol, TupleFilter gtFilter) {</span>
+
+<span class="nc" id="L151">        this.maxScanRanges = KylinConfig.getInstanceFromEnv().getQueryStorageVisitScanRangeMax();</span>
+<span class="nc" id="L152">        this.maxFuzzyKeysPerSplit = KylinConfig.getInstanceFromEnv().getQueryScanFuzzyKeyMax();</span>
+<span class="nc" id="L153">        this.maxFuzzyKeys = maxFuzzyKeysPerSplit * KylinConfig.getInstanceFromEnv().getQueryScanFuzzyKeySplitMax();</span>
+
+<span class="nc" id="L155">        this.gtInfo = info;</span>
+
+<span class="nc" id="L157">        IGTComparator comp = gtInfo.getCodeSystem().getComparator();</span>
+        //start key GTRecord compare to start key GTRecord
+<span class="nc" id="L159">        this.rangeStartComparator = RecordComparators.getRangeStartComparator(comp);</span>
+        //stop key GTRecord compare to stop key GTRecord
+<span class="nc" id="L161">        this.rangeEndComparator = RecordComparators.getRangeEndComparator(comp);</span>
+        //start key GTRecord compare to stop key GTRecord
+<span class="nc" id="L163">        this.rangeStartEndComparator = RecordComparators.getRangeStartEndComparator(comp);</span>
+
+<span class="nc" id="L165">        this.gtFilter = gtFilter;</span>
+<span class="nc" id="L166">    }</span>
+
+    public GTScanRequest planScanRequest() {
+        GTScanRequest scanRequest;
+<span class="nc" id="L170">        List&lt;GTScanRange&gt; scanRanges = this.planScanRanges();</span>
+<span class="nc bnc" id="L171" title="All 4 branches missed.">        if (scanRanges != null &amp;&amp; !scanRanges.isEmpty()) {</span>
+<span class="nc" id="L172">            scanRequest = new GTScanRequestBuilder().setInfo(gtInfo).setRanges(scanRanges).setDimensions(gtDimensions)</span>
+<span class="nc" id="L173">                    .setAggrGroupBy(gtAggrGroups).setAggrMetrics(gtAggrMetrics).setAggrMetricsFuncs(gtAggrFuncs)</span>
+<span class="nc" id="L174">                    .setFilterPushDown(gtFilter)//</span>
+<span class="nc" id="L175">                    .setRtAggrMetrics(gtRtAggrMetrics).setDynamicColumns(gtDynColumns)</span>
+<span class="nc" id="L176">                    .setExprsPushDown(tupleExpressionMap)//</span>
+<span class="nc" id="L177">                    .setAllowStorageAggregation(context.isNeedStorageAggregation())</span>
+<span class="nc" id="L178">                    .setAggCacheMemThreshold(cubeSegment.getConfig().getQueryCoprocessorMemGB())//</span>
+<span class="nc" id="L179">                    .setStoragePushDownLimit(context.getFinalPushDownLimit())</span>
+<span class="nc" id="L180">                    .setStorageLimitLevel(context.getStorageLimitLevel()).setHavingFilterPushDown(havingFilter)</span>
+<span class="nc" id="L181">                    .createGTScanRequest();</span>
+        } else {
+<span class="nc" id="L183">            scanRequest = null;</span>
+        }
+<span class="nc" id="L185">        return scanRequest;</span>
+    }
+
+    /**
+     * Overwrite this method to provide smarter storage visit plans
+     * @return
+     */
+    public List&lt;GTScanRange&gt; planScanRanges() {
+<span class="nc" id="L193">        TupleFilter flatFilter = flattenToOrAndFilter(gtFilter);</span>
+
+<span class="nc" id="L195">        List&lt;Collection&lt;ColumnRange&gt;&gt; orAndDimRanges = translateToOrAndDimRanges(flatFilter);</span>
+
+<span class="nc" id="L197">        List&lt;GTScanRange&gt; scanRanges = Lists.newArrayListWithCapacity(orAndDimRanges.size());</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        for (Collection&lt;ColumnRange&gt; andDimRanges : orAndDimRanges) {</span>
+<span class="nc" id="L199">            GTScanRange scanRange = newScanRange(andDimRanges);</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            if (scanRange != null)</span>
+<span class="nc" id="L201">                scanRanges.add(scanRange);</span>
+<span class="nc" id="L202">        }</span>
+
+<span class="nc" id="L204">        List&lt;GTScanRange&gt; mergedRanges = mergeOverlapRanges(scanRanges);</span>
+<span class="nc" id="L205">        mergedRanges = splitFuzzyKeys(mergedRanges);</span>
+<span class="nc" id="L206">        mergedRanges = mergeTooManyRanges(mergedRanges, maxScanRanges);</span>
+
+<span class="nc" id="L208">        return mergedRanges;</span>
+    }
+
+    private Set&lt;TblColRef&gt; replaceDerivedColumns(Set&lt;TblColRef&gt; input, CubeDesc cubeDesc) {
+<span class="nc" id="L212">        Set&lt;TblColRef&gt; ret = Sets.newHashSet();</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        for (TblColRef col : input) {</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            if (cubeDesc.hasHostColumn(col)) {</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">                for (TblColRef host : cubeDesc.getHostInfo(col).columns) {</span>
+<span class="nc" id="L216">                    ret.add(host);</span>
+                }
+            } else {
+<span class="nc" id="L219">                ret.add(col);</span>
+            }
+<span class="nc" id="L221">        }</span>
+<span class="nc" id="L222">        return ret;</span>
+    }
+
+    protected GTScanRange newScanRange(Collection&lt;ColumnRange&gt; andDimRanges) {
+<span class="nc" id="L226">        GTRecord pkStart = new GTRecord(gtInfo);</span>
+<span class="nc" id="L227">        GTRecord pkEnd = new GTRecord(gtInfo);</span>
+<span class="nc" id="L228">        Map&lt;Integer, Set&lt;ByteArray&gt;&gt; fuzzyValues = Maps.newHashMap();</span>
+
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        for (ColumnRange range : andDimRanges) {</span>
+
+<span class="nc" id="L232">            int col = range.column.getColumnDesc().getZeroBasedIndex();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            if (!gtInfo.getPrimaryKey().get(col))</span>
+<span class="nc" id="L234">                continue;</span>
+
+<span class="nc" id="L236">            pkStart.set(col, range.begin);</span>
+<span class="nc" id="L237">            pkEnd.set(col, range.end);</span>
+
+<span class="nc bnc" id="L239" title="All 4 branches missed.">            if (range.valueSet != null &amp;&amp; !range.valueSet.isEmpty()) {</span>
+<span class="nc" id="L240">                fuzzyValues.put(col, range.valueSet);</span>
+            }
+<span class="nc" id="L242">        }</span>
+
+<span class="nc" id="L244">        List&lt;GTRecord&gt; fuzzyKeys = buildFuzzyKeys(fuzzyValues);</span>
+
+<span class="nc" id="L246">        return new GTScanRange(pkStart, pkEnd, fuzzyKeys);</span>
+    }
+
+    private List&lt;GTRecord&gt; buildFuzzyKeys(Map&lt;Integer, Set&lt;ByteArray&gt;&gt; fuzzyValueSet) {
+<span class="nc" id="L250">        ArrayList&lt;GTRecord&gt; result = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        if (fuzzyValueSet.isEmpty())</span>
+<span class="nc" id="L253">            return result;</span>
+
+        // debug/profiling purpose
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        if (BackdoorToggles.getDisableFuzzyKey()) {</span>
+<span class="nc" id="L257">            logger.info(&quot;The execution of this query will not use fuzzy key&quot;);</span>
+<span class="nc" id="L258">            return result;</span>
+        }
+
+<span class="nc" id="L261">        List&lt;Map&lt;Integer, ByteArray&gt;&gt; fuzzyValueCombinations = FuzzyValueCombination.calculate(fuzzyValueSet, maxFuzzyKeys);</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (Map&lt;Integer, ByteArray&gt; fuzzyValue : fuzzyValueCombinations) {</span>
+
+<span class="nc" id="L264">            GTRecord fuzzy = new GTRecord(gtInfo);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            for (Map.Entry&lt;Integer, ByteArray&gt; entry : fuzzyValue.entrySet()) {</span>
+<span class="nc" id="L266">                fuzzy.set(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L267">            }</span>
+
+<span class="nc" id="L269">            result.add(fuzzy);</span>
+<span class="nc" id="L270">        }</span>
+<span class="nc" id="L271">        return result;</span>
+    }
+
+    protected List&lt;GTScanRange&gt; mergeOverlapRanges(List&lt;GTScanRange&gt; ranges) {
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        if (ranges.size() &lt;= 1) {</span>
+<span class="nc" id="L276">            return ranges;</span>
+        }
+
+        // sort ranges by start key
+<span class="nc" id="L280">        Collections.sort(ranges, new Comparator&lt;GTScanRange&gt;() {</span>
+            @Override
+            public int compare(GTScanRange a, GTScanRange b) {
+<span class="nc" id="L283">                return rangeStartComparator.compare(a.pkStart, b.pkStart);</span>
+            }
+        });
+
+        // merge the overlap range
+<span class="nc" id="L288">        List&lt;GTScanRange&gt; mergedRanges = new ArrayList&lt;GTScanRange&gt;();</span>
+<span class="nc" id="L289">        int mergeBeginIndex = 0;</span>
+<span class="nc" id="L290">        GTRecord mergeEnd = ranges.get(0).pkEnd;</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        for (int index = 1; index &lt; ranges.size(); index++) {</span>
+<span class="nc" id="L292">            GTScanRange range = ranges.get(index);</span>
+
+            // if overlap, swallow it
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (rangeStartEndComparator.compare(range.pkStart, mergeEnd) &lt;= 0) {</span>
+<span class="nc" id="L296">                mergeEnd = rangeEndComparator.max(mergeEnd, range.pkEnd);</span>
+<span class="nc" id="L297">                continue;</span>
+            }
+
+            // not overlap, split here
+<span class="nc" id="L301">            GTScanRange mergedRange = mergeKeyRange(ranges.subList(mergeBeginIndex, index));</span>
+<span class="nc" id="L302">            mergedRanges.add(mergedRange);</span>
+
+            // start new split
+<span class="nc" id="L305">            mergeBeginIndex = index;</span>
+<span class="nc" id="L306">            mergeEnd = range.pkEnd;</span>
+        }
+
+        // don't miss the last range
+<span class="nc" id="L310">        GTScanRange mergedRange = mergeKeyRange(ranges.subList(mergeBeginIndex, ranges.size()));</span>
+<span class="nc" id="L311">        mergedRanges.add(mergedRange);</span>
+
+<span class="nc" id="L313">        return mergedRanges;</span>
+    }
+
+    private GTScanRange mergeKeyRange(List&lt;GTScanRange&gt; ranges) {
+<span class="nc" id="L317">        GTScanRange first = ranges.get(0);</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        if (ranges.size() == 1)</span>
+<span class="nc" id="L319">            return first;</span>
+
+<span class="nc" id="L321">        GTRecord start = first.pkStart;</span>
+<span class="nc" id="L322">        GTRecord end = first.pkEnd;</span>
+<span class="nc" id="L323">        Set&lt;GTRecord&gt; newFuzzyKeys = Sets.newLinkedHashSet();</span>
+
+<span class="nc" id="L325">        boolean hasNonFuzzyRange = false;</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">        for (GTScanRange range : ranges) {</span>
+<span class="nc bnc" id="L327" title="All 4 branches missed.">            hasNonFuzzyRange = hasNonFuzzyRange || range.fuzzyKeys.isEmpty();</span>
+<span class="nc" id="L328">            newFuzzyKeys.addAll(range.fuzzyKeys);</span>
+<span class="nc" id="L329">            end = rangeEndComparator.max(end, range.pkEnd);</span>
+<span class="nc" id="L330">        }</span>
+
+        // if any range is non-fuzzy, then all fuzzy keys must be cleared
+        // too many fuzzy keys will slow down HBase scan
+<span class="nc bnc" id="L334" title="All 4 branches missed.">        if (hasNonFuzzyRange || newFuzzyKeys.size() &gt; maxFuzzyKeys) {</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">            if (newFuzzyKeys.size() &gt; maxFuzzyKeys) {</span>
+<span class="nc" id="L336">                logger.debug(&quot;too many FuzzyKeys,  clean it!&quot;);</span>
+            }
+<span class="nc" id="L338">            newFuzzyKeys.clear();</span>
+        }
+
+<span class="nc" id="L341">        return new GTScanRange(start, end, Lists.newArrayList(newFuzzyKeys));</span>
+    }
+
+    protected List&lt;GTScanRange&gt; mergeTooManyRanges(List&lt;GTScanRange&gt; ranges, int maxRanges) {
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if (ranges.size() &lt;= maxRanges) {</span>
+<span class="nc" id="L346">            return ranges;</span>
+        }
+
+        // TODO: check the distance between range and merge the large distance range
+<span class="nc" id="L350">        List&lt;GTScanRange&gt; result = new ArrayList&lt;GTScanRange&gt;(1);</span>
+<span class="nc" id="L351">        GTScanRange mergedRange = mergeKeyRange(ranges);</span>
+<span class="nc" id="L352">        result.add(mergedRange);</span>
+
+<span class="nc" id="L354">        result = splitFuzzyKeys(result);</span>
+<span class="nc" id="L355">        return result;</span>
+    }
+
+    private List&lt;GTScanRange&gt; splitFuzzyKeys(List&lt;GTScanRange&gt; mergedRanges) {
+<span class="nc" id="L359">        List&lt;GTScanRange&gt; result = Lists.newArrayList();</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        for (GTScanRange range : mergedRanges) {</span>
+            // if the fuzzy key is huge but still within in split range, then we split fuzzy keys to multiple ones.
+<span class="nc bnc" id="L362" title="All 4 branches missed.">            if (range.fuzzyKeys.size() &gt; maxFuzzyKeysPerSplit &amp;&amp; range.fuzzyKeys.size() &lt;= maxFuzzyKeys) {</span>
+<span class="nc" id="L363">                List&lt;GTRecord&gt; fuzzyKeys = range.fuzzyKeys;</span>
+<span class="nc" id="L364">                Collections.sort(fuzzyKeys);</span>
+<span class="nc" id="L365">                int nSplit = (fuzzyKeys.size() - 1) / maxFuzzyKeysPerSplit + 1;</span>
+<span class="nc" id="L366">                int nFuzzyKeysPerSplit = fuzzyKeys.size() / nSplit;</span>
+<span class="nc" id="L367">                int startIndex = 0;</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">                for (int i = 1; i &lt;= nSplit; i++) {</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">                    int endIndex = i == nSplit ? fuzzyKeys.size() : i * nFuzzyKeysPerSplit;</span>
+<span class="nc" id="L370">                    List&lt;GTRecord&gt; subFuzzyKeys = fuzzyKeys.subList(startIndex, endIndex);</span>
+<span class="nc" id="L371">                    result.add(new GTScanRange(range.pkStart, range.pkEnd, subFuzzyKeys));</span>
+<span class="nc" id="L372">                    startIndex = endIndex;</span>
+                }
+<span class="nc" id="L374">                logger.debug(String.format(Locale.ROOT, &quot;large FuzzyKeys split size : %d&quot;, result.size()));</span>
+<span class="nc" id="L375">            } else {</span>
+<span class="nc" id="L376">                result.add(range);</span>
+            }
+<span class="nc" id="L378">        }</span>
+<span class="nc" id="L379">        return result;</span>
+    }
+
+    public int getMaxScanRanges() {
+<span class="nc" id="L383">        return maxScanRanges;</span>
+    }
+
+    public void setMaxScanRanges(int maxScanRanges) {
+<span class="nc" id="L387">        this.maxScanRanges = maxScanRanges;</span>
+<span class="nc" id="L388">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

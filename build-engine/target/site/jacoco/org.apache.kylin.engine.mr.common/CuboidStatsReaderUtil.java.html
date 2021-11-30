@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidStatsReaderUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">CuboidStatsReaderUtil.java</span></div><h1>CuboidStatsReaderUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.measure.hllc.HLLCounter;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
+
+<span class="nc" id="L38">public class CuboidStatsReaderUtil {</span>
+
+<span class="nc" id="L40">    private static final Logger logger = LoggerFactory.getLogger(CuboidStatsReaderUtil.class);</span>
+
+    public static Map&lt;Long, Long&gt; readCuboidStatsFromCube(Set&lt;Long&gt; cuboidIds, CubeInstance cubeInstance) {
+<span class="nc" id="L43">        Map&lt;Long, Long&gt; statisticsMerged = null;</span>
+        try {
+<span class="nc" id="L45">            statisticsMerged = readCuboidStatsAndSizeFromCube(cuboidIds, cubeInstance).getFirst();</span>
+<span class="nc" id="L46">        } catch (IOException e) {</span>
+<span class="nc" id="L47">            logger.warn(&quot;Fail to read statistics for cube &quot; + cubeInstance.getName() + &quot; due to &quot; + e);</span>
+<span class="nc" id="L48">        }</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        return statisticsMerged == null ? Collections.emptyMap() : statisticsMerged;</span>
+    }
+
+    public static Pair&lt;Map&lt;Long, Long&gt;, Map&lt;Long, Double&gt;&gt; readCuboidStatsAndSizeFromCube(Set&lt;Long&gt; cuboidIds,
+            CubeInstance cube) throws IOException {
+<span class="nc" id="L54">        Preconditions.checkNotNull(cuboidIds, &quot;The cuboid set can not be null&quot;);</span>
+<span class="nc" id="L55">        Preconditions.checkNotNull(cube, &quot;The cube instance can not be null&quot;);</span>
+
+<span class="nc" id="L57">        List&lt;CubeSegment&gt; segmentList = cube.getSegments(SegmentStatusEnum.READY);</span>
+<span class="nc" id="L58">        Map&lt;Long, Long&gt; statisticsMerged = Maps.newHashMapWithExpectedSize(cuboidIds.size());</span>
+<span class="nc" id="L59">        Map&lt;Long, Double&gt; sizeMerged = Maps.newHashMapWithExpectedSize(cuboidIds.size());</span>
+<span class="nc" id="L60">        readCuboidStatsFromSegments(cuboidIds, segmentList, statisticsMerged, sizeMerged);</span>
+<span class="nc" id="L61">        return new Pair&lt;&gt;(statisticsMerged, sizeMerged);</span>
+    }
+
+    public static Map&lt;Long, Long&gt; readCuboidStatsFromSegments(Set&lt;Long&gt; cuboidIds, List&lt;CubeSegment&gt; segmentList)
+            throws IOException {
+<span class="nc" id="L66">        Map&lt;Long, Long&gt; statisticsMerged = Maps.newHashMapWithExpectedSize(cuboidIds.size());</span>
+<span class="nc" id="L67">        readCuboidStatsFromSegments(cuboidIds, segmentList, statisticsMerged,</span>
+<span class="nc" id="L68">                Maps.&lt;Long, Double&gt; newHashMapWithExpectedSize(cuboidIds.size()));</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        return statisticsMerged.isEmpty() ? null : statisticsMerged;</span>
+    }
+
+    public static Map&lt;Long, Double&gt; readCuboidSizeFromCube(Map&lt;Long, Long&gt; statistics, CubeInstance cube)
+            throws IOException {
+<span class="nc" id="L74">        List&lt;CubeSegment&gt; segmentList = cube.getSegments(SegmentStatusEnum.READY);</span>
+<span class="nc" id="L75">        Map&lt;Long, Double&gt; sizeMerged = Maps.newHashMapWithExpectedSize(statistics.size());</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        for (CubeSegment pSegment : segmentList) {</span>
+<span class="nc" id="L77">            CubeStatsReader pReader = new CubeStatsReader(pSegment, null, pSegment.getConfig());</span>
+<span class="nc" id="L78">            Map&lt;Long, Double&gt; pSizeMap = CubeStatsReader.getCuboidSizeMapFromRowCount(pSegment, statistics,</span>
+                    pReader.sourceRowCount);
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            for (Long pCuboid : statistics.keySet()) {</span>
+<span class="nc" id="L81">                Double pSize = sizeMerged.get(pCuboid);</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                sizeMerged.put(pCuboid, pSize == null ? pSizeMap.get(pCuboid) : pSize + pSizeMap.get(pCuboid));</span>
+<span class="nc" id="L83">            }</span>
+<span class="nc" id="L84">        }</span>
+<span class="nc" id="L85">        int nSegment = segmentList.size();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (nSegment &lt;= 1) {</span>
+<span class="nc" id="L87">            return sizeMerged;</span>
+        }
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        for (Long pCuboid : statistics.keySet()) {</span>
+<span class="nc" id="L90">            sizeMerged.put(pCuboid, sizeMerged.get(pCuboid) / nSegment);</span>
+<span class="nc" id="L91">        }</span>
+<span class="nc" id="L92">        return sizeMerged;</span>
+    }
+
+    private static void readCuboidStatsFromSegments(Set&lt;Long&gt; cuboidSet, List&lt;CubeSegment&gt; segmentList,
+            final Map&lt;Long, Long&gt; statisticsMerged, final Map&lt;Long, Double&gt; sizeMerged) throws IOException {
+<span class="nc bnc" id="L97" title="All 4 branches missed.">        if (segmentList == null || segmentList.isEmpty()) {</span>
+<span class="nc" id="L98">            return;</span>
+        }
+<span class="nc" id="L100">        int nSegment = segmentList.size();</span>
+
+<span class="nc" id="L102">        Map&lt;Long, HLLCounter&gt; cuboidHLLMapMerged = Maps.newHashMapWithExpectedSize(cuboidSet.size());</span>
+<span class="nc" id="L103">        Map&lt;Long, Double&gt; sizeMapMerged = Maps.newHashMapWithExpectedSize(cuboidSet.size());</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        for (CubeSegment pSegment : segmentList) {</span>
+<span class="nc" id="L105">            CubeStatsReader pReader = new CubeStatsReader(pSegment, null, pSegment.getConfig());</span>
+<span class="nc" id="L106">            Map&lt;Long, HLLCounter&gt; pHLLMap = pReader.getCuboidRowHLLCounters();</span>
+<span class="nc bnc" id="L107" title="All 4 branches missed.">            if (pHLLMap == null || pHLLMap.isEmpty()) {</span>
+<span class="nc" id="L108">                logger.info(&quot;Cuboid Statistics for segment &quot; + pSegment.getName() + &quot; is not enabled.&quot;);</span>
+<span class="nc" id="L109">                nSegment--;</span>
+<span class="nc" id="L110">                continue;</span>
+            }
+<span class="nc" id="L112">            Map&lt;Long, Double&gt; pSizeMap = pReader.getCuboidSizeMap();</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">            for (Long pCuboid : cuboidSet) {</span>
+<span class="nc" id="L114">                HLLCounter pInnerHLL = pHLLMap.get(pCuboid);</span>
+<span class="nc" id="L115">                Preconditions.checkNotNull(pInnerHLL, &quot;statistics should exist for cuboid &quot; + pCuboid + &quot; of segment &quot;</span>
+<span class="nc" id="L116">                        + pSegment.getCubeDesc().getName() + &quot;[&quot; + pSegment.getName() + &quot;]&quot;);</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                if (cuboidHLLMapMerged.get(pCuboid) != null) {</span>
+<span class="nc" id="L118">                    cuboidHLLMapMerged.get(pCuboid).merge(pInnerHLL);</span>
+                } else {
+<span class="nc" id="L120">                    cuboidHLLMapMerged.put(pCuboid, pInnerHLL);</span>
+                }
+
+<span class="nc" id="L123">                Double pSize = sizeMapMerged.get(pCuboid);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">                sizeMapMerged.put(pCuboid, pSize == null ? pSizeMap.get(pCuboid) : pSizeMap.get(pCuboid) + pSize);</span>
+<span class="nc" id="L125">            }</span>
+<span class="nc" id="L126">        }</span>
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (nSegment &lt; 1) {</span>
+<span class="nc" id="L129">            return;</span>
+        }
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        for (Long pCuboid : cuboidSet) {</span>
+<span class="nc" id="L132">            statisticsMerged.put(pCuboid, cuboidHLLMapMerged.get(pCuboid).getCountEstimate());</span>
+<span class="nc" id="L133">            sizeMerged.put(pCuboid, sizeMapMerged.get(pCuboid));</span>
+<span class="nc" id="L134">        }</span>
+<span class="nc" id="L135">    }</span>
+
+    public static Map&lt;Long, Long&gt; readCuboidStatsFromSegment(Set&lt;Long&gt; cuboidIds, CubeSegment cubeSegment)
+            throws IOException {
+<span class="nc" id="L139">        Pair&lt;Map&lt;Long, Long&gt;, Long&gt; stats = readCuboidStatsWithSourceFromSegment(cuboidIds, cubeSegment);</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        return stats == null ? null : stats.getFirst();</span>
+    }
+
+    public static Pair&lt;Map&lt;Long, Long&gt;, Long&gt; readCuboidStatsWithSourceFromSegment(Set&lt;Long&gt; cuboidIds,
+            CubeSegment cubeSegment) throws IOException {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (cubeSegment == null) {</span>
+<span class="nc" id="L146">            logger.warn(&quot;The cube segment can not be &quot; + null);</span>
+<span class="nc" id="L147">            return null;</span>
+        }
+
+<span class="nc" id="L150">        CubeStatsReader cubeStatsReader = new CubeStatsReader(cubeSegment, null, cubeSegment.getConfig());</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (cubeStatsReader.getCuboidRowEstimatesHLL() == null</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">                || cubeStatsReader.getCuboidRowEstimatesHLL().isEmpty()) {</span>
+<span class="nc" id="L153">            logger.info(&quot;Cuboid Statistics is not enabled.&quot;);</span>
+<span class="nc" id="L154">            return null;</span>
+        }
+
+<span class="nc" id="L157">        Map&lt;Long, Long&gt; cuboidsWithStatsAll = cubeStatsReader.getCuboidRowEstimatesHLL();</span>
+<span class="nc" id="L158">        Map&lt;Long, Long&gt; cuboidsWithStats = Maps.newHashMapWithExpectedSize(cuboidIds.size());</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        for (Long cuboid : cuboidIds) {</span>
+<span class="nc" id="L160">            Long rowEstimate = cuboidsWithStatsAll.get(cuboid);</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">            if (rowEstimate == null) {</span>
+<span class="nc" id="L162">                logger.warn(&quot;Cannot get the row count stats for cuboid &quot; + cuboid);</span>
+            } else {
+<span class="nc" id="L164">                cuboidsWithStats.put(cuboid, rowEstimate);</span>
+            }
+<span class="nc" id="L166">        }</span>
+<span class="nc" id="L167">        return new Pair&lt;&gt;(cuboidsWithStats, cubeStatsReader.sourceRowCount);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

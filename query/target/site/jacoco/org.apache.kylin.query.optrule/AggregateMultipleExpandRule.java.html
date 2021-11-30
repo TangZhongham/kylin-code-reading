@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AggregateMultipleExpandRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.optrule</a> &gt; <span class="el_source">AggregateMultipleExpandRule.java</span></div><h1>AggregateMultipleExpandRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.optrule;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import javax.annotation.Nullable;
+
+import org.apache.calcite.plan.RelOptRule;
+import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.plan.RelOptRuleOperand;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.Aggregate;
+import org.apache.calcite.rel.logical.LogicalAggregate;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.tools.RelBuilder;
+import org.apache.calcite.util.ImmutableBitSet;
+
+import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableList;
+
+/**
+ * Support grouping query. Expand the non-simple aggregate to more than one simple aggregates.
+ * Add project on expanded simple aggregate to add indicators of origin aggregate.
+ * All projects on aggregate added into one union, which replace the origin aggregate.
+ * The new aggregates will be transformed by {@link org.apache.kylin.query.optrule.AggregateProjectReduceRule}, to reduce rolled up dimensions.
+ * In case to scan other cuboid data without the rolled up dimensions.
+ *
+ * &lt;p&gt;Examples:
+ * &lt;p&gt;  Origin Aggregate:   {@code group by grouping sets ((dim A, dim B, dim C), (dim A, dim C), (dim B, dim C))}
+ * &lt;p&gt;  Transformed Union:
+ *     {@code select dim A, dim B, dim C, 0, 0, 0
+ *            union all
+ *            select dim A, null, dim C, 0, 1, 0
+ *            union all
+ *            select null, dim B, dim C, 1, 0, 0
+ *     }
+ */
+public class AggregateMultipleExpandRule extends RelOptRule {
+<span class="nc" id="L61">    public static final AggregateMultipleExpandRule INSTANCE = new AggregateMultipleExpandRule(//</span>
+<span class="nc" id="L62">            operand(LogicalAggregate.class, null, new Predicate&lt;Aggregate&gt;() {</span>
+                @Override
+                public boolean apply(@Nullable Aggregate input) {
+<span class="nc bnc" id="L65" title="All 2 branches missed.">                    return input.getGroupType() != Aggregate.Group.SIMPLE;</span>
+                }
+<span class="nc" id="L67">            }, operand(RelNode.class, any())), &quot;AggregateMultipleExpandRule&quot;);</span>
+
+    private AggregateMultipleExpandRule(RelOptRuleOperand operand, String description) {
+<span class="nc" id="L70">        super(operand, description);</span>
+<span class="nc" id="L71">    }</span>
+
+    private static List&lt;ImmutableBitSet&gt; asList(ImmutableBitSet groupSet) {
+<span class="nc" id="L74">        ArrayList&lt;ImmutableBitSet&gt; l = new ArrayList&lt;&gt;(1);</span>
+<span class="nc" id="L75">        l.add(groupSet);</span>
+<span class="nc" id="L76">        return l;</span>
+    }
+
+    @Override
+    public void onMatch(RelOptRuleCall call) {
+<span class="nc" id="L81">        LogicalAggregate aggr = (LogicalAggregate) call.getRelList().get(0);</span>
+<span class="nc" id="L82">        RelNode input = aggr.getInput();</span>
+<span class="nc" id="L83">        RelBuilder relBuilder = call.builder();</span>
+<span class="nc" id="L84">        RexBuilder rexBuilder = aggr.getCluster().getRexBuilder();</span>
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        for (ImmutableBitSet groupSet : aggr.getGroupSets()) {</span>
+            // push the simple aggregate with one group set
+<span class="nc" id="L88">            relBuilder.push(aggr.copy(aggr.getTraitSet(), input, false, groupSet, asList(groupSet), aggr.getAggCallList()));</span>
+
+<span class="nc" id="L90">            ImmutableList.Builder&lt;RexNode&gt; rexNodes = new ImmutableList.Builder&lt;&gt;();</span>
+<span class="nc" id="L91">            int index = 0;</span>
+<span class="nc" id="L92">            Iterator&lt;Integer&gt; groupSetIter = aggr.getGroupSet().iterator();</span>
+<span class="nc" id="L93">            Iterator&lt;RelDataTypeField&gt; typeIterator = aggr.getRowType().getFieldList().iterator();</span>
+<span class="nc" id="L94">            Iterator&lt;Integer&gt; groupKeyIter = groupSet.iterator();</span>
+<span class="nc" id="L95">            int groupKey = groupKeyIter.next();</span>
+
+            // iterate the group keys, fill with null if the key is rolled up
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            while (groupSetIter.hasNext()) {</span>
+<span class="nc" id="L99">                Integer aggrGroupKey = groupSetIter.next();</span>
+<span class="nc" id="L100">                RelDataType type = typeIterator.next().getType();</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">                if (groupKey == aggrGroupKey) {</span>
+<span class="nc" id="L102">                    rexNodes.add(rexBuilder.makeInputRef(type, index++));</span>
+<span class="nc" id="L103">                    groupKey = groupKeyIter.next();</span>
+                } else {
+<span class="nc" id="L105">                    rexNodes.add(rexBuilder.makeNullLiteral(type));</span>
+                }
+<span class="nc" id="L107">            }</span>
+
+            // fill aggr calls input ref
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            while (typeIterator.hasNext()) {</span>
+<span class="nc" id="L111">                RelDataType type = typeIterator.next().getType();</span>
+<span class="nc" id="L112">                rexNodes.add(rexBuilder.makeInputRef(type, index++));</span>
+<span class="nc" id="L113">            }</span>
+<span class="nc" id="L114">            relBuilder.project(rexNodes.build());</span>
+<span class="nc" id="L115">        }</span>
+<span class="nc" id="L116">        RelNode unionAggr = relBuilder.union(true, aggr.getGroupSets().size()).build();</span>
+
+<span class="nc" id="L118">        call.transformTo(unionAggr);</span>
+<span class="nc" id="L119">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,545 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTScanRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTScanRequest.java</span></div><h1>GTScanRequest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.io.IOException;
+import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.BytesSerializer;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.common.util.SerializeToByteBuffer;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMapping;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.expression.TupleExpressionSerializer;
+import org.apache.kylin.metadata.filter.StringCodeSystem;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilterSerializer;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class GTScanRequest {
+
+<span class="fc" id="L54">    private static final Logger logger = LoggerFactory.getLogger(GTScanRequest.class);</span>
+
+    //it's not necessary to increase the checkInterval to very large because the check cost is not high
+    //changing it might break org.apache.kylin.query.ITKylinQueryTest.testTimeoutQuery()
+    public static final int terminateCheckInterval = 100;
+
+    private CuboidToGridTableMapping mapping;
+    private GTInfo info;
+    private List&lt;GTScanRange&gt; ranges;
+    private ImmutableBitSet columns;
+    private transient ImmutableBitSet selectedColBlocks;
+
+    // optional expression
+    private ImmutableBitSet rtAggrMetrics;
+
+    private ImmutableBitSet dynamicCols;
+    private Map&lt;Integer, TupleExpression&gt; tupleExpressionMap;
+
+    // optional filtering
+    private TupleFilter filterPushDown;
+    private TupleFilter havingFilterPushDown;
+
+    // optional aggregation
+    private ImmutableBitSet aggrGroupBy;
+    private ImmutableBitSet aggrMetrics;
+    private String[] aggrMetricsFuncs;//
+
+    // hint to storage behavior
+    private String storageBehavior;
+    private long startTime;
+    private long timeout;
+    private boolean allowStorageAggregation;
+    private double aggCacheMemThreshold;
+    private int storageScanRowNumThreshold;
+    //valid value iff GTCubeStorageQueryBase.enableStorageLimitIfPossible is true
+    private int storagePushDownLimit;
+    private StorageLimitLevel storageLimitLevel;
+
+    // runtime computed fields
+<span class="fc" id="L93">    private transient boolean doingStorageAggregation = false;</span>
+
+    GTScanRequest(GTInfo info, List&lt;GTScanRange&gt; ranges, ImmutableBitSet dimensions, ImmutableBitSet aggrGroupBy, //
+            ImmutableBitSet aggrMetrics, String[] aggrMetricsFuncs, ImmutableBitSet rtAggrMetrics, //
+            ImmutableBitSet dynamicCols, Map&lt;Integer, TupleExpression&gt; tupleExpressionMap, //
+            TupleFilter filterPushDown, TupleFilter havingFilterPushDown, //
+            boolean allowStorageAggregation, double aggCacheMemThreshold, int storageScanRowNumThreshold, //
+            int storagePushDownLimit, StorageLimitLevel storageLimitLevel, String storageBehavior, long startTime,
+<span class="fc" id="L101">            long timeout) {</span>
+<span class="fc" id="L102">        this.info = info;</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (ranges == null) {</span>
+<span class="fc" id="L104">            this.ranges = Lists.newArrayList(new GTScanRange(new GTRecord(info), new GTRecord(info)));</span>
+        } else {
+<span class="nc" id="L106">            this.ranges = ranges;</span>
+        }
+<span class="fc" id="L108">        this.columns = dimensions;</span>
+<span class="fc" id="L109">        this.filterPushDown = filterPushDown;</span>
+<span class="fc" id="L110">        this.havingFilterPushDown = havingFilterPushDown;</span>
+
+<span class="fc" id="L112">        this.aggrGroupBy = aggrGroupBy;</span>
+<span class="fc" id="L113">        this.aggrMetrics = aggrMetrics;</span>
+<span class="fc" id="L114">        this.aggrMetricsFuncs = aggrMetricsFuncs;</span>
+
+<span class="fc" id="L116">        this.rtAggrMetrics = rtAggrMetrics;</span>
+
+<span class="fc" id="L118">        this.dynamicCols = dynamicCols;</span>
+<span class="fc" id="L119">        this.tupleExpressionMap = tupleExpressionMap;</span>
+
+<span class="fc" id="L121">        this.storageBehavior = storageBehavior;</span>
+<span class="fc" id="L122">        this.startTime = startTime;</span>
+<span class="fc" id="L123">        this.timeout = timeout;</span>
+<span class="fc" id="L124">        this.allowStorageAggregation = allowStorageAggregation;</span>
+<span class="fc" id="L125">        this.aggCacheMemThreshold = aggCacheMemThreshold;</span>
+<span class="fc" id="L126">        this.storageScanRowNumThreshold = storageScanRowNumThreshold;</span>
+<span class="fc" id="L127">        this.storagePushDownLimit = storagePushDownLimit;</span>
+<span class="fc" id="L128">        this.storageLimitLevel = storageLimitLevel;</span>
+
+<span class="fc" id="L130">        validate(info);</span>
+<span class="fc" id="L131">    }</span>
+
+    private void validate(GTInfo info) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (hasAggregation()) {</span>
+<span class="pc bpc" id="L135" title="2 of 4 branches missed.">            if (aggrGroupBy.intersects(aggrMetrics) || aggrGroupBy.intersects(rtAggrMetrics))</span>
+<span class="nc" id="L136">                throw new IllegalStateException();</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (aggrMetrics.cardinality() != aggrMetricsFuncs.length)</span>
+<span class="nc" id="L138">                throw new IllegalStateException();</span>
+
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            if (columns == null)</span>
+<span class="fc" id="L141">                columns = ImmutableBitSet.EMPTY;</span>
+
+<span class="fc" id="L143">            columns = columns.or(aggrGroupBy);</span>
+<span class="fc" id="L144">            columns = columns.or(aggrMetrics);</span>
+        }
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (columns == null)</span>
+<span class="fc" id="L148">            columns = info.colAll;</span>
+        
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (hasFilterPushDown()) {</span>
+<span class="nc" id="L151">            validateFilterPushDown(info);</span>
+        }
+
+<span class="fc" id="L154">        this.selectedColBlocks = info.selectColumnBlocks(columns.or(rtAggrMetrics).andNot(dynamicCols));</span>
+
+<span class="fc" id="L156">    }</span>
+
+    public void setTimeout(long timeout) {
+<span class="nc" id="L159">        this.timeout = timeout;</span>
+<span class="nc" id="L160">    }</span>
+
+    private void validateFilterPushDown(GTInfo info) {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (!hasFilterPushDown())</span>
+<span class="nc" id="L164">            return;</span>
+
+<span class="nc" id="L166">        Set&lt;TblColRef&gt; filterColumns = Sets.newHashSet();</span>
+<span class="nc" id="L167">        TupleFilter.collectColumns(filterPushDown, filterColumns);</span>
+
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        for (TblColRef col : filterColumns) {</span>
+            // filter columns must belong to the table
+<span class="nc" id="L171">            info.validateColRef(col);</span>
+            // filter columns must be returned to satisfy upper layer evaluation (calcite)
+<span class="nc" id="L173">            columns = columns.set(col.getColumnDesc().getZeroBasedIndex());</span>
+<span class="nc" id="L174">        }</span>
+
+        // un-evaluatable filter must be removed
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (!TupleFilter.isEvaluableRecursively(filterPushDown)) {</span>
+<span class="nc" id="L178">            Set&lt;TblColRef&gt; unevaluableColumns = Sets.newHashSet();</span>
+<span class="nc" id="L179">            filterPushDown = GTUtil.convertFilterUnevaluatable(filterPushDown, info, unevaluableColumns);</span>
+
+            // columns in un-evaluatable filter must be returned without loss so upper layer can do final evaluation
+<span class="nc bnc" id="L182" title="All 2 branches missed.">            if (hasAggregation()) {</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">                for (TblColRef col : unevaluableColumns) {</span>
+<span class="nc" id="L184">                    aggrGroupBy = aggrGroupBy.set(col.getColumnDesc().getZeroBasedIndex());</span>
+<span class="nc" id="L185">                }</span>
+            }
+        }
+<span class="nc" id="L188">    }</span>
+
+    public IGTScanner decorateScanner(IGTScanner scanner) throws IOException {
+<span class="fc" id="L191">        return decorateScanner(scanner, true, true);</span>
+    }
+
+    /**
+     * filterToggledOn,aggrToggledOn are only for profiling/test use.
+     * in normal cases they are all true.
+     * 
+     * Refer to CoprocessorBehavior for explanation
+     */
+    public IGTScanner decorateScanner(IGTScanner scanner, boolean filterToggledOn, boolean aggrToggledOn)
+            throws IOException {
+<span class="fc" id="L202">        return decorateScanner(scanner, filterToggledOn, aggrToggledOn, false, true);</span>
+    }
+
+    /**
+     * hasPreFiltered indicate the data has been filtered before scanning
+     */
+    public IGTScanner decorateScanner(IGTScanner scanner, boolean filterToggledOn, boolean aggrToggledOn,
+            boolean hasPreFiltered, boolean spillEnabled) throws IOException {
+<span class="fc" id="L210">        IGTScanner result = scanner;</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        if (!filterToggledOn) { //Skip reading this section if you're not profiling! </span>
+<span class="nc" id="L212">            lookAndForget(result);</span>
+<span class="nc" id="L213">            return new EmptyGTScanner();</span>
+        } else {
+
+<span class="pc bpc" id="L216" title="3 of 4 branches missed.">            if (this.hasFilterPushDown() &amp;&amp; !hasPreFiltered) {</span>
+<span class="nc" id="L217">                result = new GTFilterScanner(result, this, null);</span>
+            } else {
+<span class="fc" id="L219">                result = new GTForwardingScanner(result);//need its check function</span>
+            }
+
+<span class="pc bpc" id="L222" title="2 of 4 branches missed.">            if (tupleExpressionMap != null &amp;&amp; !tupleExpressionMap.isEmpty()) {</span>
+<span class="nc" id="L223">                logger.info(&quot;GTFunctionScanner will be used with expressions &quot; + tupleExpressionMap);</span>
+<span class="nc" id="L224">                result = new GTFunctionScanner(result, this);</span>
+            }
+
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">            if (!aggrToggledOn) {//Skip reading this section if you're not profiling! </span>
+<span class="nc" id="L228">                lookAndForget(result);</span>
+<span class="nc" id="L229">                return new EmptyGTScanner();</span>
+            }
+
+<span class="pc bpc" id="L232" title="3 of 4 branches missed.">            if (!this.isAllowStorageAggregation() &amp;&amp; havingFilterPushDown == null) {</span>
+<span class="nc" id="L233">                logger.info(&quot;pre aggregation is not beneficial, skip it&quot;);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            } else if (this.hasAggregation()) {</span>
+<span class="fc" id="L235">                logger.info(&quot;pre aggregating results before returning&quot;);</span>
+<span class="fc" id="L236">                this.doingStorageAggregation = true;</span>
+<span class="fc" id="L237">                result = new GTAggregateScanner(result, this, spillEnabled);</span>
+            } else {
+<span class="fc" id="L239">                logger.info(&quot;has no aggregation, skip it&quot;);</span>
+            }
+<span class="fc" id="L241">            return result;</span>
+        }
+    }
+
+    public BufferedMeasureCodec createMeasureCodec() {
+<span class="fc" id="L246">        DataType[] metricTypes = new DataType[aggrMetrics.trueBitCount()];</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        for (int i = 0; i &lt; metricTypes.length; i++) {</span>
+<span class="fc" id="L248">            metricTypes[i] = info.getColumnType(aggrMetrics.trueBitAt(i));</span>
+        }
+
+<span class="fc" id="L251">        BufferedMeasureCodec codec = new BufferedMeasureCodec(metricTypes);</span>
+<span class="fc" id="L252">        codec.setBufferSize(info.getMaxColumnLength(aggrMetrics));</span>
+<span class="fc" id="L253">        return codec;</span>
+    }
+
+    public boolean isDoingStorageAggregation() {
+<span class="nc" id="L257">        return doingStorageAggregation;</span>
+    }
+
+    //touch every byte of the cell so that the cost of scanning will be truly reflected
+    private int lookAndForget(IGTScanner scanner) {
+<span class="nc" id="L262">        byte meaninglessByte = 0;</span>
+<span class="nc" id="L263">        int scanned = 0;</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        for (GTRecord gtRecord : scanner) {</span>
+<span class="nc" id="L265">            scanned++;</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            for (ByteArray col : gtRecord.getInternal()) {</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">                if (col != null) {</span>
+<span class="nc" id="L268">                    int endIndex = col.offset() + col.length();</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                    for (int i = col.offset(); i &lt; endIndex; ++i) {</span>
+<span class="nc" id="L270">                        meaninglessByte += col.array()[i];</span>
+                    }
+                }
+            }
+<span class="nc" id="L274">        }</span>
+<span class="nc" id="L275">        logger.info(&quot;Meaningless byte is &quot; + meaninglessByte);</span>
+<span class="nc" id="L276">        IOUtils.closeQuietly(scanner);</span>
+<span class="nc" id="L277">        return scanned;</span>
+    }
+
+    public boolean hasFilterPushDown() {
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">        return filterPushDown != null;</span>
+    }
+
+    //TODO BUG?  select sum() from fact, no aggr by
+    public boolean hasAggregation() {
+<span class="pc bpc" id="L286" title="1 of 4 branches missed.">        return !aggrGroupBy.isEmpty() || !aggrMetrics.isEmpty();</span>
+    }
+
+    public CuboidToGridTableMapping getMapping() {
+<span class="nc" id="L290">        return mapping;</span>
+    }
+
+    public void setMapping(CuboidToGridTableMapping mapping) {
+<span class="nc" id="L294">        this.mapping = mapping;</span>
+<span class="nc" id="L295">    }</span>
+
+    public GTInfo getInfo() {
+<span class="nc" id="L298">        return info;</span>
+    }
+
+    public List&lt;GTScanRange&gt; getGTScanRanges() {
+<span class="nc" id="L302">        return ranges;</span>
+    }
+
+    public void clearScanRanges() {
+<span class="nc" id="L306">        this.ranges = Lists.newArrayList();</span>
+<span class="nc" id="L307">    }</span>
+
+    public ImmutableBitSet getSelectedColBlocks() {
+<span class="nc" id="L310">        return selectedColBlocks;</span>
+    }
+
+    public ImmutableBitSet getColumns() {
+<span class="nc" id="L314">        return columns;</span>
+    }
+
+    public TupleFilter getFilterPushDown() {
+<span class="nc" id="L318">        return filterPushDown;</span>
+    }
+
+    public TupleFilter getHavingFilterPushDown() {
+<span class="fc" id="L322">        return havingFilterPushDown;</span>
+    }
+
+    public ImmutableBitSet getDimensions() {
+<span class="fc" id="L326">        return this.columns.andNot(this.aggrMetrics);</span>
+    }
+
+    public ImmutableBitSet getAggrGroupBy() {
+<span class="fc" id="L330">        return aggrGroupBy;</span>
+    }
+
+    public ImmutableBitSet getAggrMetrics() {
+<span class="fc" id="L334">        return aggrMetrics;</span>
+    }
+
+    public String[] getAggrMetricsFuncs() {
+<span class="fc" id="L338">        return aggrMetricsFuncs;</span>
+    }
+
+    public ImmutableBitSet getDynamicCols() {
+<span class="nc" id="L342">        return dynamicCols;</span>
+    }
+
+    public ImmutableBitSet getRtAggrMetrics() {
+<span class="nc" id="L346">        return rtAggrMetrics;</span>
+    }
+
+    public Map&lt;Integer, TupleExpression&gt; getTupleExpressionMap() {
+<span class="nc" id="L350">        return tupleExpressionMap;</span>
+    }
+
+    public boolean isAllowStorageAggregation() {
+<span class="fc" id="L354">        return allowStorageAggregation;</span>
+    }
+
+    public double getAggCacheMemThreshold() {
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        if (aggCacheMemThreshold &lt; 0)</span>
+<span class="nc" id="L359">            return 0;</span>
+        else
+<span class="fc" id="L361">            return aggCacheMemThreshold;</span>
+    }
+
+    public void disableAggCacheMemCheck() {
+<span class="nc" id="L365">        this.aggCacheMemThreshold = 0;</span>
+<span class="nc" id="L366">    }</span>
+
+    public int getStorageScanRowNumThreshold() {
+<span class="nc" id="L369">        return storageScanRowNumThreshold;</span>
+    }
+
+    public int getStoragePushDownLimit() {
+<span class="fc" id="L373">        return this.storagePushDownLimit;</span>
+    }
+
+    public StorageLimitLevel getStorageLimitLevel() {
+<span class="fc" id="L377">        return storageLimitLevel;</span>
+    }
+
+    public String getStorageBehavior() {
+<span class="nc" id="L381">        return storageBehavior;</span>
+    }
+
+    public long getStartTime() {
+<span class="nc" id="L385">        return startTime;</span>
+    }
+
+    public long getTimeout() {
+<span class="nc" id="L389">        return timeout;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L394">        return &quot;GTScanRequest [range=&quot; + ranges + &quot;, columns=&quot; + columns + &quot;, filterPushDown=&quot; + filterPushDown</span>
+                + &quot;, aggrGroupBy=&quot; + aggrGroupBy + &quot;, aggrMetrics=&quot; + aggrMetrics + &quot;, aggrMetricsFuncs=&quot;
+<span class="nc" id="L396">                + Arrays.toString(aggrMetricsFuncs) + &quot;]&quot;;</span>
+    }
+
+    public byte[] toByteArray() {
+<span class="nc" id="L400">        ByteBuffer byteBuffer = SerializeToByteBuffer.retrySerialize(new SerializeToByteBuffer.IWriter() {</span>
+            @Override
+            public void write(ByteBuffer byteBuffer) throws BufferOverflowException {
+<span class="nc" id="L403">                GTScanRequest.serializer.serialize(GTScanRequest.this, byteBuffer);</span>
+<span class="nc" id="L404">            }</span>
+        });
+<span class="nc" id="L406">        return Arrays.copyOf(byteBuffer.array(), byteBuffer.position());</span>
+    }
+
+    private static final int SERIAL_0_BASE = 0;
+    private static final int SERIAL_1_HAVING_FILTER = 1;
+
+<span class="fc" id="L412">    public static final BytesSerializer&lt;GTScanRequest&gt; serializer = new BytesSerializer&lt;GTScanRequest&gt;() {</span>
+        @Override
+        public void serialize(GTScanRequest value, ByteBuffer out) {
+<span class="nc" id="L415">            final int serialLevel = KylinConfig.getInstanceFromEnv().getGTScanRequestSerializationLevel();</span>
+
+<span class="nc" id="L417">            GTInfo.serializer.serialize(value.info, out);</span>
+
+<span class="nc" id="L419">            BytesUtil.writeVInt(value.ranges.size(), out);</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">            for (GTScanRange range : value.ranges) {</span>
+<span class="nc" id="L421">                serializeGTRecord(range.pkStart, out);</span>
+<span class="nc" id="L422">                serializeGTRecord(range.pkEnd, out);</span>
+<span class="nc" id="L423">                BytesUtil.writeVInt(range.fuzzyKeys.size(), out);</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">                for (GTRecord f : range.fuzzyKeys) {</span>
+<span class="nc" id="L425">                    serializeGTRecord(f, out);</span>
+<span class="nc" id="L426">                }</span>
+<span class="nc" id="L427">            }</span>
+
+<span class="nc" id="L429">            ImmutableBitSet.serializer.serialize(value.columns, out);</span>
+<span class="nc" id="L430">            BytesUtil.writeByteArray(GTUtil.serializeGTFilter(value.filterPushDown, value.info), out);</span>
+
+<span class="nc bnc" id="L432" title="All 2 branches missed.">            if (serialLevel &gt;= SERIAL_1_HAVING_FILTER) {</span>
+<span class="nc" id="L433">                BytesUtil.writeByteArray(</span>
+<span class="nc" id="L434">                        TupleFilterSerializer.serialize(value.havingFilterPushDown, StringCodeSystem.INSTANCE), out);</span>
+            }
+
+<span class="nc" id="L437">            ImmutableBitSet.serializer.serialize(value.aggrGroupBy, out);</span>
+<span class="nc" id="L438">            ImmutableBitSet.serializer.serialize(value.aggrMetrics, out);</span>
+<span class="nc" id="L439">            BytesUtil.writeAsciiStringArray(value.aggrMetricsFuncs, out);</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">            BytesUtil.writeVInt(value.allowStorageAggregation ? 1 : 0, out);</span>
+<span class="nc" id="L441">            out.putDouble(value.aggCacheMemThreshold);</span>
+<span class="nc" id="L442">            BytesUtil.writeUTFString(value.getStorageLimitLevel().name(), out);</span>
+<span class="nc" id="L443">            BytesUtil.writeVInt(value.storageScanRowNumThreshold, out);</span>
+<span class="nc" id="L444">            BytesUtil.writeVInt(value.storagePushDownLimit, out);</span>
+<span class="nc" id="L445">            BytesUtil.writeVLong(value.startTime, out);</span>
+<span class="nc" id="L446">            BytesUtil.writeVLong(value.timeout, out);</span>
+<span class="nc" id="L447">            BytesUtil.writeUTFString(value.storageBehavior, out);</span>
+
+            // for dynamic related info
+<span class="nc" id="L450">            ImmutableBitSet.serializer.serialize(value.dynamicCols, out);</span>
+
+<span class="nc" id="L452">            BytesUtil.writeVInt(value.tupleExpressionMap.size(), out);</span>
+<span class="nc bnc" id="L453" title="All 2 branches missed.">            for (int c : value.tupleExpressionMap.keySet()) {</span>
+<span class="nc" id="L454">                TupleExpression tupleExpr = value.tupleExpressionMap.get(c);</span>
+<span class="nc" id="L455">                BytesUtil.writeVInt(c, out);</span>
+<span class="nc" id="L456">                BytesUtil.writeByteArray(TupleExpressionSerializer.serialize(tupleExpr,</span>
+<span class="nc" id="L457">                        GTUtil.wrap(value.info.codeSystem.getComparator())), out);</span>
+<span class="nc" id="L458">            }</span>
+<span class="nc" id="L459">            ImmutableBitSet.serializer.serialize(value.rtAggrMetrics, out);</span>
+<span class="nc" id="L460">        }</span>
+
+        @Override
+        public GTScanRequest deserialize(ByteBuffer in) {
+<span class="nc" id="L464">            final int serialLevel = KylinConfig.getInstanceFromEnv().getGTScanRequestSerializationLevel();</span>
+
+<span class="nc" id="L466">            GTInfo sInfo = GTInfo.serializer.deserialize(in);</span>
+
+<span class="nc" id="L468">            List&lt;GTScanRange&gt; sRanges = Lists.newArrayList();</span>
+<span class="nc" id="L469">            int sRangesCount = BytesUtil.readVInt(in);</span>
+<span class="nc bnc" id="L470" title="All 2 branches missed.">            for (int rangeIdx = 0; rangeIdx &lt; sRangesCount; rangeIdx++) {</span>
+<span class="nc" id="L471">                GTRecord sPkStart = deserializeGTRecord(in, sInfo);</span>
+<span class="nc" id="L472">                GTRecord sPkEnd = deserializeGTRecord(in, sInfo);</span>
+<span class="nc" id="L473">                List&lt;GTRecord&gt; sFuzzyKeys = Lists.newArrayList();</span>
+<span class="nc" id="L474">                int sFuzzyKeySize = BytesUtil.readVInt(in);</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">                for (int i = 0; i &lt; sFuzzyKeySize; i++) {</span>
+<span class="nc" id="L476">                    sFuzzyKeys.add(deserializeGTRecord(in, sInfo));</span>
+                }
+<span class="nc" id="L478">                GTScanRange sRange = new GTScanRange(sPkStart, sPkEnd, sFuzzyKeys);</span>
+<span class="nc" id="L479">                sRanges.add(sRange);</span>
+            }
+
+<span class="nc" id="L482">            ImmutableBitSet sColumns = ImmutableBitSet.serializer.deserialize(in);</span>
+<span class="nc" id="L483">            TupleFilter sGTFilter = GTUtil.deserializeGTFilter(BytesUtil.readByteArray(in), sInfo);</span>
+
+<span class="nc" id="L485">            TupleFilter sGTHavingFilter = null;</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">            if (serialLevel &gt;= SERIAL_1_HAVING_FILTER) {</span>
+<span class="nc" id="L487">                sGTHavingFilter = TupleFilterSerializer.deserialize(BytesUtil.readByteArray(in),</span>
+                        StringCodeSystem.INSTANCE);
+            }
+
+<span class="nc" id="L491">            ImmutableBitSet sAggGroupBy = ImmutableBitSet.serializer.deserialize(in);</span>
+<span class="nc" id="L492">            ImmutableBitSet sAggrMetrics = ImmutableBitSet.serializer.deserialize(in);</span>
+<span class="nc" id="L493">            String[] sAggrMetricFuncs = BytesUtil.readAsciiStringArray(in);</span>
+<span class="nc bnc" id="L494" title="All 2 branches missed.">            boolean sAllowPreAggr = (BytesUtil.readVInt(in) == 1);</span>
+<span class="nc" id="L495">            double sAggrCacheGB = in.getDouble();</span>
+<span class="nc" id="L496">            StorageLimitLevel storageLimitLevel = StorageLimitLevel.valueOf(BytesUtil.readUTFString(in));</span>
+<span class="nc" id="L497">            int storageScanRowNumThreshold = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L498">            int storagePushDownLimit = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L499">            long startTime = BytesUtil.readVLong(in);</span>
+<span class="nc" id="L500">            long timeout = BytesUtil.readVLong(in);</span>
+<span class="nc" id="L501">            String storageBehavior = BytesUtil.readUTFString(in);</span>
+
+<span class="nc" id="L503">            ImmutableBitSet aDynCols = ImmutableBitSet.serializer.deserialize(in);</span>
+
+<span class="nc" id="L505">            int nTupleExprs = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L506">            Map&lt;Integer, TupleExpression&gt; sTupleExpressionMap = Maps.newHashMapWithExpectedSize(nTupleExprs);</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">            for (int i = 0; i &lt; nTupleExprs; i++) {</span>
+<span class="nc" id="L508">                int sC = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L509">                TupleExpression sTupleExpr = TupleExpressionSerializer.deserialize(BytesUtil.readByteArray(in),</span>
+<span class="nc" id="L510">                        GTUtil.wrap(sInfo.codeSystem.getComparator()));</span>
+<span class="nc" id="L511">                sTupleExpressionMap.put(sC, sTupleExpr);</span>
+            }
+<span class="nc" id="L513">            ImmutableBitSet aRuntimeAggrMetrics = ImmutableBitSet.serializer.deserialize(in);</span>
+
+<span class="nc" id="L515">            return new GTScanRequestBuilder().setInfo(sInfo).setRanges(sRanges).setDimensions(sColumns)</span>
+<span class="nc" id="L516">                    .setAggrGroupBy(sAggGroupBy).setAggrMetrics(sAggrMetrics).setAggrMetricsFuncs(sAggrMetricFuncs)</span>
+<span class="nc" id="L517">                    .setRtAggrMetrics(aRuntimeAggrMetrics).setDynamicColumns(aDynCols)</span>
+<span class="nc" id="L518">                    .setExprsPushDown(sTupleExpressionMap)</span>
+<span class="nc" id="L519">                    .setFilterPushDown(sGTFilter).setHavingFilterPushDown(sGTHavingFilter)</span>
+<span class="nc" id="L520">                    .setAllowStorageAggregation(sAllowPreAggr).setAggCacheMemThreshold(sAggrCacheGB)</span>
+<span class="nc" id="L521">                    .setStorageScanRowNumThreshold(storageScanRowNumThreshold)</span>
+<span class="nc" id="L522">                    .setStoragePushDownLimit(storagePushDownLimit).setStorageLimitLevel(storageLimitLevel)</span>
+<span class="nc" id="L523">                    .setStartTime(startTime).setTimeout(timeout).setStorageBehavior(storageBehavior)</span>
+<span class="nc" id="L524">                    .createGTScanRequest();</span>
+        }
+
+        private void serializeGTRecord(GTRecord gtRecord, ByteBuffer out) {
+<span class="nc" id="L528">            BytesUtil.writeVInt(gtRecord.cols.length, out);</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">            for (ByteArray col : gtRecord.cols) {</span>
+<span class="nc" id="L530">                col.exportData(out);</span>
+            }
+<span class="nc" id="L532">        }</span>
+
+        private GTRecord deserializeGTRecord(ByteBuffer in, GTInfo sInfo) {
+<span class="nc" id="L535">            int colLength = BytesUtil.readVInt(in);</span>
+<span class="nc" id="L536">            ByteArray[] sCols = new ByteArray[colLength];</span>
+<span class="nc bnc" id="L537" title="All 2 branches missed.">            for (int i = 0; i &lt; colLength; i++) {</span>
+<span class="nc" id="L538">                sCols[i] = ByteArray.importData(in);</span>
+            }
+<span class="nc" id="L540">            return new GTRecord(sInfo, sCols);</span>
+        }
+
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

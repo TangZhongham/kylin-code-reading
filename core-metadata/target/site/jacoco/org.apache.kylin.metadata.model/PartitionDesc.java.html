@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PartitionDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">PartitionDesc.java</span></div><h1>PartitionDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Locale;
+import java.util.function.Function;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.util.CheckUtil;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.metadata.datatype.DataType;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L40">public class PartitionDesc implements Serializable {</span>
+
+<span class="fc" id="L42">    public static enum PartitionType implements Serializable {</span>
+<span class="fc" id="L43">        APPEND, //</span>
+<span class="fc" id="L44">        UPDATE_INSERT // not used since 0.7.1</span>
+    }
+
+    @JsonProperty(&quot;partition_date_column&quot;)
+    private String partitionDateColumn;
+
+    @JsonProperty(&quot;partition_time_column&quot;)
+    private String partitionTimeColumn;
+
+<span class="fc" id="L53">    @JsonProperty(&quot;partition_date_start&quot;)</span>
+    private long partitionDateStart = 0L;//Deprecated
+
+<span class="fc" id="L56">    @JsonProperty(&quot;partition_date_format&quot;)</span>
+    private String partitionDateFormat = DateFormat.DEFAULT_DATE_PATTERN;
+
+<span class="fc" id="L59">    @JsonProperty(&quot;partition_time_format&quot;)</span>
+    private String partitionTimeFormat = DateFormat.DEFAULT_TIME_PATTERN;
+
+<span class="fc" id="L62">    @JsonProperty(&quot;partition_type&quot;)</span>
+    private PartitionType partitionType = PartitionType.APPEND;
+
+<span class="fc" id="L65">    @JsonProperty(&quot;partition_condition_builder&quot;)</span>
+<span class="fc" id="L66">    private String partitionConditionBuilderClz = DefaultPartitionConditionBuilder.class.getName();</span>
+
+    private TblColRef partitionDateColumnRef;
+    private TblColRef partitionTimeColumnRef;
+    private IPartitionConditionBuilder partitionConditionBuilder;
+
+    public void init(DataModelDesc model) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (StringUtils.isEmpty(partitionDateColumn))</span>
+<span class="fc" id="L74">            return;</span>
+
+        //Support CustomYearMonthDayFieldPartitionConditionBuilder, partitionDateColumn split by &quot;,&quot;
+<span class="fc" id="L77">        partitionConditionBuilder = (IPartitionConditionBuilder) ClassUtil.newInstance(partitionConditionBuilderClz);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (partitionConditionBuilder instanceof CustomYearMonthDayFieldPartitionConditionBuilder) {</span>
+<span class="fc" id="L79">            ((CustomYearMonthDayFieldPartitionConditionBuilder)partitionConditionBuilder).init(this, model);</span>
+        } else {
+<span class="fc" id="L81">            partitionDateColumnRef = model.findColumn(partitionDateColumn);</span>
+<span class="fc" id="L82">            partitionDateColumn = partitionDateColumnRef.getIdentity();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            if (StringUtils.isBlank(partitionTimeColumn) == false) {</span>
+<span class="nc" id="L84">                partitionTimeColumnRef = model.findColumn(partitionTimeColumn);</span>
+<span class="nc" id="L85">                partitionTimeColumn = partitionTimeColumnRef.getIdentity();</span>
+            }
+        }
+
+<span class="fc" id="L89">    }</span>
+
+    public boolean partitionColumnIsYmdInt() {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (partitionDateColumnRef == null)</span>
+<span class="fc" id="L93">            return false;</span>
+
+<span class="fc" id="L95">        DataType type = partitionDateColumnRef.getType();</span>
+<span class="pc bpc" id="L96" title="4 of 6 branches missed.">        return (type.isInt() || type.isBigInt()) &amp;&amp; DateFormat.isDatePattern(partitionDateFormat);</span>
+    }
+
+    public boolean partitionColumnIsTimeMillis() {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (partitionDateColumnRef == null)</span>
+<span class="fc" id="L101">            return false;</span>
+
+<span class="fc" id="L103">        DataType type = partitionDateColumnRef.getType();</span>
+<span class="pc bpc" id="L104" title="3 of 4 branches missed.">        return type.isBigInt() &amp;&amp; !DateFormat.isDatePattern(partitionDateFormat);</span>
+    }
+
+    public boolean isPartitioned() {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        return partitionDateColumnRef != null;</span>
+    }
+
+    public String getPartitionDateColumn() {
+<span class="fc" id="L112">        return partitionDateColumn;</span>
+    }
+
+    // for test
+    public void setPartitionDateColumn(String partitionDateColumn) {
+<span class="fc" id="L117">        this.partitionDateColumn = partitionDateColumn;</span>
+<span class="fc" id="L118">    }</span>
+
+    // for test
+    void setPartitionDateColumnRef(TblColRef partitionDateColumnRef) {
+<span class="fc" id="L122">        this.partitionDateColumnRef = partitionDateColumnRef;</span>
+<span class="fc" id="L123">    }</span>
+
+    public String getPartitionTimeColumn() {
+<span class="nc" id="L126">        return partitionTimeColumn;</span>
+    }
+
+    // for test
+    public void setPartitionTimeColumn(String partitionTimeColumn) {
+<span class="fc" id="L131">        this.partitionTimeColumn = partitionTimeColumn;</span>
+<span class="fc" id="L132">    }</span>
+
+    // for test
+    void setPartitionTimeColumnRef(TblColRef partitionTimeColumnRef) {
+<span class="fc" id="L136">        this.partitionTimeColumnRef = partitionTimeColumnRef;</span>
+<span class="fc" id="L137">    }</span>
+
+    @Deprecated
+    public long getPartitionDateStart() {
+<span class="nc" id="L141">        return partitionDateStart;</span>
+    }
+
+    @Deprecated
+    public void setPartitionDateStart(long partitionDateStart) {
+<span class="nc" id="L146">        this.partitionDateStart = partitionDateStart;</span>
+<span class="nc" id="L147">    }</span>
+
+    public String getPartitionDateFormat() {
+<span class="fc" id="L150">        return partitionDateFormat;</span>
+    }
+
+    public void setPartitionDateFormat(String partitionDateFormat) {
+<span class="fc" id="L154">        this.partitionDateFormat = partitionDateFormat;</span>
+<span class="fc" id="L155">    }</span>
+
+    public String getPartitionTimeFormat() {
+<span class="fc" id="L158">        return partitionTimeFormat;</span>
+    }
+
+    public void setPartitionTimeFormat(String partitionTimeFormat) {
+<span class="fc" id="L162">        this.partitionTimeFormat = partitionTimeFormat;</span>
+<span class="fc" id="L163">    }</span>
+
+    public PartitionType getCubePartitionType() {
+<span class="nc" id="L166">        return partitionType;</span>
+    }
+
+    public void setCubePartitionType(PartitionType partitionType) {
+<span class="nc" id="L170">        this.partitionType = partitionType;</span>
+<span class="nc" id="L171">    }</span>
+
+    public String getPartitionConditionBuilderClz() {
+<span class="nc" id="L174">        return partitionConditionBuilderClz;</span>
+    }
+
+    public void setPartitionConditionBuilderClz(String partitionConditionBuilderClz) {
+<span class="fc" id="L178">        this.partitionConditionBuilderClz = partitionConditionBuilderClz;</span>
+<span class="fc" id="L179">    }</span>
+
+    public IPartitionConditionBuilder getPartitionConditionBuilder() {
+<span class="fc" id="L182">        return partitionConditionBuilder;</span>
+    }
+
+    public TblColRef getPartitionDateColumnRef() {
+<span class="fc" id="L186">        return partitionDateColumnRef;</span>
+    }
+
+    public TblColRef getPartitionTimeColumnRef() {
+<span class="fc" id="L190">        return partitionTimeColumnRef;</span>
+    }
+
+    public boolean equalsRaw(Object obj) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L195">            return true;</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L197">            return false;</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L199">            return false;</span>
+<span class="nc" id="L200">        PartitionDesc other = (PartitionDesc) obj;</span>
+
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (!this.partitionType.equals(other.getCubePartitionType()))</span>
+<span class="nc" id="L203">            return false;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        if (!this.partitionConditionBuilderClz.equals(other.partitionConditionBuilderClz))</span>
+<span class="nc" id="L205">            return false;</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (!CheckUtil.equals(this.partitionDateColumn, other.getPartitionDateColumn()))</span>
+<span class="nc" id="L207">            return false;</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (!CheckUtil.equals(this.partitionDateFormat, other.getPartitionDateFormat()))</span>
+<span class="nc" id="L209">            return false;</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">        if (!CheckUtil.equals(this.partitionTimeColumn, other.getPartitionTimeColumn()))</span>
+<span class="nc" id="L211">            return false;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        if (!CheckUtil.equals(this.partitionTimeFormat, other.getPartitionTimeFormat()))</span>
+<span class="nc" id="L213">            return false;</span>
+<span class="nc" id="L214">        return true;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L220">            return true;</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L222">            return false;</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L224">            return false;</span>
+<span class="nc" id="L225">        PartitionDesc other = (PartitionDesc) obj;</span>
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (!this.partitionType.equals(other.getCubePartitionType()))</span>
+<span class="nc" id="L228">            return false;</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">        if (!CheckUtil.equals(this.partitionDateColumn, other.getPartitionDateColumn()))</span>
+<span class="nc" id="L230">            return false;</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (!CheckUtil.equals(this.partitionDateFormat, other.getPartitionDateFormat()))</span>
+<span class="nc" id="L232">            return false;</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (this.partitionDateColumn != null) {</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (!this.partitionConditionBuilder.getClass().equals(other.getPartitionConditionBuilder().getClass()))</span>
+<span class="nc" id="L235">                return false;</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">            if (this.partitionConditionBuilder instanceof DefaultPartitionConditionBuilder) {</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">                if (!CheckUtil.equals(this.partitionTimeColumn, other.getPartitionTimeColumn())) {</span>
+<span class="nc" id="L238">                    return false;</span>
+                }
+<span class="nc bnc" id="L240" title="All 2 branches missed.">                if (!CheckUtil.equals(this.partitionTimeFormat, other.getPartitionTimeFormat())) {</span>
+<span class="nc" id="L241">                    return false;</span>
+                }
+            }
+        }
+
+<span class="nc" id="L246">        return true;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L251">        final int prime = 31;</span>
+<span class="nc" id="L252">        int result = 1;</span>
+<span class="nc" id="L253">        result = prime * result + partitionType.hashCode();</span>
+<span class="nc" id="L254">        result = prime * result + partitionConditionBuilderClz.hashCode();</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">        result = prime * result + ((partitionDateColumn == null) ? 0 : partitionDateColumn.hashCode());</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        result = prime * result + ((partitionDateFormat == null) ? 0 : partitionDateFormat.hashCode());</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (partitionConditionBuilder instanceof DefaultPartitionConditionBuilder) {</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">            result = prime * result + ((partitionTimeColumn == null) ? 0 : partitionTimeColumn.hashCode());</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            result = prime * result + ((partitionTimeFormat == null) ? 0 : partitionTimeFormat.hashCode());</span>
+        }
+<span class="nc" id="L261">        return result;</span>
+    }
+
+    // ============================================================================
+
+    public static interface IPartitionConditionBuilder {
+        String buildDateRangeCondition(PartitionDesc partDesc, ISegment seg, SegmentRange segRange, Function&lt;TblColRef, String&gt; quoteFunc);
+    }
+
+<span class="fc" id="L270">    public static class DefaultPartitionConditionBuilder implements IPartitionConditionBuilder, Serializable {</span>
+
+        @Override
+        public String buildDateRangeCondition(PartitionDesc partDesc, ISegment seg, SegmentRange segRange, Function&lt;TblColRef, String&gt; quoteFunc) {
+<span class="fc" id="L274">            long startInclusive = (Long) segRange.start.v;</span>
+<span class="fc" id="L275">            long endExclusive = (Long) segRange.end.v;</span>
+
+<span class="fc" id="L277">            TblColRef partitionDateColumn = partDesc.getPartitionDateColumnRef();</span>
+<span class="fc" id="L278">            TblColRef partitionTimeColumn = partDesc.getPartitionTimeColumnRef();</span>
+
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            if (partitionDateColumn != null) {</span>
+<span class="fc" id="L281">                partitionDateColumn.setQuotedFunc(quoteFunc);</span>
+            }
+<span class="fc bfc" id="L283" title="All 2 branches covered.">            if (partitionTimeColumn != null) {</span>
+<span class="fc" id="L284">                partitionTimeColumn.setQuotedFunc(quoteFunc);</span>
+            }
+
+<span class="fc" id="L287">            StringBuilder builder = new StringBuilder();</span>
+
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            if (partDesc.partitionColumnIsYmdInt()) {</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">                if (partitionTimeColumn == null) {</span>
+<span class="nc" id="L291">                    buildSingleColumnRangeCondAsYmdInt(builder, partitionDateColumn, startInclusive, endExclusive, partDesc.getPartitionDateFormat());</span>
+                } else {
+<span class="nc" id="L293">                    buildMultipleColumnRangeCondition(builder, partitionDateColumn, partitionTimeColumn, startInclusive,</span>
+<span class="nc" id="L294">                            endExclusive, partDesc.getPartitionDateFormat(), partDesc.getPartitionTimeFormat(), true);</span>
+                }
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">            } else if (partDesc.partitionColumnIsTimeMillis()) {</span>
+<span class="nc" id="L297">                buildSingleColumnRangeCondAsTimeMillis(builder, partitionDateColumn, startInclusive, endExclusive);</span>
+<span class="fc bfc" id="L298" title="All 4 branches covered.">            } else if (partitionDateColumn != null &amp;&amp; partitionTimeColumn == null) {</span>
+<span class="fc" id="L299">                buildSingleColumnRangeCondition(builder, partitionDateColumn, startInclusive, endExclusive,</span>
+<span class="fc" id="L300">                        partDesc.getPartitionDateFormat());</span>
+<span class="pc bpc" id="L301" title="1 of 4 branches missed.">            } else if (partitionDateColumn == null &amp;&amp; partitionTimeColumn != null) {</span>
+<span class="fc" id="L302">                buildSingleColumnRangeCondition(builder, partitionTimeColumn, startInclusive, endExclusive,</span>
+<span class="fc" id="L303">                        partDesc.getPartitionTimeFormat());</span>
+<span class="pc bpc" id="L304" title="2 of 4 branches missed.">            } else if (partitionDateColumn != null &amp;&amp; partitionTimeColumn != null) {</span>
+<span class="fc" id="L305">                buildMultipleColumnRangeCondition(builder, partitionDateColumn, partitionTimeColumn, startInclusive,</span>
+<span class="fc" id="L306">                        endExclusive, partDesc.getPartitionDateFormat(), partDesc.getPartitionTimeFormat(), false);</span>
+            }
+
+<span class="fc" id="L309">            return builder.toString();</span>
+        }
+
+        private static void buildSingleColumnRangeCondAsTimeMillis(StringBuilder builder, TblColRef partitionColumn,
+                                                                   long startInclusive, long endExclusive) {
+<span class="nc" id="L314">            String partitionColumnName = partitionColumn.getQuotedIdentity();</span>
+<span class="nc" id="L315">            builder.append(partitionColumnName + &quot; &gt;= &quot; + startInclusive);</span>
+<span class="nc" id="L316">            builder.append(&quot; AND &quot;);</span>
+<span class="nc" id="L317">            builder.append(partitionColumnName + &quot; &lt; &quot; + endExclusive);</span>
+<span class="nc" id="L318">        }</span>
+
+        private static void buildSingleColumnRangeCondAsYmdInt(StringBuilder builder, TblColRef partitionColumn,
+                                                               long startInclusive, long endExclusive, String partitionColumnDateFormat) {
+<span class="nc" id="L322">            String partitionColumnName = partitionColumn.getQuotedIdentity();</span>
+<span class="nc" id="L323">            builder.append(partitionColumnName + &quot; &gt;= &quot;</span>
+<span class="nc" id="L324">                    + DateFormat.formatToDateStr(startInclusive, partitionColumnDateFormat));</span>
+<span class="nc" id="L325">            builder.append(&quot; AND &quot;);</span>
+<span class="nc" id="L326">            builder.append(</span>
+<span class="nc" id="L327">                    partitionColumnName + &quot; &lt; &quot; + DateFormat.formatToDateStr(endExclusive, partitionColumnDateFormat));</span>
+<span class="nc" id="L328">        }</span>
+
+        private static void buildSingleColumnRangeCondition(StringBuilder builder, TblColRef partitionColumn,
+                                                            long startInclusive, long endExclusive, String partitionColumnDateFormat) {
+<span class="fc" id="L332">            String partitionColumnName = partitionColumn.getQuotedIdentity();</span>
+
+<span class="fc bfc" id="L334" title="All 2 branches covered.">            if (endExclusive &lt;= startInclusive) {</span>
+<span class="fc" id="L335">                builder.append(&quot;1=0&quot;);</span>
+<span class="fc" id="L336">                return;</span>
+            }
+
+<span class="fc" id="L339">            String startInc = null;</span>
+<span class="fc" id="L340">            String endInc = null;</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">            if (StringUtils.isBlank(partitionColumnDateFormat)) {</span>
+<span class="nc" id="L342">                startInc = String.valueOf(startInclusive);</span>
+<span class="nc" id="L343">                endInc = String.valueOf(endExclusive);</span>
+            } else {
+<span class="fc" id="L345">                startInc = DateFormat.formatToDateStr(startInclusive, partitionColumnDateFormat);</span>
+<span class="fc" id="L346">                endInc = DateFormat.formatToDateStr(endExclusive, partitionColumnDateFormat);</span>
+            }
+
+<span class="fc" id="L349">            builder.append(partitionColumnName + &quot; &gt;= '&quot; + startInc + &quot;'&quot;);</span>
+<span class="fc" id="L350">            builder.append(&quot; AND &quot;);</span>
+<span class="fc" id="L351">            builder.append(partitionColumnName + &quot; &lt; '&quot; + endInc + &quot;'&quot;);</span>
+<span class="fc" id="L352">        }</span>
+
+        private static void buildMultipleColumnRangeCondition(StringBuilder builder, TblColRef partitionDateColumn,
+                                                              TblColRef partitionTimeColumn, long startInclusive, long endExclusive, String partitionColumnDateFormat,
+                                                              String partitionColumnTimeFormat, boolean partitionDateColumnIsYmdInt) {
+<span class="fc" id="L357">            String partitionDateColumnName = partitionDateColumn.getQuotedIdentity();</span>
+<span class="fc" id="L358">            String partitionTimeColumnName = partitionTimeColumn.getQuotedIdentity();</span>
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">            String singleQuotation = partitionDateColumnIsYmdInt ? &quot;&quot; : &quot;'&quot;;</span>
+<span class="fc" id="L360">            builder.append(&quot;(&quot;);</span>
+<span class="fc" id="L361">            builder.append(&quot;(&quot;);</span>
+<span class="fc" id="L362">            builder.append(partitionDateColumnName + &quot; = &quot; + singleQuotation</span>
+<span class="fc" id="L363">                    + DateFormat.formatToDateStr(startInclusive, partitionColumnDateFormat) + singleQuotation).append(&quot; AND &quot;)</span>
+<span class="fc" id="L364">                    .append(partitionTimeColumnName + &quot; &gt;= '&quot;</span>
+<span class="fc" id="L365">                            + DateFormat.formatToDateStr(startInclusive, partitionColumnTimeFormat) + &quot;'&quot;);</span>
+<span class="fc" id="L366">            builder.append(&quot;)&quot;);</span>
+<span class="fc" id="L367">            builder.append(&quot; OR &quot;);</span>
+<span class="fc" id="L368">            builder.append(&quot;(&quot;);</span>
+<span class="fc" id="L369">            builder.append(partitionDateColumnName + &quot; &gt; &quot; + singleQuotation</span>
+<span class="fc" id="L370">                    + DateFormat.formatToDateStr(startInclusive, partitionColumnDateFormat) + singleQuotation);</span>
+<span class="fc" id="L371">            builder.append(&quot;)&quot;);</span>
+<span class="fc" id="L372">            builder.append(&quot;)&quot;);</span>
+<span class="fc" id="L373">            builder.append(&quot; AND &quot;);</span>
+
+<span class="fc" id="L375">            builder.append(&quot;(&quot;);</span>
+<span class="fc" id="L376">            builder.append(&quot;(&quot;);</span>
+<span class="fc" id="L377">            builder.append(partitionDateColumnName + &quot; = &quot; + singleQuotation</span>
+<span class="fc" id="L378">                    + DateFormat.formatToDateStr(endExclusive, partitionColumnDateFormat) + singleQuotation).append(&quot; AND &quot;)</span>
+<span class="fc" id="L379">                    .append(partitionTimeColumnName + &quot; &lt; '&quot;</span>
+<span class="fc" id="L380">                            + DateFormat.formatToDateStr(endExclusive, partitionColumnTimeFormat) + &quot;'&quot;);</span>
+<span class="fc" id="L381">            builder.append(&quot;)&quot;);</span>
+<span class="fc" id="L382">            builder.append(&quot; OR &quot;);</span>
+<span class="fc" id="L383">            builder.append(&quot;(&quot;);</span>
+<span class="fc" id="L384">            builder.append(partitionDateColumnName + &quot; &lt; &quot; + singleQuotation</span>
+<span class="fc" id="L385">                    + DateFormat.formatToDateStr(endExclusive, partitionColumnDateFormat) + singleQuotation);</span>
+<span class="fc" id="L386">            builder.append(&quot;)&quot;);</span>
+<span class="fc" id="L387">            builder.append(&quot;)&quot;);</span>
+<span class="fc" id="L388">        }</span>
+    }
+
+    /**
+     * Another implementation of IPartitionConditionBuilder, for the fact tables which have three partition columns &quot;YEAR&quot;, &quot;MONTH&quot;, and &quot;DAY&quot;; This
+     * class will concat the three columns into yyyy-MM-dd format for query hive;
+     */
+<span class="nc" id="L395">    public static class YearMonthDayPartitionConditionBuilder implements IPartitionConditionBuilder {</span>
+
+        @Override
+        public String buildDateRangeCondition(PartitionDesc partDesc, ISegment seg, SegmentRange segRange, Function&lt;TblColRef, String&gt; func) {
+<span class="nc" id="L399">            long startInclusive = (Long) segRange.start.v;</span>
+<span class="nc" id="L400">            long endExclusive = (Long) segRange.end.v;</span>
+
+<span class="nc" id="L402">            TblColRef partitionColumn = partDesc.getPartitionDateColumnRef();</span>
+<span class="nc" id="L403">            Preconditions.checkNotNull(partitionColumn);</span>
+<span class="nc" id="L404">            partitionColumn.setQuotedFunc(func);</span>
+<span class="nc" id="L405">            String tableAlias = partitionColumn.getTableAlias();</span>
+
+<span class="nc" id="L407">            String concatField = String.format(Locale.ROOT, &quot;CONCAT(%s.YEAR,'-',%s.MONTH,'-',%s.DAY)&quot;, tableAlias,</span>
+                    tableAlias, tableAlias);
+<span class="nc" id="L409">            StringBuilder builder = new StringBuilder();</span>
+
+<span class="nc bnc" id="L411" title="All 2 branches missed.">            if (startInclusive &gt; 0) {</span>
+<span class="nc" id="L412">                builder.append(concatField + &quot; &gt;= '&quot; + DateFormat.formatToDateStr(startInclusive) + &quot;' &quot;);</span>
+<span class="nc" id="L413">                builder.append(&quot;AND &quot;);</span>
+            }
+<span class="nc" id="L415">            builder.append(concatField + &quot; &lt; '&quot; + DateFormat.formatToDateStr(endExclusive) + &quot;'&quot;);</span>
+
+<span class="nc" id="L417">            return builder.toString();</span>
+        }
+    }
+
+    /**
+     * Another implementation of IPartitionConditionBuilder, for the fact tables which have three custom partition columns like &quot;Y&quot;, &quot;M&quot;, &quot;D&quot; means &quot;YEAR&quot;, &quot;MONTH&quot;, and &quot;DAY&quot;;
+     * This class will conicat the three columns into yyyy-MM-dd format for query hive;
+     * implements Serializable for spark build
+     */
+<span class="fc" id="L426">    public static class CustomYearMonthDayFieldPartitionConditionBuilder implements IPartitionConditionBuilder, Serializable {</span>
+        private String yearPartitionDateColumn;
+        private String monthPartitionDateColumn;
+        private String dayPartitionDateColumn;
+        @Override
+        public String buildDateRangeCondition(PartitionDesc partDesc, ISegment seg, SegmentRange segRange, Function&lt;TblColRef, String&gt; func) {
+<span class="fc" id="L432">            long startInclusive = (Long) segRange.start.v;</span>
+<span class="fc" id="L433">            long endExclusive = (Long) segRange.end.v;</span>
+
+<span class="fc" id="L435">            TblColRef partitionColumn = partDesc.getPartitionDateColumnRef();</span>
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">            if (partitionColumn != null) {</span>
+<span class="fc" id="L437">                partitionColumn.setQuotedFunc(func);</span>
+            }
+<span class="fc" id="L439">            String concatField = String.format(Locale.ROOT, &quot;CONCAT(%s,'-',%s,'-',%s)&quot;, yearPartitionDateColumn,</span>
+                    monthPartitionDateColumn, dayPartitionDateColumn);
+<span class="fc" id="L441">            StringBuilder builder = new StringBuilder();</span>
+
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">            if (startInclusive &gt; 0) {</span>
+<span class="nc" id="L444">                builder.append(concatField + &quot; &gt;= '&quot; + DateFormat.formatToDateStr(startInclusive) + &quot;' &quot;);</span>
+<span class="nc" id="L445">                builder.append(&quot;AND &quot;);</span>
+            }
+<span class="fc" id="L447">            builder.append(concatField + &quot; &lt; '&quot; + DateFormat.formatToDateStr(endExclusive) + &quot;'&quot;);</span>
+
+<span class="fc" id="L449">            return builder.toString();</span>
+        }
+
+        public void init(PartitionDesc partitionDesc, DataModelDesc model) {
+<span class="fc" id="L453">            String[] yearMonthDayColumns = partitionDesc.getPartitionDateColumn().split(&quot;,&quot;);</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">            if (yearMonthDayColumns.length != 3) {</span>
+<span class="nc" id="L455">                throw new IllegalArgumentException(partitionDesc.getPartitionDateColumn() + &quot; is not year, month, and day columns&quot;);</span>
+            }
+<span class="fc" id="L457">            TblColRef yearRef = model.findColumn(yearMonthDayColumns[0]);</span>
+<span class="fc" id="L458">            yearPartitionDateColumn = yearRef.getIdentity();</span>
+<span class="fc" id="L459">            monthPartitionDateColumn = model.findColumn(yearMonthDayColumns[1]).getIdentity();</span>
+<span class="fc" id="L460">            dayPartitionDateColumn = model.findColumn(yearMonthDayColumns[2]).getIdentity();</span>
+            //for partition desc isPartitioned() true
+<span class="fc" id="L462">            partitionDesc.setPartitionDateColumnRef(yearRef);</span>
+<span class="fc" id="L463">        }</span>
+    }
+
+    public static PartitionDesc getCopyOf(PartitionDesc orig) {
+<span class="fc" id="L467">        PartitionDesc ret = new PartitionDesc();</span>
+<span class="fc" id="L468">        ret.partitionDateColumn = orig.partitionDateColumn;</span>
+<span class="fc" id="L469">        ret.partitionTimeColumn = orig.partitionTimeColumn;</span>
+<span class="fc" id="L470">        ret.partitionDateStart = orig.partitionDateStart; //Deprecated</span>
+<span class="fc" id="L471">        ret.partitionDateFormat = orig.partitionDateFormat;</span>
+<span class="fc" id="L472">        ret.partitionTimeFormat = orig.partitionTimeFormat;</span>
+<span class="fc" id="L473">        ret.partitionType = orig.partitionType;</span>
+<span class="fc" id="L474">        ret.partitionConditionBuilderClz = orig.partitionConditionBuilderClz;</span>
+<span class="fc" id="L475">        return ret;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

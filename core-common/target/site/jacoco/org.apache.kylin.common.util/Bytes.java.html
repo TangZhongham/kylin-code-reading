@@ -1,0 +1,1980 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Bytes.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">Bytes.java</span></div><h1>Bytes.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkArgument;
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkPositionIndex;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.Charset;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import sun.misc.Unsafe;
+
+/**
+ * Utility class that handles byte arrays, conversions to/from other types,
+ * comparisons, hash code generation, manufacturing keys for HashMaps or
+ * HashSets, etc.
+ *
+ * Copied from org.apache.hadoop.hbase.util.Bytes
+ */
+<span class="nc" id="L53">public class Bytes {</span>
+    //HConstants.UTF8_ENCODING should be updated if this changed
+    /**
+     * When we encode strings, we always specify UTF8 encoding
+     */
+    private static final String UTF8_ENCODING = &quot;UTF-8&quot;;
+
+    //HConstants.UTF8_CHARSET should be updated if this changed
+    /**
+     * When we encode strings, we always specify UTF8 encoding
+     */
+<span class="fc" id="L64">    private static final Charset UTF8_CHARSET = Charset.forName(UTF8_ENCODING);</span>
+
+    //HConstants.EMPTY_BYTE_ARRAY should be updated if this changed
+<span class="fc" id="L67">    private static final byte[] EMPTY_BYTE_ARRAY = new byte[0];</span>
+
+<span class="fc" id="L69">    private static final Log LOG = LogFactory.getLog(Bytes.class);</span>
+
+    /**
+     * Size of boolean in bytes
+     */
+    public static final int SIZEOF_BOOLEAN = 1;
+
+    /**
+     * Size of byte in bytes
+     */
+    public static final int SIZEOF_BYTE = SIZEOF_BOOLEAN;
+
+    /**
+     * Size of char in bytes
+     */
+    public static final int SIZEOF_CHAR = Character.SIZE / Byte.SIZE;
+
+    /**
+     * Size of double in bytes
+     */
+    public static final int SIZEOF_DOUBLE = Double.SIZE / Byte.SIZE;
+
+    /**
+     * Size of float in bytes
+     */
+    public static final int SIZEOF_FLOAT = Float.SIZE / Byte.SIZE;
+
+    /**
+     * Size of int in bytes
+     */
+    public static final int SIZEOF_INT = Integer.SIZE / Byte.SIZE;
+
+    /**
+     * Size of long in bytes
+     */
+    public static final int SIZEOF_LONG = Long.SIZE / Byte.SIZE;
+
+    /**
+     * Size of short in bytes
+     */
+    public static final int SIZEOF_SHORT = Short.SIZE / Byte.SIZE;
+
+    /**
+     * Estimate of size cost to pay beyond payload in jvm for instance of byte [].
+     * Estimate based on study of jhat and jprofiler numbers.
+     */
+    // JHat says BU is 56 bytes.
+    // SizeOf which uses java.lang.instrument says 24 bytes. (3 longs?)
+    public static final int ESTIMATED_HEAP_TAX = 16;
+    public static final String LENGTH_MUST_BE_GREATER_THAN_0 = &quot;length must be greater than 0&quot;;
+
+    /**
+     * Returns length of the byte array, returning 0 if the array is null.
+     * Useful for calculating sizes.
+     *
+     * @param b byte array, which can be null
+     * @return 0 if b is null, otherwise returns length
+     */
+    final public static int len(byte[] b) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        return b == null ? 0 : b.length;</span>
+    }
+
+    /**
+     * Put bytes at the specified byte array position.
+     *
+     * @param tgtBytes  the byte array
+     * @param tgtOffset position in the array
+     * @param srcBytes  array to write out
+     * @param srcOffset source offset
+     * @param srcLength source length
+     * @return incremented offset
+     */
+    public static int putBytes(byte[] tgtBytes, int tgtOffset, byte[] srcBytes, int srcOffset, int srcLength) {
+<span class="nc" id="L142">        System.arraycopy(srcBytes, srcOffset, tgtBytes, tgtOffset, srcLength);</span>
+<span class="nc" id="L143">        return tgtOffset + srcLength;</span>
+    }
+
+    /**
+     * Write a single byte out to the specified byte array position.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param b      byte to write out
+     * @return incremented offset
+     */
+    public static int putByte(byte[] bytes, int offset, byte b) {
+<span class="nc" id="L155">        bytes[offset] = b;</span>
+<span class="nc" id="L156">        return offset + 1;</span>
+    }
+
+    /**
+     * Add the whole content of the ByteBuffer to the bytes arrays. The ByteBuffer is modified.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param buf    ByteBuffer to write out
+     * @return incremented offset
+     */
+    public static int putByteBuffer(byte[] bytes, int offset, ByteBuffer buf) {
+<span class="nc" id="L168">        int len = buf.remaining();</span>
+<span class="nc" id="L169">        buf.get(bytes, offset, len);</span>
+<span class="nc" id="L170">        return offset + len;</span>
+    }
+
+    /**
+     * Returns a new byte array, copied from the given {@code buf},
+     * from the index 0 (inclusive) to the limit (exclusive),
+     * regardless of the current position.
+     * The position and the other index parameters are not changed.
+     *
+     * @param buf a byte buffer
+     * @return the byte array
+     * @see #getBytes(ByteBuffer)
+     */
+    public static byte[] toBytes(ByteBuffer buf) {
+<span class="nc" id="L184">        ByteBuffer dup = buf.duplicate();</span>
+<span class="nc" id="L185">        dup.position(0);</span>
+<span class="nc" id="L186">        return readBytes(dup);</span>
+    }
+
+    private static byte[] readBytes(ByteBuffer buf) {
+<span class="nc" id="L190">        byte[] result = new byte[buf.remaining()];</span>
+<span class="nc" id="L191">        buf.get(result);</span>
+<span class="nc" id="L192">        return result;</span>
+    }
+
+    /**
+     * @param b Presumed UTF-8 encoded byte array.
+     * @return String made from &lt;code&gt;b&lt;/code&gt;
+     */
+    public static String toString(final byte[] b) {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (b == null) {</span>
+<span class="nc" id="L201">            return null;</span>
+        }
+<span class="nc" id="L203">        return toString(b, 0, b.length);</span>
+    }
+
+    /**
+     * Joins two byte arrays together using a separator.
+     *
+     * @param b1  The first byte array.
+     * @param sep The separator to use.
+     * @param b2  The second byte array.
+     */
+    public static String toString(final byte[] b1, String sep, final byte[] b2) {
+<span class="nc" id="L214">        return toString(b1, 0, b1.length) + sep + toString(b2, 0, b2.length);</span>
+    }
+
+    /**
+     * This method will convert utf8 encoded bytes into a string. If
+     * the given byte array is null, this method will return null.
+     *
+     * @param b   Presumed UTF-8 encoded byte array.
+     * @param off offset into array
+     * @param len length of utf-8 sequence
+     * @return String made from &lt;code&gt;b&lt;/code&gt; or null
+     */
+    public static String toString(final byte[] b, int off, int len) {
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (b == null) {</span>
+<span class="nc" id="L228">            return null;</span>
+        }
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        if (len == 0) {</span>
+<span class="nc" id="L231">            return &quot;&quot;;</span>
+        }
+<span class="nc" id="L233">        return new String(b, off, len, UTF8_CHARSET);</span>
+    }
+
+    /**
+     * Write a printable representation of a byte array.
+     *
+     * @param b byte array
+     * @return string
+     * @see #toStringBinary(byte[], int, int)
+     */
+    public static String toStringBinary(final byte[] b) {
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        if (b == null)</span>
+<span class="nc" id="L245">            return &quot;null&quot;;</span>
+<span class="nc" id="L246">        return toStringBinary(b, 0, b.length);</span>
+    }
+
+    /**
+     * Converts the given byte buffer to a printable representation,
+     * from the index 0 (inclusive) to the limit (exclusive),
+     * regardless of the current position.
+     * The position and the other index parameters are not changed.
+     *
+     * @param buf a byte buffer
+     * @return a string representation of the buffer's binary contents
+     * @see #toBytes(ByteBuffer)
+     * @see #getBytes(ByteBuffer)
+     */
+    public static String toStringBinary(ByteBuffer buf) {
+<span class="nc bnc" id="L261" title="All 2 branches missed.">        if (buf == null)</span>
+<span class="nc" id="L262">            return &quot;null&quot;;</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (buf.hasArray()) {</span>
+<span class="nc" id="L264">            return toStringBinary(buf.array(), buf.arrayOffset(), buf.limit());</span>
+        }
+<span class="nc" id="L266">        return toStringBinary(toBytes(buf));</span>
+    }
+
+    /**
+     * Write a printable representation of a byte array. Non-printable
+     * characters are hex escaped in the format \\x%02X, eg:
+     * \x00 \x05 etc
+     *
+     * @param b   array to write out
+     * @param off offset to start at
+     * @param len length to write
+     * @return string output
+     */
+    public static String toStringBinary(final byte[] b, int off, int len) {
+<span class="nc" id="L280">        StringBuilder result = new StringBuilder();</span>
+        // Just in case we are passed a 'len' that is &gt; buffer length...
+<span class="nc bnc" id="L282" title="All 2 branches missed.">        if (off &gt;= b.length)</span>
+<span class="nc" id="L283">            return result.toString();</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (off + len &gt; b.length)</span>
+<span class="nc" id="L285">            len = b.length - off;</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        for (int i = off; i &lt; off + len; ++i) {</span>
+<span class="nc" id="L287">            int ch = b[i] &amp; 0xFF;</span>
+<span class="nc bnc" id="L288" title="All 12 branches missed.">            if ((ch &gt;= '0' &amp;&amp; ch &lt;= '9') || (ch &gt;= 'A' &amp;&amp; ch &lt;= 'Z') || (ch &gt;= 'a' &amp;&amp; ch &lt;= 'z')</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">                    || &quot; `~!@#$%^&amp;*()-_=+[]{}|;:'\&quot;,.&lt;&gt;/?&quot;.indexOf(ch) &gt;= 0) {</span>
+<span class="nc" id="L290">                result.append((char) ch);</span>
+            } else {
+<span class="nc" id="L292">                result.append(String.format(Locale.ROOT, &quot;\\x%02X&quot;, ch));</span>
+            }
+        }
+<span class="nc" id="L295">        return result.toString();</span>
+    }
+
+    private static boolean isHexDigit(char c) {
+<span class="nc bnc" id="L299" title="All 8 branches missed.">        return (c &gt;= 'A' &amp;&amp; c &lt;= 'F') || (c &gt;= '0' &amp;&amp; c &lt;= '9');</span>
+    }
+
+    /**
+     * Takes a ASCII digit in the range A-F0-9 and returns
+     * the corresponding integer/ordinal value.
+     *
+     * @param ch The hex digit.
+     * @return The converted hex value as a byte.
+     */
+    public static byte toBinaryFromHex(byte ch) {
+<span class="pc bpc" id="L310" title="1 of 4 branches missed.">        if (ch &gt;= 'A' &amp;&amp; ch &lt;= 'F')</span>
+<span class="fc" id="L311">            return (byte) ((byte) 10 + (byte) (ch - 'A'));</span>
+        // else
+<span class="fc" id="L313">        return (byte) (ch - '0');</span>
+    }
+
+    public static byte[] toBytesBinary(String in) {
+        // this may be bigger than we need, but let's be safe.
+<span class="nc" id="L318">        byte[] b = new byte[in.length()];</span>
+<span class="nc" id="L319">        int size = 0;</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">        for (int i = 0; i &lt; in.length(); ++i) {</span>
+<span class="nc" id="L321">            char ch = in.charAt(i);</span>
+<span class="nc bnc" id="L322" title="All 6 branches missed.">            if (ch == '\\' &amp;&amp; in.length() &gt; i + 1 &amp;&amp; in.charAt(i + 1) == 'x') {</span>
+                // ok, take next 2 hex digits.
+<span class="nc" id="L324">                char hd1 = in.charAt(i + 2);</span>
+<span class="nc" id="L325">                char hd2 = in.charAt(i + 3);</span>
+
+                // they need to be A-F0-9:
+<span class="nc bnc" id="L328" title="All 4 branches missed.">                if (!isHexDigit(hd1) || !isHexDigit(hd2)) {</span>
+                    // bogus escape code, ignore:
+<span class="nc" id="L330">                    continue;</span>
+                }
+                // turn hex ASCII digit -&gt; number
+<span class="nc" id="L333">                byte d = (byte) ((toBinaryFromHex((byte) hd1) &lt;&lt; 4) + (toBinaryFromHex((byte) hd2)) &amp; 0xff);</span>
+
+<span class="nc" id="L335">                b[size++] = d;</span>
+<span class="nc" id="L336">                i += 3; // skip 3</span>
+<span class="nc" id="L337">            } else {</span>
+<span class="nc" id="L338">                b[size++] = (byte) ch;</span>
+            }
+        }
+        // resize:
+<span class="nc" id="L342">        byte[] b2 = new byte[size];</span>
+<span class="nc" id="L343">        System.arraycopy(b, 0, b2, 0, size);</span>
+<span class="nc" id="L344">        return b2;</span>
+    }
+
+    /**
+     * Converts a string to a UTF-8 byte array.
+     *
+     * @param s string
+     * @return the byte array
+     */
+    public static byte[] toBytes(String s) {
+<span class="nc" id="L354">        return s.getBytes(UTF8_CHARSET);</span>
+    }
+
+    /**
+     * Convert a boolean to a byte array. True becomes -1
+     * and false becomes 0.
+     *
+     * @param b value
+     * @return &lt;code&gt;b&lt;/code&gt; encoded in a byte array.
+     */
+    public static byte[] toBytes(final boolean b) {
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        return new byte[] { b ? (byte) -1 : (byte) 0 };</span>
+    }
+
+    /**
+     * Reverses {@link #toBytes(boolean)}
+     *
+     * @param b array
+     * @return True or false.
+     */
+    public static boolean toBoolean(final byte[] b) {
+<span class="nc bnc" id="L375" title="All 2 branches missed.">        if (b.length != 1) {</span>
+<span class="nc" id="L376">            throw new IllegalArgumentException(&quot;Array has wrong size: &quot; + b.length);</span>
+        }
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        return b[0] != (byte) 0;</span>
+    }
+
+    /**
+     * Convert a long value to a byte array using big-endian.
+     *
+     * @param val value to convert
+     * @return the byte array
+     */
+    public static byte[] toBytes(long val) {
+<span class="nc" id="L388">        byte[] b = new byte[8];</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        for (int i = 7; i &gt; 0; i--) {</span>
+<span class="nc" id="L390">            b[i] = (byte) val;</span>
+<span class="nc" id="L391">            val &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L393">        b[0] = (byte) val;</span>
+<span class="nc" id="L394">        return b;</span>
+    }
+
+    /**
+     * Converts a byte array to a long value. Reverses
+     * {@link #toBytes(long)}
+     *
+     * @param bytes array
+     * @return the long value
+     */
+    public static long toLong(byte[] bytes) {
+<span class="nc" id="L405">        return toLong(bytes, 0, SIZEOF_LONG);</span>
+    }
+
+    /**
+     * Converts a byte array to a long value. Assumes there will be
+     * {@link #SIZEOF_LONG} bytes available.
+     *
+     * @param bytes  bytes
+     * @param offset offset
+     * @return the long value
+     */
+    public static long toLong(byte[] bytes, int offset) {
+<span class="nc" id="L417">        return toLong(bytes, offset, SIZEOF_LONG);</span>
+    }
+
+    /**
+     * Converts a byte array to a long value.
+     *
+     * @param bytes  array of bytes
+     * @param offset offset into array
+     * @param length length of data (must be {@link #SIZEOF_LONG})
+     * @return the long value
+     * @throws IllegalArgumentException if length is not {@link #SIZEOF_LONG} or
+     *                                  if there's not enough room in the array at the offset indicated.
+     */
+    public static long toLong(byte[] bytes, int offset, final int length) {
+<span class="nc bnc" id="L431" title="All 4 branches missed.">        if (length != SIZEOF_LONG || offset + length &gt; bytes.length) {</span>
+<span class="nc" id="L432">            throw explainWrongLengthOrOffset(bytes, offset, length, SIZEOF_LONG);</span>
+        }
+<span class="nc bnc" id="L434" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.isAvailable()) {</span>
+<span class="nc" id="L435">            return toLongUnsafe(bytes, offset);</span>
+        } else {
+<span class="nc" id="L437">            long l = 0;</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">            for (int i = offset; i &lt; offset + length; i++) {</span>
+<span class="nc" id="L439">                l &lt;&lt;= 8;</span>
+<span class="nc" id="L440">                l ^= bytes[i] &amp; 0xFF;</span>
+            }
+<span class="nc" id="L442">            return l;</span>
+        }
+    }
+
+    private static IllegalArgumentException explainWrongLengthOrOffset(final byte[] bytes, final int offset,
+            final int length, final int expectedLength) {
+        String reason;
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (length != expectedLength) {</span>
+<span class="nc" id="L450">            reason = &quot;Wrong length: &quot; + length + &quot;, expected &quot; + expectedLength;</span>
+        } else {
+<span class="nc" id="L452">            reason = &quot;offset (&quot; + offset + &quot;) + length (&quot; + length + &quot;) exceed the&quot; + &quot; capacity of the array: &quot;</span>
+                    + bytes.length;
+        }
+<span class="nc" id="L455">        return new IllegalArgumentException(reason);</span>
+    }
+
+    /**
+     * Put a long value out to the specified byte array position.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    long to write out
+     * @return incremented offset
+     * @throws IllegalArgumentException if the byte array given doesn't have
+     *                                  enough room at the offset specified.
+     */
+    public static int putLong(byte[] bytes, int offset, long val) {
+<span class="nc bnc" id="L469" title="All 2 branches missed.">        if (bytes.length - offset &lt; SIZEOF_LONG) {</span>
+<span class="nc" id="L470">            throw new IllegalArgumentException(</span>
+                    &quot;Not enough room to put a long at&quot; + &quot; offset &quot; + offset + &quot; in a &quot; + bytes.length + &quot; byte array&quot;);
+        }
+<span class="nc bnc" id="L473" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.isAvailable()) {</span>
+<span class="nc" id="L474">            return putLongUnsafe(bytes, offset, val);</span>
+        } else {
+<span class="nc bnc" id="L476" title="All 2 branches missed.">            for (int i = offset + 7; i &gt; offset; i--) {</span>
+<span class="nc" id="L477">                bytes[i] = (byte) val;</span>
+<span class="nc" id="L478">                val &gt;&gt;&gt;= 8;</span>
+            }
+<span class="nc" id="L480">            bytes[offset] = (byte) val;</span>
+<span class="nc" id="L481">            return offset + SIZEOF_LONG;</span>
+        }
+    }
+
+    /**
+     * Put a long value out to the specified byte array position (Unsafe).
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    long to write out
+     * @return incremented offset
+     */
+    public static int putLongUnsafe(byte[] bytes, int offset, long val) {
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.LITTLEENDIAN) {</span>
+<span class="nc" id="L495">            val = Long.reverseBytes(val);</span>
+        }
+<span class="nc" id="L497">        org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe.putLong(bytes,</span>
+                (long) offset
+                        + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET,
+                val);
+<span class="nc" id="L501">        return offset + SIZEOF_LONG;</span>
+    }
+
+    /**
+     * Presumes float encoded as IEEE 754 floating-point &quot;single format&quot;
+     *
+     * @param bytes byte array
+     * @return Float made from passed byte array.
+     */
+    public static float toFloat(byte[] bytes) {
+<span class="nc" id="L511">        return toFloat(bytes, 0);</span>
+    }
+
+    /**
+     * Presumes float encoded as IEEE 754 floating-point &quot;single format&quot;
+     *
+     * @param bytes  array to convert
+     * @param offset offset into array
+     * @return Float made from passed byte array.
+     */
+    public static float toFloat(byte[] bytes, int offset) {
+<span class="nc" id="L522">        return Float.intBitsToFloat(toInt(bytes, offset, SIZEOF_INT));</span>
+    }
+
+    /**
+     * @param bytes  byte array
+     * @param offset offset to write to
+     * @param f      float value
+     * @return New offset in &lt;code&gt;bytes&lt;/code&gt;
+     */
+    public static int putFloat(byte[] bytes, int offset, float f) {
+<span class="nc" id="L532">        return putInt(bytes, offset, Float.floatToRawIntBits(f));</span>
+    }
+
+    /**
+     * @param f float value
+     * @return the float represented as byte []
+     */
+    public static byte[] toBytes(final float f) {
+        // Encode it as int
+<span class="nc" id="L541">        return Bytes.toBytes(Float.floatToRawIntBits(f));</span>
+    }
+
+    /**
+     * @param bytes byte array
+     * @return Return double made from passed bytes.
+     */
+    public static double toDouble(final byte[] bytes) {
+<span class="nc" id="L549">        return toDouble(bytes, 0);</span>
+    }
+
+    /**
+     * @param bytes  byte array
+     * @param offset offset where double is
+     * @return Return double made from passed bytes.
+     */
+    public static double toDouble(final byte[] bytes, final int offset) {
+<span class="nc" id="L558">        return Double.longBitsToDouble(toLong(bytes, offset, SIZEOF_LONG));</span>
+    }
+
+    /**
+     * @param bytes  byte array
+     * @param offset offset to write to
+     * @param d      value
+     * @return New offset into array &lt;code&gt;bytes&lt;/code&gt;
+     */
+    public static int putDouble(byte[] bytes, int offset, double d) {
+<span class="nc" id="L568">        return putLong(bytes, offset, Double.doubleToLongBits(d));</span>
+    }
+
+    /**
+     * Serialize a double as the IEEE 754 double format output. The resultant
+     * array will be 8 bytes long.
+     *
+     * @param d value
+     * @return the double represented as byte []
+     */
+    public static byte[] toBytes(final double d) {
+        // Encode it as a long
+<span class="nc" id="L580">        return Bytes.toBytes(Double.doubleToRawLongBits(d));</span>
+    }
+
+    /**
+     * Convert an int value to a byte array.  Big-endian.  Same as what DataOutputStream.writeInt
+     * does.
+     *
+     * @param val value
+     * @return the byte array
+     */
+    public static byte[] toBytes(int val) {
+<span class="nc" id="L591">        byte[] b = new byte[4];</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">        for (int i = 3; i &gt; 0; i--) {</span>
+<span class="nc" id="L593">            b[i] = (byte) val;</span>
+<span class="nc" id="L594">            val &gt;&gt;&gt;= 8;</span>
+        }
+<span class="nc" id="L596">        b[0] = (byte) val;</span>
+<span class="nc" id="L597">        return b;</span>
+    }
+
+    /**
+     * Converts a byte array to an int value
+     *
+     * @param bytes byte array
+     * @return the int value
+     */
+    public static int toInt(byte[] bytes) {
+<span class="nc" id="L607">        return toInt(bytes, 0, SIZEOF_INT);</span>
+    }
+
+    /**
+     * Converts a byte array to an int value
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @return the int value
+     */
+    public static int toInt(byte[] bytes, int offset) {
+<span class="nc" id="L618">        return toInt(bytes, offset, SIZEOF_INT);</span>
+    }
+
+    /**
+     * Converts a byte array to an int value
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @param length length of int (has to be {@link #SIZEOF_INT})
+     * @return the int value
+     * @throws IllegalArgumentException if length is not {@link #SIZEOF_INT} or
+     *                                  if there's not enough room in the array at the offset indicated.
+     */
+    public static int toInt(byte[] bytes, int offset, final int length) {
+<span class="nc bnc" id="L632" title="All 4 branches missed.">        if (length != SIZEOF_INT || offset + length &gt; bytes.length) {</span>
+<span class="nc" id="L633">            throw explainWrongLengthOrOffset(bytes, offset, length, SIZEOF_INT);</span>
+        }
+<span class="nc bnc" id="L635" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.isAvailable()) {</span>
+<span class="nc" id="L636">            return toIntUnsafe(bytes, offset);</span>
+        } else {
+<span class="nc" id="L638">            int n = 0;</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">            for (int i = offset; i &lt; (offset + length); i++) {</span>
+<span class="nc" id="L640">                n &lt;&lt;= 8;</span>
+<span class="nc" id="L641">                n ^= bytes[i] &amp; 0xFF;</span>
+            }
+<span class="nc" id="L643">            return n;</span>
+        }
+    }
+
+    /**
+     * Converts a byte array to an int value (Unsafe version)
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @return the int value
+     */
+    public static int toIntUnsafe(byte[] bytes, int offset) {
+<span class="nc bnc" id="L655" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.LITTLEENDIAN) {</span>
+<span class="nc" id="L656">            return Integer.reverseBytes(</span>
+                    org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe
+<span class="nc" id="L658">                            .getInt(bytes, (long) offset</span>
+                                    + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET));
+        } else {
+<span class="nc" id="L661">            return org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe</span>
+<span class="nc" id="L662">                    .getInt(bytes, (long) offset</span>
+                            + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET);
+        }
+    }
+
+    /**
+     * Converts a byte array to an short value (Unsafe version)
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @return the short value
+     */
+    public static short toShortUnsafe(byte[] bytes, int offset) {
+<span class="nc bnc" id="L675" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.LITTLEENDIAN) {</span>
+<span class="nc" id="L676">            return Short.reverseBytes(</span>
+                    org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe
+<span class="nc" id="L678">                            .getShort(bytes, (long) offset</span>
+                                    + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET));
+        } else {
+<span class="nc" id="L681">            return org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe</span>
+<span class="nc" id="L682">                    .getShort(bytes, (long) offset</span>
+                            + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET);
+        }
+    }
+
+    /**
+     * Converts a byte array to an long value (Unsafe version)
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @return the long value
+     */
+    public static long toLongUnsafe(byte[] bytes, int offset) {
+<span class="nc bnc" id="L695" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.LITTLEENDIAN) {</span>
+<span class="nc" id="L696">            return Long.reverseBytes(</span>
+                    org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe
+<span class="nc" id="L698">                            .getLong(bytes, (long) offset</span>
+                                    + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET));
+        } else {
+<span class="nc" id="L701">            return org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe</span>
+<span class="nc" id="L702">                    .getLong(bytes, (long) offset</span>
+                            + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET);
+        }
+    }
+
+    /**
+     * Converts a byte array to an int value
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @param length how many bytes should be considered for creating int
+     * @return the int value
+     * @throws IllegalArgumentException if there's not enough room in the array at the offset
+     *                                  indicated.
+     */
+    public static int readAsInt(byte[] bytes, int offset, final int length) {
+<span class="nc bnc" id="L718" title="All 2 branches missed.">        if (offset + length &gt; bytes.length) {</span>
+<span class="nc" id="L719">            throw new IllegalArgumentException(&quot;offset (&quot; + offset + &quot;) + length (&quot; + length + &quot;) exceed the&quot;</span>
+                    + &quot; capacity of the array: &quot; + bytes.length);
+        }
+<span class="nc" id="L722">        int n = 0;</span>
+<span class="nc bnc" id="L723" title="All 2 branches missed.">        for (int i = offset; i &lt; (offset + length); i++) {</span>
+<span class="nc" id="L724">            n &lt;&lt;= 8;</span>
+<span class="nc" id="L725">            n ^= bytes[i] &amp; 0xFF;</span>
+        }
+<span class="nc" id="L727">        return n;</span>
+    }
+
+    /**
+     * Put an int value out to the specified byte array position.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    int to write out
+     * @return incremented offset
+     * @throws IllegalArgumentException if the byte array given doesn't have
+     *                                  enough room at the offset specified.
+     */
+    public static int putInt(byte[] bytes, int offset, int val) {
+<span class="nc bnc" id="L741" title="All 2 branches missed.">        if (bytes.length - offset &lt; SIZEOF_INT) {</span>
+<span class="nc" id="L742">            throw new IllegalArgumentException(</span>
+                    &quot;Not enough room to put an int at&quot; + &quot; offset &quot; + offset + &quot; in a &quot; + bytes.length + &quot; byte array&quot;);
+        }
+<span class="nc bnc" id="L745" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.isAvailable()) {</span>
+<span class="nc" id="L746">            return putIntUnsafe(bytes, offset, val);</span>
+        } else {
+<span class="nc bnc" id="L748" title="All 2 branches missed.">            for (int i = offset + 3; i &gt; offset; i--) {</span>
+<span class="nc" id="L749">                bytes[i] = (byte) val;</span>
+<span class="nc" id="L750">                val &gt;&gt;&gt;= 8;</span>
+            }
+<span class="nc" id="L752">            bytes[offset] = (byte) val;</span>
+<span class="nc" id="L753">            return offset + SIZEOF_INT;</span>
+        }
+    }
+
+    /**
+     * Put an int value out to the specified byte array position (Unsafe).
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    int to write out
+     * @return incremented offset
+     */
+    public static int putIntUnsafe(byte[] bytes, int offset, int val) {
+<span class="nc bnc" id="L766" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.LITTLEENDIAN) {</span>
+<span class="nc" id="L767">            val = Integer.reverseBytes(val);</span>
+        }
+<span class="nc" id="L769">        org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe.putInt(bytes,</span>
+                (long) offset
+                        + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET,
+                val);
+<span class="nc" id="L773">        return offset + SIZEOF_INT;</span>
+    }
+
+    /**
+     * Convert a short value to a byte array of {@link #SIZEOF_SHORT} bytes long.
+     *
+     * @param val value
+     * @return the byte array
+     */
+    public static byte[] toBytes(short val) {
+<span class="nc" id="L783">        byte[] b = new byte[SIZEOF_SHORT];</span>
+<span class="nc" id="L784">        b[1] = (byte) val;</span>
+<span class="nc" id="L785">        val &gt;&gt;= 8;</span>
+<span class="nc" id="L786">        b[0] = (byte) val;</span>
+<span class="nc" id="L787">        return b;</span>
+    }
+
+    /**
+     * Converts a byte array to a short value
+     *
+     * @param bytes byte array
+     * @return the short value
+     */
+    public static short toShort(byte[] bytes) {
+<span class="nc" id="L797">        return toShort(bytes, 0, SIZEOF_SHORT);</span>
+    }
+
+    /**
+     * Converts a byte array to a short value
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @return the short value
+     */
+    public static short toShort(byte[] bytes, int offset) {
+<span class="nc" id="L808">        return toShort(bytes, offset, SIZEOF_SHORT);</span>
+    }
+
+    /**
+     * Converts a byte array to a short value
+     *
+     * @param bytes  byte array
+     * @param offset offset into array
+     * @param length length, has to be {@link #SIZEOF_SHORT}
+     * @return the short value
+     * @throws IllegalArgumentException if length is not {@link #SIZEOF_SHORT}
+     *                                  or if there's not enough room in the array at the offset indicated.
+     */
+    public static short toShort(byte[] bytes, int offset, final int length) {
+<span class="nc bnc" id="L822" title="All 4 branches missed.">        if (length != SIZEOF_SHORT || offset + length &gt; bytes.length) {</span>
+<span class="nc" id="L823">            throw explainWrongLengthOrOffset(bytes, offset, length, SIZEOF_SHORT);</span>
+        }
+<span class="nc bnc" id="L825" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.isAvailable()) {</span>
+<span class="nc" id="L826">            return toShortUnsafe(bytes, offset);</span>
+        } else {
+<span class="nc" id="L828">            short n = 0;</span>
+<span class="nc" id="L829">            n ^= bytes[offset] &amp; 0xFF;</span>
+<span class="nc" id="L830">            n &lt;&lt;= 8;</span>
+<span class="nc" id="L831">            n ^= bytes[offset + 1] &amp; 0xFF;</span>
+<span class="nc" id="L832">            return n;</span>
+        }
+    }
+
+    /**
+     * Returns a new byte array, copied from the given {@code buf},
+     * from the position (inclusive) to the limit (exclusive).
+     * The position and the other index parameters are not changed.
+     *
+     * @param buf a byte buffer
+     * @return the byte array
+     * @see #toBytes(ByteBuffer)
+     */
+    public static byte[] getBytes(ByteBuffer buf) {
+<span class="nc" id="L846">        return readBytes(buf.duplicate());</span>
+    }
+
+    /**
+     * Put a short value out to the specified byte array position.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    short to write out
+     * @return incremented offset
+     * @throws IllegalArgumentException if the byte array given doesn't have
+     *                                  enough room at the offset specified.
+     */
+    public static int putShort(byte[] bytes, int offset, short val) {
+<span class="nc bnc" id="L860" title="All 2 branches missed.">        if (bytes.length - offset &lt; SIZEOF_SHORT) {</span>
+<span class="nc" id="L861">            throw new IllegalArgumentException(&quot;Not enough room to put a short at&quot; + &quot; offset &quot; + offset + &quot; in a &quot;</span>
+                    + bytes.length + &quot; byte array&quot;);
+        }
+<span class="nc bnc" id="L864" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.isAvailable()) {</span>
+<span class="nc" id="L865">            return putShortUnsafe(bytes, offset, val);</span>
+        } else {
+<span class="nc" id="L867">            bytes[offset + 1] = (byte) val;</span>
+<span class="nc" id="L868">            val &gt;&gt;= 8;</span>
+<span class="nc" id="L869">            bytes[offset] = (byte) val;</span>
+<span class="nc" id="L870">            return offset + SIZEOF_SHORT;</span>
+        }
+    }
+
+    /**
+     * Put a short value out to the specified byte array position (Unsafe).
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    short to write out
+     * @return incremented offset
+     */
+    public static int putShortUnsafe(byte[] bytes, int offset, short val) {
+<span class="nc bnc" id="L883" title="All 2 branches missed.">        if (org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.LITTLEENDIAN) {</span>
+<span class="nc" id="L884">            val = Short.reverseBytes(val);</span>
+        }
+<span class="nc" id="L886">        org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.theUnsafe.putShort(bytes,</span>
+                (long) offset
+                        + org.apache.kylin.common.util.Bytes.LexicographicalComparerHolder.UnsafeComparer.BYTE_ARRAY_BASE_OFFSET,
+                val);
+<span class="nc" id="L890">        return offset + SIZEOF_SHORT;</span>
+    }
+
+    /**
+     * Put an int value as short out to the specified byte array position. Only the lower 2 bytes of
+     * the short will be put into the array. The caller of the API need to make sure they will not
+     * loose the value by doing so. This is useful to store an unsigned short which is represented as
+     * int in other parts.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    value to write out
+     * @return incremented offset
+     * @throws IllegalArgumentException if the byte array given doesn't have
+     *                                  enough room at the offset specified.
+     */
+    public static int putAsShort(byte[] bytes, int offset, int val) {
+<span class="nc bnc" id="L907" title="All 2 branches missed.">        if (bytes.length - offset &lt; SIZEOF_SHORT) {</span>
+<span class="nc" id="L908">            throw new IllegalArgumentException(&quot;Not enough room to put a short at&quot; + &quot; offset &quot; + offset + &quot; in a &quot;</span>
+                    + bytes.length + &quot; byte array&quot;);
+        }
+<span class="nc" id="L911">        bytes[offset + 1] = (byte) val;</span>
+<span class="nc" id="L912">        val &gt;&gt;= 8;</span>
+<span class="nc" id="L913">        bytes[offset] = (byte) val;</span>
+<span class="nc" id="L914">        return offset + SIZEOF_SHORT;</span>
+    }
+
+    /**
+     * Convert a BigDecimal value to a byte array
+     *
+     * @param val
+     * @return the byte array
+     */
+    public static byte[] toBytes(BigDecimal val) {
+<span class="nc" id="L924">        byte[] valueBytes = val.unscaledValue().toByteArray();</span>
+<span class="nc" id="L925">        byte[] result = new byte[valueBytes.length + SIZEOF_INT];</span>
+<span class="nc" id="L926">        int offset = putInt(result, 0, val.scale());</span>
+<span class="nc" id="L927">        putBytes(result, offset, valueBytes, 0, valueBytes.length);</span>
+<span class="nc" id="L928">        return result;</span>
+    }
+
+    /**
+     * Converts a byte array to a BigDecimal
+     *
+     * @param bytes
+     * @return the char value
+     */
+    public static BigDecimal toBigDecimal(byte[] bytes) {
+<span class="nc" id="L938">        return toBigDecimal(bytes, 0, bytes.length);</span>
+    }
+
+    /**
+     * Converts a byte array to a BigDecimal value
+     *
+     * @param bytes
+     * @param offset
+     * @param length
+     * @return the char value
+     */
+    public static BigDecimal toBigDecimal(byte[] bytes, int offset, final int length) {
+<span class="nc bnc" id="L950" title="All 6 branches missed.">        if (bytes == null || length &lt; SIZEOF_INT + 1 || (offset + length &gt; bytes.length)) {</span>
+<span class="nc" id="L951">            return null;</span>
+        }
+
+<span class="nc" id="L954">        int scale = toInt(bytes, offset);</span>
+<span class="nc" id="L955">        byte[] tcBytes = new byte[length - SIZEOF_INT];</span>
+<span class="nc" id="L956">        System.arraycopy(bytes, offset + SIZEOF_INT, tcBytes, 0, length - SIZEOF_INT);</span>
+<span class="nc" id="L957">        return new BigDecimal(new BigInteger(tcBytes), scale);</span>
+    }
+
+    /**
+     * Put a BigDecimal value out to the specified byte array position.
+     *
+     * @param bytes  the byte array
+     * @param offset position in the array
+     * @param val    BigDecimal to write out
+     * @return incremented offset
+     */
+    public static int putBigDecimal(byte[] bytes, int offset, BigDecimal val) {
+<span class="nc bnc" id="L969" title="All 2 branches missed.">        if (bytes == null) {</span>
+<span class="nc" id="L970">            return offset;</span>
+        }
+
+<span class="nc" id="L973">        byte[] valueBytes = val.unscaledValue().toByteArray();</span>
+<span class="nc" id="L974">        byte[] result = new byte[valueBytes.length + SIZEOF_INT];</span>
+<span class="nc" id="L975">        offset = putInt(result, offset, val.scale());</span>
+<span class="nc" id="L976">        return putBytes(result, offset, valueBytes, 0, valueBytes.length);</span>
+    }
+
+    /**
+     * @param left  left operand
+     * @param right right operand
+     * @return 0 if equal, &lt; 0 if left is less than right, etc.
+     */
+    public static int compareTo(final byte[] left, final byte[] right) {
+<span class="nc" id="L985">        return LexicographicalComparerHolder.BEST_COMPARER.compareTo(left, 0, left.length, right, 0, right.length);</span>
+    }
+
+    /**
+     * Lexicographically compare two arrays.
+     *
+     * @param buffer1 left operand
+     * @param buffer2 right operand
+     * @param offset1 Where to start comparing in the left buffer
+     * @param offset2 Where to start comparing in the right buffer
+     * @param length1 How much to compare from the left buffer
+     * @param length2 How much to compare from the right buffer
+     * @return 0 if equal, &lt; 0 if left is less than right, etc.
+     */
+    public static int compareTo(byte[] buffer1, int offset1, int length1, byte[] buffer2, int offset2, int length2) {
+<span class="nc" id="L1000">        return LexicographicalComparerHolder.BEST_COMPARER.compareTo(buffer1, offset1, length1, buffer2, offset2,</span>
+                length2);
+    }
+
+    interface Comparer&lt;T&gt; {
+        int compareTo(T buffer1, int offset1, int length1, T buffer2, int offset2, int length2);
+    }
+
+    static Comparer&lt;byte[]&gt; lexicographicalComparerJavaImpl() {
+<span class="nc" id="L1009">        return LexicographicalComparerHolder.PureJavaComparer.INSTANCE;</span>
+    }
+
+    /**
+     * Provides a lexicographical comparer implementation; either a Java
+     * implementation or a faster implementation based on {@link sun.misc.Unsafe}.
+     * &lt;p/&gt;
+     * &lt;p&gt;Uses reflection to gracefully fall back to the Java implementation if
+     * {@code Unsafe} isn't available.
+     */
+<span class="nc" id="L1019">    static class LexicographicalComparerHolder {</span>
+<span class="nc" id="L1020">        static final String UNSAFE_COMPARER_NAME = LexicographicalComparerHolder.class.getName() + &quot;$UnsafeComparer&quot;;</span>
+
+<span class="nc" id="L1022">        static final Comparer&lt;byte[]&gt; BEST_COMPARER = getBestComparer();</span>
+
+        /**
+         * Returns the Unsafe-using Comparer, or falls back to the pure-Java
+         * implementation if unable to do so.
+         */
+        static Comparer&lt;byte[]&gt; getBestComparer() {
+            try {
+<span class="nc" id="L1030">                Class&lt;?&gt; theClass = Class.forName(UNSAFE_COMPARER_NAME);</span>
+
+                // yes, UnsafeComparer does implement Comparer&lt;byte[]&gt;
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L1034">                Comparer&lt;byte[]&gt; comparer = (Comparer&lt;byte[]&gt;) theClass.getEnumConstants()[0];</span>
+<span class="nc" id="L1035">                return comparer;</span>
+<span class="nc" id="L1036">            } catch (Throwable t) { // ensure we really catch *everything*</span>
+<span class="nc" id="L1037">                return lexicographicalComparerJavaImpl();</span>
+            }
+        }
+
+<span class="nc" id="L1041">        enum PureJavaComparer implements Comparer&lt;byte[]&gt; {</span>
+<span class="nc" id="L1042">            INSTANCE;</span>
+
+            @Override
+            public int compareTo(byte[] buffer1, int offset1, int length1, byte[] buffer2, int offset2, int length2) {
+                // Short circuit equal case
+<span class="nc bnc" id="L1047" title="All 6 branches missed.">                if (buffer1 == buffer2 &amp;&amp; offset1 == offset2 &amp;&amp; length1 == length2) {</span>
+<span class="nc" id="L1048">                    return 0;</span>
+                }
+                // Bring WritableComparator code local
+<span class="nc" id="L1051">                int end1 = offset1 + length1;</span>
+<span class="nc" id="L1052">                int end2 = offset2 + length2;</span>
+<span class="nc bnc" id="L1053" title="All 4 branches missed.">                for (int i = offset1, j = offset2; i &lt; end1 &amp;&amp; j &lt; end2; i++, j++) {</span>
+<span class="nc" id="L1054">                    int a = (buffer1[i] &amp; 0xff);</span>
+<span class="nc" id="L1055">                    int b = (buffer2[j] &amp; 0xff);</span>
+<span class="nc bnc" id="L1056" title="All 2 branches missed.">                    if (a != b) {</span>
+<span class="nc" id="L1057">                        return a - b;</span>
+                    }
+                }
+<span class="nc" id="L1060">                return length1 - length2;</span>
+            }
+        }
+
+<span class="nc" id="L1064">        enum UnsafeComparer implements Comparer&lt;byte[]&gt; {</span>
+<span class="nc" id="L1065">            INSTANCE;</span>
+
+            static final Unsafe theUnsafe;
+
+            /**
+             * The offset to the first element in a byte array.
+             */
+            static final int BYTE_ARRAY_BASE_OFFSET;
+
+            static {
+<span class="nc" id="L1075">                theUnsafe = (Unsafe) AccessController.doPrivileged(new PrivilegedAction&lt;Object&gt;() {</span>
+                    @Override
+                    public Object run() {
+                        try {
+<span class="nc" id="L1079">                            Field f = Unsafe.class.getDeclaredField(&quot;theUnsafe&quot;);</span>
+<span class="nc" id="L1080">                            f.setAccessible(true);</span>
+<span class="nc" id="L1081">                            return f.get(null);</span>
+<span class="nc" id="L1082">                        } catch (NoSuchFieldException e) {</span>
+                            // It doesn't matter what we throw;
+                            // it's swallowed in getBestComparer().
+<span class="nc" id="L1085">                            throw new Error();</span>
+<span class="nc" id="L1086">                        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L1087">                            throw new Error();</span>
+                        }
+                    }
+                });
+
+<span class="nc" id="L1092">                BYTE_ARRAY_BASE_OFFSET = theUnsafe.arrayBaseOffset(byte[].class);</span>
+
+                // sanity check - this should never fail
+<span class="nc bnc" id="L1095" title="All 2 branches missed.">                if (theUnsafe.arrayIndexScale(byte[].class) != 1) {</span>
+<span class="nc" id="L1096">                    throw new AssertionError();</span>
+                }
+            }
+
+<span class="nc" id="L1100">            static final boolean LITTLEENDIAN = ByteOrder.nativeOrder().equals(ByteOrder.LITTLE_ENDIAN);</span>
+
+            /**
+             * Returns true if x1 is less than x2, when both values are treated as
+             * unsigned long.
+             */
+            static boolean lessThanUnsignedLong(long x1, long x2) {
+<span class="nc bnc" id="L1107" title="All 2 branches missed.">                return (x1 + Long.MIN_VALUE) &lt; (x2 + Long.MIN_VALUE);</span>
+            }
+
+            /**
+             * Returns true if x1 is less than x2, when both values are treated as
+             * unsigned int.
+             */
+            static boolean lessThanUnsignedInt(int x1, int x2) {
+<span class="nc bnc" id="L1115" title="All 2 branches missed.">                return (x1 &amp; 0xffffffffL) &lt; (x2 &amp; 0xffffffffL);</span>
+            }
+
+            /**
+             * Returns true if x1 is less than x2, when both values are treated as
+             * unsigned short.
+             */
+            static boolean lessThanUnsignedShort(short x1, short x2) {
+<span class="nc bnc" id="L1123" title="All 2 branches missed.">                return (x1 &amp; 0xffff) &lt; (x2 &amp; 0xffff);</span>
+            }
+
+            /**
+             * Checks if Unsafe is available
+             *
+             * @return true, if available, false - otherwise
+             */
+            public static boolean isAvailable() {
+<span class="nc bnc" id="L1132" title="All 2 branches missed.">                return theUnsafe != null;</span>
+            }
+
+            /**
+             * Lexicographically compare two arrays.
+             *
+             * @param buffer1 left operand
+             * @param buffer2 right operand
+             * @param offset1 Where to start comparing in the left buffer
+             * @param offset2 Where to start comparing in the right buffer
+             * @param length1 How much to compare from the left buffer
+             * @param length2 How much to compare from the right buffer
+             * @return 0 if equal, &lt; 0 if left is less than right, etc.
+             */
+            @Override
+            public int compareTo(byte[] buffer1, int offset1, int length1, byte[] buffer2, int offset2, int length2) {
+
+                // Short circuit equal case
+<span class="nc bnc" id="L1150" title="All 6 branches missed.">                if (buffer1 == buffer2 &amp;&amp; offset1 == offset2 &amp;&amp; length1 == length2) {</span>
+<span class="nc" id="L1151">                    return 0;</span>
+                }
+<span class="nc" id="L1153">                final int minLength = Math.min(length1, length2);</span>
+<span class="nc" id="L1154">                final int minWords = minLength / SIZEOF_LONG;</span>
+<span class="nc" id="L1155">                final long offset1Adj = offset1 + (long) BYTE_ARRAY_BASE_OFFSET;</span>
+<span class="nc" id="L1156">                final long offset2Adj = offset2 + (long) BYTE_ARRAY_BASE_OFFSET;</span>
+
+                /*
+                 * Compare 8 bytes at a time. Benchmarking shows comparing 8 bytes at a
+                 * time is no slower than comparing 4 bytes at a time even on 32-bit.
+                 * On the other hand, it is substantially faster on 64-bit.
+                 */
+<span class="nc bnc" id="L1163" title="All 2 branches missed.">                for (int i = 0; i &lt; minWords * SIZEOF_LONG; i += SIZEOF_LONG) {</span>
+<span class="nc" id="L1164">                    long lw = theUnsafe.getLong(buffer1, offset1Adj + (long) i);</span>
+<span class="nc" id="L1165">                    long rw = theUnsafe.getLong(buffer2, offset2Adj + (long) i);</span>
+<span class="nc" id="L1166">                    long diff = lw ^ rw;</span>
+<span class="nc bnc" id="L1167" title="All 2 branches missed.">                    if (LITTLEENDIAN) {</span>
+<span class="nc" id="L1168">                        lw = Long.reverseBytes(lw);</span>
+<span class="nc" id="L1169">                        rw = Long.reverseBytes(rw);</span>
+                    }
+<span class="nc bnc" id="L1171" title="All 2 branches missed.">                    if (diff != 0) {</span>
+<span class="nc bnc" id="L1172" title="All 2 branches missed.">                        return lessThanUnsignedLong(lw, rw) ? -1 : 1;</span>
+                    }
+                }
+<span class="nc" id="L1175">                int offset = minWords * SIZEOF_LONG;</span>
+
+<span class="nc bnc" id="L1177" title="All 2 branches missed.">                if (minLength - offset &gt;= SIZEOF_INT) {</span>
+<span class="nc" id="L1178">                    int il = theUnsafe.getInt(buffer1, offset1Adj + offset);</span>
+<span class="nc" id="L1179">                    int ir = theUnsafe.getInt(buffer2, offset2Adj + offset);</span>
+<span class="nc bnc" id="L1180" title="All 2 branches missed.">                    if (LITTLEENDIAN) {</span>
+<span class="nc" id="L1181">                        il = Integer.reverseBytes(il);</span>
+<span class="nc" id="L1182">                        ir = Integer.reverseBytes(ir);</span>
+                    }
+<span class="nc bnc" id="L1184" title="All 2 branches missed.">                    if (il != ir) {</span>
+<span class="nc bnc" id="L1185" title="All 2 branches missed.">                        return lessThanUnsignedInt(il, ir) ? -1 : 1;</span>
+                    }
+<span class="nc" id="L1187">                    offset += SIZEOF_INT;</span>
+                }
+<span class="nc bnc" id="L1189" title="All 2 branches missed.">                if (minLength - offset &gt;= SIZEOF_SHORT) {</span>
+<span class="nc" id="L1190">                    short sl = theUnsafe.getShort(buffer1, offset1Adj + offset);</span>
+<span class="nc" id="L1191">                    short sr = theUnsafe.getShort(buffer2, offset2Adj + offset);</span>
+<span class="nc bnc" id="L1192" title="All 2 branches missed.">                    if (LITTLEENDIAN) {</span>
+<span class="nc" id="L1193">                        sl = Short.reverseBytes(sl);</span>
+<span class="nc" id="L1194">                        sr = Short.reverseBytes(sr);</span>
+                    }
+<span class="nc bnc" id="L1196" title="All 2 branches missed.">                    if (sl != sr) {</span>
+<span class="nc bnc" id="L1197" title="All 2 branches missed.">                        return lessThanUnsignedShort(sl, sr) ? -1 : 1;</span>
+                    }
+<span class="nc" id="L1199">                    offset += SIZEOF_SHORT;</span>
+                }
+<span class="nc bnc" id="L1201" title="All 2 branches missed.">                if (minLength - offset == 1) {</span>
+<span class="nc" id="L1202">                    int a = (buffer1[(int) (offset1 + offset)] &amp; 0xff);</span>
+<span class="nc" id="L1203">                    int b = (buffer2[(int) (offset2 + offset)] &amp; 0xff);</span>
+<span class="nc bnc" id="L1204" title="All 2 branches missed.">                    if (a != b) {</span>
+<span class="nc" id="L1205">                        return a - b;</span>
+                    }
+                }
+<span class="nc" id="L1208">                return length1 - length2;</span>
+            }
+        }
+    }
+
+    /**
+     * @param left  left operand
+     * @param right right operand
+     * @return True if equal
+     */
+    public static boolean equals(final byte[] left, final byte[] right) {
+        // Could use Arrays.equals?
+        //noinspection SimplifiableConditionalExpression
+<span class="nc bnc" id="L1221" title="All 2 branches missed.">        if (left == right)</span>
+<span class="nc" id="L1222">            return true;</span>
+<span class="nc bnc" id="L1223" title="All 4 branches missed.">        if (left == null || right == null)</span>
+<span class="nc" id="L1224">            return false;</span>
+<span class="nc bnc" id="L1225" title="All 2 branches missed.">        if (left.length != right.length)</span>
+<span class="nc" id="L1226">            return false;</span>
+<span class="nc bnc" id="L1227" title="All 2 branches missed.">        if (left.length == 0)</span>
+<span class="nc" id="L1228">            return true;</span>
+
+        // Since we're often comparing adjacent sorted data,
+        // it's usual to have equal arrays except for the very last byte
+        // so check that first
+<span class="nc bnc" id="L1233" title="All 2 branches missed.">        if (left[left.length - 1] != right[right.length - 1])</span>
+<span class="nc" id="L1234">            return false;</span>
+
+<span class="nc bnc" id="L1236" title="All 2 branches missed.">        return compareTo(left, right) == 0;</span>
+    }
+
+    public static boolean equals(final byte[] left, int leftOffset, int leftLen, final byte[] right, int rightOffset,
+            int rightLen) {
+        // short circuit case
+<span class="nc bnc" id="L1242" title="All 6 branches missed.">        if (left == right &amp;&amp; leftOffset == rightOffset &amp;&amp; leftLen == rightLen) {</span>
+<span class="nc" id="L1243">            return true;</span>
+        }
+        // different lengths fast check
+<span class="nc bnc" id="L1246" title="All 2 branches missed.">        if (leftLen != rightLen) {</span>
+<span class="nc" id="L1247">            return false;</span>
+        }
+<span class="nc bnc" id="L1249" title="All 2 branches missed.">        if (leftLen == 0) {</span>
+<span class="nc" id="L1250">            return true;</span>
+        }
+
+        // Since we're often comparing adjacent sorted data,
+        // it's usual to have equal arrays except for the very last byte
+        // so check that first
+<span class="nc bnc" id="L1256" title="All 2 branches missed.">        if (left[leftOffset + leftLen - 1] != right[rightOffset + rightLen - 1])</span>
+<span class="nc" id="L1257">            return false;</span>
+
+<span class="nc bnc" id="L1259" title="All 2 branches missed.">        return LexicographicalComparerHolder.BEST_COMPARER.compareTo(left, leftOffset, leftLen, right, rightOffset,</span>
+                rightLen) == 0;
+    }
+
+    /**
+     * @param a   left operand
+     * @param buf right operand
+     * @return True if equal
+     */
+    public static boolean equals(byte[] a, ByteBuffer buf) {
+<span class="nc bnc" id="L1269" title="All 2 branches missed.">        if (a == null)</span>
+<span class="nc bnc" id="L1270" title="All 2 branches missed.">            return buf == null;</span>
+<span class="nc bnc" id="L1271" title="All 2 branches missed.">        if (buf == null)</span>
+<span class="nc" id="L1272">            return false;</span>
+<span class="nc bnc" id="L1273" title="All 2 branches missed.">        if (a.length != buf.remaining())</span>
+<span class="nc" id="L1274">            return false;</span>
+
+        // Thou shalt not modify the original byte buffer in what should be read only operations.
+<span class="nc" id="L1277">        ByteBuffer b = buf.duplicate();</span>
+<span class="nc bnc" id="L1278" title="All 2 branches missed.">        for (byte anA : a) {</span>
+<span class="nc bnc" id="L1279" title="All 2 branches missed.">            if (anA != b.get()) {</span>
+<span class="nc" id="L1280">                return false;</span>
+            }
+        }
+<span class="nc" id="L1283">        return true;</span>
+    }
+
+    /**
+     * Return true if the byte array on the right is a prefix of the byte
+     * array on the left.
+     */
+    public static boolean startsWith(byte[] bytes, byte[] prefix) {
+<span class="nc bnc" id="L1291" title="All 6 branches missed.">        return bytes != null &amp;&amp; prefix != null &amp;&amp; bytes.length &gt;= prefix.length</span>
+<span class="nc bnc" id="L1292" title="All 2 branches missed.">                &amp;&amp; LexicographicalComparerHolder.BEST_COMPARER.compareTo(bytes, 0, prefix.length, prefix, 0,</span>
+                        prefix.length) == 0;
+    }
+
+    /**
+     * @param b bytes to hash
+     * @return Runs {@link org.apache.hadoop.io.WritableComparator#hashBytes(byte[], int)} on the
+     * passed in array.  This method is what {@link org.apache.hadoop.io.Text} and
+     * {@link org.apache.hadoop.hbase.io.ImmutableBytesWritable} use calculating hash code.
+     */
+    public static int hashCode(final byte[] b) {
+<span class="nc" id="L1303">        return hashCode(b, b.length);</span>
+    }
+
+    /**
+     * @param b      value
+     * @param length length of the value
+     * @return Runs {@link org.apache.hadoop.io.WritableComparator#hashBytes(byte[], int)} on the
+     * passed in array.  This method is what {@link org.apache.hadoop.io.Text} and
+     * {@link org.apache.hadoop.hbase.io.ImmutableBytesWritable} use calculating hash code.
+     */
+    public static int hashCode(final byte[] b, final int length) {
+<span class="nc" id="L1314">        return hashBytes(b, 0, length);</span>
+    }
+
+    /** Compute hash for binary data. */
+    public static int hashBytes(byte[] bytes, int offset, int length) {
+<span class="nc" id="L1319">        return hashCode(bytes, offset, length);</span>
+    }
+
+    /**
+     * @param b bytes to hash
+     * @return A hash of &lt;code&gt;b&lt;/code&gt; as an Integer that can be used as key in
+     * Maps.
+     */
+    public static Integer mapKey(final byte[] b) {
+<span class="nc" id="L1328">        return hashCode(b);</span>
+    }
+
+    /**
+     * @param b      bytes to hash
+     * @param length length to hash
+     * @return A hash of &lt;code&gt;b&lt;/code&gt; as an Integer that can be used as key in
+     * Maps.
+     */
+    public static Integer mapKey(final byte[] b, final int length) {
+<span class="nc" id="L1338">        return hashCode(b, length);</span>
+    }
+
+    /**
+     * @param a lower half
+     * @param b upper half
+     * @return New array that has a in lower half and b in upper half.
+     */
+    public static byte[] add(final byte[] a, final byte[] b) {
+<span class="nc" id="L1347">        return add(a, b, EMPTY_BYTE_ARRAY);</span>
+    }
+
+    /**
+     * @param a first third
+     * @param b second third
+     * @param c third third
+     * @return New array made from a, b and c
+     */
+    public static byte[] add(final byte[] a, final byte[] b, final byte[] c) {
+<span class="nc" id="L1357">        byte[] result = new byte[a.length + b.length + c.length];</span>
+<span class="nc" id="L1358">        System.arraycopy(a, 0, result, 0, a.length);</span>
+<span class="nc" id="L1359">        System.arraycopy(b, 0, result, a.length, b.length);</span>
+<span class="nc" id="L1360">        System.arraycopy(c, 0, result, a.length + b.length, c.length);</span>
+<span class="nc" id="L1361">        return result;</span>
+    }
+
+    /**
+     * @param a      array
+     * @param length amount of bytes to grab
+     * @return First &lt;code&gt;length&lt;/code&gt; bytes from &lt;code&gt;a&lt;/code&gt;
+     */
+    public static byte[] head(final byte[] a, final int length) {
+<span class="nc bnc" id="L1370" title="All 2 branches missed.">        if (a.length &lt; length) {</span>
+<span class="nc" id="L1371">            return null;</span>
+        }
+<span class="nc" id="L1373">        byte[] result = new byte[length];</span>
+<span class="nc" id="L1374">        System.arraycopy(a, 0, result, 0, length);</span>
+<span class="nc" id="L1375">        return result;</span>
+    }
+
+    /**
+     * @param a      array
+     * @param length amount of bytes to snarf
+     * @return Last &lt;code&gt;length&lt;/code&gt; bytes from &lt;code&gt;a&lt;/code&gt;
+     */
+    public static byte[] tail(final byte[] a, final int length) {
+<span class="nc bnc" id="L1384" title="All 2 branches missed.">        if (a.length &lt; length) {</span>
+<span class="nc" id="L1385">            return null;</span>
+        }
+<span class="nc" id="L1387">        byte[] result = new byte[length];</span>
+<span class="nc" id="L1388">        System.arraycopy(a, a.length - length, result, 0, length);</span>
+<span class="nc" id="L1389">        return result;</span>
+    }
+
+    /**
+     * @param a      array
+     * @param length new array size
+     * @return Value in &lt;code&gt;a&lt;/code&gt; plus &lt;code&gt;length&lt;/code&gt; prepended 0 bytes
+     */
+    public static byte[] padHead(final byte[] a, final int length) {
+<span class="nc" id="L1398">        byte[] padding = new byte[length];</span>
+<span class="nc bnc" id="L1399" title="All 2 branches missed.">        for (int i = 0; i &lt; length; i++) {</span>
+<span class="nc" id="L1400">            padding[i] = 0;</span>
+        }
+<span class="nc" id="L1402">        return add(padding, a);</span>
+    }
+
+    /**
+     * @param a      array
+     * @param length new array size
+     * @return Value in &lt;code&gt;a&lt;/code&gt; plus &lt;code&gt;length&lt;/code&gt; appended 0 bytes
+     */
+    public static byte[] padTail(final byte[] a, final int length) {
+<span class="nc" id="L1411">        byte[] padding = new byte[length];</span>
+<span class="nc bnc" id="L1412" title="All 2 branches missed.">        for (int i = 0; i &lt; length; i++) {</span>
+<span class="nc" id="L1413">            padding[i] = 0;</span>
+        }
+<span class="nc" id="L1415">        return add(a, padding);</span>
+    }
+
+    /**
+     * Split passed range.  Expensive operation relatively.  Uses BigInteger math.
+     * Useful splitting ranges for MapReduce jobs.
+     *
+     * @param a   Beginning of range
+     * @param b   End of range
+     * @param num Number of times to split range.  Pass 1 if you want to split
+     *            the range in two; i.e. one split.
+     * @return Array of dividing values
+     */
+    public static byte[][] split(final byte[] a, final byte[] b, final int num) {
+<span class="nc" id="L1429">        return split(a, b, false, num);</span>
+    }
+
+    /**
+     * Split passed range.  Expensive operation relatively.  Uses BigInteger math.
+     * Useful splitting ranges for MapReduce jobs.
+     *
+     * @param a         Beginning of range
+     * @param b         End of range
+     * @param inclusive Whether the end of range is prefix-inclusive or is
+     *                  considered an exclusive boundary.  Automatic splits are generally exclusive
+     *                  and manual splits with an explicit range utilize an inclusive end of range.
+     * @param num       Number of times to split range.  Pass 1 if you want to split
+     *                  the range in two; i.e. one split.
+     * @return Array of dividing values
+     */
+    public static byte[][] split(final byte[] a, final byte[] b, boolean inclusive, final int num) {
+<span class="nc" id="L1446">        byte[][] ret = new byte[num + 2][];</span>
+<span class="nc" id="L1447">        int i = 0;</span>
+<span class="nc" id="L1448">        Iterable&lt;byte[]&gt; iter = iterateOnSplits(a, b, inclusive, num);</span>
+<span class="nc bnc" id="L1449" title="All 2 branches missed.">        if (iter == null)</span>
+<span class="nc" id="L1450">            return null;</span>
+<span class="nc bnc" id="L1451" title="All 2 branches missed.">        for (byte[] elem : iter) {</span>
+<span class="nc" id="L1452">            ret[i++] = elem;</span>
+<span class="nc" id="L1453">        }</span>
+<span class="nc" id="L1454">        return ret;</span>
+    }
+
+    /**
+     * Iterate over keys within the passed range, splitting at an [a,b) boundary.
+     */
+    public static Iterable&lt;byte[]&gt; iterateOnSplits(final byte[] a, final byte[] b, final int num) {
+<span class="nc" id="L1461">        return iterateOnSplits(a, b, false, num);</span>
+    }
+
+    /**
+     * Iterate over keys within the passed range.
+     */
+    public static Iterable&lt;byte[]&gt; iterateOnSplits(final byte[] a, final byte[] b, boolean inclusive, final int num) {
+        byte[] aPadded;
+        byte[] bPadded;
+<span class="nc bnc" id="L1470" title="All 2 branches missed.">        if (a.length &lt; b.length) {</span>
+<span class="nc" id="L1471">            aPadded = padTail(a, b.length - a.length);</span>
+<span class="nc" id="L1472">            bPadded = b;</span>
+<span class="nc bnc" id="L1473" title="All 2 branches missed.">        } else if (b.length &lt; a.length) {</span>
+<span class="nc" id="L1474">            aPadded = a;</span>
+<span class="nc" id="L1475">            bPadded = padTail(b, a.length - b.length);</span>
+        } else {
+<span class="nc" id="L1477">            aPadded = a;</span>
+<span class="nc" id="L1478">            bPadded = b;</span>
+        }
+<span class="nc bnc" id="L1480" title="All 2 branches missed.">        if (compareTo(aPadded, bPadded) &gt;= 0) {</span>
+<span class="nc" id="L1481">            throw new IllegalArgumentException(&quot;b &lt;= a&quot;);</span>
+        }
+<span class="nc bnc" id="L1483" title="All 2 branches missed.">        if (num &lt;= 0) {</span>
+<span class="nc" id="L1484">            throw new IllegalArgumentException(&quot;num cannot be &lt;= 0&quot;);</span>
+        }
+<span class="nc" id="L1486">        byte[] prependHeader = { 1, 0 };</span>
+<span class="nc" id="L1487">        final BigInteger startBI = new BigInteger(add(prependHeader, aPadded));</span>
+<span class="nc" id="L1488">        final BigInteger stopBI = new BigInteger(add(prependHeader, bPadded));</span>
+<span class="nc" id="L1489">        BigInteger diffBI = stopBI.subtract(startBI);</span>
+<span class="nc bnc" id="L1490" title="All 2 branches missed.">        if (inclusive) {</span>
+<span class="nc" id="L1491">            diffBI = diffBI.add(BigInteger.ONE);</span>
+        }
+<span class="nc" id="L1493">        final BigInteger splitsBI = BigInteger.valueOf(num + 1L);</span>
+<span class="nc bnc" id="L1494" title="All 2 branches missed.">        if (diffBI.compareTo(splitsBI) &lt; 0) {</span>
+<span class="nc" id="L1495">            return null;</span>
+        }
+        final BigInteger intervalBI;
+        try {
+<span class="nc" id="L1499">            intervalBI = diffBI.divide(splitsBI);</span>
+<span class="nc" id="L1500">        } catch (Exception e) {</span>
+<span class="nc" id="L1501">            LOG.error(&quot;Exception caught during division&quot;, e);</span>
+<span class="nc" id="L1502">            return null;</span>
+<span class="nc" id="L1503">        }</span>
+
+<span class="nc" id="L1505">        final Iterator&lt;byte[]&gt; iterator = new Iterator&lt;byte[]&gt;() {</span>
+<span class="nc" id="L1506">            private int i = -1;</span>
+
+            @Override
+            public boolean hasNext() {
+<span class="nc bnc" id="L1510" title="All 2 branches missed.">                return i &lt; num + 1;</span>
+            }
+
+            @Override
+            public byte[] next() {
+<span class="nc" id="L1515">                i++;</span>
+<span class="nc bnc" id="L1516" title="All 2 branches missed.">                if (i == 0)</span>
+<span class="nc" id="L1517">                    return a;</span>
+<span class="nc bnc" id="L1518" title="All 2 branches missed.">                if (i == num + 1)</span>
+<span class="nc" id="L1519">                    return b;</span>
+
+<span class="nc" id="L1521">                BigInteger curBI = startBI.add(intervalBI.multiply(BigInteger.valueOf(i)));</span>
+<span class="nc" id="L1522">                byte[] padded = curBI.toByteArray();</span>
+<span class="nc bnc" id="L1523" title="All 2 branches missed.">                if (padded[1] == 0)</span>
+<span class="nc" id="L1524">                    padded = tail(padded, padded.length - 2);</span>
+                else
+<span class="nc" id="L1526">                    padded = tail(padded, padded.length - 1);</span>
+<span class="nc" id="L1527">                return padded;</span>
+            }
+
+            @Override
+            public void remove() {
+<span class="nc" id="L1532">                throw new UnsupportedOperationException();</span>
+            }
+
+        };
+
+<span class="nc" id="L1537">        return () -&gt; iterator;</span>
+    }
+
+    /**
+     * @param bytes  array to hash
+     * @param offset offset to start from
+     * @param length length to hash
+     */
+    public static int hashCode(byte[] bytes, int offset, int length) {
+<span class="nc" id="L1546">        int hash = 1;</span>
+<span class="nc bnc" id="L1547" title="All 2 branches missed.">        for (int i = offset; i &lt; offset + length; i++)</span>
+<span class="nc" id="L1548">            hash = (31 * hash) + (int) bytes[i];</span>
+<span class="nc" id="L1549">        return hash;</span>
+    }
+
+    /**
+     * @param t operands
+     * @return Array of byte arrays made from passed array of Text
+     */
+    public static byte[][] toByteArrays(final String[] t) {
+<span class="nc" id="L1557">        byte[][] result = new byte[t.length][];</span>
+<span class="nc bnc" id="L1558" title="All 2 branches missed.">        for (int i = 0; i &lt; t.length; i++) {</span>
+<span class="nc" id="L1559">            result[i] = Bytes.toBytes(t[i]);</span>
+        }
+<span class="nc" id="L1561">        return result;</span>
+    }
+
+    /**
+     * @param column operand
+     * @return A byte array of a byte array where first and only entry is
+     * &lt;code&gt;column&lt;/code&gt;
+     */
+    public static byte[][] toByteArrays(final String column) {
+<span class="nc" id="L1570">        return toByteArrays(toBytes(column));</span>
+    }
+
+    /**
+     * @param column operand
+     * @return A byte array of a byte array where first and only entry is
+     * &lt;code&gt;column&lt;/code&gt;
+     */
+    public static byte[][] toByteArrays(final byte[] column) {
+<span class="nc" id="L1579">        byte[][] result = new byte[1][];</span>
+<span class="nc" id="L1580">        result[0] = column;</span>
+<span class="nc" id="L1581">        return result;</span>
+    }
+
+    /**
+     * Bytewise binary increment/deincrement of long contained in byte array
+     * on given amount.
+     *
+     * @param value  - array of bytes containing long (length &lt;= SIZEOF_LONG)
+     * @param amount value will be incremented on (deincremented if negative)
+     * @return array of bytes containing incremented long (length == SIZEOF_LONG)
+     */
+    public static byte[] incrementBytes(byte[] value, long amount) {
+<span class="nc" id="L1593">        byte[] val = value;</span>
+<span class="nc bnc" id="L1594" title="All 2 branches missed.">        if (val.length &lt; SIZEOF_LONG) {</span>
+            // Hopefully this doesn't happen too often.
+            byte[] newvalue;
+<span class="nc bnc" id="L1597" title="All 2 branches missed.">            if (val[0] &lt; 0) {</span>
+<span class="nc" id="L1598">                newvalue = new byte[] { -1, -1, -1, -1, -1, -1, -1, -1 };</span>
+            } else {
+<span class="nc" id="L1600">                newvalue = new byte[SIZEOF_LONG];</span>
+            }
+<span class="nc" id="L1602">            System.arraycopy(val, 0, newvalue, newvalue.length - val.length, val.length);</span>
+<span class="nc" id="L1603">            val = newvalue;</span>
+<span class="nc bnc" id="L1604" title="All 2 branches missed.">        } else if (val.length &gt; SIZEOF_LONG) {</span>
+<span class="nc" id="L1605">            throw new IllegalArgumentException(&quot;Increment Bytes - value too big: &quot; + val.length);</span>
+        }
+<span class="nc bnc" id="L1607" title="All 2 branches missed.">        if (amount == 0)</span>
+<span class="nc" id="L1608">            return val;</span>
+<span class="nc bnc" id="L1609" title="All 2 branches missed.">        if (val[0] &lt; 0) {</span>
+<span class="nc" id="L1610">            return binaryIncrementNeg(val, amount);</span>
+        }
+<span class="nc" id="L1612">        return binaryIncrementPos(val, amount);</span>
+    }
+
+    /* increment/deincrement for positive value */
+    private static byte[] binaryIncrementPos(byte[] value, long amount) {
+<span class="nc" id="L1617">        long amo = amount;</span>
+<span class="nc" id="L1618">        int sign = 1;</span>
+<span class="nc bnc" id="L1619" title="All 2 branches missed.">        if (amount &lt; 0) {</span>
+<span class="nc" id="L1620">            amo = -amount;</span>
+<span class="nc" id="L1621">            sign = -1;</span>
+        }
+<span class="nc bnc" id="L1623" title="All 2 branches missed.">        for (int i = 0; i &lt; value.length; i++) {</span>
+<span class="nc" id="L1624">            int cur = ((int) amo % 256) * sign;</span>
+<span class="nc" id="L1625">            amo = (amo &gt;&gt; 8);</span>
+<span class="nc" id="L1626">            int val = value[value.length - i - 1] &amp; 0x0ff;</span>
+<span class="nc" id="L1627">            int total = val + cur;</span>
+<span class="nc bnc" id="L1628" title="All 2 branches missed.">            if (total &gt; 255) {</span>
+<span class="nc" id="L1629">                amo += sign;</span>
+<span class="nc" id="L1630">                total %= 256;</span>
+<span class="nc bnc" id="L1631" title="All 2 branches missed.">            } else if (total &lt; 0) {</span>
+<span class="nc" id="L1632">                amo -= sign;</span>
+            }
+<span class="nc" id="L1634">            value[value.length - i - 1] = (byte) total;</span>
+<span class="nc bnc" id="L1635" title="All 2 branches missed.">            if (amo == 0)</span>
+<span class="nc" id="L1636">                return value;</span>
+        }
+<span class="nc" id="L1638">        return value;</span>
+    }
+
+    /* increment/deincrement for negative value */
+    private static byte[] binaryIncrementNeg(byte[] value, long amount) {
+<span class="nc" id="L1643">        long amo = amount;</span>
+<span class="nc" id="L1644">        int sign = 1;</span>
+<span class="nc bnc" id="L1645" title="All 2 branches missed.">        if (amount &lt; 0) {</span>
+<span class="nc" id="L1646">            amo = -amount;</span>
+<span class="nc" id="L1647">            sign = -1;</span>
+        }
+<span class="nc bnc" id="L1649" title="All 2 branches missed.">        for (int i = 0; i &lt; value.length; i++) {</span>
+<span class="nc" id="L1650">            int cur = ((int) amo % 256) * sign;</span>
+<span class="nc" id="L1651">            amo = (amo &gt;&gt; 8);</span>
+<span class="nc" id="L1652">            int val = ((~value[value.length - i - 1]) &amp; 0x0ff) + 1;</span>
+<span class="nc" id="L1653">            int total = cur - val;</span>
+<span class="nc bnc" id="L1654" title="All 2 branches missed.">            if (total &gt;= 0) {</span>
+<span class="nc" id="L1655">                amo += sign;</span>
+<span class="nc bnc" id="L1656" title="All 2 branches missed.">            } else if (total &lt; -256) {</span>
+<span class="nc" id="L1657">                amo -= sign;</span>
+<span class="nc" id="L1658">                total %= 256;</span>
+            }
+<span class="nc" id="L1660">            value[value.length - i - 1] = (byte) total;</span>
+<span class="nc bnc" id="L1661" title="All 2 branches missed.">            if (amo == 0)</span>
+<span class="nc" id="L1662">                return value;</span>
+        }
+<span class="nc" id="L1664">        return value;</span>
+    }
+
+    /**
+     * Writes a string as a fixed-size field, padded with zeros.
+     */
+    public static void writeStringFixedSize(final DataOutput out, String s, int size) throws IOException {
+<span class="nc" id="L1671">        byte[] b = toBytes(s);</span>
+<span class="nc bnc" id="L1672" title="All 2 branches missed.">        if (b.length &gt; size) {</span>
+<span class="nc" id="L1673">            throw new IOException(&quot;Trying to write &quot; + b.length + &quot; bytes (&quot; + toStringBinary(b)</span>
+                    + &quot;) into a field of length &quot; + size);
+        }
+
+<span class="nc" id="L1677">        out.writeBytes(s);</span>
+<span class="nc bnc" id="L1678" title="All 2 branches missed.">        for (int i = 0; i &lt; size - s.length(); ++i)</span>
+<span class="nc" id="L1679">            out.writeByte(0);</span>
+<span class="nc" id="L1680">    }</span>
+
+    /**
+     * Reads a fixed-size field and interprets it as a string padded with zeros.
+     */
+    public static String readStringFixedSize(final DataInput in, int size) throws IOException {
+<span class="nc" id="L1686">        byte[] b = new byte[size];</span>
+<span class="nc" id="L1687">        in.readFully(b);</span>
+<span class="nc" id="L1688">        int n = b.length;</span>
+<span class="nc bnc" id="L1689" title="All 4 branches missed.">        while (n &gt; 0 &amp;&amp; b[n - 1] == 0)</span>
+<span class="nc" id="L1690">            --n;</span>
+
+<span class="nc" id="L1692">        return toString(b, 0, n);</span>
+    }
+
+    /**
+     * Copy the byte array given in parameter and return an instance
+     * of a new byte array with the same length and the same content.
+     *
+     * @param bytes the byte array to duplicate
+     * @return a copy of the given byte array
+     */
+    public static byte[] copy(byte[] bytes) {
+<span class="nc bnc" id="L1703" title="All 2 branches missed.">        if (bytes == null)</span>
+<span class="nc" id="L1704">            return null;</span>
+<span class="nc" id="L1705">        byte[] result = new byte[bytes.length];</span>
+<span class="nc" id="L1706">        System.arraycopy(bytes, 0, result, 0, bytes.length);</span>
+<span class="nc" id="L1707">        return result;</span>
+    }
+
+    /**
+     * Copy the byte array given in parameter and return an instance
+     * of a new byte array with the same length and the same content.
+     *
+     * @param bytes  the byte array to copy from
+     * @param offset
+     * @param length
+     * @return a copy of the given designated byte array
+     */
+    public static byte[] copy(byte[] bytes, final int offset, final int length) {
+<span class="nc bnc" id="L1720" title="All 2 branches missed.">        if (bytes == null)</span>
+<span class="nc" id="L1721">            return null;</span>
+<span class="nc" id="L1722">        byte[] result = new byte[length];</span>
+<span class="nc" id="L1723">        System.arraycopy(bytes, offset, result, 0, length);</span>
+<span class="nc" id="L1724">        return result;</span>
+    }
+
+    /**
+     * Search sorted array &quot;a&quot; for byte &quot;key&quot;. I can't remember if I wrote this or copied it from
+     * somewhere. (mcorgan)
+     *
+     * @param a         Array to search. Entries must be sorted and unique.
+     * @param fromIndex First index inclusive of &quot;a&quot; to include in the search.
+     * @param toIndex   Last index exclusive of &quot;a&quot; to include in the search.
+     * @param key       The byte to search for.
+     * @return The index of key if found. If not found, return -(index + 1), where negative indicates
+     * &quot;not found&quot; and the &quot;index + 1&quot; handles the &quot;-0&quot; case.
+     */
+    public static int unsignedBinarySearch(byte[] a, int fromIndex, int toIndex, byte key) {
+<span class="nc" id="L1739">        int unsignedKey = key &amp; 0xff;</span>
+<span class="nc" id="L1740">        int low = fromIndex;</span>
+<span class="nc" id="L1741">        int high = toIndex - 1;</span>
+
+<span class="nc bnc" id="L1743" title="All 2 branches missed.">        while (low &lt;= high) {</span>
+<span class="nc" id="L1744">            int mid = (low + high) &gt;&gt;&gt; 1;</span>
+<span class="nc" id="L1745">            int midVal = a[mid] &amp; 0xff;</span>
+
+<span class="nc bnc" id="L1747" title="All 2 branches missed.">            if (midVal &lt; unsignedKey) {</span>
+<span class="nc" id="L1748">                low = mid + 1;</span>
+<span class="nc bnc" id="L1749" title="All 2 branches missed.">            } else if (midVal &gt; unsignedKey) {</span>
+<span class="nc" id="L1750">                high = mid - 1;</span>
+            } else {
+<span class="nc" id="L1752">                return mid; // key found</span>
+            }
+<span class="nc" id="L1754">        }</span>
+<span class="nc" id="L1755">        return -(low + 1); // key not found.</span>
+    }
+
+    /**
+     * Treat the byte[] as an unsigned series of bytes, most significant bits first.  Start by adding
+     * 1 to the rightmost bit/byte and carry over all overflows to the more significant bits/bytes.
+     *
+     * @param input The byte[] to increment.
+     * @return The incremented copy of &quot;in&quot;.  May be same length or 1 byte longer.
+     */
+    public static byte[] unsignedCopyAndIncrement(final byte[] input) {
+<span class="nc" id="L1766">        byte[] copy = copy(input);</span>
+<span class="nc bnc" id="L1767" title="All 2 branches missed.">        if (copy == null) {</span>
+<span class="nc" id="L1768">            throw new IllegalArgumentException(&quot;cannot increment null array&quot;);</span>
+        }
+<span class="nc bnc" id="L1770" title="All 2 branches missed.">        for (int i = copy.length - 1; i &gt;= 0; --i) {</span>
+<span class="nc bnc" id="L1771" title="All 2 branches missed.">            if (copy[i] == -1) {// -1 is all 1-bits, which is the unsigned maximum</span>
+<span class="nc" id="L1772">                copy[i] = 0;</span>
+            } else {
+<span class="nc" id="L1774">                ++copy[i];</span>
+<span class="nc" id="L1775">                return copy;</span>
+            }
+        }
+        // we maxed out the array
+<span class="nc" id="L1779">        byte[] out = new byte[copy.length + 1];</span>
+<span class="nc" id="L1780">        out[0] = 1;</span>
+<span class="nc" id="L1781">        System.arraycopy(copy, 0, out, 1, copy.length);</span>
+<span class="nc" id="L1782">        return out;</span>
+    }
+
+    public static boolean equals(List&lt;byte[]&gt; a, List&lt;byte[]&gt; b) {
+<span class="nc bnc" id="L1786" title="All 2 branches missed.">        if (a == null) {</span>
+<span class="nc bnc" id="L1787" title="All 2 branches missed.">            return b == null;</span>
+        }
+<span class="nc bnc" id="L1789" title="All 2 branches missed.">        if (b == null) {</span>
+<span class="nc" id="L1790">            return false;</span>
+        }
+<span class="nc bnc" id="L1792" title="All 2 branches missed.">        if (a.size() != b.size()) {</span>
+<span class="nc" id="L1793">            return false;</span>
+        }
+<span class="nc bnc" id="L1795" title="All 2 branches missed.">        for (int i = 0; i &lt; a.size(); ++i) {</span>
+<span class="nc bnc" id="L1796" title="All 2 branches missed.">            if (!Bytes.equals(a.get(i), b.get(i))) {</span>
+<span class="nc" id="L1797">                return false;</span>
+            }
+        }
+<span class="nc" id="L1800">        return true;</span>
+    }
+
+    /**
+     * Returns the index of the first appearance of the value {@code target} in
+     * {@code array}.
+     *
+     * @param array  an array of {@code byte} values, possibly empty
+     * @param target a primitive {@code byte} value
+     * @return the least index {@code i} for which {@code array[i] == target}, or
+     * {@code -1} if no such index exists.
+     */
+    public static int indexOf(byte[] array, byte target) {
+<span class="nc bnc" id="L1813" title="All 2 branches missed.">        for (int i = 0; i &lt; array.length; i++) {</span>
+<span class="nc bnc" id="L1814" title="All 2 branches missed.">            if (array[i] == target) {</span>
+<span class="nc" id="L1815">                return i;</span>
+            }
+        }
+<span class="nc" id="L1818">        return -1;</span>
+    }
+
+    /**
+     * Returns the start position of the first occurrence of the specified {@code
+     * target} within {@code array}, or {@code -1} if there is no such occurrence.
+     * &lt;p/&gt;
+     * &lt;p&gt;More formally, returns the lowest index {@code i} such that {@code
+     * java.util.Arrays.copyOfRange(array, i, i + target.length)} contains exactly
+     * the same elements as {@code target}.
+     *
+     * @param array  the array to search for the sequence {@code target}
+     * @param target the array to search for as a sub-sequence of {@code array}
+     */
+    public static int indexOf(byte[] array, byte[] target) {
+<span class="nc" id="L1833">        checkNotNull(array, &quot;array&quot;);</span>
+<span class="nc" id="L1834">        checkNotNull(target, &quot;target&quot;);</span>
+<span class="nc bnc" id="L1835" title="All 2 branches missed.">        if (target.length == 0) {</span>
+<span class="nc" id="L1836">            return 0;</span>
+        }
+
+<span class="nc bnc" id="L1839" title="All 2 branches missed.">        outer: for (int i = 0; i &lt; array.length - target.length + 1; i++) {</span>
+<span class="nc bnc" id="L1840" title="All 2 branches missed.">            for (int j = 0; j &lt; target.length; j++) {</span>
+<span class="nc bnc" id="L1841" title="All 2 branches missed.">                if (array[i + j] != target[j]) {</span>
+<span class="nc" id="L1842">                    continue outer;</span>
+                }
+            }
+<span class="nc" id="L1845">            return i;</span>
+        }
+<span class="nc" id="L1847">        return -1;</span>
+    }
+
+    /**
+     * @param array  an array of {@code byte} values, possibly empty
+     * @param target a primitive {@code byte} value
+     * @return {@code true} if {@code target} is present as an element anywhere in {@code array}.
+     */
+    public static boolean contains(byte[] array, byte target) {
+<span class="nc bnc" id="L1856" title="All 2 branches missed.">        return indexOf(array, target) &gt; -1;</span>
+    }
+
+    /**
+     * @param array  an array of {@code byte} values, possibly empty
+     * @param target an array of {@code byte}
+     * @return {@code true} if {@code target} is present anywhere in {@code array}
+     */
+    public static boolean contains(byte[] array, byte[] target) {
+<span class="nc bnc" id="L1865" title="All 2 branches missed.">        return indexOf(array, target) &gt; -1;</span>
+    }
+
+    /**
+     * Fill given array with zeros.
+     *
+     * @param b array which needs to be filled with zeros
+     */
+    public static void zero(byte[] b) {
+<span class="nc" id="L1874">        zero(b, 0, b.length);</span>
+<span class="nc" id="L1875">    }</span>
+
+    /**
+     * Fill given array with zeros at the specified position.
+     *
+     * @param b
+     * @param offset
+     * @param length
+     */
+    public static void zero(byte[] b, int offset, int length) {
+<span class="nc" id="L1885">        checkPositionIndex(offset, b.length, &quot;offset&quot;);</span>
+<span class="nc bnc" id="L1886" title="All 2 branches missed.">        checkArgument(length &gt; 0, LENGTH_MUST_BE_GREATER_THAN_0);</span>
+<span class="nc" id="L1887">        checkPositionIndex(offset + length, b.length, &quot;offset + length&quot;);</span>
+<span class="nc" id="L1888">        Arrays.fill(b, offset, offset + length, (byte) 0);</span>
+<span class="nc" id="L1889">    }</span>
+
+<span class="fc" id="L1891">    private static final SecureRandom RNG = new SecureRandom();</span>
+
+    /**
+     * Fill given array with random bytes.
+     *
+     * @param b array which needs to be filled with random bytes
+     */
+    public static void random(byte[] b) {
+<span class="nc" id="L1899">        RNG.nextBytes(b);</span>
+<span class="nc" id="L1900">    }</span>
+
+    /**
+     * Fill given array with random bytes at the specified position.
+     *
+     * @param b
+     * @param offset
+     * @param length
+     */
+    public static void random(byte[] b, int offset, int length) {
+<span class="nc" id="L1910">        checkPositionIndex(offset, b.length, &quot;offset&quot;);</span>
+<span class="nc bnc" id="L1911" title="All 2 branches missed.">        checkArgument(length &gt; 0, LENGTH_MUST_BE_GREATER_THAN_0);</span>
+<span class="nc" id="L1912">        checkPositionIndex(offset + length, b.length, &quot;offset + length&quot;);</span>
+<span class="nc" id="L1913">        byte[] buf = new byte[length];</span>
+<span class="nc" id="L1914">        RNG.nextBytes(buf);</span>
+<span class="nc" id="L1915">        System.arraycopy(buf, 0, b, offset, length);</span>
+<span class="nc" id="L1916">    }</span>
+
+    /**
+     * Create a max byte array with the specified max byte count
+     *
+     * @param maxByteCount the length of returned byte array
+     * @return the created max byte array
+     */
+    public static byte[] createMaxByteArray(int maxByteCount) {
+<span class="nc" id="L1925">        byte[] maxByteArray = new byte[maxByteCount];</span>
+<span class="nc bnc" id="L1926" title="All 2 branches missed.">        for (int i = 0; i &lt; maxByteArray.length; i++) {</span>
+<span class="nc" id="L1927">            maxByteArray[i] = (byte) 0xff;</span>
+        }
+<span class="nc" id="L1929">        return maxByteArray;</span>
+    }
+
+    /**
+     * Create a byte array which is multiple given bytes
+     *
+     * @param srcBytes
+     * @param multiNum
+     * @return byte array
+     */
+    public static byte[] multiple(byte[] srcBytes, int multiNum) {
+<span class="nc bnc" id="L1940" title="All 2 branches missed.">        if (multiNum &lt;= 0) {</span>
+<span class="nc" id="L1941">            return new byte[0];</span>
+        }
+<span class="nc" id="L1943">        byte[] result = new byte[srcBytes.length * multiNum];</span>
+<span class="nc bnc" id="L1944" title="All 2 branches missed.">        for (int i = 0; i &lt; multiNum; i++) {</span>
+<span class="nc" id="L1945">            System.arraycopy(srcBytes, 0, result, i * srcBytes.length, srcBytes.length);</span>
+        }
+<span class="nc" id="L1947">        return result;</span>
+    }
+
+    /**
+     * Convert a byte array into a hex string
+     *
+     * @param b
+     */
+    public static String toHex(byte[] b) {
+<span class="nc bnc" id="L1956" title="All 2 branches missed.">        checkArgument(b.length &gt; 0, LENGTH_MUST_BE_GREATER_THAN_0);</span>
+<span class="nc" id="L1957">        return String.format(Locale.ROOT, &quot;%x&quot;, new BigInteger(1, b));</span>
+    }
+
+    /**
+     * Create a byte array from a string of hash digits. The length of the
+     * string must be a multiple of 2
+     *
+     * @param hex
+     */
+    public static byte[] fromHex(String hex) {
+<span class="nc bnc" id="L1967" title="All 2 branches missed.">        checkArgument(!hex.isEmpty(), LENGTH_MUST_BE_GREATER_THAN_0);</span>
+<span class="nc bnc" id="L1968" title="All 2 branches missed.">        checkArgument(hex.length() % 2 == 0, &quot;length must be a multiple of 2&quot;);</span>
+        // Make sure letters are upper case
+<span class="nc" id="L1970">        hex = hex.toUpperCase(Locale.ROOT);</span>
+<span class="nc" id="L1971">        byte[] b = new byte[hex.length() / 2];</span>
+<span class="nc bnc" id="L1972" title="All 2 branches missed.">        for (int i = 0; i &lt; b.length; i++) {</span>
+<span class="nc" id="L1973">            b[i] = (byte) ((toBinaryFromHex((byte) hex.charAt(2 * i)) &lt;&lt; 4)</span>
+<span class="nc" id="L1974">                    + (toBinaryFromHex((byte) hex.charAt((2 * i + 1))) &amp; 0xff));</span>
+        }
+<span class="nc" id="L1976">        return b;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

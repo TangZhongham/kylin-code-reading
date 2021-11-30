@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuiltInMethod.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter.function</a> &gt; <span class="el_source">BuiltInMethod.java</span></div><h1>BuiltInMethod.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.filter.function;
+
+import static org.apache.kylin.metadata.filter.function.LikeMatchers.LikeMatcher;
+
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import org.apache.commons.lang3.reflect.MethodUtils;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+import org.apache.kylin.common.threadlocal.InternalThreadLocal;
+
+<span class="nc" id="L33">public enum BuiltInMethod {</span>
+<span class="nc" id="L34">    UPPER(BuiltInMethod.class, &quot;upper&quot;, String.class), LOWER(BuiltInMethod.class, &quot;lower&quot;, String.class), SUBSTRING(BuiltInMethod.class, &quot;substring&quot;, String.class, int.class, int.class), CHAR_LENGTH(BuiltInMethod.class, &quot;charLength&quot;, String.class), LIKE(BuiltInMethod.class, &quot;like&quot;, String.class, String.class), INITCAP(BuiltInMethod.class, &quot;initcap&quot;, String.class), CONCAT(BuiltInMethod.class, &quot;concat&quot;, String.class, String.class);</span>
+    public final Method method;
+    public static final ImmutableMap&lt;String, BuiltInMethod&gt; MAP;
+
+<span class="nc" id="L38">    private static InternalThreadLocal&lt;Map&lt;String, LikeMatcher&gt;&gt; likePatterns = new InternalThreadLocal&lt;Map&lt;String, LikeMatcher&gt;&gt;() {</span>
+        @Override
+        public Map&lt;String, LikeMatcher&gt; initialValue() {
+<span class="nc" id="L41">            return new HashMap&lt;&gt;();</span>
+        }
+    };
+
+    static {
+<span class="nc" id="L46">        final ImmutableMap.Builder&lt;String, BuiltInMethod&gt; builder = ImmutableMap.builder();</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        for (BuiltInMethod value : BuiltInMethod.values()) {</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            if (value.method != null) {</span>
+<span class="nc" id="L49">                builder.put(value.name(), value);</span>
+            }
+        }
+<span class="nc" id="L52">        MAP = builder.build();</span>
+<span class="nc" id="L53">    }</span>
+
+<span class="nc" id="L55">    BuiltInMethod(Class&lt;?&gt; clazz, String methodName, Class&lt;?&gt;... argumentTypes) {</span>
+<span class="nc" id="L56">        this.method = MethodUtils.getMatchingAccessibleMethod(clazz, methodName, argumentTypes);</span>
+<span class="nc" id="L57">    }</span>
+
+    /** SQL {@code LIKE} function. */
+    public static boolean like(String s, String patternStr) {
+        //TODO: escape in like is unsupported
+        //TODO: like is case sensitive now
+
+<span class="nc bnc" id="L64" title="All 4 branches missed.">        if (s == null || patternStr == null)</span>
+<span class="nc" id="L65">            return false;</span>
+
+<span class="nc" id="L67">        Map&lt;String, LikeMatcher&gt; patterns = likePatterns.get();</span>
+<span class="nc" id="L68">        LikeMatcher p = patterns.get(patternStr);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (p == null) {</span>
+
+<span class="nc" id="L71">            p = LikeMatchers.createMatcher(patternStr);</span>
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (patterns.size() &gt; 100) {</span>
+<span class="nc" id="L74">                patterns.clear();//brutal but good enough</span>
+            }
+<span class="nc" id="L76">            patterns.put(patternStr, p);</span>
+        }
+
+<span class="nc" id="L79">        return p.matches(s);</span>
+    }
+
+    /** SQL INITCAP(string) function. */
+    public static String initcap(String s) {
+        // Assumes Alpha as [A-Za-z0-9]
+        // white space is treated as everything else.
+<span class="nc" id="L86">        final int len = s.length();</span>
+<span class="nc" id="L87">        boolean start = true;</span>
+<span class="nc" id="L88">        final StringBuilder newS = new StringBuilder();</span>
+
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L91">            char curCh = s.charAt(i);</span>
+<span class="nc" id="L92">            final int c = (int) curCh;</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (start) { // curCh is whitespace or first character of word.</span>
+<span class="nc bnc" id="L94" title="All 4 branches missed.">                if (c &gt; 47 &amp;&amp; c &lt; 58) { // 0-9</span>
+<span class="nc" id="L95">                    start = false;</span>
+<span class="nc bnc" id="L96" title="All 4 branches missed.">                } else if (c &gt; 64 &amp;&amp; c &lt; 91) { // A-Z</span>
+<span class="nc" id="L97">                    start = false;</span>
+<span class="nc bnc" id="L98" title="All 4 branches missed.">                } else if (c &gt; 96 &amp;&amp; c &lt; 123) { // a-z</span>
+<span class="nc" id="L99">                    start = false;</span>
+<span class="nc" id="L100">                    curCh = (char) (c - 32); // Uppercase this character</span>
+                }
+                // else {} whitespace
+            } else { // Inside of a word or white space after end of word.
+<span class="nc bnc" id="L104" title="All 4 branches missed.">                if (c &gt; 47 &amp;&amp; c &lt; 58) { // 0-9</span>
+                    // noop
+<span class="nc bnc" id="L106" title="All 4 branches missed.">                } else if (c &gt; 64 &amp;&amp; c &lt; 91) { // A-Z</span>
+<span class="nc" id="L107">                    curCh = (char) (c + 32); // Lowercase this character</span>
+<span class="nc bnc" id="L108" title="All 4 branches missed.">                } else if (c &gt; 96 &amp;&amp; c &lt; 123) { // a-z</span>
+                    // noop
+                } else { // whitespace
+<span class="nc" id="L111">                    start = true;</span>
+                }
+            }
+<span class="nc" id="L114">            newS.append(curCh);</span>
+        } // for each character in s
+<span class="nc" id="L116">        return newS.toString();</span>
+    }
+
+    /** SQL CHARACTER_LENGTH(string) function. */
+    public static int charLength(String s) {
+<span class="nc" id="L121">        return s.length();</span>
+    }
+
+    /** SQL SUBSTRING(string FROM ... FOR ...) function. */
+    public static String substring(String s, int from, int for_) {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (s == null)</span>
+<span class="nc" id="L127">            return null;</span>
+<span class="nc" id="L128">        return s.substring(from - 1, Math.min(from - 1 + for_, s.length()));</span>
+    }
+
+    /** SQL UPPER(string) function. */
+    public static String upper(String s) {
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (s == null)</span>
+<span class="nc" id="L134">            return null;</span>
+<span class="nc" id="L135">        return s.toUpperCase(Locale.ROOT);</span>
+    }
+
+    /** SQL LOWER(string) function. */
+    public static String lower(String s) {
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (s == null)</span>
+<span class="nc" id="L141">            return null;</span>
+<span class="nc" id="L142">        return s.toLowerCase(Locale.ROOT);</span>
+    }
+
+    /** SQL left || right */
+    public static String concat(String left, String right) {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (left == null)</span>
+<span class="nc" id="L148">            return right;</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (right == null)</span>
+<span class="nc" id="L150">            return left;</span>
+<span class="nc" id="L151">        return left.concat(right);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

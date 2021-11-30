@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FixedLenHexDimEnc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">FixedLenHexDimEnc.java</span></div><h1>FixedLenHexDimEnc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.dimension;
+
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+/**
+ * used to store hex values like &quot;1A2BFF&quot;
+ * &lt;p&gt;
+ * &lt;p&gt;
+ * limitations: (take FixedLenHexDimEnc(2) as example: )
+ * &lt;p&gt;
+ * 1. &quot;FFFF&quot; will become null encode and decode
+ * 2. &quot;AB&quot; will become &quot;AB00&quot;
+ *
+ * &lt;p&gt;
+ * Due to these limitations hex representation of hash values(with no padding, better with even characters) is more suitable
+ */
+public class FixedLenHexDimEnc extends DimensionEncoding implements Serializable{
+    private static final long serialVersionUID = 1L;
+
+<span class="fc" id="L50">    private static Logger logger = LoggerFactory.getLogger(FixedLenHexDimEnc.class);</span>
+
+<span class="fc" id="L52">    public static byte[] dict = new byte[256];</span>
+<span class="fc" id="L53">    public static byte[] revdict = new byte[16];</span>
+
+    static {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (int i = 0; i &lt; dict.length; i++) {</span>
+<span class="fc" id="L57">            dict[i] = -1;</span>
+        }
+<span class="fc" id="L59">        dict['0'] = 0;</span>
+<span class="fc" id="L60">        dict['1'] = 1;</span>
+<span class="fc" id="L61">        dict['2'] = 2;</span>
+<span class="fc" id="L62">        dict['3'] = 3;</span>
+<span class="fc" id="L63">        dict['4'] = 4;</span>
+<span class="fc" id="L64">        dict['5'] = 5;</span>
+<span class="fc" id="L65">        dict['6'] = 6;</span>
+<span class="fc" id="L66">        dict['7'] = 7;</span>
+<span class="fc" id="L67">        dict['8'] = 8;</span>
+<span class="fc" id="L68">        dict['9'] = 9;</span>
+<span class="fc" id="L69">        dict['A'] = 10;</span>
+<span class="fc" id="L70">        dict['B'] = 11;</span>
+<span class="fc" id="L71">        dict['C'] = 12;</span>
+<span class="fc" id="L72">        dict['D'] = 13;</span>
+<span class="fc" id="L73">        dict['E'] = 14;</span>
+<span class="fc" id="L74">        dict['F'] = 15;</span>
+<span class="fc" id="L75">        dict['a'] = 10;</span>
+<span class="fc" id="L76">        dict['b'] = 11;</span>
+<span class="fc" id="L77">        dict['c'] = 12;</span>
+<span class="fc" id="L78">        dict['d'] = 13;</span>
+<span class="fc" id="L79">        dict['e'] = 14;</span>
+<span class="fc" id="L80">        dict['f'] = 15;</span>
+
+<span class="fc" id="L82">        revdict[0] = '0';</span>
+<span class="fc" id="L83">        revdict[1] = '1';</span>
+<span class="fc" id="L84">        revdict[2] = '2';</span>
+<span class="fc" id="L85">        revdict[3] = '3';</span>
+<span class="fc" id="L86">        revdict[4] = '4';</span>
+<span class="fc" id="L87">        revdict[5] = '5';</span>
+<span class="fc" id="L88">        revdict[6] = '6';</span>
+<span class="fc" id="L89">        revdict[7] = '7';</span>
+<span class="fc" id="L90">        revdict[8] = '8';</span>
+<span class="fc" id="L91">        revdict[9] = '9';</span>
+<span class="fc" id="L92">        revdict[10] = 'A';</span>
+<span class="fc" id="L93">        revdict[11] = 'B';</span>
+<span class="fc" id="L94">        revdict[12] = 'C';</span>
+<span class="fc" id="L95">        revdict[13] = 'D';</span>
+<span class="fc" id="L96">        revdict[14] = 'E';</span>
+<span class="fc" id="L97">        revdict[15] = 'F';</span>
+<span class="fc" id="L98">    }</span>
+
+    // row key fixed length place holder
+    public static final byte ROWKEY_PLACE_HOLDER_BYTE = 0;
+
+    public static final String ENCODING_NAME = &quot;fixed_length_hex&quot;;
+
+<span class="nc" id="L105">    public static class Factory extends DimensionEncodingFactory {</span>
+        @Override
+        public String getSupportedEncodingName() {
+<span class="nc" id="L108">            return ENCODING_NAME;</span>
+        }
+
+        @Override
+        public DimensionEncoding createDimensionEncoding(String encodingName, String[] args) {
+<span class="nc" id="L113">            return new FixedLenHexDimEnc(Integer.parseInt(args[0]));</span>
+        }
+
+        @Override
+        public boolean isValidDimensionEncoding(String encodingName, String[] args) {
+            try {
+<span class="nc" id="L119">                int length = Integer.parseInt(args[0]);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                return length &gt;= 1;</span>
+<span class="nc" id="L121">            } catch (Exception e) {</span>
+<span class="nc" id="L122">                return false;</span>
+            }
+        }
+    }
+
+    // ============================================================================
+
+    private int hexLength;
+    private int bytelen;
+
+<span class="pc" id="L132">    transient private int avoidVerbose = 0;</span>
+<span class="pc" id="L133">    transient private int avoidVerbose2 = 0;</span>
+
+    //no-arg constructor is required for Externalizable
+<span class="nc" id="L136">    public FixedLenHexDimEnc() {</span>
+<span class="nc" id="L137">    }</span>
+
+<span class="fc" id="L139">    public FixedLenHexDimEnc(int len) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (len &lt; 1) {</span>
+<span class="fc" id="L141">            throw new IllegalArgumentException(&quot;len has to be positive: &quot; + len);</span>
+        }
+<span class="fc" id="L143">        this.hexLength = len;</span>
+<span class="fc" id="L144">        this.bytelen = (hexLength + 1) / 2;</span>
+<span class="fc" id="L145">    }</span>
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L150">            return true;</span>
+<span class="nc bnc" id="L151" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L152">            return false;</span>
+
+<span class="nc" id="L154">        FixedLenHexDimEnc that = (FixedLenHexDimEnc) o;</span>
+
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        return hexLength == that.hexLength;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L161">        return hexLength;</span>
+    }
+
+    @Override
+    public int getLengthOfEncoding() {
+<span class="fc" id="L166">        return bytelen;</span>
+    }
+
+    @Override
+    public void encode(String valueStr, byte[] output, int outputOffset) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (valueStr == null) {</span>
+<span class="fc" id="L172">            Arrays.fill(output, outputOffset, outputOffset + bytelen, NULL);</span>
+<span class="fc" id="L173">            return;</span>
+        }
+
+<span class="fc" id="L176">        byte[] value = Bytes.toBytes(valueStr);</span>
+<span class="fc" id="L177">        int valueLen = value.length;</span>
+<span class="fc" id="L178">        int endOffset = outputOffset + bytelen;</span>
+
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (valueLen &gt; hexLength) {</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (avoidVerbose++ % 10000 == 0) {</span>
+<span class="fc" id="L182">                logger.warn(&quot;Expect at most &quot; + hexLength + &quot; bytes, but got &quot; + valueLen + &quot;, will truncate, value string: &quot; + Bytes.toString(value, 0, valueLen) + &quot; times:&quot; + avoidVerbose);</span>
+            }
+        }
+
+<span class="fc bfc" id="L186" title="All 4 branches covered.">        if (valueLen &gt;= hexLength &amp;&amp; isF(value, 0, hexLength)) {</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (avoidVerbose2++ % 10000 == 0) {</span>
+<span class="fc" id="L188">                logger.warn(&quot;All 'F' value: &quot; + Bytes.toString(value, 0, valueLen) + &quot;will become null after encode/decode. times:&quot; + avoidVerbose);</span>
+            }
+        }
+
+<span class="fc" id="L192">        int n = Math.min(valueLen, hexLength);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i += 2) {</span>
+<span class="fc" id="L194">            byte temp = 0;</span>
+<span class="fc" id="L195">            byte iCode = dict[value[i]];</span>
+<span class="fc" id="L196">            temp |= (iCode &lt;&lt; 4);</span>
+
+<span class="fc" id="L198">            int j = i + 1;</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (j &lt; n) {</span>
+<span class="fc" id="L200">                byte jCode = dict[value[j]];</span>
+<span class="fc" id="L201">                temp |= jCode;</span>
+            }
+
+<span class="fc" id="L204">            output[outputOffset++] = temp;</span>
+        }
+
+<span class="fc" id="L207">        Arrays.fill(output, outputOffset, endOffset, ROWKEY_PLACE_HOLDER_BYTE);</span>
+<span class="fc" id="L208">    }</span>
+
+    @Override
+    public String decode(byte[] bytes, int offset, int len) {
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        Preconditions.checkArgument(len == bytelen, &quot;len &quot; + len + &quot; not equals &quot; + bytelen);</span>
+
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (isNull(bytes, offset, len)) {</span>
+<span class="fc" id="L215">            return null;</span>
+        }
+
+<span class="fc" id="L218">        byte[] ret = new byte[hexLength];</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (int i = 0; i &lt; ret.length; i += 2) {</span>
+<span class="fc" id="L220">            byte temp = bytes[i / 2];</span>
+<span class="fc" id="L221">            ret[i] = revdict[(temp &amp; 0xF0) &gt;&gt;&gt; 4];</span>
+
+<span class="fc" id="L223">            int j = i + 1;</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (j &lt; hexLength) {</span>
+<span class="fc" id="L225">                ret[j] = revdict[temp &amp; 0x0F];</span>
+            }
+        }
+
+<span class="fc" id="L229">        return Bytes.toString(ret, 0, ret.length);</span>
+    }
+
+    @Override
+    public DataTypeSerializer&lt;Object&gt; asDataTypeSerializer() {
+<span class="fc" id="L234">        return new FixedLenSerializer();</span>
+    }
+
+<span class="fc" id="L237">    public class FixedLenSerializer extends DataTypeSerializer&lt;Object&gt; {</span>
+
+        private byte[] currentBuf() {
+<span class="fc" id="L240">            byte[] buf = (byte[]) current.get();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (buf == null) {</span>
+<span class="fc" id="L242">                buf = new byte[bytelen];</span>
+<span class="fc" id="L243">                current.set(buf);</span>
+            }
+<span class="fc" id="L245">            return buf;</span>
+        }
+
+        @Override
+        public void serialize(Object value, ByteBuffer out) {
+<span class="fc" id="L250">            byte[] buf = currentBuf();</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">            String str = value == null ? null : value.toString();</span>
+<span class="fc" id="L252">            encode(str, buf, 0);</span>
+<span class="fc" id="L253">            out.put(buf);</span>
+<span class="fc" id="L254">        }</span>
+
+        @Override
+        public Object deserialize(ByteBuffer in) {
+<span class="fc" id="L258">            byte[] buf = currentBuf();</span>
+<span class="fc" id="L259">            in.get(buf);</span>
+<span class="fc" id="L260">            return decode(buf, 0, buf.length);</span>
+        }
+
+        @Override
+        public int peekLength(ByteBuffer in) {
+<span class="nc" id="L265">            return bytelen;</span>
+        }
+
+        @Override
+        public int maxLength() {
+<span class="nc" id="L270">            return bytelen;</span>
+        }
+
+        @Override
+        public int getStorageBytesEstimate() {
+<span class="nc" id="L275">            return bytelen;</span>
+        }
+
+        @Override
+        public Object valueOf(String str) {
+<span class="nc" id="L280">            return str;</span>
+        }
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+<span class="nc" id="L286">        out.writeShort(hexLength);</span>
+<span class="nc" id="L287">        out.writeShort(bytelen);</span>
+<span class="nc" id="L288">    }</span>
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+<span class="nc" id="L292">        hexLength = in.readShort();</span>
+<span class="nc" id="L293">        bytelen = in.readShort();</span>
+<span class="nc" id="L294">    }</span>
+
+    private boolean isF(byte[] value, int offset, int length) {
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (int i = offset; i &lt; length + offset; ++i) {</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            if (value[i] != 'F') {</span>
+<span class="fc" id="L299">                return false;</span>
+            }
+        }
+<span class="fc" id="L302">        return true;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

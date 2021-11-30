@@ -1,0 +1,12 @@
+org/apache/kylin/query/util/QueryUtilTest.class
+org/apache/kylin/query/util/KeywordDefaultDirtyHackTest.class
+org/apache/kylin/query/schema/OLAPTableTest.class
+org/apache/kylin/query/routing/RealizationCheckTest.class
+org/apache/kylin/query/util/TempStatementUtilTest.class
+org/apache/kylin/query/QueryConnectionTest.class
+org/apache/kylin/query/relnode/visitor/TupleFilterVisitorTest.class
+org/apache/kylin/query/udf/VersionUDFTest.class
+org/apache/kylin/query/calcite/KylinRelDataTypeSystemTest.class
+org/apache/kylin/query/util/PushDownUtilTest.class
+org/apache/kylin/query/util/DefaultQueryTransformerTest.class
+org/apache/kylin/query/aggregate/DimCountDistinctAggFuncTest.class

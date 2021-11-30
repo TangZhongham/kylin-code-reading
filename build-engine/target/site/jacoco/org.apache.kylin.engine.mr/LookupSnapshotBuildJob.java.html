@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LookupSnapshotBuildJob.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">LookupSnapshotBuildJob.java</span></div><h1>LookupSnapshotBuildJob.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.engine.mr.steps.CubingExecutableUtil;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+
+<span class="nc" id="L34">public class LookupSnapshotBuildJob extends DefaultChainedExecutable {</span>
+
+<span class="nc" id="L36">    public static final Integer DEFAULT_PRIORITY = 30;</span>
+
+    private static final String DEPLOY_ENV_NAME = &quot;envName&quot;;
+    private static final String PROJECT_INSTANCE_NAME = &quot;projectName&quot;;
+
+    private static final String JOB_TYPE = &quot;Lookup &quot;;
+
+    public static LookupSnapshotBuildJob createJob(CubeInstance cube, String tableName, String submitter,
+            KylinConfig kylinConfig) {
+<span class="nc" id="L45">        return initJob(cube, tableName, submitter, kylinConfig);</span>
+    }
+
+    private static LookupSnapshotBuildJob initJob(CubeInstance cube, String tableName, String submitter,
+            KylinConfig kylinConfig) {
+<span class="nc" id="L50">        List&lt;ProjectInstance&gt; projList = ProjectManager.getInstance(kylinConfig).findProjects(cube.getType(),</span>
+<span class="nc" id="L51">                cube.getName());</span>
+<span class="nc bnc" id="L52" title="All 4 branches missed.">        if (projList == null || projList.size() == 0) {</span>
+<span class="nc" id="L53">            throw new RuntimeException(&quot;Cannot find the project containing the cube &quot; + cube.getName() + &quot;!!!&quot;);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        } else if (projList.size() &gt;= 2) {</span>
+<span class="nc" id="L55">            String msg = &quot;Find more than one project containing the cube &quot; + cube.getName()</span>
+                    + &quot;. It does't meet the uniqueness requirement!!! &quot;;
+<span class="nc" id="L57">            throw new RuntimeException(msg);</span>
+        }
+
+<span class="nc" id="L60">        LookupSnapshotBuildJob result = new LookupSnapshotBuildJob();</span>
+<span class="nc" id="L61">        SimpleDateFormat format = new SimpleDateFormat(&quot;z yyyy-MM-dd HH:mm:ss&quot;, Locale.ROOT);</span>
+<span class="nc" id="L62">        format.setTimeZone(TimeZone.getTimeZone(kylinConfig.getTimeZone()));</span>
+<span class="nc" id="L63">        result.setDeployEnvName(kylinConfig.getDeployEnv());</span>
+<span class="nc" id="L64">        result.setProjectName(projList.get(0).getName());</span>
+<span class="nc" id="L65">        CubingExecutableUtil.setCubeName(cube.getName(), result.getParams());</span>
+<span class="nc" id="L66">        result.setName(JOB_TYPE + &quot; CUBE - &quot; + cube.getName() + &quot; - &quot; + &quot; TABLE - &quot; + tableName + &quot; - &quot;</span>
+<span class="nc" id="L67">                + format.format(new Date(System.currentTimeMillis())));</span>
+<span class="nc" id="L68">        result.setSubmitter(submitter);</span>
+<span class="nc" id="L69">        result.setNotifyList(cube.getDescriptor().getNotifyList());</span>
+<span class="nc" id="L70">        return result;</span>
+    }
+
+    protected void setDeployEnvName(String name) {
+<span class="nc" id="L74">        setParam(DEPLOY_ENV_NAME, name);</span>
+<span class="nc" id="L75">    }</span>
+
+    public String getDeployEnvName() {
+<span class="nc" id="L78">        return getParam(DEPLOY_ENV_NAME);</span>
+    }
+
+    public String getProjectName() {
+<span class="nc" id="L82">        return getParam(PROJECT_INSTANCE_NAME);</span>
+    }
+
+    public void setProjectName(String name) {
+<span class="nc" id="L86">        setParam(PROJECT_INSTANCE_NAME, name);</span>
+<span class="nc" id="L87">    }</span>
+
+    @Override
+    public int getDefaultPriority() {
+<span class="nc" id="L91">        return DEFAULT_PRIORITY;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

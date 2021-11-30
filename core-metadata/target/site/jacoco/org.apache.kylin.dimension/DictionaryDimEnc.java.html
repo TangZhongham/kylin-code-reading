@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DictionaryDimEnc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">DictionaryDimEnc.java</span></div><h1>DictionaryDimEnc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.dimension;
+
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.util.Locale;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class DictionaryDimEnc extends DimensionEncoding implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+<span class="nc" id="L38">    private static final Logger logger = LoggerFactory.getLogger(DictionaryDimEnc.class);</span>
+
+    public static final String ENCODING_NAME = &quot;dict&quot;;
+
+    public static final int MAX_ENCODING_LENGTH = 4; // won't exceed integer's length
+
+    // ============================================================================
+
+    // could use a lazy loading trick here, to prevent loading all dictionaries of a segment at once
+    private Dictionary&lt;String&gt; dict;
+    private int fixedLen;
+
+    // used in encode(), when a value does not exist in dictionary
+    private int roundingFlag;
+    private byte defaultByte;
+
+<span class="nc" id="L54">    public DictionaryDimEnc() {</span>
+<span class="nc" id="L55">    }</span>
+
+    public DictionaryDimEnc(Dictionary&lt;String&gt; dict) {
+<span class="nc" id="L58">        this(dict, 0, NULL);</span>
+<span class="nc" id="L59">    }</span>
+
+<span class="nc" id="L61">    public DictionaryDimEnc(Dictionary&lt;String&gt; dict, int roundingFlag, byte defaultByte) {</span>
+<span class="nc" id="L62">        this.dict = dict;</span>
+<span class="nc" id="L63">        this.fixedLen = dict.getSizeOfId();</span>
+<span class="nc" id="L64">        this.roundingFlag = roundingFlag;</span>
+<span class="nc" id="L65">        this.defaultByte = defaultByte;</span>
+<span class="nc" id="L66">    }</span>
+
+    public int getRoundingFlag() {
+<span class="nc" id="L69">        return roundingFlag;</span>
+    }
+
+    public DictionaryDimEnc copy(int roundingFlag) {
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (this.roundingFlag == roundingFlag)</span>
+<span class="nc" id="L74">            return this;</span>
+        else
+<span class="nc" id="L76">            return new DictionaryDimEnc(dict, roundingFlag, defaultByte);</span>
+    }
+
+    public DictionaryDimEnc copy(int roundingFlag, byte defaultByte) {
+<span class="nc bnc" id="L80" title="All 4 branches missed.">        if (this.roundingFlag == roundingFlag &amp;&amp; this.defaultByte == defaultByte)</span>
+<span class="nc" id="L81">            return this;</span>
+        else
+<span class="nc" id="L83">            return new DictionaryDimEnc(dict, roundingFlag, defaultByte);</span>
+    }
+
+    public Dictionary&lt;String&gt; getDictionary() {
+<span class="nc" id="L87">        return dict;</span>
+    }
+
+    @Override
+    public int getLengthOfEncoding() {
+<span class="nc" id="L92">        return fixedLen;</span>
+    }
+
+    @Override
+    public void encode(String valueStr, byte[] output, int outputOffset) {
+        try {
+<span class="nc" id="L98">            int id = dict.getIdFromValue(valueStr, roundingFlag);</span>
+<span class="nc" id="L99">            BytesUtil.writeUnsigned(id, output, outputOffset, fixedLen);</span>
+<span class="nc" id="L100">        } catch (IllegalArgumentException ex) {</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            for (int i = outputOffset; i &lt; outputOffset + fixedLen; i++) {</span>
+<span class="nc" id="L102">                output[i] = defaultByte;</span>
+            }
+<span class="nc" id="L104">            logger.error(&quot;Can't translate value &quot; + valueStr + &quot; to dictionary ID, roundingFlag &quot; + roundingFlag + &quot;.&quot;</span>
+<span class="nc" id="L105">                    + &quot; Using default value &quot; + String.format(Locale.ROOT, &quot;\\x%02X&quot;, defaultByte));</span>
+<span class="nc" id="L106">        }</span>
+<span class="nc" id="L107">    }</span>
+
+    @Override
+    public String decode(byte[] bytes, int offset, int len) {
+<span class="nc" id="L111">        int id = BytesUtil.readUnsigned(bytes, offset, len);</span>
+        try {
+<span class="nc" id="L113">            String value = dict.getValueFromId(id);</span>
+<span class="nc" id="L114">            return value;</span>
+<span class="nc" id="L115">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L116">            logger.error(&quot;Can't get dictionary value from &quot; + dict + &quot; (id = &quot; + id + &quot;)&quot;);</span>
+<span class="nc" id="L117">            return &quot;&quot;;</span>
+        }
+    }
+
+    @Override
+    public DataTypeSerializer&lt;Object&gt; asDataTypeSerializer() {
+<span class="nc" id="L123">        return new DictionarySerializer();</span>
+    }
+
+<span class="nc" id="L126">    public class DictionarySerializer extends DataTypeSerializer&lt;Object&gt; {</span>
+        @Override
+        public void serialize(Object value, ByteBuffer buf) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            int id = dict.getIdFromValue(value == null ? null : value.toString(), roundingFlag);</span>
+<span class="nc" id="L130">            BytesUtil.writeUnsigned(id, dict.getSizeOfId(), buf);</span>
+<span class="nc" id="L131">        }</span>
+
+        @Override
+        public Object deserialize(ByteBuffer in) {
+<span class="nc" id="L135">            int id = BytesUtil.readUnsigned(in, dict.getSizeOfId());</span>
+<span class="nc" id="L136">            return dict.getValueFromId(id);</span>
+        }
+
+        @Override
+        public int peekLength(ByteBuffer in) {
+<span class="nc" id="L141">            return dict.getSizeOfId();</span>
+        }
+
+        @Override
+        public int maxLength() {
+<span class="nc" id="L146">            return dict.getSizeOfId();</span>
+        }
+
+        @Override
+        public int getStorageBytesEstimate() {
+<span class="nc" id="L151">            return dict.getSizeOfId();</span>
+        }
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+<span class="nc" id="L157">        out.writeInt(fixedLen);</span>
+<span class="nc" id="L158">        out.writeInt(roundingFlag);</span>
+<span class="nc" id="L159">        out.write(defaultByte);</span>
+<span class="nc" id="L160">        out.writeObject(dict);</span>
+<span class="nc" id="L161">    }</span>
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+<span class="nc" id="L165">        this.fixedLen = in.readInt();</span>
+<span class="nc" id="L166">        this.roundingFlag = in.readInt();</span>
+<span class="nc" id="L167">        this.defaultByte = in.readByte();</span>
+<span class="nc" id="L168">        this.dict = (Dictionary&lt;String&gt;) in.readObject();</span>
+<span class="nc" id="L169">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

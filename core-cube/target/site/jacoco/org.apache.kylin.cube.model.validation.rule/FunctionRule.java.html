@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FunctionRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model.validation.rule</a> &gt; <span class="el_source">FunctionRule.java</span></div><h1>FunctionRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model.validation.rule;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.DimensionDesc;
+import org.apache.kylin.cube.model.validation.IValidatorRule;
+import org.apache.kylin.cube.model.validation.ResultLevel;
+import org.apache.kylin.cube.model.validation.ValidateContext;
+import org.apache.kylin.measure.topn.TopNMeasureType;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * Validate function parameter.
+ * &lt;p/&gt;
+ * if type is column, check values are valid fact table columns if type is
+ * constant, the value only can be numberic
+ * &lt;p/&gt;
+ * the return type only can be int/bigint/long/double/decimal
+ *
+ */
+<span class="fc" id="L50">public class FunctionRule implements IValidatorRule&lt;CubeDesc&gt; {</span>
+
+    /*
+     * (non-Javadoc)
+     * 
+     * @see
+     * org.apache.kylin.metadata.validation.IValidatorRule#validate(java.lang.Object
+     * , org.apache.kylin.metadata.validation.ValidateContext)
+     */
+    @Override
+    public void validate(CubeDesc cube, ValidateContext context) {
+<span class="fc" id="L61">        List&lt;MeasureDesc&gt; measures = cube.getMeasures();</span>
+
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (validateMeasureNamesDuplicated(measures, context)) {</span>
+<span class="nc" id="L64">            return;</span>
+        }
+
+<span class="fc" id="L67">        List&lt;FunctionDesc&gt; countStarFuncs = new ArrayList&lt;FunctionDesc&gt;();</span>
+
+<span class="fc" id="L69">        Iterator&lt;MeasureDesc&gt; it = measures.iterator();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L71">            MeasureDesc measure = it.next();</span>
+<span class="fc" id="L72">            FunctionDesc func = measure.getFunction();</span>
+<span class="fc" id="L73">            ParameterDesc parameter = func.getParameter();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (parameter == null) {</span>
+<span class="nc" id="L75">                context.addResult(ResultLevel.ERROR, &quot;Must define parameter for function &quot; + func.getExpression() + &quot; in &quot; + measure.getName());</span>
+<span class="nc" id="L76">                return;</span>
+            }
+
+<span class="fc" id="L79">            String type = func.getParameter().getType();</span>
+<span class="fc" id="L80">            String value = func.getParameter().getValue();</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (StringUtils.isEmpty(type)) {</span>
+<span class="nc" id="L82">                context.addResult(ResultLevel.ERROR, &quot;Must define type for parameter type &quot; + func.getExpression() + &quot; in &quot; + measure.getName());</span>
+<span class="nc" id="L83">                return;</span>
+            }
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (StringUtils.isEmpty(value)) {</span>
+<span class="nc" id="L86">                context.addResult(ResultLevel.ERROR, &quot;Must define type for parameter value &quot; + func.getExpression() + &quot; in &quot; + measure.getName());</span>
+<span class="nc" id="L87">                return;</span>
+            }
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (StringUtils.isEmpty(func.getReturnType())) {</span>
+<span class="nc" id="L90">                context.addResult(ResultLevel.ERROR, &quot;Must define return type for function &quot; + func.getExpression() + &quot; in &quot; + measure.getName());</span>
+<span class="nc" id="L91">                return;</span>
+            }
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (StringUtils.equalsIgnoreCase(FunctionDesc.PARAMETER_TYPE_COLUMN, type)) {</span>
+<span class="fc" id="L95">                validateColumnParameter(context, cube, value);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            } else if (StringUtils.equals(FunctionDesc.PARAMETER_TYPE_CONSTANT, type)) {</span>
+<span class="fc" id="L97">                validateCostantParameter(context, cube, value);</span>
+            }
+
+            try {
+<span class="fc" id="L101">                func.getMeasureType().validate(func);</span>
+<span class="nc" id="L102">            } catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L103">                context.addResult(ResultLevel.ERROR, ex.getMessage());</span>
+<span class="fc" id="L104">            }</span>
+
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">            if (func.isCount() &amp;&amp; func.getParameter().isConstant())</span>
+<span class="fc" id="L107">                countStarFuncs.add(func);</span>
+
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (TopNMeasureType.FUNC_TOP_N.equalsIgnoreCase(func.getExpression())) {</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (parameter.getNextParameter() == null) {</span>
+<span class="nc" id="L111">                    context.addResult(ResultLevel.ERROR, &quot;Must define at least 2 parameters for function &quot; + func.getExpression() + &quot; in &quot; + measure.getName());</span>
+<span class="nc" id="L112">                    return;</span>
+                }
+
+<span class="nc" id="L115">                ParameterDesc groupByCol = parameter.getNextParameter();</span>
+<span class="nc" id="L116">                List&lt;String&gt; duplicatedCol = Lists.newArrayList();</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                while (groupByCol != null) {</span>
+<span class="nc" id="L118">                    String embeded_groupby = groupByCol.getValue();</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">                    for (DimensionDesc dimensionDesc : cube.getDimensions()) {</span>
+<span class="nc bnc" id="L120" title="All 4 branches missed.">                        if (dimensionDesc.getColumn() != null &amp;&amp; dimensionDesc.getColumn().equalsIgnoreCase(embeded_groupby)) {</span>
+<span class="nc" id="L121">                            duplicatedCol.add(embeded_groupby);</span>
+                        }
+<span class="nc" id="L123">                    }</span>
+<span class="nc" id="L124">                    groupByCol = groupByCol.getNextParameter();</span>
+<span class="nc" id="L125">                }</span>
+
+            }
+<span class="fc" id="L128">        }</span>
+
+
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (countStarFuncs.size() != 1) {</span>
+<span class="nc" id="L132">            context.addResult(ResultLevel.ERROR, &quot;Must define one and only one count(1) function, but there are &quot;</span>
+<span class="nc" id="L133">                    + countStarFuncs.size() + &quot; -- &quot; + countStarFuncs);</span>
+        }
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * @param context
+     * @param cube
+     * @param value
+     */
+    private void validateCostantParameter(ValidateContext context, CubeDesc cube, String value) {
+        try {
+<span class="fc" id="L144">            Integer.parseInt(value);</span>
+<span class="nc" id="L145">        } catch (Exception e) {</span>
+<span class="nc" id="L146">            context.addResult(ResultLevel.ERROR, &quot;Parameter value must be number, but it is &quot; + value);</span>
+<span class="fc" id="L147">        }</span>
+<span class="fc" id="L148">    }</span>
+
+    /**
+     * @param context
+     * @param cube
+     * @param value
+     */
+    private void validateColumnParameter(ValidateContext context, CubeDesc cube, String value) {
+<span class="fc" id="L156">        DataModelDesc model = cube.getModel();</span>
+        try {
+<span class="fc" id="L158">            model.findColumn(value);</span>
+<span class="nc" id="L159">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L160">            context.addResult(ResultLevel.ERROR, e.getMessage());</span>
+<span class="fc" id="L161">        }</span>
+<span class="fc" id="L162">    }</span>
+
+    /**
+     * @param measures
+     */
+    private boolean validateMeasureNamesDuplicated(List&lt;MeasureDesc&gt; measures, ValidateContext context) {
+<span class="fc" id="L168">        Set&lt;String&gt; nameSet = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (MeasureDesc measure: measures){</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">            if (nameSet.contains(measure.getName())){</span>
+<span class="nc" id="L171">                context.addResult(ResultLevel.ERROR, &quot;There is duplicated measure's name: &quot; + measure.getName());</span>
+<span class="nc" id="L172">                return true;</span>
+            } else {
+<span class="fc" id="L174">                nameSet.add(measure.getName());</span>
+            }
+<span class="fc" id="L176">        }</span>
+<span class="fc" id="L177">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

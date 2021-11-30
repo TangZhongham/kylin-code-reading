@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ValueIterators.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ValueIterators.java</span></div><h1>ValueIterators.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.util;
+
+import java.util.Iterator;
+import java.util.Set;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+<span class="nc" id="L26">public class ValueIterators {</span>
+
+    public static &lt;T extends Number&gt; long sum(Iterator&lt;T&gt; iterator) {
+<span class="nc" id="L29">        long ret = 0;</span>
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L31">            Number element = iterator.next();</span>
+<span class="nc" id="L32">            ret += element.longValue();</span>
+<span class="nc" id="L33">        }</span>
+<span class="nc" id="L34">        return ret;</span>
+    }
+
+    public static &lt;T&gt; T checkSame(Iterator&lt;T&gt; iterator) {
+<span class="nc" id="L38">        Set&lt;T&gt; values = Sets.newHashSet();</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L40">            T element = iterator.next();</span>
+<span class="nc" id="L41">            values.add(element);</span>
+<span class="nc" id="L42">        }</span>
+
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        if (values.size() &gt; 1) {</span>
+<span class="nc" id="L45">            throw new IllegalStateException(&quot;more than one distinct values exist in the collection:&quot; + values);</span>
+        }
+
+<span class="nc" id="L48">        return values.iterator().next();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

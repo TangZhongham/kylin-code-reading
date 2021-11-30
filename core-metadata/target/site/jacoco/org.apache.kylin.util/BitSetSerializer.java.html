@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitSetSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.util</a> &gt; <span class="el_source">BitSetSerializer.java</span></div><h1>BitSetSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.util;
+
+import java.util.BitSet;
+
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Serializer;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
+
+<span class="nc" id="L28">public class BitSetSerializer extends Serializer&lt;BitSet&gt; {</span>
+
+    @Override
+    public BitSet copy(final Kryo kryo, final BitSet original) {
+<span class="nc" id="L32">        final BitSet result = new BitSet();</span>
+<span class="nc" id="L33">        final int length = original.length();</span>
+<span class="nc bnc" id="L34" title="All 2 branches missed.">        for (int i = 0; i &lt; length; i++) {</span>
+<span class="nc" id="L35">            result.set(i, original.get(i));</span>
+        }
+<span class="nc" id="L37">        return result;</span>
+    }
+
+    @Override
+    public void write(final Kryo kryo, final Output output, final BitSet bitSet) {
+<span class="nc" id="L42">        final int len = bitSet.length();</span>
+
+<span class="nc" id="L44">        output.writeInt(len, true);</span>
+
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L47">            output.writeBoolean(bitSet.get(i));</span>
+        }
+<span class="nc" id="L49">    }</span>
+
+    @Override
+    public BitSet read(final Kryo kryo, final Input input, final Class&lt;BitSet&gt; bitSetClass) {
+<span class="nc" id="L53">        final int len = input.readInt(true);</span>
+<span class="nc" id="L54">        final BitSet ret = new BitSet(len);</span>
+
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L57">            ret.set(i, input.readBoolean());</span>
+        }
+
+<span class="nc" id="L60">        return ret;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

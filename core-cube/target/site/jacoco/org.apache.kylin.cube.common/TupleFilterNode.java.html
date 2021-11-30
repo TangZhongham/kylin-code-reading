@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TupleFilterNode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.common</a> &gt; <span class="el_source">TupleFilterNode.java</span></div><h1>TupleFilterNode.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.common;
+
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.DimensionRangeInfo;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.LogicalTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.TblColRef;
+
+public class TupleFilterNode {
+    private TupleFilter filter;
+
+<span class="fc" id="L31">    public TupleFilterNode(TupleFilter filter) {</span>
+<span class="fc" id="L32">        this.filter = filter;</span>
+<span class="fc" id="L33">    }</span>
+
+    public boolean checkSeg(CubeSegment seg) {
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (filter == null)</span>
+<span class="nc" id="L37">            return true;</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (filter instanceof CompareTupleFilter) {</span>
+<span class="fc" id="L39">            CompareTupleFilter compareTupleFilter = (CompareTupleFilter) filter;</span>
+<span class="fc" id="L40">            TblColRef col = compareTupleFilter.getColumn();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (col == null) {</span>
+<span class="nc" id="L42">                return true;</span>
+            }
+<span class="fc" id="L44">            DimensionRangeInfo dimRangeInfo = seg.getDimensionRangeInfoMap().get(col.getIdentity());</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            if (dimRangeInfo == null)</span>
+<span class="fc" id="L46">                dimRangeInfo = SegmentPruner.tryDeduceRangeFromPartitionCol(seg, col);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">            if (dimRangeInfo == null)</span>
+<span class="nc" id="L48">                return true;</span>
+<span class="fc" id="L49">            String minVal = dimRangeInfo.getMin();</span>
+<span class="fc" id="L50">            String maxVal = dimRangeInfo.getMax();</span>
+<span class="fc" id="L51">            return SegmentPruner.satisfy(compareTupleFilter, minVal, maxVal);</span>
+        }
+
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        if (filter instanceof LogicalTupleFilter) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (filter.getOperator() == TupleFilter.FilterOperatorEnum.AND) {</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                for (TupleFilter filter : filter.getChildren()) {</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                    if (!new TupleFilterNode(filter).checkSeg(seg))</span>
+<span class="fc" id="L58">                        return false;</span>
+<span class="fc" id="L59">                }</span>
+<span class="fc" id="L60">                return true;</span>
+
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">            } else if (filter.getOperator() == TupleFilter.FilterOperatorEnum.OR) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                for (TupleFilter filter : filter.getChildren()) {</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                    if (new TupleFilterNode(filter).checkSeg(seg))</span>
+<span class="fc" id="L65">                        return true;</span>
+<span class="fc" id="L66">                }</span>
+<span class="fc" id="L67">                return false;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            } else if (filter.getOperator() == TupleFilter.FilterOperatorEnum.NOT) {</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">                for (TupleFilter filter : filter.getChildren()) {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                    return !(new TupleFilterNode(filter).checkSeg(seg));</span>
+                }
+            }
+        }
+<span class="nc" id="L74">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

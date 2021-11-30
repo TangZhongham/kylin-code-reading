@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DenseRegister.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.hllc</a> &gt; <span class="el_source">DenseRegister.java</span></div><h1>DenseRegister.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.kylin.measure.hllc;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+
+/**
+ * Created by xiefan on 16-12-9.
+ */
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">public class DenseRegister implements Register, java.io.Serializable {</span>
+
+    private int m;
+
+    private byte[] register;
+
+<span class="fc" id="L33">    public DenseRegister(int p) {</span>
+<span class="fc" id="L34">        this.m = 1 &lt;&lt; p;</span>
+<span class="fc" id="L35">        this.register = new byte[m];</span>
+<span class="fc" id="L36">    }</span>
+
+    public void  copyFrom(DenseRegister r){
+<span class="pc bpc" id="L39" title="2 of 4 branches missed.">        assert m == r.m;</span>
+<span class="fc" id="L40">        System.arraycopy(r.register, 0, register, 0 , register.length);</span>
+<span class="fc" id="L41">    }</span>
+
+    public void set(int pos, byte value) {
+<span class="fc" id="L44">        register[pos] = value;</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public byte get(int pos) {
+<span class="fc" id="L49">        return register[pos];</span>
+    }
+
+    @Override
+    public void merge(Register another) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (another.getRegisterType() == RegisterType.DENSE) {</span>
+<span class="fc" id="L55">            DenseRegister dr = (DenseRegister) another;</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            for (int i = 0; i &lt; register.length; i++) {</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                if (dr.register[i] &gt; register[i])</span>
+<span class="fc" id="L58">                    register[i] = dr.register[i];</span>
+            }
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        } else if (another.getRegisterType() == RegisterType.SPARSE) {</span>
+<span class="fc" id="L61">            SparseRegister sr = (SparseRegister) another;</span>
+<span class="fc" id="L62">            Collection&lt;Map.Entry&lt;Integer, Byte&gt;&gt; allValue = sr.getAllValue();</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            for (Map.Entry&lt;Integer, Byte&gt; entry : allValue) {</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                if (entry.getValue() &gt; register[entry.getKey()])</span>
+<span class="fc" id="L65">                    register[entry.getKey()] = entry.getValue();</span>
+<span class="fc" id="L66">            }</span>
+<span class="fc" id="L67">        } else {</span>
+<span class="fc" id="L68">            SingleValueRegister sr = (SingleValueRegister) another;</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">            if (sr.getSize() &gt; 0 &amp;&amp; sr.getValue() &gt; register[sr.getSingleValuePos()]) {</span>
+<span class="fc" id="L70">                register[sr.getSingleValuePos()] = sr.getValue();</span>
+            }
+        }
+<span class="fc" id="L73">    }</span>
+
+    @Override
+    public void clear() {
+<span class="fc" id="L77">        byte zero = (byte) 0;</span>
+<span class="fc" id="L78">        Arrays.fill(register, zero);</span>
+<span class="fc" id="L79">    }</span>
+
+    @Override
+    public int getSize() {
+<span class="fc" id="L83">        int size = 0;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (int i = 0; i &lt; m; i++) {</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (register[i] &gt; 0)</span>
+<span class="fc" id="L86">                size++;</span>
+        }
+<span class="fc" id="L88">        return size;</span>
+    }
+
+    @Override
+    public RegisterType getRegisterType() {
+<span class="fc" id="L93">        return RegisterType.DENSE;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L98">        final int prime = 31;</span>
+<span class="nc" id="L99">        int result = 1;</span>
+<span class="nc" id="L100">        result = prime * result + Arrays.hashCode(register);</span>
+<span class="nc" id="L101">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L107">            return true;</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L109">            return false;</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L111">            return false;</span>
+<span class="fc" id="L112">        DenseRegister other = (DenseRegister) obj;</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (!Arrays.equals(register, other.register))</span>
+<span class="nc" id="L114">            return false;</span>
+<span class="fc" id="L115">        return true;</span>
+    }
+
+    public  byte[] getRawRegister() {
+<span class="fc" id="L119">        return this.register;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

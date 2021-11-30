@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemcachedChunkingCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.memcached</a> &gt; <span class="el_source">MemcachedChunkingCache.java</span></div><h1>MemcachedChunkingCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.memcached;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import org.apache.commons.lang3.SerializationUtils;
+import org.apache.kylin.common.util.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Charsets;
+import org.apache.kylin.shaded.com.google.common.base.Function;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+import org.apache.kylin.shaded.com.google.common.base.Throwables;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.primitives.Ints;
+import org.apache.kylin.shaded.com.google.common.primitives.Shorts;
+
+import net.spy.memcached.internal.BulkFuture;
+
+/**
+ * Subclass of MemcachedCache. It supports storing large objects.  Memcached itself has a limitation to the value size with default value of 1M.
+ * This implement extends the limit to 1G and can split huge bytes to multiple chunks. It will take care of the data integrity if part of the chunks lost(due to server restart or other reasons)
+ *
+ * @author mingmwang
+ */
+public class MemcachedChunkingCache extends MemcachedCache implements KeyHookLookup {
+<span class="fc" id="L51">    private static final Logger logger = LoggerFactory.getLogger(MemcachedChunkingCache.class);</span>
+
+    public MemcachedChunkingCache(MemcachedCache cache) {
+<span class="fc" id="L54">        super(cache);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        Preconditions.checkArgument(config.getMaxChunkSize() &gt; 1, &quot;maxChunkSize [%d] must be greater than 1&quot;,</span>
+<span class="fc" id="L56">                config.getMaxChunkSize());</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        Preconditions.checkArgument(config.getMaxObjectSize() &gt; 261, &quot;maxObjectSize [%d] must be greater than 261&quot;,</span>
+<span class="fc" id="L58">                config.getMaxObjectSize());</span>
+<span class="fc" id="L59">    }</span>
+
+    protected static byte[][] splitBytes(final byte[] data, final int nSplit) {
+<span class="fc" id="L62">        byte[][] dest = new byte[nSplit][];</span>
+
+<span class="fc" id="L64">        final int splitSize = (data.length - 1) / nSplit + 1;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (int i = 0; i &lt; nSplit - 1; i++) {</span>
+<span class="fc" id="L66">            dest[i] = Arrays.copyOfRange(data, i * splitSize, (i + 1) * splitSize);</span>
+        }
+<span class="fc" id="L68">        dest[nSplit - 1] = Arrays.copyOfRange(data, (nSplit - 1) * splitSize, data.length);</span>
+
+<span class="fc" id="L70">        return dest;</span>
+    }
+
+    protected static int getValueSplit(MemcachedCacheConfig config, String keyS, int valueBLen) {
+        // the number 6 means the chunk number size never exceeds 6 bytes
+<span class="fc" id="L75">        final int valueSize = config.getMaxObjectSize() - Shorts.BYTES - Ints.BYTES</span>
+<span class="fc" id="L76">                - keyS.getBytes(Charsets.UTF_8).length - 6;</span>
+<span class="fc" id="L77">        final int maxValueSize = config.getMaxChunkSize() * valueSize;</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        Preconditions.checkArgument(valueBLen &lt;= maxValueSize,</span>
+                &quot;the value bytes length [%d] exceeds maximum value size [%d]&quot;, valueBLen, maxValueSize);
+<span class="fc" id="L80">        return (valueBLen - 1) / valueSize + 1;</span>
+    }
+
+    protected static Pair&lt;KeyHook, byte[][]&gt; getKeyValuePair(int nSplit, String keyS, byte[] valueB) {
+        KeyHook keyHook;
+<span class="fc" id="L85">        byte[][] splitValueB = null;</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (nSplit &gt; 1) {</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L88">                logger.debug(&quot;Enable chunking for putting large cached object values, chunk size = &quot; + nSplit</span>
+                        + &quot;, original value bytes size = &quot; + valueB.length);
+            }
+<span class="fc" id="L91">            String[] chunkKeySs = new String[nSplit];</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            for (int i = 0; i &lt; nSplit; i++) {</span>
+<span class="fc" id="L93">                chunkKeySs[i] = keyS + i;</span>
+            }
+<span class="fc" id="L95">            keyHook = new KeyHook(chunkKeySs, null);</span>
+<span class="fc" id="L96">            splitValueB = splitBytes(valueB, nSplit);</span>
+<span class="fc" id="L97">        } else {</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L99">                logger.debug(</span>
+                        &quot;Chunking not enabled, put the original value bytes to keyhook directly, original value bytes size = &quot;
+                                + valueB.length);
+            }
+<span class="nc" id="L103">            keyHook = new KeyHook(null, valueB);</span>
+        }
+
+<span class="fc" id="L106">        return new Pair&lt;&gt;(keyHook, splitValueB);</span>
+    }
+
+    /**
+     * This method overrides the parent getBinary(), it gets the KeyHook from the Cache first and check the KeyHook that whether chunking is enabled or not.
+     */
+    @Override
+    public byte[] getBinary(String keyS) {
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (Strings.isNullOrEmpty(keyS)) {</span>
+<span class="nc" id="L115">            return null;</span>
+        }
+<span class="fc" id="L117">        KeyHook keyHook = lookupKeyHook(keyS);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        if (keyHook == null) {</span>
+<span class="nc" id="L119">            return null;</span>
+        }
+
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">        if (keyHook.getChunkskey() == null || keyHook.getChunkskey().length == 0) {</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">            if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L124">                logger.debug(&quot;Chunking not enabled, return the value bytes in the keyhook directly, value bytes size = &quot;</span>
+<span class="nc" id="L125">                        + keyHook.getValues().length);</span>
+            }
+<span class="fc" id="L127">            return keyHook.getValues();</span>
+        }
+
+        BulkFuture&lt;Map&lt;String, Object&gt;&gt; bulkFuture;
+<span class="fc" id="L131">        long start = System.currentTimeMillis();</span>
+
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L134">            logger.debug(&quot;Chunking enabled, chunk size = &quot; + keyHook.getChunkskey().length);</span>
+        }
+
+<span class="fc" id="L137">        Map&lt;String, String&gt; keyLookup = computeKeyHash(Arrays.asList(keyHook.getChunkskey()));</span>
+        try {
+<span class="fc" id="L139">            bulkFuture = client.asyncGetBulk(keyLookup.keySet());</span>
+<span class="nc" id="L140">        } catch (IllegalStateException e) {</span>
+            // operation did not get queued in time (queue is full)
+<span class="nc" id="L142">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L143">            logger.error(&quot;Unable to queue cache operation.&quot;, e);</span>
+<span class="nc" id="L144">            return null;</span>
+<span class="nc" id="L145">        } catch (Throwable t) {</span>
+<span class="nc" id="L146">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L147">            logger.error(&quot;Unable to queue cache operation.&quot;, t);</span>
+<span class="nc" id="L148">            return null;</span>
+<span class="fc" id="L149">        }</span>
+
+        try {
+<span class="fc" id="L152">            Map&lt;String, Object&gt; bulkResult = bulkFuture.get(config.getTimeout(), TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L153">            cacheGetTime.addAndGet(System.currentTimeMillis() - start);</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">            if (bulkResult.size() != keyHook.getChunkskey().length) {</span>
+<span class="nc" id="L155">                missCount.incrementAndGet();</span>
+<span class="nc" id="L156">                logger.warn(&quot;Some paritial chunks missing for query key:&quot; + keyS);</span>
+                //remove all the partital chunks here.
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                for (String partitalKey : bulkResult.keySet()) {</span>
+<span class="nc" id="L159">                    client.delete(partitalKey);</span>
+<span class="nc" id="L160">                }</span>
+<span class="nc" id="L161">                deleteKeyHook(keyS);</span>
+<span class="nc" id="L162">                return null;</span>
+            }
+<span class="fc" id="L164">            hitCount.getAndAdd(keyHook.getChunkskey().length);</span>
+<span class="fc" id="L165">            byte[][] bytesArray = new byte[keyHook.getChunkskey().length][];</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (Map.Entry&lt;String, Object&gt; entry : bulkResult.entrySet()) {</span>
+<span class="fc" id="L167">                byte[] bytes = (byte[]) entry.getValue();</span>
+<span class="fc" id="L168">                readBytes.addAndGet(bytes.length);</span>
+<span class="fc" id="L169">                String originalKeyS = keyLookup.get(entry.getKey());</span>
+<span class="fc" id="L170">                int idx = Integer.parseInt(originalKeyS.substring(keyS.length()));</span>
+<span class="fc" id="L171">                bytesArray[idx] = decodeValue(originalKeyS.getBytes(Charsets.UTF_8), bytes);</span>
+<span class="fc" id="L172">            }</span>
+<span class="fc" id="L173">            return concatBytes(bytesArray);</span>
+<span class="nc" id="L174">        } catch (TimeoutException e) {</span>
+<span class="nc" id="L175">            timeoutCount.incrementAndGet();</span>
+<span class="nc" id="L176">            bulkFuture.cancel(false);</span>
+<span class="nc" id="L177">            return null;</span>
+<span class="nc" id="L178">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L179">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L180">            throw Throwables.propagate(e);</span>
+<span class="nc" id="L181">        } catch (ExecutionException e) {</span>
+<span class="nc" id="L182">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L183">            logger.error(&quot;ExecutionException when pulling item from cache.&quot;, e);</span>
+<span class="nc" id="L184">            return null;</span>
+        }
+    }
+
+    /**
+     * This method overrides the parent putBinary() method. It will split the large value bytes into multiple chunks to fit into the internal Cache.
+     * It generates a KeyHook to store the splitted chunked keys.
+     */
+    @Override
+    public void putBinary(String keyS, byte[] valueB, int expiration) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(keyS)) {</span>
+<span class="nc" id="L195">            return;</span>
+        }
+<span class="nc" id="L197">        int nSplit = getValueSplit(config, keyS, valueB.length);</span>
+<span class="nc" id="L198">        Pair&lt;KeyHook, byte[][]&gt; keyValuePair = getKeyValuePair(nSplit, keyS, valueB);</span>
+<span class="nc" id="L199">        KeyHook keyHook = keyValuePair.getFirst();</span>
+<span class="nc" id="L200">        byte[][] splitValueB = keyValuePair.getSecond();</span>
+
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L203">            logger.debug(&quot;put key hook:{} to cache for hash key&quot;, keyHook);</span>
+        }
+<span class="nc" id="L205">        super.putBinary(keyS, serializeValue(keyHook), expiration);</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (nSplit &gt; 1) {</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            for (int i = 0; i &lt; nSplit; i++) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L209">                    logger.debug(&quot;Chunk[&quot; + i + &quot;] bytes size before encoding  = &quot; + splitValueB[i].length);</span>
+                }
+<span class="nc" id="L211">                super.putBinary(keyHook.getChunkskey()[i], splitValueB[i], expiration);</span>
+            }
+        }
+<span class="nc" id="L214">    }</span>
+
+    public void evict(String keyS) {
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(keyS)) {</span>
+<span class="nc" id="L218">            return;</span>
+        }
+<span class="nc" id="L220">        KeyHook keyHook = lookupKeyHook(keyS);</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if (keyHook == null) {</span>
+<span class="nc" id="L222">            return;</span>
+        }
+
+<span class="nc bnc" id="L225" title="All 4 branches missed.">        if (keyHook.getChunkskey() != null &amp;&amp; keyHook.getChunkskey().length &gt; 0) {</span>
+<span class="nc" id="L226">            String[] chunkKeys = keyHook.getChunkskey();</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            for (String chunkKey : chunkKeys) {</span>
+<span class="nc" id="L228">                super.evict(chunkKey);</span>
+            }
+        }
+<span class="nc" id="L231">        super.evict(keyS);</span>
+<span class="nc" id="L232">    }</span>
+
+    protected Map&lt;String, String&gt; computeKeyHash(List&lt;String&gt; keySList) {
+<span class="fc" id="L235">        return Maps.uniqueIndex(keySList, new Function&lt;String, String&gt;() {</span>
+            @Override
+            public String apply(String keyS) {
+<span class="fc" id="L238">                return computeKeyHash(keyS);</span>
+            }
+        });
+    }
+
+    private void deleteKeyHook(String keyS) {
+        try {
+<span class="nc" id="L245">            super.evict(keyS);</span>
+<span class="nc" id="L246">        } catch (IllegalStateException e) {</span>
+            // operation did not get queued in time (queue is full)
+<span class="nc" id="L248">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L249">            logger.error(&quot;Unable to queue cache operation: &quot;, e);</span>
+<span class="nc" id="L250">        }</span>
+<span class="nc" id="L251">    }</span>
+
+    private byte[] concatBytes(byte[]... bytesArray) {
+<span class="fc" id="L254">        int length = 0;</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        for (byte[] bytes : bytesArray) {</span>
+<span class="fc" id="L256">            length += bytes.length;</span>
+        }
+<span class="fc" id="L258">        byte[] result = new byte[length];</span>
+<span class="fc" id="L259">        int destPos = 0;</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for (byte[] bytes : bytesArray) {</span>
+<span class="fc" id="L261">            System.arraycopy(bytes, 0, result, destPos, bytes.length);</span>
+<span class="fc" id="L262">            destPos += bytes.length;</span>
+        }
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L265">            logger.debug(&quot;Original value bytes size for all chunks  = &quot; + result.length);</span>
+        }
+
+<span class="fc" id="L268">        return result;</span>
+    }
+
+    @Override
+    public KeyHook lookupKeyHook(String keyS) {
+<span class="fc" id="L273">        byte[] bytes = super.getBinary(keyS);</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        if (bytes == null) {</span>
+<span class="nc" id="L275">            return null;</span>
+        }
+<span class="fc" id="L277">        return (KeyHook) SerializationUtils.deserialize(bytes);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

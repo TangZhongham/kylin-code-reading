@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CaseTupleExpression.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.expression</a> &gt; <span class="el_source">CaseTupleExpression.java</span></div><h1>CaseTupleExpression.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.expression;
+
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilterSerializer;
+import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableList;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class CaseTupleExpression extends TupleExpression {
+
+    private List&lt;Pair&lt;TupleFilter, TupleExpression&gt;&gt; whenList;
+    private TupleExpression elseExpr;
+
+    public CaseTupleExpression(List&lt;Pair&lt;TupleFilter, TupleExpression&gt;&gt; whenList, TupleExpression elseExpr) {
+<span class="fc" id="L41">        super(ExpressionOperatorEnum.CASE, Collections.&lt;TupleExpression&gt; emptyList());</span>
+<span class="fc" id="L42">        this.whenList = whenList;</span>
+<span class="fc" id="L43">        this.elseExpr = elseExpr;</span>
+<span class="fc" id="L44">    }</span>
+
+    @Override
+    protected boolean ifAbleToPushDown() {
+<span class="nc bnc" id="L48" title="All 2 branches missed.">        if (ifAbleToPushDown == null) {</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">            for (Pair&lt;TupleFilter, TupleExpression&gt; whenEntry : whenList) {</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">                ifAbleToPushDown = TupleFilter.isEvaluableRecursively(whenEntry.getFirst())</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">                        &amp;&amp; whenEntry.getSecond().ifAbleToPushDown();</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">                if (!ifAbleToPushDown) {</span>
+<span class="nc" id="L53">                    break;</span>
+                }
+<span class="nc" id="L55">            }</span>
+<span class="nc bnc" id="L56" title="All 4 branches missed.">            if (elseExpr != null &amp;&amp; Boolean.TRUE.equals(ifAbleToPushDown)) {</span>
+<span class="nc" id="L57">                ifAbleToPushDown = elseExpr.ifAbleToPushDown();</span>
+            }
+<span class="nc bnc" id="L59" title="All 2 branches missed.">            if (ifAbleToPushDown == null) {</span>
+<span class="nc" id="L60">                ifAbleToPushDown = true;</span>
+            }
+        }
+<span class="nc" id="L63">        return ifAbleToPushDown;</span>
+    }
+
+    @Override
+    public boolean ifForDynamicColumn() {
+<span class="nc" id="L68">        return ifAbleToPushDown();</span>
+    }
+
+    //TODO
+    @Override
+    public void verify() {
+<span class="nc" id="L74">    }</span>
+
+    @Override
+    public Object calculate(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (Pair&lt;TupleFilter, TupleExpression&gt; entry : whenList) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (entry.getFirst().evaluate(tuple, cs)) {</span>
+<span class="fc" id="L80">                return entry.getSecond().calculate(tuple, cs);</span>
+            }
+<span class="fc" id="L82">        }</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (elseExpr != null) {</span>
+<span class="fc" id="L84">            return elseExpr.calculate(tuple, cs);</span>
+        }
+<span class="nc" id="L86">        return null;</span>
+    }
+
+    @Override
+    public TupleExpression accept(ExpressionVisitor visitor) {
+<span class="fc" id="L91">        return visitor.visitCaseCall(this);</span>
+    }
+
+    @Override
+    public void serialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+<span class="fc" id="L96">        BytesUtil.writeVInt(whenList.size(), buffer);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (Pair&lt;TupleFilter, TupleExpression&gt; whenEntry : whenList) {</span>
+<span class="fc" id="L98">            byte[] whenBytes = TupleFilterSerializer.serialize(whenEntry.getFirst(), cs);</span>
+<span class="fc" id="L99">            BytesUtil.writeByteArray(whenBytes, buffer);</span>
+
+<span class="fc" id="L101">            byte[] thenBytes = TupleExpressionSerializer.serialize(whenEntry.getSecond(), cs);</span>
+<span class="fc" id="L102">            BytesUtil.writeByteArray(thenBytes, buffer);</span>
+<span class="fc" id="L103">        }</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if (elseExpr != null) {</span>
+<span class="fc" id="L105">            BytesUtil.writeVInt(1, buffer);</span>
+<span class="fc" id="L106">            byte[] elseBytes = TupleExpressionSerializer.serialize(elseExpr, cs);</span>
+<span class="fc" id="L107">            BytesUtil.writeByteArray(elseBytes, buffer);</span>
+<span class="fc" id="L108">        } else {</span>
+<span class="nc" id="L109">            BytesUtil.writeVInt(-1, buffer);</span>
+        }
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    public void deserialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+<span class="fc" id="L115">        int nWhenEntries = BytesUtil.readVInt(buffer);</span>
+<span class="fc" id="L116">        List&lt;Pair&lt;TupleFilter, TupleExpression&gt;&gt; whenList = Lists.newArrayListWithExpectedSize(nWhenEntries);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (int i = 0; i &lt; nWhenEntries; i++) {</span>
+<span class="fc" id="L118">            TupleFilter tupleFilter = TupleFilterSerializer.deserialize(BytesUtil.readByteArray(buffer), cs);</span>
+<span class="fc" id="L119">            TupleExpression tupleExpression = TupleExpressionSerializer.deserialize(BytesUtil.readByteArray(buffer),</span>
+                    cs);
+<span class="fc" id="L121">            whenList.add(new Pair&lt;&gt;(tupleFilter, tupleExpression));</span>
+        }
+<span class="fc" id="L123">        this.whenList = whenList;</span>
+<span class="fc" id="L124">        int flag = BytesUtil.readVInt(buffer);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (flag == 1) {</span>
+<span class="fc" id="L126">            this.elseExpr = TupleExpressionSerializer.deserialize(BytesUtil.readByteArray(buffer), cs);</span>
+        }
+<span class="fc" id="L128">    }</span>
+
+    public List&lt;Pair&lt;TupleFilter, TupleExpression&gt;&gt; getWhenList() {
+<span class="fc" id="L131">        return ImmutableList.copyOf(whenList);</span>
+    }
+
+    public TupleExpression getElseExpr() {
+<span class="fc" id="L135">        return elseExpr;</span>
+    }
+
+    public String toString() {
+<span class="nc" id="L139">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L140">        sb.append(operator.toString());</span>
+<span class="nc" id="L141">        sb.append(&quot;(&quot;);</span>
+<span class="nc" id="L142">        boolean ifFirst = true;</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        for (Pair&lt;TupleFilter, TupleExpression&gt; whenEntry : whenList) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            if (ifFirst) {</span>
+<span class="nc" id="L145">                ifFirst = false;</span>
+            } else {
+<span class="nc" id="L147">                sb.append(&quot;,&quot;);</span>
+            }
+<span class="nc" id="L149">            sb.append(whenEntry.getFirst().toString());</span>
+<span class="nc" id="L150">            sb.append(&quot;,&quot;);</span>
+<span class="nc" id="L151">            sb.append(whenEntry.getSecond().toString());</span>
+<span class="nc" id="L152">        }</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (elseExpr != null) {</span>
+<span class="nc" id="L154">            sb.append(&quot;,&quot;);</span>
+<span class="nc" id="L155">            sb.append(elseExpr.toString());</span>
+        }
+<span class="nc" id="L157">        sb.append(&quot;)&quot;);</span>
+<span class="nc" id="L158">        return sb.toString();</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L164">            return true;</span>
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L166">            return false;</span>
+
+<span class="fc" id="L168">        CaseTupleExpression that = (CaseTupleExpression) o;</span>
+
+<span class="pc bpc" id="L170" title="4 of 6 branches missed.">        if (whenList != null ? !whenList.equals(that.whenList) : that.whenList != null)</span>
+<span class="nc" id="L171">            return false;</span>
+<span class="pc bpc" id="L172" title="3 of 4 branches missed.">        return elseExpr != null ? elseExpr.equals(that.elseExpr) : that.elseExpr == null;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        int result = whenList != null ? whenList.hashCode() : 0;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        result = 31 * result + (elseExpr != null ? elseExpr.hashCode() : 0);</span>
+<span class="nc" id="L179">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

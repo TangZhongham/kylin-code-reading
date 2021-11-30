@@ -1,0 +1,543 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapReduceExecutable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">MapReduceExecutable.java</span></div><h1>MapReduceExecutable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.reflect.Constructor;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import com.google.common.base.Strings;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapreduce.Cluster;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.JobID;
+import org.apache.hadoop.mapreduce.JobStatus;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.lock.DistributedLock;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.engine.mr.exception.MapReduceException;
+import org.apache.kylin.job.constant.ExecutableConstants;
+import org.apache.kylin.job.constant.JobStepStatusEnum;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.ExecutableContext;
+import org.apache.kylin.job.execution.ExecutableManager;
+import org.apache.kylin.job.execution.ExecutableState;
+import org.apache.kylin.job.execution.ExecuteResult;
+import org.apache.kylin.job.execution.Output;
+import org.apache.kylin.metadata.MetadataConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+
+/**
+ */
+public class MapReduceExecutable extends AbstractExecutable {
+
+    public static final String MAP_REDUCE_WAIT_TIME = &quot;mapReduceWaitTime&quot;;
+    private static final String KEY_MR_JOB = &quot;MR_JOB_CLASS&quot;;
+    private static final String KEY_PARAMS = &quot;MR_JOB_PARAMS&quot;;
+    private static final String KEY_COUNTER_SAVEAS = &quot;MR_COUNTER_SAVEAS&quot;;
+<span class="nc" id="L75">    private final Lock threadLock = new ReentrantLock();</span>
+
+<span class="nc" id="L77">    protected static final Logger logger = LoggerFactory.getLogger(MapReduceExecutable.class);</span>
+
+    public MapReduceExecutable() {
+<span class="nc" id="L80">        super();</span>
+<span class="nc" id="L81">    }</span>
+
+    @Override
+    protected void onExecuteStart(ExecutableContext executableContext) {
+<span class="nc" id="L85">        final Output output = getOutput();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (output.getExtra().containsKey(START_TIME)) {</span>
+<span class="nc" id="L87">            final String mrJobId = output.getExtra().get(ExecutableConstants.MR_JOB_ID);</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">            if (mrJobId == null) {</span>
+<span class="nc" id="L89">                getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.RUNNING, null, null, getLogPath());</span>
+<span class="nc" id="L90">                return;</span>
+            }
+            try {
+<span class="nc" id="L93">                Configuration conf = new Configuration(HadoopUtil.getCurrentConfiguration());</span>
+<span class="nc" id="L94">                overwriteJobConf(conf, executableContext.getConfig(), getMapReduceParams().trim().split(&quot;\\s+&quot;));</span>
+<span class="nc" id="L95">                Job job = new Cluster(conf).getJob(JobID.forName(mrJobId));</span>
+<span class="nc bnc" id="L96" title="All 4 branches missed.">                if (job == null || job.getJobState() == JobStatus.State.FAILED) {</span>
+                    //remove previous mr job info
+<span class="nc" id="L98">                    super.onExecuteStart(executableContext);</span>
+                } else {
+<span class="nc" id="L100">                    getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.RUNNING, null, null, getLogPath());</span>
+                }
+<span class="nc" id="L102">            } catch (IOException | ParseException e) {</span>
+<span class="nc" id="L103">                logger.warn(&quot;error get hadoop status&quot;);</span>
+<span class="nc" id="L104">                super.onExecuteStart(executableContext);</span>
+<span class="nc" id="L105">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L106">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L107">                logger.warn(&quot;error get hadoop status&quot;);</span>
+<span class="nc" id="L108">                super.onExecuteStart(executableContext);</span>
+<span class="nc" id="L109">            }</span>
+<span class="nc" id="L110">        } else {</span>
+<span class="nc" id="L111">            super.onExecuteStart(executableContext);</span>
+        }
+<span class="nc" id="L113">    }</span>
+
+    @Override
+    protected ExecuteResult doWork(ExecutableContext context) throws ExecuteException {
+<span class="nc" id="L117">        final String mapReduceJobClass = getMapReduceJobClass();</span>
+<span class="nc" id="L118">        DistributedLock lock = null;</span>
+
+<span class="nc" id="L120">        Preconditions.checkNotNull(mapReduceJobClass);</span>
+        try {
+
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (getIsNeedLock()) {</span>
+<span class="nc" id="L124">                lock = KylinConfig.getInstanceFromEnv().getDistributedLockFactory().lockForCurrentThread();</span>
+<span class="nc" id="L125">                getLock(lock);</span>
+            }
+
+            Job job;
+<span class="nc" id="L129">            ExecutableManager mgr = getManager();</span>
+<span class="nc" id="L130">            Configuration conf = new Configuration(HadoopUtil.getCurrentConfiguration());</span>
+<span class="nc" id="L131">            String[] jobArgs = overwriteJobConf(conf, context.getConfig(), getMapReduceParams().trim().split(&quot;\\s+&quot;));</span>
+<span class="nc" id="L132">            final Map&lt;String, String&gt; extra = mgr.getOutput(getId()).getExtra();</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (extra.containsKey(ExecutableConstants.MR_JOB_ID)) {</span>
+<span class="nc" id="L134">                job = new Cluster(conf).getJob(JobID.forName(extra.get(ExecutableConstants.MR_JOB_ID)));</span>
+<span class="nc" id="L135">                logger.info(&quot;mr_job_id:&quot; + extra.get(ExecutableConstants.MR_JOB_ID) + &quot; resumed&quot;);</span>
+            } else {
+<span class="nc" id="L137">                final Constructor&lt;? extends AbstractHadoopJob&gt; constructor = ClassUtil</span>
+<span class="nc" id="L138">                        .forName(mapReduceJobClass, AbstractHadoopJob.class).getConstructor();</span>
+<span class="nc" id="L139">                final AbstractHadoopJob hadoopJob = constructor.newInstance();</span>
+<span class="nc" id="L140">                hadoopJob.setConf(conf);</span>
+<span class="nc" id="L141">                hadoopJob.setAsync(true); // so the ToolRunner.run() returns right away</span>
+<span class="nc" id="L142">                logger.info(&quot;parameters of the MapReduceExecutable: {}&quot;, getMapReduceParams());</span>
+                try {
+
+<span class="nc" id="L145">                    hadoopJob.run(jobArgs);</span>
+
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                    if (hadoopJob.isSkipped()) {</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                        if (isDiscarded()) {</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">                            if (getIsNeedLock()) {</span>
+<span class="nc" id="L150">                                releaseLock(lock);</span>
+                            }
+<span class="nc" id="L152">                            return new ExecuteResult(ExecuteResult.State.DISCARDED, &quot;skipped&quot;);</span>
+                        } else {
+<span class="nc" id="L154">                            return new ExecuteResult(ExecuteResult.State.SUCCEED, &quot;skipped&quot;);</span>
+                        }
+
+                    }
+<span class="nc" id="L158">                } catch (Exception ex) {</span>
+<span class="nc" id="L159">                    StringBuilder log = new StringBuilder();</span>
+<span class="nc" id="L160">                    logger.error(&quot;error execute &quot; + this.toString(), ex);</span>
+<span class="nc" id="L161">                    StringWriter stringWriter = new StringWriter();</span>
+<span class="nc" id="L162">                    ex.printStackTrace(new PrintWriter(stringWriter));</span>
+<span class="nc" id="L163">                    log.append(stringWriter.toString()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L164">                    log.append(&quot;result code:&quot;).append(2);</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                    if (isDiscarded()) {</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">                        if (getIsNeedLock()) {</span>
+<span class="nc" id="L167">                            releaseLock(lock);</span>
+                        }
+<span class="nc" id="L169">                        return new ExecuteResult(ExecuteResult.State.DISCARDED, log.toString());</span>
+                    } else {
+<span class="nc" id="L171">                        return new ExecuteResult(ExecuteResult.State.ERROR, log.toString(), ex);</span>
+                    }
+<span class="nc" id="L173">                }</span>
+<span class="nc" id="L174">                job = hadoopJob.getJob();</span>
+            }
+<span class="nc" id="L176">            final StringBuilder output = new StringBuilder();</span>
+<span class="nc" id="L177">            final HadoopCmdOutput hadoopCmdOutput = new HadoopCmdOutput(job, output);</span>
+
+<span class="nc" id="L179">            JobStepStatusEnum status = JobStepStatusEnum.NEW;</span>
+<span class="nc bnc" id="L180" title="All 4 branches missed.">            while (!isDiscarded() &amp;&amp; !isPaused()) {</span>
+
+<span class="nc" id="L182">                JobStepStatusEnum newStatus = HadoopJobStatusChecker.checkStatus(job, output);</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">                if (status == JobStepStatusEnum.KILLED) {</span>
+<span class="nc" id="L184">                    mgr.updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.ERROR, hadoopCmdOutput.getInfo(), &quot;killed by admin&quot;, null);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                    if (isDiscarded()) {</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">                        if (getIsNeedLock()) {</span>
+<span class="nc" id="L187">                            releaseLock(lock);</span>
+                        }
+<span class="nc" id="L189">                        return new ExecuteResult(ExecuteResult.State.DISCARDED, &quot;killed by admin&quot;);</span>
+                    } else {
+<span class="nc" id="L191">                        return new ExecuteResult(ExecuteResult.State.FAILED, &quot;killed by admin&quot;);</span>
+                    }
+
+                }
+<span class="nc bnc" id="L195" title="All 8 branches missed.">                if (status == JobStepStatusEnum.WAITING &amp;&amp; (newStatus == JobStepStatusEnum.FINISHED</span>
+                        || newStatus == JobStepStatusEnum.ERROR || newStatus == JobStepStatusEnum.RUNNING)) {
+<span class="nc" id="L197">                    final long waitTime = System.currentTimeMillis() - getStartTime();</span>
+<span class="nc" id="L198">                    setMapReduceWaitTime(waitTime);</span>
+                }
+<span class="nc" id="L200">                mgr.addJobInfo(getId(), hadoopCmdOutput.getInfo());</span>
+<span class="nc" id="L201">                status = newStatus;</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">                if (status.isComplete()) {</span>
+<span class="nc" id="L203">                    final Map&lt;String, String&gt; info = hadoopCmdOutput.getInfo();</span>
+<span class="nc" id="L204">                    readCounters(hadoopCmdOutput, info);</span>
+<span class="nc" id="L205">                    mgr.addJobInfo(getId(), info);</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                    if (status == JobStepStatusEnum.FINISHED) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                        if (isDiscarded()) {</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                            if (getIsNeedLock()) {</span>
+<span class="nc" id="L210">                                releaseLock(lock);</span>
+                            }
+<span class="nc" id="L212">                            return new ExecuteResult(ExecuteResult.State.DISCARDED, output.toString());</span>
+                        } else {
+<span class="nc" id="L214">                            return new ExecuteResult(ExecuteResult.State.SUCCEED, output.toString());</span>
+                        }
+
+                    } else {
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                        if (isDiscarded()) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                            if (getIsNeedLock()) {</span>
+<span class="nc" id="L220">                                releaseLock(lock);</span>
+                            }
+<span class="nc" id="L222">                            return new ExecuteResult(ExecuteResult.State.DISCARDED, output.toString());</span>
+                        } else {
+<span class="nc" id="L224">                            return ExecuteResult.createFailed(new MapReduceException(output.toString()));</span>
+                        }
+                    }
+                }
+<span class="nc" id="L228">                Thread.sleep(context.getConfig().getYarnStatusCheckIntervalSeconds() * 1000L);</span>
+<span class="nc" id="L229">            }</span>
+
+            // try to kill running map-reduce job to release resources.
+<span class="nc bnc" id="L232" title="All 2 branches missed.">            if (job != null) {</span>
+                try {
+<span class="nc" id="L234">                    job.killJob();</span>
+<span class="nc" id="L235">                } catch (Exception e) {</span>
+<span class="nc" id="L236">                    logger.warn(&quot;failed to kill hadoop job: &quot; + job.getJobID(), e);</span>
+<span class="nc" id="L237">                }</span>
+            }
+
+<span class="nc bnc" id="L240" title="All 2 branches missed.">            if (isDiscarded()) {</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">                if (getIsNeedLock()) {</span>
+<span class="nc" id="L242">                    releaseLock(lock);</span>
+                }
+<span class="nc" id="L244">                return new ExecuteResult(ExecuteResult.State.DISCARDED, output.toString());</span>
+            } else {
+<span class="nc" id="L246">                return new ExecuteResult(ExecuteResult.State.STOPPED, output.toString());</span>
+            }
+
+<span class="nc" id="L249">        } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L250">            logger.error(&quot;error getMapReduceJobClass, class name:&quot; + getParam(KEY_MR_JOB), e);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">            if (isDiscarded()) {</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">                if (getIsNeedLock()) {</span>
+<span class="nc" id="L253">                    releaseLock(lock);</span>
+                }
+<span class="nc" id="L255">                return new ExecuteResult(ExecuteResult.State.DISCARDED, e.getMessage());</span>
+            } else {
+<span class="nc" id="L257">                return ExecuteResult.createError(e);</span>
+            }
+<span class="nc" id="L259">        } catch (Exception e) {</span>
+<span class="nc" id="L260">            logger.error(&quot;error execute &quot; + this.toString(), e);</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            if (isDiscarded()) {</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">                if (getIsNeedLock()) {</span>
+<span class="nc" id="L263">                    releaseLock(lock);</span>
+                }
+<span class="nc" id="L265">                return new ExecuteResult(ExecuteResult.State.DISCARDED, e.getMessage());</span>
+            } else {
+<span class="nc" id="L267">                return ExecuteResult.createError(e);</span>
+            }
+        }
+    }
+
+    private void readCounters(final HadoopCmdOutput hadoopCmdOutput, final Map&lt;String, String&gt; info) {
+<span class="nc" id="L273">        hadoopCmdOutput.updateJobCounter();</span>
+<span class="nc" id="L274">        info.put(ExecutableConstants.SOURCE_RECORDS_COUNT, hadoopCmdOutput.getMapInputRecords());</span>
+<span class="nc" id="L275">        info.put(ExecutableConstants.SOURCE_RECORDS_SIZE, hadoopCmdOutput.getRawInputBytesRead());</span>
+<span class="nc" id="L276">        info.put(ExecutableConstants.HDFS_BYTES_WRITTEN, hadoopCmdOutput.getHdfsBytesWritten());</span>
+
+<span class="nc" id="L278">        String saveAs = getParam(KEY_COUNTER_SAVEAS);</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (saveAs != null) {</span>
+<span class="nc" id="L280">            String[] saveAsNames = saveAs.split(&quot;,&quot;);</span>
+<span class="nc" id="L281">            saveCounterAs(hadoopCmdOutput.getMapInputRecords(), saveAsNames, 0, info);</span>
+<span class="nc" id="L282">            saveCounterAs(hadoopCmdOutput.getRawInputBytesRead(), saveAsNames, 1, info);</span>
+<span class="nc" id="L283">            saveCounterAs(hadoopCmdOutput.getHdfsBytesWritten(), saveAsNames, 2, info);</span>
+        }
+<span class="nc" id="L285">    }</span>
+
+    private void saveCounterAs(String counter, String[] saveAsNames, int i, Map&lt;String, String&gt; info) {
+<span class="nc bnc" id="L288" title="All 4 branches missed.">        if (saveAsNames.length &gt; i &amp;&amp; StringUtils.isBlank(saveAsNames[i]) == false) {</span>
+<span class="nc" id="L289">            info.put(saveAsNames[i].trim(), counter);</span>
+        }
+<span class="nc" id="L291">    }</span>
+
+    public long getMapReduceWaitTime() {
+<span class="nc" id="L294">        return getExtraInfoAsLong(MAP_REDUCE_WAIT_TIME, 0L);</span>
+    }
+
+    public void setMapReduceWaitTime(long t) {
+<span class="nc" id="L298">        addExtraInfo(MAP_REDUCE_WAIT_TIME, t + &quot;&quot;);</span>
+<span class="nc" id="L299">    }</span>
+
+    public String getMapReduceJobClass() throws ExecuteException {
+<span class="nc" id="L302">        return getParam(KEY_MR_JOB);</span>
+    }
+
+    public void setMapReduceJobClass(Class&lt;? extends AbstractHadoopJob&gt; clazzName) {
+<span class="nc" id="L306">        setParam(KEY_MR_JOB, clazzName.getName());</span>
+<span class="nc" id="L307">    }</span>
+
+    public String getMapReduceParams() {
+<span class="nc" id="L310">        return getParam(KEY_PARAMS);</span>
+    }
+
+    public void setMapReduceParams(String param) {
+<span class="nc" id="L314">        setParam(KEY_PARAMS, param);</span>
+<span class="nc" id="L315">    }</span>
+
+    public void setCounterSaveAs(String value) {
+<span class="nc" id="L318">        setParam(KEY_COUNTER_SAVEAS, value);</span>
+<span class="nc" id="L319">    }</span>
+
+    public void setIsNeedLock(Boolean isNeedLock) {
+<span class="nc" id="L322">        setParam(&quot;isNeedLock&quot;, String.valueOf(isNeedLock));</span>
+<span class="nc" id="L323">    }</span>
+
+    public boolean getIsNeedLock() {
+<span class="nc" id="L326">        String isNeedLock = getParam(&quot;isNeedLock&quot;);</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        return Strings.isNullOrEmpty(isNeedLock) ? false : Boolean.parseBoolean(isNeedLock);</span>
+    }
+
+    public void setIsNeedReleaseLock(Boolean isNeedReleaseLock) {
+<span class="nc" id="L331">        setParam(&quot;isNeedReleaseLock&quot;, String.valueOf(isNeedReleaseLock));</span>
+<span class="nc" id="L332">    }</span>
+
+    public boolean getIsNeedReleaseLock() {
+<span class="nc" id="L335">        String isNeedReleaseLock = getParam(&quot;isNeedReleaseLock&quot;);</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">        return Strings.isNullOrEmpty(isNeedReleaseLock) ? false : Boolean.parseBoolean(isNeedReleaseLock);</span>
+    }
+
+    public void setLockPathName(String pathName) {
+<span class="nc" id="L340">        setParam(&quot;lockPathName&quot;, pathName);</span>
+<span class="nc" id="L341">    }</span>
+
+    public String getLockPathName() {
+<span class="nc" id="L344">        return getParam(&quot;lockPathName&quot;);</span>
+    }
+
+    public void setJobFlowJobId(String jobId) {
+<span class="nc" id="L348">        setParam(&quot;jobFlowJobId&quot;, jobId);</span>
+<span class="nc" id="L349">    }</span>
+
+    public String getJobFlowJobId() {
+<span class="nc" id="L352">        return getParam(&quot;jobFlowJobId&quot;);</span>
+    }
+
+    private void getLock(DistributedLock lock) throws InterruptedException {
+<span class="nc" id="L356">        logger.info(&quot;{} try to get zk lock, zk client {} &quot;, getId(), lock.getClient());</span>
+<span class="nc" id="L357">        String ephemeralLockPath = getEphemeralLockPathName();</span>
+<span class="nc" id="L358">        String fullLockPath = getCubeJobLockPathName();</span>
+<span class="nc" id="L359">        boolean isLockedByOther = true;</span>
+<span class="nc" id="L360">        boolean getLocked = false;</span>
+<span class="nc" id="L361">        long lockStartTime = System.currentTimeMillis();</span>
+
+<span class="nc" id="L363">        boolean isLockedByTheJob = lock.isLocked(fullLockPath);</span>
+<span class="nc" id="L364">        logger.info(&quot;cube job {} zk lock is isLockedByTheJob:{}&quot;, getId(), isLockedByTheJob);</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        if (!isLockedByTheJob) {//not lock by the job</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            while (isLockedByOther) {</span>
+<span class="nc" id="L367">                isLockedByOther = lock.isLocked(getCubeJobLockParentPathName());//other job global lock</span>
+
+<span class="nc bnc" id="L369" title="All 2 branches missed.">                if (!isLockedByOther) {//not lock by other job</span>
+<span class="nc" id="L370">                    isLockedByOther = lock.isLocked(ephemeralLockPath);//check the ephemeral current lock</span>
+<span class="nc" id="L371">                    logger.info(&quot;zookeeper lock path :{}, is locked by other job result is {}&quot;, ephemeralLockPath,</span>
+<span class="nc" id="L372">                            isLockedByOther);</span>
+
+<span class="nc bnc" id="L374" title="All 2 branches missed.">                    if (!isLockedByOther) {//the ephemeral lock not lock by other job</span>
+                        //try to get ephemeral lock
+                        try {
+<span class="nc" id="L377">                            logger.debug(&quot;{} before start to get lock ephemeralLockPath {}&quot;, getId(),</span>
+                                    ephemeralLockPath);
+<span class="nc" id="L379">                            threadLock.lock();</span>
+<span class="nc" id="L380">                            logger.debug(&quot;{} start to get lock ephemeralLockPath {}&quot;, getId(), ephemeralLockPath);</span>
+<span class="nc" id="L381">                            getLocked = lock.lock(ephemeralLockPath);</span>
+<span class="nc" id="L382">                            logger.debug(&quot;{} finish get lock ephemeralLockPath {},getLocked {}&quot;, getId(),</span>
+<span class="nc" id="L383">                                    ephemeralLockPath, getLocked);</span>
+                        } finally {
+<span class="nc" id="L385">                            threadLock.unlock();</span>
+<span class="nc" id="L386">                            logger.debug(&quot;{} finish unlock the thread lock ,ephemeralLockPath {} &quot;, getId(),</span>
+                                    ephemeralLockPath);
+                        }
+
+<span class="nc bnc" id="L390" title="All 2 branches missed.">                        if (getLocked) {//get ephemeral lock success</span>
+                            try {
+<span class="nc" id="L392">                                getLocked = lock.globalPermanentLock(fullLockPath);//add the fullLockPath lock in case of the server crash then the other server can run the same job can get the lock</span>
+<span class="nc bnc" id="L393" title="All 2 branches missed.">                                if (getLocked) {</span>
+<span class="nc" id="L394">                                    break;</span>
+                                } else {
+<span class="nc bnc" id="L396" title="All 2 branches missed.">                                    if (lock.isLocked(ephemeralLockPath)) {</span>
+<span class="nc" id="L397">                                        lock.unlock(ephemeralLockPath);</span>
+                                    }
+                                }
+<span class="nc" id="L400">                            } catch (Exception e) {</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">                                if (lock.isLocked(ephemeralLockPath)) {</span>
+<span class="nc" id="L402">                                    lock.unlock(ephemeralLockPath);</span>
+                                }
+<span class="nc" id="L404">                            }</span>
+                        }
+<span class="nc" id="L406">                        isLockedByOther = true;//get lock fail,will try again</span>
+                    }
+                }
+                // wait 1 min and try again
+<span class="nc" id="L410">                logger.info(</span>
+                        &quot;{}, parent lock path({}) is locked by other job result is {} ,ephemeral lock path :{} is locked by other job result is {},will try after one minute&quot;,
+<span class="nc" id="L412">                        getId(), getCubeJobLockParentPathName(), isLockedByOther, ephemeralLockPath, isLockedByOther);</span>
+<span class="nc" id="L413">                Thread.sleep(60000);</span>
+            }
+        } else {
+<span class="nc" id="L416">            lock.lock(ephemeralLockPath);</span>
+        }
+
+<span class="nc" id="L419">        long useSec = ((System.currentTimeMillis() - lockStartTime) / 1000);</span>
+<span class="nc" id="L420">        logger.info(&quot;job {} get zookeeper lock path:{} success,zookeeper get lock costTime : {} s&quot;, getId(),</span>
+<span class="nc" id="L421">                fullLockPath, useSec);</span>
+<span class="nc" id="L422">    }</span>
+
+    private void releaseLock(DistributedLock lock) {
+<span class="nc" id="L425">        String parentLockPath = getCubeJobLockParentPathName();</span>
+<span class="nc" id="L426">        String ephemeralLockPath = getEphemeralLockPathName();</span>
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        if (lock.isLocked(getCubeJobLockPathName())) {//release cube job dict lock if exists</span>
+<span class="nc" id="L428">            lock.purgeLocks(parentLockPath);</span>
+<span class="nc" id="L429">            logger.info(&quot;{} unlock cube job dict lock path({}) success&quot;, getJobFlowJobId(), parentLockPath);</span>
+
+<span class="nc bnc" id="L431" title="All 2 branches missed.">            if (lock.isLocked(ephemeralLockPath)) {//release cube job Ephemeral lock if exists</span>
+<span class="nc" id="L432">                lock.purgeLocks(ephemeralLockPath);</span>
+<span class="nc" id="L433">                logger.info(&quot;{} unlock cube job ephemeral lock path({}) success&quot;, getJobFlowJobId(), ephemeralLockPath);</span>
+            }
+        }
+<span class="nc" id="L436">    }</span>
+
+    private String getEphemeralLockPathName() {
+<span class="nc" id="L439">        String pathName = getLockPathName();</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(pathName)) {</span>
+<span class="nc" id="L441">            throw new IllegalArgumentException(&quot;cube job lock path name is null&quot;);</span>
+        }
+
+<span class="nc" id="L444">        return CubeJobLockUtil.getEphemeralLockPath(pathName);</span>
+    }
+
+    private String getCubeJobLockPathName() {
+<span class="nc" id="L448">        String pathName = getLockPathName();</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(pathName)) {</span>
+<span class="nc" id="L450">            throw new IllegalArgumentException(&quot;cube job lock path name is null&quot;);</span>
+        }
+
+<span class="nc" id="L453">        String flowJobId = getJobFlowJobId();</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(flowJobId)) {</span>
+<span class="nc" id="L455">            throw new IllegalArgumentException(&quot;cube job lock path flowJobId is null&quot;);</span>
+        }
+<span class="nc" id="L457">        return CubeJobLockUtil.getLockPath(pathName, flowJobId);</span>
+    }
+
+    private String getCubeJobLockParentPathName() {
+<span class="nc" id="L461">        String pathName = getLockPathName();</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(pathName)) {</span>
+<span class="nc" id="L463">            throw new IllegalArgumentException(&quot; create mr hive dict lock path name is null&quot;);</span>
+        }
+<span class="nc" id="L465">        return CubeJobLockUtil.getLockPath(pathName, null);</span>
+    }
+
+
+    @SuppressWarnings(&quot;static-access&quot;)
+<span class="nc" id="L470">    private static final Option OPTION_JOB_CONF = OptionBuilder.withArgName(BatchConstants.ARG_CONF).hasArg()</span>
+<span class="nc" id="L471">            .isRequired(false).create(BatchConstants.ARG_CONF);</span>
+
+    @SuppressWarnings(&quot;static-access&quot;)
+<span class="nc" id="L474">    private static final Option OPTION_CUBE_NAME = OptionBuilder.withArgName(BatchConstants.ARG_CUBE_NAME).hasArg()</span>
+<span class="nc" id="L475">            .isRequired(false).create(BatchConstants.ARG_CUBE_NAME);</span>
+
+    private String[] overwriteJobConf(Configuration conf, KylinConfig config, String[] jobParams)
+            throws ParseException {
+<span class="nc" id="L479">        Options options = new Options();</span>
+<span class="nc" id="L480">        options.addOption(OPTION_JOB_CONF);</span>
+<span class="nc" id="L481">        options.addOption(OPTION_CUBE_NAME);</span>
+<span class="nc" id="L482">        CustomParser parser = new CustomParser();</span>
+<span class="nc" id="L483">        CommandLine commandLine = parser.parse(options, jobParams);</span>
+
+<span class="nc" id="L485">        String confFile = commandLine.getOptionValue(BatchConstants.ARG_CONF);</span>
+<span class="nc" id="L486">        String cubeName = commandLine.getOptionValue(BatchConstants.ARG_CUBE_NAME);</span>
+<span class="nc" id="L487">        List&lt;String&gt; remainingArgs = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L489" title="All 2 branches missed.">        if (StringUtils.isNotBlank(confFile)) {</span>
+<span class="nc" id="L490">            conf.addResource(new Path(confFile));</span>
+        }
+
+        KylinConfig configOverride;
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (cubeName != null) {</span>
+<span class="nc" id="L495">            configOverride = CubeManager.getInstance(config).getCube(cubeName).getConfig();</span>
+        } else {
+<span class="nc" id="L497">            configOverride = config;</span>
+        }
+
+<span class="nc bnc" id="L500" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; entry : configOverride.getMRConfigOverride().entrySet()) {</span>
+<span class="nc" id="L501">            conf.set(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L502">        }</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">        if (conf.get(&quot;mapreduce.job.is-mem-hungry&quot;) != null</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">                &amp;&amp; Boolean.parseBoolean(conf.get(&quot;mapreduce.job.is-mem-hungry&quot;))) {</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">            for (Map.Entry&lt;String, String&gt; entry : configOverride.getMemHungryConfigOverride().entrySet()) {</span>
+<span class="nc" id="L506">                conf.set(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L507">            }</span>
+        }
+
+<span class="nc bnc" id="L510" title="All 2 branches missed.">        if (StringUtils.isNotBlank(cubeName)) {</span>
+<span class="nc" id="L511">            remainingArgs.add(&quot;-&quot; + BatchConstants.ARG_CUBE_NAME);</span>
+<span class="nc" id="L512">            remainingArgs.add(cubeName);</span>
+        }
+
+<span class="nc" id="L515">        remainingArgs.addAll(parser.getRemainingArgs());</span>
+<span class="nc" id="L516">        return (String[]) remainingArgs.toArray(new String[remainingArgs.size()]);</span>
+    }
+
+    private static class CustomParser extends GnuParser {
+        private List&lt;String&gt; remainingArgs;
+
+<span class="nc" id="L522">        public CustomParser() {</span>
+<span class="nc" id="L523">            this.remainingArgs = Lists.newArrayList();</span>
+<span class="nc" id="L524">        }</span>
+
+        @Override
+        protected void processOption(final String arg, final ListIterator iter) throws ParseException {
+<span class="nc" id="L528">            boolean hasOption = getOptions().hasOption(arg);</span>
+
+<span class="nc bnc" id="L530" title="All 2 branches missed.">            if (hasOption) {</span>
+<span class="nc" id="L531">                super.processOption(arg, iter);</span>
+            } else {
+<span class="nc" id="L533">                remainingArgs.add(arg);</span>
+<span class="nc" id="L534">                remainingArgs.add(iter.next().toString());</span>
+            }
+<span class="nc" id="L536">        }</span>
+
+        public List&lt;String&gt; getRemainingArgs() {
+<span class="nc" id="L539">            return remainingArgs;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

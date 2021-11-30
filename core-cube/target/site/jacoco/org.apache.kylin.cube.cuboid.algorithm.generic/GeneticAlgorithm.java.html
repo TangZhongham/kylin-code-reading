@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GeneticAlgorithm.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm.generic</a> &gt; <span class="el_source">GeneticAlgorithm.java</span></div><h1>GeneticAlgorithm.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm.generic;
+
+import java.util.BitSet;
+import java.util.List;
+import java.util.Locale;
+
+import org.apache.commons.math3.genetics.Chromosome;
+import org.apache.commons.math3.genetics.ElitisticListPopulation;
+import org.apache.commons.math3.genetics.FixedGenerationCount;
+import org.apache.commons.math3.genetics.Population;
+import org.apache.commons.math3.genetics.StoppingCondition;
+import org.apache.kylin.cube.cuboid.algorithm.AbstractRecommendAlgorithm;
+import org.apache.kylin.cube.cuboid.algorithm.BenefitPolicy;
+import org.apache.kylin.cube.cuboid.algorithm.CuboidStats;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * Implementation of a genetic algorithm to recommend a list of cuboids.
+ * All factors that govern the processing of the algorithm can be configured.
+ */
+public class GeneticAlgorithm extends AbstractRecommendAlgorithm {
+
+<span class="nc" id="L44">    private static final Logger logger = LoggerFactory.getLogger(GeneticAlgorithm.class);</span>
+
+    private final org.apache.commons.math3.genetics.GeneticAlgorithm geneticAlgorithm;
+
+    /**
+     * the rate of crossover for the algorithm.
+     */
+<span class="nc" id="L51">    private final double crossoverRate = 0.9;</span>
+    /**
+     * the rate of mutation for the algorithm.
+     */
+<span class="nc" id="L55">    private final double mutationRate = 0.001;</span>
+    /**
+     * the init population size.
+     */
+<span class="nc" id="L59">    private final int populationSize = 500;</span>
+    /**
+     * the max population size.
+     */
+<span class="nc" id="L63">    private final int maxPopulationSize = 510;</span>
+
+    public GeneticAlgorithm(final long timeout, BenefitPolicy benefitPolicy, CuboidStats cuboidStats) {
+<span class="nc" id="L66">        super(timeout, benefitPolicy, cuboidStats);</span>
+<span class="nc" id="L67">        this.geneticAlgorithm = new org.apache.commons.math3.genetics.GeneticAlgorithm(new BitsOnePointCrossover(),</span>
+                crossoverRate, new BitsMutation(), mutationRate, new RouletteWheelSelection());
+<span class="nc" id="L69">    }</span>
+
+    @Override
+    public List&lt;Long&gt; start(double maxSpaceLimit) {
+<span class="nc" id="L73">        logger.debug(&quot;Genetic Algorithm started.&quot;);</span>
+
+        //Initial mandatory cuboids
+<span class="nc" id="L76">        double remainingSpace = maxSpaceLimit;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        for (Long mandatoryOne : cuboidStats.getAllCuboidsForMandatory()) {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">            if (cuboidStats.getCuboidSize(mandatoryOne) != null) {</span>
+<span class="nc" id="L79">                remainingSpace -= cuboidStats.getCuboidSize(mandatoryOne);</span>
+            }
+<span class="nc" id="L81">        }</span>
+
+<span class="nc" id="L83">        BitsChromosomeHelper helper = new BitsChromosomeHelper(remainingSpace, cuboidStats);</span>
+
+        //Generate a population randomly
+<span class="nc" id="L86">        Population initial = initRandomPopulation(helper);</span>
+
+        //Set stopping condition
+<span class="nc" id="L89">        List&lt;StoppingCondition&gt; conditions = Lists.newArrayList();</span>
+<span class="nc" id="L90">        conditions.add(new FixedGenerationCount(550));</span>
+<span class="nc" id="L91">        CombinedStoppingCondition stopCondition = new CombinedStoppingCondition(conditions);</span>
+
+        //Start the evolution
+<span class="nc" id="L94">        Population current = geneticAlgorithm.evolve(initial, stopCondition);</span>
+<span class="nc" id="L95">        BitsChromosome chromosome = (BitsChromosome) current.getFittestChromosome();</span>
+<span class="nc" id="L96">        logger.debug(&quot;Genetic Algorithm finished.&quot;);</span>
+<span class="nc" id="L97">        List&lt;Long&gt; finalList = Lists.newArrayList();</span>
+<span class="nc" id="L98">        finalList.addAll(helper.getMandatoryCuboids());</span>
+<span class="nc" id="L99">        finalList.addAll(chromosome.getCuboids());</span>
+
+<span class="nc" id="L101">        double totalSpace = 0;</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (logger.isTraceEnabled()) {</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            for (Long cuboid : finalList) {</span>
+<span class="nc" id="L104">                Double unitSpace = cuboidStats.getCuboidSize(cuboid);</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                if (unitSpace != null) {</span>
+<span class="nc" id="L106">                    logger.trace(String.format(Locale.ROOT, &quot;cuboidId %d and Space: %f&quot;, cuboid, unitSpace));</span>
+<span class="nc" id="L107">                    totalSpace += unitSpace;</span>
+                } else {
+<span class="nc" id="L109">                    logger.trace(String.format(Locale.ROOT, &quot;mandatory cuboidId %d&quot;, cuboid));</span>
+                }
+<span class="nc" id="L111">            }</span>
+<span class="nc" id="L112">            logger.trace(&quot;Total Space:&quot; + totalSpace);</span>
+<span class="nc" id="L113">            logger.trace(&quot;Space Expansion Rate:&quot; + totalSpace / cuboidStats.getBaseCuboidSize());</span>
+        }
+<span class="nc" id="L115">        return finalList;</span>
+    }
+
+    protected Population initRandomPopulation(BitsChromosomeHelper helper) {
+<span class="nc" id="L119">        List&lt;Chromosome&gt; chromosomeList = Lists.newArrayListWithCapacity(populationSize);</span>
+
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        while (chromosomeList.size() &lt; populationSize) {</span>
+<span class="nc" id="L122">            BitSet bitSetForSelection = new BitSet(helper.getLength());</span>
+
+            //Initialize selection genes
+<span class="nc" id="L125">            double totalSpace = 0;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            while (totalSpace &lt; helper.spaceLimit) {</span>
+<span class="nc" id="L127">                int j = org.apache.commons.math3.genetics.GeneticAlgorithm.getRandomGenerator()</span>
+<span class="nc" id="L128">                        .nextInt(helper.getLength());</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                if (!bitSetForSelection.get(j)) {</span>
+<span class="nc" id="L130">                    totalSpace += helper.getCuboidSizeByBitIndex(j);</span>
+<span class="nc" id="L131">                    bitSetForSelection.set(j);</span>
+                }
+<span class="nc" id="L133">            }</span>
+
+<span class="nc" id="L135">            Chromosome chromosome = new BitsChromosome(bitSetForSelection, benefitPolicy.getInstance(), helper);</span>
+<span class="nc" id="L136">            chromosomeList.add(chromosome);</span>
+<span class="nc" id="L137">        }</span>
+<span class="nc" id="L138">        return new ElitisticListPopulation(chromosomeList, maxPopulationSize, 0.8);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

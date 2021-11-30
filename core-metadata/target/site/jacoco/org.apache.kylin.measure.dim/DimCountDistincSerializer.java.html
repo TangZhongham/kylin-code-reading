@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DimCountDistincSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.dim</a> &gt; <span class="el_source">DimCountDistincSerializer.java</span></div><h1>DimCountDistincSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.measure.dim;
+
+import java.nio.ByteBuffer;
+import java.util.Set;
+
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.util.KryoUtils;
+
+public class DimCountDistincSerializer extends DataTypeSerializer&lt;DimCountDistinctCounter&gt; {
+    // called by reflection
+<span class="nc" id="L30">    public DimCountDistincSerializer(DataType type) {</span>
+<span class="nc" id="L31">    }</span>
+    
+    @Override
+    public void serialize(DimCountDistinctCounter value, ByteBuffer out) {
+<span class="nc" id="L35">        byte[] serialize = KryoUtils.serialize(value.getContainer());</span>
+<span class="nc" id="L36">        out.putInt(4 + 4 + 4 + serialize.length);</span>
+<span class="nc" id="L37">        out.putInt(value.getMAX_CARD());</span>
+<span class="nc" id="L38">        out.putInt(serialize.length);</span>
+<span class="nc" id="L39">        out.put(serialize);</span>
+<span class="nc" id="L40">    }</span>
+
+    @Override
+    public DimCountDistinctCounter deserialize(ByteBuffer in) {
+<span class="nc" id="L44">        int totalLength = in.getInt();</span>
+<span class="nc" id="L45">        int maxCard = in.getInt();</span>
+<span class="nc" id="L46">        int arrayLength = in.getInt();</span>
+<span class="nc" id="L47">        byte[] data = new byte[arrayLength];</span>
+<span class="nc" id="L48">        in.get(data);</span>
+<span class="nc" id="L49">        return new DimCountDistinctCounter(KryoUtils.deserialize(data, Set.class), maxCard);</span>
+    }
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="nc" id="L54">        int mark = in.position();</span>
+<span class="nc" id="L55">        int ret = in.getInt();</span>
+<span class="nc" id="L56">        in.position(mark);</span>
+<span class="nc" id="L57">        return ret;</span>
+    }
+
+    @Override
+    public int maxLength() {
+<span class="nc" id="L62">        return 8 * 1024 * 1024;</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+<span class="nc" id="L67">        return 1024;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

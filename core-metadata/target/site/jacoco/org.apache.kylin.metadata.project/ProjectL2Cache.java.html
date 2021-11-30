@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProjectL2Cache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.project</a> &gt; <span class="el_source">ProjectL2Cache.java</span></div><h1>ProjectL2Cache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.project;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListMap;
+
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.ExternalFilterDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.RealizationRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ * This is a second level cache that is built on top of first level cached objects,
+ * including Realization, TableDesc, ColumnDesc etc, to speed up query time metadata lookup.
+ * &lt;p/&gt;
+ * On any object update, the L2 cache simply gets wiped out because it's cheap to rebuild.
+ */
+class ProjectL2Cache {
+
+<span class="fc" id="L52">    private static final Logger logger = LoggerFactory.getLogger(ProjectL2Cache.class);</span>
+
+    private ProjectManager mgr;
+<span class="fc" id="L55">    private Map&lt;String, ProjectCache&gt; projectCaches = new ConcurrentSkipListMap&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+
+<span class="fc" id="L57">    ProjectL2Cache(ProjectManager mgr) {</span>
+<span class="fc" id="L58">        this.mgr = mgr;</span>
+<span class="fc" id="L59">    }</span>
+
+    public void clear(String projectname) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (projectname == null) {</span>
+<span class="nc" id="L63">            projectCaches.clear();</span>
+        } else {
+<span class="nc" id="L65">            projectCaches.remove(projectname);</span>
+        }
+<span class="nc" id="L67">    }</span>
+
+    public ExternalFilterDesc getExternalFilterDesc(String project, String extFilterName) {
+<span class="nc" id="L70">        ProjectCache prjCache = getCache(project);</span>
+<span class="nc" id="L71">        return prjCache.extFilters.get(extFilterName);</span>
+    }
+
+    public Map&lt;String, ExternalFilterDesc&gt; listExternalFilterDesc(String project) {
+<span class="nc" id="L75">        ProjectCache prjCache = getCache(project);</span>
+<span class="nc" id="L76">        return Collections.unmodifiableMap(prjCache.extFilters);</span>
+    }
+
+    public List&lt;TableDesc&gt; listDefinedTables(String project) {
+<span class="nc" id="L80">        ProjectCache prjCache = getCache(project);</span>
+<span class="nc" id="L81">        List&lt;TableDesc&gt; result = Lists.newArrayListWithCapacity(prjCache.tables.size());</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        for (TableCache tableCache : prjCache.tables.values()) {</span>
+<span class="nc" id="L83">            result.add(tableCache.tableDesc);</span>
+<span class="nc" id="L84">        }</span>
+<span class="nc" id="L85">        return result;</span>
+    }
+
+    public Set&lt;TableDesc&gt; listExposedTables(String project) {
+<span class="nc" id="L89">        ProjectCache prjCache = getCache(project);</span>
+<span class="nc" id="L90">        return Collections.unmodifiableSet(prjCache.exposedTables);</span>
+    }
+
+    public Set&lt;ColumnDesc&gt; listExposedColumns(String project, String table) {
+<span class="nc" id="L94">        TableCache tableCache = getCache(project).tables.get(table);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (tableCache == null)</span>
+<span class="nc" id="L96">            return Collections.emptySet();</span>
+        else
+<span class="nc" id="L98">            return Collections.unmodifiableSet(tableCache.exposedColumns);</span>
+    }
+
+    public boolean isDefinedTable(String project, String table) {
+<span class="nc" id="L102">        TableCache tableCache = getCache(project).tables.get(table);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (tableCache == null)</span>
+<span class="nc" id="L104">            return false;</span>
+        else
+<span class="nc" id="L106">            return true;</span>
+    }
+
+    public boolean isExposedTable(String project, String table) {
+<span class="nc" id="L110">        TableCache tableCache = getCache(project).tables.get(table);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (tableCache == null)</span>
+<span class="nc" id="L112">            return false;</span>
+        else
+<span class="nc" id="L114">            return tableCache.exposed;</span>
+    }
+
+    public boolean isDefinedColumn(String project, String table, String col) {
+<span class="nc" id="L118">        TableCache tableCache = getCache(project).tables.get(table);</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (tableCache == null)</span>
+<span class="nc" id="L120">            return false;</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        for (ColumnDesc colDesc : tableCache.tableDesc.getColumns()) {</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (colDesc.getName().equals(col))</span>
+<span class="nc" id="L124">                return true;</span>
+        }
+<span class="nc" id="L126">        return false;</span>
+    }
+
+    public boolean isExposedColumn(String project, String table, String col) {
+<span class="nc" id="L130">        TableCache tableCache = getCache(project).tables.get(table);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (tableCache == null)</span>
+<span class="nc" id="L132">            return false;</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        for (ColumnDesc colDesc : tableCache.exposedColumns) {</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (colDesc.getName().equals(col))</span>
+<span class="nc" id="L136">                return true;</span>
+<span class="nc" id="L137">        }</span>
+<span class="nc" id="L138">        return false;</span>
+    }
+
+    public Set&lt;IRealization&gt; listAllRealizations(String project) {
+<span class="nc" id="L142">        ProjectCache prjCache = getCache(project);</span>
+<span class="nc" id="L143">        return Collections.unmodifiableSet(prjCache.realizations);</span>
+    }
+
+    public Set&lt;IRealization&gt; getRealizationsByTable(String project, String table) {
+<span class="nc" id="L147">        TableCache tableCache = getCache(project).tables.get(table);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (tableCache == null)</span>
+<span class="nc" id="L149">            return Collections.emptySet();</span>
+        else
+<span class="nc" id="L151">            return Collections.unmodifiableSet(tableCache.realizations);</span>
+    }
+
+    public List&lt;MeasureDesc&gt; listEffectiveRewriteMeasures(String project, String table, boolean onlyRewriteMeasure) {
+<span class="nc" id="L155">        Set&lt;IRealization&gt; realizations = getRealizationsByTable(project, table);</span>
+<span class="nc" id="L156">        List&lt;MeasureDesc&gt; result = Lists.newArrayList();</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        for (IRealization r : realizations) {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            if (!r.isReady())</span>
+<span class="nc" id="L159">                continue;</span>
+
+<span class="nc bnc" id="L161" title="All 2 branches missed.">            for (MeasureDesc m : r.getMeasures()) {</span>
+<span class="nc" id="L162">                FunctionDesc func = m.getFunction();</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                if (belongToTable(func, table, r.getModel())) {</span>
+<span class="nc bnc" id="L164" title="All 4 branches missed.">                    if (!onlyRewriteMeasure || func.needRewrite()) {</span>
+<span class="nc" id="L165">                        result.add(m);</span>
+                    }
+                }
+<span class="nc" id="L168">            }</span>
+<span class="nc" id="L169">        }</span>
+<span class="nc" id="L170">        return result;</span>
+    }
+
+    private boolean belongToTable(FunctionDesc func, String table, DataModelDesc model) {
+        // measure belong to the first column parameter's table
+<span class="nc" id="L175">        List&lt;TblColRef&gt; cols = func.getParameter().getColRefs();</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        String belongTo = cols.isEmpty() ? model.getRootFactTable().getTableIdentity() : cols.get(0).getTable();</span>
+<span class="nc" id="L177">        return belongTo.equals(table);</span>
+    }
+
+    // ============================================================================
+    // build the cache
+    // ----------------------------------------------------------------------------
+
+    private ProjectCache getCache(String project) {
+<span class="nc" id="L185">        ProjectCache result = projectCaches.get(project);</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (result == null) {</span>
+<span class="nc" id="L187">            result = loadCache(project);</span>
+<span class="nc" id="L188">            projectCaches.put(project, result);</span>
+        }
+<span class="nc" id="L190">        return result;</span>
+    }
+
+    void reloadCacheByProject(String project) {
+<span class="nc" id="L194">        projectCaches.put(project, loadCache(project));</span>
+<span class="nc" id="L195">    }</span>
+
+    private ProjectCache loadCache(String project) {
+<span class="nc" id="L198">        logger.debug(&quot;Loading L2 project cache for &quot; + project);</span>
+<span class="nc" id="L199">        ProjectCache projectCache = new ProjectCache(project);</span>
+
+<span class="nc" id="L201">        ProjectInstance pi = mgr.getProject(project);</span>
+
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (pi == null)</span>
+<span class="nc" id="L204">            throw new IllegalArgumentException(&quot;Project '&quot; + project + &quot;' does not exist;&quot;);</span>
+
+<span class="nc" id="L206">        TableMetadataManager metaMgr = mgr.getTableManager();</span>
+
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        for (String tableName : pi.getTables()) {</span>
+<span class="nc" id="L209">            TableDesc tableDesc = metaMgr.getTableDesc(tableName, project);</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (tableDesc != null) {</span>
+<span class="nc" id="L211">                projectCache.tables.put(tableDesc.getIdentity(), new TableCache(tableDesc));</span>
+            } else {
+<span class="nc" id="L213">                logger.warn(&quot;Table '&quot; + tableName + &quot;' defined under project '&quot; + project + &quot;' is not found&quot;);</span>
+            }
+<span class="nc" id="L215">        }</span>
+
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        for (String extFilterName : pi.getExtFilters()) {</span>
+<span class="nc" id="L218">            ExternalFilterDesc filterDesc = metaMgr.getExtFilterDesc(extFilterName);</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            if (filterDesc != null) {</span>
+<span class="nc" id="L220">                projectCache.extFilters.put(extFilterName, filterDesc);</span>
+            } else {
+<span class="nc" id="L222">                logger.warn(&quot;External Filter '&quot; + extFilterName + &quot;' defined under project '&quot; + project + &quot;' is not found&quot;);</span>
+            }
+<span class="nc" id="L224">        }</span>
+
+<span class="nc" id="L226">        RealizationRegistry registry = RealizationRegistry.getInstance(mgr.getConfig());</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        for (RealizationEntry entry : pi.getRealizationEntries()) {</span>
+<span class="nc" id="L228">            IRealization realization = registry.getRealization(entry.getType(), entry.getRealization());</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            if (realization != null) {</span>
+<span class="nc" id="L230">                projectCache.realizations.add(realization);</span>
+            } else {
+<span class="nc" id="L232">                logger.warn(&quot;Realization '&quot; + entry + &quot;' defined under project '&quot; + project + &quot;' is not found&quot;);</span>
+            }
+
+<span class="nc" id="L235">        }</span>
+
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        for (IRealization realization : projectCache.realizations) {</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            if (sanityCheck(projectCache, realization)) {</span>
+<span class="nc" id="L239">                mapTableToRealization(projectCache, realization);</span>
+<span class="nc" id="L240">                markExposedTablesAndColumns(projectCache, realization);</span>
+            }
+<span class="nc" id="L242">        }</span>
+
+<span class="nc" id="L244">        return projectCache;</span>
+    }
+
+    // check all columns reported by realization does exists
+    private boolean sanityCheck(ProjectCache prjCache, IRealization realization) {
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (realization == null)</span>
+<span class="nc" id="L250">            return false;</span>
+
+<span class="nc" id="L252">        TableMetadataManager metaMgr = mgr.getTableManager();</span>
+
+<span class="nc" id="L254">        Set&lt;TblColRef&gt; allColumns = realization.getAllColumns();</span>
+<span class="nc bnc" id="L255" title="All 4 branches missed.">        if (allColumns == null || allColumns.isEmpty()) {</span>
+<span class="nc" id="L256">            logger.error(&quot;Realization '&quot; + realization.getCanonicalName() + &quot;' does not report any columns&quot;);</span>
+<span class="nc" id="L257">            return false;</span>
+        }
+
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        for (TblColRef col : allColumns) {</span>
+<span class="nc" id="L261">            TableDesc table = metaMgr.getTableDesc(col.getTable(), prjCache.project);</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            if (table == null) {</span>
+<span class="nc" id="L263">                logger.error(&quot;Realization '&quot; + realization.getCanonicalName() + &quot;' reports column '&quot; + col.getCanonicalName() + &quot;', but its table is not found by MetadataManager&quot;);</span>
+<span class="nc" id="L264">                return false;</span>
+            }
+
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            if (!col.getColumnDesc().isComputedColumn()) {</span>
+<span class="nc" id="L268">                ColumnDesc foundCol = table.findColumnByName(col.getName());</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                if (col.getColumnDesc().equals(foundCol) == false) {</span>
+<span class="nc" id="L270">                    logger.error(&quot;Realization '&quot; + realization.getCanonicalName() + &quot;' reports column '&quot; + col.getCanonicalName() + &quot;', but it is not equal to '&quot; + foundCol + &quot;' according to MetadataManager&quot;);</span>
+<span class="nc" id="L271">                    return false;</span>
+                }
+            } else {
+                //computed column may not exit here
+            }
+
+            // auto-define table required by realization for some legacy test case
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (prjCache.tables.get(table.getIdentity()) == null) {</span>
+<span class="nc" id="L279">                prjCache.tables.put(table.getIdentity(), new TableCache(table));</span>
+<span class="nc" id="L280">                logger.warn(&quot;Realization '&quot; + realization.getCanonicalName() + &quot;' reports column '&quot; + col.getCanonicalName() + &quot;' whose table is not defined in project '&quot; + prjCache.project + &quot;'&quot;);</span>
+            }
+<span class="nc" id="L282">        }</span>
+
+<span class="nc" id="L284">        return true;</span>
+    }
+
+    private void mapTableToRealization(ProjectCache prjCache, IRealization realization) {
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        for (TblColRef col : realization.getAllColumns()) {</span>
+<span class="nc" id="L289">            TableCache tableCache = prjCache.tables.get(col.getTable());</span>
+<span class="nc" id="L290">            tableCache.realizations.add(realization);</span>
+<span class="nc" id="L291">        }</span>
+<span class="nc" id="L292">    }</span>
+
+    private void markExposedTablesAndColumns(ProjectCache prjCache, IRealization realization) {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        if (!realization.isReady()) {</span>
+<span class="nc" id="L296">            return;</span>
+        }
+
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        for (TblColRef col : realization.getAllColumns()) {</span>
+<span class="nc" id="L300">            TableCache tableCache = prjCache.tables.get(col.getTable());</span>
+<span class="nc" id="L301">            prjCache.exposedTables.add(tableCache.tableDesc);</span>
+<span class="nc" id="L302">            tableCache.exposed = true;</span>
+<span class="nc" id="L303">            tableCache.exposedColumns.add(col.getColumnDesc());</span>
+<span class="nc" id="L304">        }</span>
+<span class="nc" id="L305">    }</span>
+
+    private static class ProjectCache {
+        private String project;
+<span class="nc" id="L309">        private Map&lt;String, TableCache&gt; tables = Maps.newHashMap();</span>
+<span class="nc" id="L310">        private Set&lt;TableDesc&gt; exposedTables = Sets.newHashSet();</span>
+<span class="nc" id="L311">        private Set&lt;IRealization&gt; realizations = Sets.newHashSet();</span>
+<span class="nc" id="L312">        private Map&lt;String, ExternalFilterDesc&gt; extFilters = Maps.newHashMap();</span>
+
+<span class="nc" id="L314">        ProjectCache(String project) {</span>
+<span class="nc" id="L315">            this.project = project;</span>
+<span class="nc" id="L316">        }</span>
+    }
+
+    private static class TableCache {
+<span class="nc" id="L320">        private boolean exposed = false;</span>
+        private TableDesc tableDesc;
+<span class="nc" id="L322">        private Set&lt;ColumnDesc&gt; exposedColumns = Sets.newLinkedHashSet();</span>
+<span class="nc" id="L323">        private Set&lt;IRealization&gt; realizations = Sets.newLinkedHashSet();</span>
+
+<span class="nc" id="L325">        TableCache(TableDesc tableDesc) {</span>
+<span class="nc" id="L326">            this.tableDesc = tableDesc;</span>
+<span class="nc" id="L327">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

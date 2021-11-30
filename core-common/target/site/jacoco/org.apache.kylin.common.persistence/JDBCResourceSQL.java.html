@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JDBCResourceSQL.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">JDBCResourceSQL.java</span></div><h1>JDBCResourceSQL.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.text.FieldPosition;
+import java.text.MessageFormat;
+import java.util.Locale;
+
+public class JDBCResourceSQL {
+
+    final private JDBCSqlQueryFormat format;
+    private String tableName;
+    final private String metaTableKey;
+    final private String metaTableTs;
+    final private String metaTableContent;
+
+    public JDBCResourceSQL(String dialect, String tableName, String metaTableKey, String metaTableTs,
+<span class="nc" id="L34">            String metaTableContent) {</span>
+<span class="nc" id="L35">        this.format = JDBCSqlQueryFormatProvider.createJDBCSqlQueriesFormat(dialect);</span>
+<span class="nc" id="L36">        this.tableName = tableName;</span>
+<span class="nc" id="L37">        this.metaTableKey = metaTableKey;</span>
+<span class="nc" id="L38">        this.metaTableTs = metaTableTs;</span>
+<span class="nc" id="L39">        this.metaTableContent = metaTableContent;</span>
+<span class="nc" id="L40">    }</span>
+
+    public String getCheckTableExistsSql(final String tableName) {
+<span class="nc" id="L43">        final String sql = new MessageFormat(format.getCheckTableExistsSql(), Locale.ROOT)</span>
+<span class="nc" id="L44">                .format(new Object[] { tableName }, new StringBuffer(), new FieldPosition(0)).toString();</span>
+<span class="nc" id="L45">        return sql;</span>
+    }
+
+    public String getCreateIfNeededSql(String tableName) {
+<span class="nc" id="L49">        final String sql = new MessageFormat(format.getCreateIfNeedSql(), Locale.ROOT)</span>
+<span class="nc" id="L50">                .format(new Object[] { tableName, metaTableKey, metaTableTs, metaTableContent }, new StringBuffer(),</span>
+                        new FieldPosition(0))
+<span class="nc" id="L52">                .toString();</span>
+<span class="nc" id="L53">        return sql;</span>
+    }
+
+    public String getCreateIndexSql(String indexName, String tableName, String indexCol) {
+<span class="nc" id="L57">        final String sql = new MessageFormat(format.getCreateIndexSql(), Locale.ROOT)</span>
+<span class="nc" id="L58">                .format(new Object[] { indexName, tableName, indexCol }, new StringBuffer(), new FieldPosition(0))</span>
+<span class="nc" id="L59">                .toString();</span>
+<span class="nc" id="L60">        return sql;</span>
+    }
+
+    public String getKeyEqualSqlString(boolean fetchContent, boolean fetchTimestamp) {
+<span class="nc" id="L64">        final String sql = new MessageFormat(format.getKeyEqualsSql(), Locale.ROOT)</span>
+<span class="nc" id="L65">                .format(new Object[] { getSelectList(fetchContent, fetchTimestamp), tableName, metaTableKey },</span>
+                        new StringBuffer(), new FieldPosition(0))
+<span class="nc" id="L67">                .toString();</span>
+<span class="nc" id="L68">        return sql;</span>
+    }
+
+    public String getDeletePstatSql() {
+<span class="nc" id="L72">        final String sql = new MessageFormat(format.getDeletePstatSql(), Locale.ROOT)</span>
+<span class="nc" id="L73">                .format(new Object[] { tableName, metaTableKey }, new StringBuffer(), new FieldPosition(0)).toString();</span>
+<span class="nc" id="L74">        return sql;</span>
+    }
+
+    public String getAllResourceSqlString(boolean loadContent) {
+<span class="nc" id="L78">        final String sql = new MessageFormat(format.getAllResourceSql(), Locale.ROOT).format(</span>
+<span class="nc" id="L79">                new Object[] { getSelectList(loadContent, true), tableName, metaTableKey, metaTableTs, metaTableTs },</span>
+<span class="nc" id="L80">                new StringBuffer(), new FieldPosition(0)).toString();</span>
+<span class="nc" id="L81">        return sql;</span>
+    }
+
+    public String getReplaceSql() {
+<span class="nc" id="L85">        final String sql = new MessageFormat(format.getReplaceSql(), Locale.ROOT)</span>
+<span class="nc" id="L86">                .format(new Object[] { tableName, metaTableTs, metaTableContent, metaTableKey }, new StringBuffer(),</span>
+                        new FieldPosition(0))
+<span class="nc" id="L88">                .toString();</span>
+<span class="nc" id="L89">        return sql;</span>
+    }
+
+    public String getInsertSql() {
+<span class="nc" id="L93">        final String sql = new MessageFormat(format.getInsertSql(), Locale.ROOT)</span>
+<span class="nc" id="L94">                .format(new Object[] { tableName, metaTableKey, metaTableTs, metaTableContent }, new StringBuffer(),</span>
+                        new FieldPosition(0))
+<span class="nc" id="L96">                .toString();</span>
+<span class="nc" id="L97">        return sql;</span>
+    }
+
+    public String getReplaceSqlWithoutContent() {
+<span class="nc" id="L101">        final String sql = new MessageFormat(format.getReplaceSqlWithoutContent(), Locale.ROOT)</span>
+<span class="nc" id="L102">                .format(new Object[] { tableName, metaTableTs, metaTableKey }, new StringBuffer(), new FieldPosition(0))</span>
+<span class="nc" id="L103">                .toString();</span>
+<span class="nc" id="L104">        return sql;</span>
+    }
+
+    public String getInsertSqlWithoutContent() {
+<span class="nc" id="L108">        final String sql = new MessageFormat(format.getInsertSqlWithoutContent(), Locale.ROOT)</span>
+<span class="nc" id="L109">                .format(new Object[] { tableName, metaTableKey, metaTableTs }, new StringBuffer(), new FieldPosition(0))</span>
+<span class="nc" id="L110">                .toString();</span>
+<span class="nc" id="L111">        return sql;</span>
+    }
+
+    public String getUpdateContentAndTsSql() {
+<span class="nc" id="L115">        final String sql = new MessageFormat(format.getUpdateContentAndTsSql(), Locale.ROOT)</span>
+<span class="nc" id="L116">                .format(new Object[] { tableName, metaTableTs, metaTableContent, metaTableKey, metaTableTs }, new StringBuffer(),</span>
+                        new FieldPosition(0))
+<span class="nc" id="L118">                .toString();</span>
+<span class="nc" id="L119">        return sql;</span>
+    }
+
+    private String getSelectList(boolean fetchContent, boolean fetchTimestamp) {
+<span class="nc" id="L123">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L124">        sb.append(metaTableKey);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (fetchTimestamp)</span>
+<span class="nc" id="L126">            sb.append(&quot;,&quot; + metaTableTs);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (fetchContent)</span>
+<span class="nc" id="L128">            sb.append(&quot;,&quot; + metaTableContent);</span>
+<span class="nc" id="L129">        return sb.toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SequentialCubeTupleIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">SequentialCubeTupleIterator.java</span></div><h1>SequentialCubeTupleIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.io.IOException;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.kylin.common.annotation.Clarification;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+import org.apache.kylin.common.QueryContextFacade;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.ITuple;
+import org.apache.kylin.metadata.tuple.ITupleIterator;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.apache.kylin.storage.StorageContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Iterators;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+@Clarification(deprecated = true, msg = &quot;Only for HBase storage&quot;)
+public class SequentialCubeTupleIterator implements ITupleIterator {
+
+<span class="nc" id="L49">    private static final Logger logger = LoggerFactory.getLogger(SequentialCubeTupleIterator.class);</span>
+
+    protected List&lt;CubeSegmentScanner&gt; scanners;
+    protected List&lt;SegmentCubeTupleIterator&gt; segmentCubeTupleIterators;
+    protected Iterator&lt;ITuple&gt; tupleIterator;
+    protected StorageContext context;
+
+    private int scanCount;
+    private int scanCountDelta;
+
+    public SequentialCubeTupleIterator(List&lt;CubeSegmentScanner&gt; scanners, Cuboid cuboid,
+            Set&lt;TblColRef&gt; selectedDimensions, List&lt;TblColRef&gt; rtGroups, Set&lt;TblColRef&gt; groups, //
+<span class="nc" id="L61">            Set&lt;FunctionDesc&gt; selectedMetrics, TupleInfo returnTupleInfo, StorageContext context, SQLDigest sqlDigest) {</span>
+<span class="nc" id="L62">        this.context = context;</span>
+<span class="nc" id="L63">        this.scanners = scanners;</span>
+
+<span class="nc" id="L65">        Set&lt;TblColRef&gt; selectedDims = Sets.newHashSet(selectedDimensions);</span>
+<span class="nc" id="L66">        selectedDims.addAll(rtGroups);</span>
+
+<span class="nc" id="L68">        segmentCubeTupleIterators = Lists.newArrayList();</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        for (CubeSegmentScanner scanner : scanners) {</span>
+<span class="nc" id="L70">            segmentCubeTupleIterators.add(new SegmentCubeTupleIterator(scanner, cuboid, selectedDims, selectedMetrics, returnTupleInfo, context));</span>
+<span class="nc" id="L71">        }</span>
+
+<span class="nc bnc" id="L73" title="All 4 branches missed.">        if (context.mergeSortPartitionResults() &amp;&amp; !sqlDigest.isRawQuery) {</span>
+            //query with limit
+<span class="nc" id="L75">            logger.info(&quot;Using SortedIteratorMergerWithLimit to merge segment results&quot;);</span>
+<span class="nc" id="L76">            Iterator&lt;Iterator&lt;ITuple&gt;&gt; transformed = (Iterator&lt;Iterator&lt;ITuple&gt;&gt;) (Iterator&lt;?&gt;) segmentCubeTupleIterators.iterator();</span>
+<span class="nc" id="L77">            tupleIterator = new SortedIteratorMergerWithLimit&lt;ITuple&gt;(transformed, context.getFinalPushDownLimit(), getTupleDimensionComparator(cuboid, groups, returnTupleInfo)).getIterator();</span>
+<span class="nc" id="L78">        } else {</span>
+            //normal case
+<span class="nc" id="L80">            logger.info(&quot;Using Iterators.concat to merge segment results&quot;);</span>
+<span class="nc" id="L81">            tupleIterator = Iterators.concat(segmentCubeTupleIterators.iterator());</span>
+        }
+<span class="nc" id="L83">    }</span>
+
+    public Comparator&lt;ITuple&gt; getTupleDimensionComparator(Cuboid cuboid, Set&lt;TblColRef&gt; groups, TupleInfo returnTupleInfo) {
+        // dimensionIndexOnTuple is for SQL with limit
+<span class="nc" id="L87">        List&lt;TblColRef&gt; dimColumns = cuboid.getColumns();</span>
+
+<span class="nc" id="L89">        TreeSet&lt;Integer&gt; groupIndexOnDim = new TreeSet&lt;&gt;();</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        for (TblColRef colRef: groups) {</span>
+<span class="nc" id="L91">            groupIndexOnDim.add(dimColumns.indexOf(colRef));</span>
+<span class="nc" id="L92">        }</span>
+
+<span class="nc" id="L94">        List&lt;Integer&gt; temp = Lists.newArrayList();</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        for (Integer index: groupIndexOnDim) {</span>
+<span class="nc" id="L96">            TblColRef dim = dimColumns.get(index);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (returnTupleInfo.hasColumn(dim)) {</span>
+<span class="nc" id="L98">                temp.add(returnTupleInfo.getColumnIndex(dim));</span>
+            }
+<span class="nc" id="L100">        }</span>
+
+<span class="nc" id="L102">        final int[] dimensionIndexOnTuple = new int[temp.size()];</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        for (int i = 0; i &lt; temp.size(); i++) {</span>
+<span class="nc" id="L104">            dimensionIndexOnTuple[i] = temp.get(i);</span>
+        }
+
+<span class="nc" id="L107">        return new Comparator&lt;ITuple&gt;() {</span>
+            @Override
+            public int compare(ITuple o1, ITuple o2) {
+<span class="nc" id="L110">                Preconditions.checkNotNull(o1);</span>
+<span class="nc" id="L111">                Preconditions.checkNotNull(o2);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                for (int i = 0; i &lt; dimensionIndexOnTuple.length; i++) {</span>
+<span class="nc" id="L113">                    int index = dimensionIndexOnTuple[i];</span>
+
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                    if (index == -1) {</span>
+                        //TODO: 
+<span class="nc" id="L117">                        continue;</span>
+                    }
+
+<span class="nc" id="L120">                    Comparable a = (Comparable) o1.getAllValues()[index];</span>
+<span class="nc" id="L121">                    Comparable b = (Comparable) o2.getAllValues()[index];</span>
+
+<span class="nc bnc" id="L123" title="All 4 branches missed.">                    if (a == null &amp;&amp; b == null) {</span>
+<span class="nc" id="L124">                        continue;</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                    } else if (a == null) {</span>
+<span class="nc" id="L126">                        return 1;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                    } else if (b == null) {</span>
+<span class="nc" id="L128">                        return -1;</span>
+                    } else {
+<span class="nc" id="L130">                        int temp = a.compareTo(b);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                        if (temp != 0) {</span>
+<span class="nc" id="L132">                            return temp;</span>
+                        } else {
+                            continue;
+                        }
+                    }
+                }
+
+<span class="nc" id="L139">                return 0;</span>
+            }
+        };
+    }
+
+    @Override
+    public boolean hasNext() {
+<span class="nc" id="L146">        return tupleIterator.hasNext();</span>
+    }
+
+    @Override
+    public ITuple next() {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (scanCount++ % 100 == 1) {</span>
+<span class="nc" id="L152">            QueryContextFacade.current().checkMillisBeforeDeadline();</span>
+        }
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (++scanCountDelta &gt;= 1000) {</span>
+<span class="nc" id="L155">            flushScanCountDelta();</span>
+        }
+<span class="nc" id="L157">        return tupleIterator.next();</span>
+    }
+
+    @Override
+    public void remove() {
+<span class="nc" id="L162">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public void close() {
+        // hasNext() loop may exit because of limit, threshold, etc.
+        // close all the remaining segmentIterator
+<span class="nc" id="L169">        flushScanCountDelta();</span>
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        for (SegmentCubeTupleIterator iterator : segmentCubeTupleIterators) {</span>
+<span class="nc" id="L172">            iterator.close();</span>
+<span class="nc" id="L173">        }</span>
+<span class="nc" id="L174">    }</span>
+
+    protected void close(CubeSegmentScanner scanner) {
+        try {
+<span class="nc" id="L178">            scanner.close();</span>
+<span class="nc" id="L179">        } catch (IOException e) {</span>
+<span class="nc" id="L180">            logger.error(&quot;Exception when close CubeScanner&quot;, e);</span>
+<span class="nc" id="L181">        }</span>
+<span class="nc" id="L182">    }</span>
+
+    private void flushScanCountDelta() {
+<span class="nc" id="L185">        context.increaseProcessedRowCount(scanCountDelta);</span>
+<span class="nc" id="L186">        scanCountDelta = 0;</span>
+<span class="nc" id="L187">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

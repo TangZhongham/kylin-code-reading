@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompareTupleFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter</a> &gt; <span class="el_source">CompareTupleFilter.java</span></div><h1>CompareTupleFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.filter;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+
+/**
+ * @author xjiang
+ */
+public class CompareTupleFilter extends TupleFilter implements IOptimizeableTupleFilter {
+    
+<span class="fc" id="L37">    public enum CompareResultType {</span>
+<span class="fc" id="L38">        AlwaysTrue, AlwaysFalse, Unknown</span>
+    }
+
+    // if the two children are both CompareTupleFilter, isNormal will be false
+<span class="pc" id="L42">    private boolean isNormal = true;</span>
+
+    // operand 1 is either a column or a function
+    private TblColRef column;
+    private FunctionTupleFilter function;
+    private TblColRef secondColumn;
+
+    // operand 2 is constants
+    private Set&lt;Object&gt; conditionValues;
+    private Object firstCondValue;
+    private Map&lt;String, Object&gt; dynamicVariables;
+
+    public CompareTupleFilter(FilterOperatorEnum op) {
+<span class="fc" id="L55">        super(new ArrayList&lt;TupleFilter&gt;(2), op);</span>
+<span class="fc" id="L56">        this.conditionValues = new HashSet&lt;Object&gt;();</span>
+<span class="fc" id="L57">        this.dynamicVariables = new HashMap&lt;String, Object&gt;();</span>
+<span class="pc bpc" id="L58" title="8 of 20 branches missed.">        boolean opGood = (op == FilterOperatorEnum.EQ || op == FilterOperatorEnum.NEQ //</span>
+                || op == FilterOperatorEnum.LT || op == FilterOperatorEnum.LTE //
+                || op == FilterOperatorEnum.GT || op == FilterOperatorEnum.GTE //
+                || op == FilterOperatorEnum.IN || op == FilterOperatorEnum.NOTIN //
+                || op == FilterOperatorEnum.ISNULL || op == FilterOperatorEnum.ISNOTNULL);
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (opGood == false)</span>
+<span class="nc" id="L64">            throw new IllegalArgumentException(&quot;Unsupported operator &quot; + op);</span>
+<span class="fc" id="L65">    }</span>
+
+    private CompareTupleFilter(CompareTupleFilter another) {
+<span class="nc" id="L68">        super(new ArrayList&lt;TupleFilter&gt;(another.children), another.operator);</span>
+<span class="nc" id="L69">        this.column = another.column;</span>
+<span class="nc" id="L70">        this.firstCondValue = another.getFirstValue();</span>
+<span class="nc" id="L71">        this.function = another.getFunction();</span>
+<span class="nc" id="L72">        this.conditionValues = new HashSet&lt;Object&gt;();</span>
+<span class="nc" id="L73">        this.conditionValues.addAll(another.conditionValues);</span>
+<span class="nc" id="L74">        this.dynamicVariables = new HashMap&lt;String, Object&gt;();</span>
+<span class="nc" id="L75">        this.dynamicVariables.putAll(another.dynamicVariables);</span>
+<span class="nc" id="L76">    }</span>
+
+    @Override
+    public void addChild(TupleFilter child) {
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (child instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L81">            child = optimizeChildCompareTupleFilter((CompareTupleFilter) child);</span>
+        }
+<span class="fc" id="L83">        super.addChild(child);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (child instanceof ColumnTupleFilter) {</span>
+<span class="fc" id="L85">            ColumnTupleFilter columnFilter = (ColumnTupleFilter) child;</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (this.column != null) {</span>
+<span class="nc" id="L87">                this.secondColumn = columnFilter.getColumn();</span>
+            } else {
+<span class="fc" id="L89">                this.column = columnFilter.getColumn();</span>
+                // if value is before column, we need to reverse the operator. e.g. &quot;1 &gt;= c1&quot; =&gt; &quot;c1 &lt;= 1&quot;
+                // children.size() &gt; 1 means already added one conditionValue or dynamicVariable
+<span class="pc bpc" id="L92" title="3 of 4 branches missed.">                if (this.children.size() &gt; 1 &amp;&amp; needSwapOperator()) {</span>
+<span class="nc" id="L93">                    this.operator = SWAP_OP_MAP.get(this.operator);</span>
+<span class="nc" id="L94">                    TupleFilter last = this.children.remove(this.children.size() - 1);</span>
+<span class="nc" id="L95">                    this.children.add(0, last);</span>
+                }
+            }
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        } else if (child instanceof ConstantTupleFilter) {</span>
+<span class="fc" id="L99">            this.conditionValues.addAll(child.getValues());</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (!this.conditionValues.isEmpty()) {</span>
+<span class="fc" id="L101">                this.firstCondValue = this.conditionValues.iterator().next();</span>
+            }
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        } else if (child instanceof DynamicTupleFilter) {</span>
+<span class="nc" id="L104">            DynamicTupleFilter dynamicFilter = (DynamicTupleFilter) child;</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (!this.dynamicVariables.containsKey(dynamicFilter.getVariableName())) {</span>
+<span class="nc" id="L106">                this.dynamicVariables.put(dynamicFilter.getVariableName(), null);</span>
+            }
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        } else if (child instanceof FunctionTupleFilter) {</span>
+<span class="nc" id="L109">            this.function = (FunctionTupleFilter) child;</span>
+        }
+<span class="fc" id="L111">    }</span>
+
+    private boolean needSwapOperator() {
+<span class="nc bnc" id="L114" title="All 8 branches missed.">        return operator == FilterOperatorEnum.LT || operator == FilterOperatorEnum.GT || operator == FilterOperatorEnum.LTE || operator == FilterOperatorEnum.GTE;</span>
+    }
+
+    @Override
+    public Set&lt;?&gt; getValues() {
+<span class="nc" id="L119">        return conditionValues;</span>
+    }
+
+    public Object getFirstValue() {
+<span class="fc" id="L123">        return firstCondValue;</span>
+    }
+
+    public TblColRef getColumn() {
+<span class="fc" id="L127">        return column;</span>
+    }
+
+    public FunctionTupleFilter getFunction() {
+<span class="nc" id="L131">        return function;</span>
+    }
+
+    public Map&lt;String, Object&gt; getVariables() {
+<span class="nc" id="L135">        return dynamicVariables;</span>
+    }
+
+    public void bindVariable(String variable, Object value) {
+<span class="nc" id="L139">        this.dynamicVariables.put(variable, value);</span>
+<span class="nc" id="L140">        this.conditionValues.add(value);</span>
+<span class="nc" id="L141">        this.firstCondValue = this.conditionValues.iterator().next();</span>
+<span class="nc" id="L142">    }</span>
+
+    public void clearPreviousVariableValues(String variable) {
+<span class="nc" id="L145">        Object previousValue = dynamicVariables.get(variable);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (previousValue == null) {</span>
+<span class="nc" id="L147">            return;</span>
+        }
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (this.firstCondValue == previousValue) {</span>
+<span class="nc" id="L150">            this.firstCondValue = null;</span>
+        }
+<span class="nc" id="L152">        this.conditionValues.remove(previousValue);</span>
+<span class="nc" id="L153">    }</span>
+
+    @Override
+    public TupleFilter copy() {
+<span class="nc" id="L157">        return new CompareTupleFilter(this);</span>
+    }
+
+    @Override
+    public TupleFilter reverse() {
+<span class="nc" id="L162">        TupleFilter reverse = copy();</span>
+<span class="nc" id="L163">        reverse.operator = REVERSE_OP_MAP.get(this.operator);</span>
+<span class="nc" id="L164">        return reverse;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        return (function == null ? column : function) + &quot; &quot; + operator + &quot; &quot; + conditionValues;</span>
+    }
+
+    // TODO requires generalize, currently only evaluates COLUMN {op} CONST
+    @Override
+    public boolean evaluate(IEvaluatableTuple tuple, IFilterCodeSystem cs) {
+        // extract tuple value
+<span class="nc" id="L176">        Object tupleValue = null;</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        for (TupleFilter filter : this.children) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (!isConstant(filter)) {</span>
+<span class="nc" id="L179">                filter.evaluate(tuple, cs);</span>
+<span class="nc" id="L180">                tupleValue = filter.getValues().iterator().next();</span>
+            }
+<span class="nc" id="L182">        }</span>
+
+        // consider null case
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (cs.isNull(tupleValue)) {</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            if (operator == FilterOperatorEnum.ISNULL)</span>
+<span class="nc" id="L187">                return true;</span>
+            else
+<span class="nc" id="L189">                return false;</span>
+        } else {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">            if (operator == FilterOperatorEnum.ISNOTNULL)</span>
+<span class="nc" id="L192">                return true;</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">            else if (operator == FilterOperatorEnum.ISNULL)</span>
+<span class="nc" id="L194">                return false;</span>
+        }
+        
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (cs.isNull(firstCondValue)) {</span>
+<span class="nc" id="L198">            return false;</span>
+        }
+
+        // tricky here -- order is ensured by string compare (even for number columns)
+        // because it's row key ID (not real value) being compared
+<span class="nc" id="L203">        int comp = cs.compare(tupleValue, firstCondValue);</span>
+
+        boolean result;
+<span class="nc bnc" id="L206" title="All 9 branches missed.">        switch (operator) {</span>
+        case EQ:
+<span class="nc bnc" id="L208" title="All 2 branches missed.">            result = comp == 0;</span>
+<span class="nc" id="L209">            break;</span>
+        case NEQ:
+<span class="nc bnc" id="L211" title="All 2 branches missed.">            result = comp != 0;</span>
+<span class="nc" id="L212">            break;</span>
+        case LT:
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            result = comp &lt; 0;</span>
+<span class="nc" id="L215">            break;</span>
+        case LTE:
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            result = comp &lt;= 0;</span>
+<span class="nc" id="L218">            break;</span>
+        case GT:
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            result = comp &gt; 0;</span>
+<span class="nc" id="L221">            break;</span>
+        case GTE:
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            result = comp &gt;= 0;</span>
+<span class="nc" id="L224">            break;</span>
+        case IN:
+<span class="nc" id="L226">            result = conditionValues.contains(tupleValue);</span>
+<span class="nc" id="L227">            break;</span>
+        case NOTIN:
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            result = !conditionValues.contains(tupleValue);</span>
+<span class="nc" id="L230">            break;</span>
+        default:
+<span class="nc" id="L232">            result = false;</span>
+        }
+<span class="nc" id="L234">        return result;</span>
+    }
+
+    private boolean isConstant(TupleFilter filter) {
+<span class="nc bnc" id="L238" title="All 4 branches missed.">        return (filter instanceof ConstantTupleFilter) || (filter instanceof DynamicTupleFilter);</span>
+    }
+
+    @Override
+    public boolean isEvaluable() {
+<span class="nc bnc" id="L243" title="All 8 branches missed.">        return isNormal &amp;&amp; (column != null || (function != null &amp;&amp; function.isEvaluable())) //</span>
+<span class="nc bnc" id="L244" title="All 8 branches missed.">                &amp;&amp; (!conditionValues.isEmpty() || operator == FilterOperatorEnum.ISNOTNULL || operator == FilterOperatorEnum.ISNULL) //</span>
+                &amp;&amp; secondColumn == null;
+    }
+
+    public CompareResultType getCompareResultType() {
+        // cases like 1 = 1, or 'a' &lt;&gt; 'b'
+<span class="pc bpc" id="L250" title="3 of 4 branches missed.">        if (this.operator == FilterOperatorEnum.EQ || this.operator == FilterOperatorEnum.NEQ) {</span>
+<span class="pc bpc" id="L251" title="2 of 4 branches missed.">            if (this.children != null &amp;&amp; this.children.size() == 2 &amp;&amp; //</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">                    this.children.get(0) instanceof ConstantTupleFilter &amp;&amp; //</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                    this.children.get(1) instanceof ConstantTupleFilter) {</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                if (((ConstantTupleFilter) this.children.get(0)).getValues().equals(((ConstantTupleFilter) this.children.get(1)).getValues())) {</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                    return this.operator == FilterOperatorEnum.EQ ? CompareResultType.AlwaysTrue : CompareResultType.AlwaysFalse;</span>
+                } else {
+<span class="nc bnc" id="L257" title="All 2 branches missed.">                    return this.operator == FilterOperatorEnum.EQ ? CompareResultType.AlwaysFalse : CompareResultType.AlwaysTrue;</span>
+                }
+            }
+        }
+<span class="fc" id="L261">        return CompareResultType.Unknown;</span>
+    }
+
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    @Override
+    public void serialize(IFilterCodeSystem cs, ByteBuffer buffer) {
+<span class="fc" id="L267">        int size = this.dynamicVariables.size();</span>
+<span class="fc" id="L268">        BytesUtil.writeVInt(size, buffer);</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        for (Map.Entry&lt;String, Object&gt; entry : this.dynamicVariables.entrySet()) {</span>
+<span class="nc" id="L270">            BytesUtil.writeUTFString(entry.getKey(), buffer);</span>
+<span class="nc" id="L271">            cs.serialize(entry.getValue(), buffer);</span>
+<span class="nc" id="L272">        }</span>
+<span class="fc" id="L273">    }</span>
+
+    @Override
+    public void deserialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+
+<span class="fc" id="L278">        this.dynamicVariables.clear();</span>
+<span class="fc" id="L279">        int size = BytesUtil.readVInt(buffer);</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="nc" id="L281">            String name = BytesUtil.readUTFString(buffer);</span>
+<span class="nc" id="L282">            Object value = cs.deserialize(buffer);</span>
+<span class="nc" id="L283">            bindVariable(name, value);</span>
+        }
+<span class="fc" id="L285">    }</span>
+
+    @Override
+    public TupleFilter acceptOptimizeTransformer(FilterOptimizeTransformer transformer) {
+<span class="fc" id="L289">        return transformer.visit(this);</span>
+    }
+
+    private TupleFilter optimizeChildCompareTupleFilter(CompareTupleFilter child) {
+<span class="nc" id="L293">        FilterOptimizeTransformer transformer = new FilterOptimizeTransformer();</span>
+<span class="nc" id="L294">        TupleFilter result = child.acceptOptimizeTransformer(transformer);</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        if (result == ConstantTupleFilter.TRUE) {</span>
+            // use string instead of boolean since it's encoded as string
+<span class="nc" id="L297">            result = new ConstantTupleFilter(&quot;true&quot;);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        } else if (result == ConstantTupleFilter.FALSE) {</span>
+<span class="nc" id="L299">            result = new ConstantTupleFilter(&quot;false&quot;);</span>
+        } else {
+<span class="nc" id="L301">            this.isNormal = false;</span>
+        }
+<span class="nc" id="L303">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L309">            return true;</span>
+<span class="pc bpc" id="L310" title="2 of 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L311">            return false;</span>
+
+<span class="fc" id="L313">        CompareTupleFilter that = (CompareTupleFilter) o;</span>
+
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (operator != that.operator)</span>
+<span class="nc" id="L316">            return false;</span>
+<span class="pc bpc" id="L317" title="4 of 6 branches missed.">        if (column != null ? !column.equals(that.column) : that.column != null)</span>
+<span class="nc" id="L318">            return false;</span>
+<span class="pc bpc" id="L319" title="4 of 6 branches missed.">        if (function != null ? !function.equals(that.function) : that.function != null)</span>
+<span class="nc" id="L320">            return false;</span>
+<span class="pc bpc" id="L321" title="4 of 6 branches missed.">        if (secondColumn != null ? !secondColumn.equals(that.secondColumn) : that.secondColumn != null)</span>
+<span class="nc" id="L322">            return false;</span>
+<span class="pc bpc" id="L323" title="4 of 6 branches missed.">        if (conditionValues != null ? !conditionValues.equals(that.conditionValues) : that.conditionValues != null)</span>
+<span class="nc" id="L324">            return false;</span>
+<span class="pc bpc" id="L325" title="4 of 6 branches missed.">        if (firstCondValue != null ? !firstCondValue.equals(that.firstCondValue) : that.firstCondValue != null)</span>
+<span class="nc" id="L326">            return false;</span>
+<span class="pc bpc" id="L327" title="3 of 4 branches missed.">        return dynamicVariables != null ? dynamicVariables.equals(that.dynamicVariables)</span>
+                : that.dynamicVariables == null;
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">        int result = operator != null ? operator.hashCode() : 0;</span>
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">        result = 31 * result + (column != null ? column.hashCode() : 0);</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        result = 31 * result + (function != null ? function.hashCode() : 0);</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        result = 31 * result + (secondColumn != null ? secondColumn.hashCode() : 0);</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">        result = 31 * result + (conditionValues != null ? conditionValues.hashCode() : 0);</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">        result = 31 * result + (firstCondValue != null ? firstCondValue.hashCode() : 0);</span>
+<span class="pc bpc" id="L340" title="1 of 2 branches missed.">        result = 31 * result + (dynamicVariables != null ? dynamicVariables.hashCode() : 0);</span>
+<span class="fc" id="L341">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

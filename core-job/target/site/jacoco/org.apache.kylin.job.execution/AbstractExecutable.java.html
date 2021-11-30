@@ -1,0 +1,719 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractExecutable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.execution</a> &gt; <span class="el_source">AbstractExecutable.java</span></div><h1>AbstractExecutable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.execution;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.IllegalFormatException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.MailService;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.common.util.RandomUtil;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.model.CubeBuildTypeEnum;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.exception.JobStoppedException;
+import org.apache.kylin.job.exception.PersistentException;
+import org.apache.kylin.job.impl.threadpool.DefaultContext;
+import org.apache.kylin.job.util.MailNotificationUtil;
+import org.apache.kylin.metadata.MetadataConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.kylin.shaded.com.google.common.base.MoreObjects;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+import static org.apache.kylin.job.constant.ExecutableConstants.MR_JOB_ID;
+import static org.apache.kylin.job.constant.ExecutableConstants.YARN_APP_ID;
+import static org.apache.kylin.job.constant.ExecutableConstants.YARN_APP_URL;
+
+/**
+ */
+public abstract class AbstractExecutable implements Executable, Idempotent {
+
+<span class="fc" id="L63">    public static final Integer DEFAULT_PRIORITY = 10;</span>
+
+    public static final String CUBE_NAME = &quot;cubeName&quot;;
+    protected static final String SUBMITTER = &quot;submitter&quot;;
+    protected static final String NOTIFY_LIST = &quot;notify_list&quot;;
+    protected static final String PARENT_ID = &quot;parentId&quot;;
+    protected static final String START_TIME = &quot;startTime&quot;;
+    protected static final String END_TIME = &quot;endTime&quot;;
+    protected static final String INTERRUPT_TIME = &quot;interruptTime&quot;;
+    protected static final String BUILD_INSTANCE = &quot;buildInstance&quot;;
+    protected static final String PROJECT_INSTANCE_NAME = &quot;projectName&quot;;
+
+<span class="fc" id="L75">    protected static final Logger logger = LoggerFactory.getLogger(AbstractExecutable.class);</span>
+    public static final String NO_NEED_TO_SEND_EMAIL_USER_LIST_IS_EMPTY = &quot;no need to send email, user list is empty&quot;;
+<span class="fc" id="L77">    protected int retry = 0;</span>
+
+    private KylinConfig config;
+    private String name;
+    private String id;
+<span class="fc" id="L82">    private AbstractExecutable parentExecutable = null;</span>
+<span class="fc" id="L83">    private Map&lt;String, String&gt; params = Maps.newHashMap();</span>
+    protected Integer priority;
+    private CubeBuildTypeEnum jobType;
+    private String logPath;
+    protected String project;
+    private String targetSubject;
+<span class="fc" id="L89">    private List&lt;String&gt; targetSegments = Lists.newArrayList();//uuid of related segments</span>
+
+<span class="fc" id="L91">    public AbstractExecutable() {</span>
+<span class="fc" id="L92">        setId(RandomUtil.randomUUID().toString());</span>
+<span class="fc" id="L93">    }</span>
+
+    protected void initConfig(KylinConfig config) {
+<span class="pc bpc" id="L96" title="3 of 4 branches missed.">        Preconditions.checkState(this.config == null || this.config == config);</span>
+<span class="fc" id="L97">        this.config = config;</span>
+<span class="fc" id="L98">    }</span>
+
+    public void setLogPath(String logPath) {
+<span class="nc" id="L101">        this.logPath = logPath;</span>
+<span class="nc" id="L102">    }</span>
+
+    public String getLogPath() {
+<span class="fc" id="L105">        return logPath;</span>
+    }
+
+    protected KylinConfig getConfig() {
+<span class="nc" id="L109">        return config;</span>
+    }
+
+    protected ExecutableManager getManager() {
+<span class="fc" id="L113">        return ExecutableManager.getInstance(config);</span>
+    }
+
+    protected void onExecuteStart(ExecutableContext executableContext) {
+<span class="fc" id="L117">        checkJobPaused();</span>
+<span class="fc" id="L118">        Map&lt;String, String&gt; info = Maps.newHashMap();</span>
+<span class="fc" id="L119">        info.put(START_TIME, Long.toString(System.currentTimeMillis()));</span>
+<span class="fc" id="L120">        getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.RUNNING, info, null, getLogPath());</span>
+<span class="fc" id="L121">    }</span>
+
+    public KylinConfig getCubeSpecificConfig() {
+<span class="nc" id="L124">        String cubeName = getCubeName();</span>
+<span class="nc" id="L125">        CubeManager manager = CubeManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L126">        CubeInstance cube = manager.getCube(cubeName);</span>
+<span class="nc" id="L127">        return cube.getConfig();</span>
+    }
+
+    private void onExecuteFinishedWithRetry(ExecuteResult result, ExecutableContext executableContext)
+            throws ExecuteException {
+        Throwable exception;
+<span class="fc" id="L133">        int nRetry = 0;</span>
+        do {
+<span class="fc" id="L135">            nRetry++;</span>
+<span class="fc" id="L136">            exception = null;</span>
+            try {
+<span class="fc" id="L138">                onExecuteFinished(result, executableContext);</span>
+<span class="fc" id="L139">            } catch (Exception e) {</span>
+<span class="fc" id="L140">                logger.error(nRetry + &quot;th retries for onExecuteFinished fails due to {}&quot;, e);</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">                if (isMetaDataPersistException(e, 5)) {</span>
+<span class="nc" id="L142">                    exception = e;</span>
+                    try {
+<span class="nc" id="L144">                        Thread.sleep(1000L * (long) Math.pow(4, nRetry));</span>
+<span class="nc" id="L145">                    } catch (InterruptedException e1) {</span>
+<span class="nc" id="L146">                        throw new IllegalStateException(e1);</span>
+<span class="nc" id="L147">                    }</span>
+                } else {
+<span class="fc" id="L149">                    throw e;</span>
+                }
+<span class="fc" id="L151">            }</span>
+<span class="pc bpc" id="L152" title="3 of 4 branches missed.">        } while (exception != null &amp;&amp; nRetry &lt;= executableContext.getConfig().getJobMetadataPersistRetry());</span>
+
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (exception != null) {</span>
+<span class="nc" id="L155">            handleMetadataPersistException(executableContext, exception);</span>
+<span class="nc" id="L156">            throw new ExecuteException(exception);</span>
+        }
+<span class="fc" id="L158">    }</span>
+
+    protected void onExecuteFinished(ExecuteResult result, ExecutableContext executableContext) {
+<span class="fc" id="L161">        setEndTime(System.currentTimeMillis());</span>
+<span class="pc bpc" id="L162" title="1 of 4 branches missed.">        if (!isDiscarded() &amp;&amp; !isRunnable()) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (result.succeed()) {</span>
+<span class="fc" id="L164">                getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.SUCCEED, null, result.output(), getLogPath());</span>
+            } else {
+<span class="fc" id="L166">                getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.ERROR, null, result.output(), getLogPath());</span>
+            }
+        }
+<span class="fc" id="L169">    }</span>
+
+    protected void onExecuteError(Throwable exception, ExecutableContext executableContext) {
+<span class="fc" id="L172">        checkJobPaused();</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (!isDiscarded()) {</span>
+<span class="fc" id="L174">            getManager().addJobInfo(getId(), END_TIME, Long.toString(System.currentTimeMillis()));</span>
+<span class="fc" id="L175">            String output = null;</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">            if (exception != null) {</span>
+<span class="fc" id="L177">                final StringWriter out = new StringWriter();</span>
+<span class="fc" id="L178">                exception.printStackTrace(new PrintWriter(out));</span>
+<span class="fc" id="L179">                output = out.toString();</span>
+            }
+<span class="fc" id="L181">            getManager().updateJobOutput(getParam(MetadataConstants.P_PROJECT_NAME), getId(), ExecutableState.ERROR, null, output, getLogPath());</span>
+        }
+<span class="fc" id="L183">    }</span>
+
+    @Override
+    public final ExecuteResult execute(ExecutableContext executableContext) throws ExecuteException {
+
+<span class="fc" id="L188">        logger.info(&quot;Executing AbstractExecutable ({})&quot;, this.getName());</span>
+
+<span class="fc" id="L190">        Preconditions.checkArgument(executableContext instanceof DefaultContext);</span>
+<span class="fc" id="L191">        ExecuteResult result = null;</span>
+
+        try {
+<span class="fc" id="L194">            onExecuteStart(executableContext);</span>
+            Throwable catchedException;
+            Throwable realException;
+            do {
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                if (retry &gt; 0) {</span>
+<span class="nc" id="L199">                    pauseOnRetry();</span>
+<span class="nc" id="L200">                    logger.info(&quot;Begin to retry, retry time: {}&quot;, retry);</span>
+                }
+<span class="fc" id="L202">                checkJobPaused();</span>
+<span class="fc" id="L203">                catchedException = null;</span>
+<span class="fc" id="L204">                result = null;</span>
+                try {
+<span class="fc" id="L206">                    result = doWork(executableContext);</span>
+<span class="nc" id="L207">                } catch (JobStoppedException e) {</span>
+<span class="nc" id="L208">                    logger.debug(&quot;The job be paused, ignore it: {}&quot;, this.toString());</span>
+<span class="fc" id="L209">                } catch (Throwable e) {</span>
+<span class="fc" id="L210">                    logger.error(&quot;error running Executable: {}&quot;, this.toString());</span>
+<span class="fc" id="L211">                    catchedException = e;</span>
+                } finally {
+<span class="fc" id="L213">                    cleanup(result);</span>
+                }
+<span class="fc" id="L215">                retry++;</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                realException = catchedException != null ? catchedException</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                        : (result.getThrowable() != null ? result.getThrowable() : null);</span>
+
+                //don't invoke retry on ChainedExecutable
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            } while (needRetry(this.retry, realException)); //exception in ExecuteResult should handle by user itself.</span>
+
+            //check exception in result to avoid retry on ChainedExecutable(only need to retry on subtask actually)
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (realException != null) {</span>
+<span class="fc" id="L224">                onExecuteError(realException, executableContext);</span>
+<span class="fc" id="L225">                throw new ExecuteException(realException);</span>
+            }
+
+<span class="fc" id="L228">            onExecuteFinishedWithRetry(result, executableContext);</span>
+<span class="fc" id="L229">        } catch (ExecuteException e) {</span>
+<span class="fc" id="L230">            throw e;</span>
+<span class="nc" id="L231">        } catch (JobStoppedException e) {</span>
+<span class="nc" id="L232">            result = ExecuteResult.createSucceed();</span>
+<span class="fc" id="L233">        } catch (Exception e) {</span>
+<span class="fc" id="L234">            throw new ExecuteException(e);</span>
+<span class="pc" id="L235">        }</span>
+<span class="fc" id="L236">        return result;</span>
+    }
+
+    protected void handleMetadataPersistException(ExecutableContext context, Throwable exception) {
+<span class="nc" id="L240">        final String[] adminDls = context.getConfig().getAdminDls();</span>
+<span class="nc bnc" id="L241" title="All 4 branches missed.">        if (adminDls == null || adminDls.length &lt; 1) {</span>
+<span class="nc" id="L242">            logger.warn(NO_NEED_TO_SEND_EMAIL_USER_LIST_IS_EMPTY);</span>
+<span class="nc" id="L243">            return;</span>
+        }
+<span class="nc" id="L245">        List&lt;String&gt; users = Lists.newArrayList(adminDls);</span>
+
+<span class="nc" id="L247">        Map&lt;String, Object&gt; dataMap = Maps.newHashMap();</span>
+<span class="nc" id="L248">        dataMap.put(&quot;job_name&quot;, getName());</span>
+<span class="nc" id="L249">        dataMap.put(&quot;env_name&quot;, context.getConfig().getDeployEnv());</span>
+<span class="nc" id="L250">        dataMap.put(SUBMITTER, StringUtil.noBlank(getSubmitter(), &quot;missing submitter&quot;));</span>
+<span class="nc" id="L251">        dataMap.put(&quot;job_engine&quot;, MailNotificationUtil.getLocalHostName());</span>
+<span class="nc" id="L252">        dataMap.put(&quot;error_log&quot;,</span>
+<span class="nc" id="L253">                Matcher.quoteReplacement(StringUtil.noBlank(exception.getMessage(), &quot;no error message&quot;)));</span>
+
+<span class="nc" id="L255">        String content = MailNotificationUtil.getMailContent(MailNotificationUtil.METADATA_PERSIST_FAIL, dataMap);</span>
+<span class="nc" id="L256">        String title = MailNotificationUtil.getMailTitle(&quot;METADATA PERSIST&quot;, &quot;FAIL&quot;,</span>
+<span class="nc" id="L257">                context.getConfig().getDeployEnv());</span>
+
+<span class="nc" id="L259">        new MailService(context.getConfig()).sendMail(users, title, content);</span>
+<span class="nc" id="L260">    }</span>
+
+    protected abstract ExecuteResult doWork(ExecutableContext context) throws ExecuteException, PersistentException;
+
+    @Override
+    public void cleanup(ExecuteResult result) throws ExecuteException {
+
+<span class="fc" id="L267">    }</span>
+
+    public static boolean isMetaDataPersistException(Exception e, final int maxDepth) {
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (e instanceof PersistentException) {</span>
+<span class="nc" id="L271">            return true;</span>
+        }
+
+<span class="fc" id="L274">        Throwable t = e.getCause();</span>
+<span class="fc" id="L275">        int depth = 0;</span>
+<span class="pc bpc" id="L276" title="3 of 4 branches missed.">        while (t != null &amp;&amp; depth &lt; maxDepth) {</span>
+<span class="nc" id="L277">            depth++;</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (t instanceof PersistentException) {</span>
+<span class="nc" id="L279">                return true;</span>
+            }
+<span class="nc" id="L281">            t = t.getCause();</span>
+        }
+<span class="fc" id="L283">        return false;</span>
+    }
+
+    @Override
+    public boolean isRunnable() {
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        return this.getStatus() == ExecutableState.READY;</span>
+    }
+
+    @Override
+    public String getName() {
+<span class="fc" id="L293">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="fc" id="L297">        this.name = name;</span>
+<span class="fc" id="L298">    }</span>
+
+    @Override
+    public String getId() {
+<span class="fc" id="L302">        return this.id;</span>
+    }
+
+    public final void setId(String id) {
+<span class="fc" id="L306">        this.id = id;</span>
+<span class="fc" id="L307">    }</span>
+
+    @Override
+    public ExecutableState getStatus() {
+<span class="fc" id="L311">        ExecutableManager manager = getManager();</span>
+<span class="fc" id="L312">        return manager.getOutput(this.getId()).getState();</span>
+    }
+
+    @Override
+    public final Map&lt;String, String&gt; getParams() {
+<span class="fc" id="L317">        return this.params;</span>
+    }
+
+    public final String getParam(String key) {
+<span class="fc" id="L321">        return this.params.get(key);</span>
+    }
+
+    public final void setParam(String key, String value) {
+<span class="fc" id="L325">        this.params.put(key, value);</span>
+<span class="fc" id="L326">    }</span>
+
+    public final void setParams(Map&lt;String, String&gt; params) {
+<span class="fc" id="L329">        this.params.putAll(params);</span>
+<span class="fc" id="L330">    }</span>
+
+    public final long getLastModified() {
+<span class="nc" id="L333">        return getOutput().getLastModified();</span>
+    }
+
+    public final void setSubmitter(String submitter) {
+<span class="nc" id="L337">        setParam(SUBMITTER, submitter);</span>
+<span class="nc" id="L338">    }</span>
+
+    public final List&lt;String&gt; getNotifyList() {
+<span class="fc" id="L341">        final String str = getParam(NOTIFY_LIST);</span>
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">        if (str != null) {</span>
+<span class="nc" id="L343">            return Lists.newArrayList(StringUtils.split(str, &quot;,&quot;));</span>
+        } else {
+<span class="fc" id="L345">            return Collections.emptyList();</span>
+        }
+    }
+
+    public final void setNotifyList(String notifications) {
+<span class="nc" id="L350">        setParam(NOTIFY_LIST, notifications);</span>
+<span class="nc" id="L351">    }</span>
+
+    public final void setNotifyList(List&lt;String&gt; notifications) {
+<span class="nc" id="L354">        setNotifyList(StringUtils.join(notifications, &quot;,&quot;));</span>
+<span class="nc" id="L355">    }</span>
+
+    protected Pair&lt;String, String&gt; formatNotifications(ExecutableContext executableContext, ExecutableState state) {
+<span class="nc" id="L358">        return null;</span>
+    }
+
+    protected final void notifyUserStatusChange(ExecutableContext context, ExecutableState state) {
+        try {
+<span class="fc" id="L363">            List&lt;String&gt; users = getAllNofifyUsers(config);</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">            if (users.isEmpty()) {</span>
+<span class="fc" id="L365">                logger.debug(NO_NEED_TO_SEND_EMAIL_USER_LIST_IS_EMPTY);</span>
+<span class="fc" id="L366">                return;</span>
+            }
+<span class="nc" id="L368">            final Pair&lt;String, String&gt; email = formatNotifications(context, state);</span>
+<span class="nc" id="L369">            doSendMail(config, users, email);</span>
+<span class="nc" id="L370">        } catch (Exception e) {</span>
+<span class="nc" id="L371">            logger.error(&quot;error send email&quot;, e);</span>
+<span class="nc" id="L372">        }</span>
+<span class="nc" id="L373">    }</span>
+
+    private List&lt;String&gt; getAllNofifyUsers(KylinConfig kylinConfig) {
+<span class="fc" id="L376">        List&lt;String&gt; users = Lists.newArrayList();</span>
+<span class="fc" id="L377">        users.addAll(getNotifyList());</span>
+<span class="fc" id="L378">        final String[] adminDls = kylinConfig.getAdminDls();</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        if (null != adminDls) {</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">            for (String adminDl : adminDls) {</span>
+<span class="nc" id="L381">                users.add(adminDl);</span>
+            }
+        }
+<span class="fc" id="L384">        return users;</span>
+    }
+
+    private void doSendMail(KylinConfig kylinConfig, List&lt;String&gt; users, Pair&lt;String, String&gt; email) {
+<span class="nc bnc" id="L388" title="All 2 branches missed.">        if (email == null) {</span>
+<span class="nc" id="L389">            logger.warn(&quot;no need to send email, content is null&quot;);</span>
+<span class="nc" id="L390">            return;</span>
+        }
+<span class="nc" id="L392">        logger.info(&quot;prepare to send email to:{}&quot;, users);</span>
+<span class="nc" id="L393">        logger.info(&quot;job name:{}&quot;, getName());</span>
+<span class="nc" id="L394">        logger.info(&quot;submitter:{}&quot;, getSubmitter());</span>
+<span class="nc" id="L395">        logger.info(&quot;notify list:{}&quot;, users);</span>
+<span class="nc" id="L396">        new MailService(kylinConfig).sendMail(users, email.getFirst(), email.getSecond());</span>
+<span class="nc" id="L397">    }</span>
+
+    protected void sendMail(Pair&lt;String, String&gt; email) {
+        try {
+<span class="nc" id="L401">            List&lt;String&gt; users = getAllNofifyUsers(config);</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">            if (users.isEmpty()) {</span>
+<span class="nc" id="L403">                logger.debug(NO_NEED_TO_SEND_EMAIL_USER_LIST_IS_EMPTY);</span>
+<span class="nc" id="L404">                return;</span>
+            }
+<span class="nc" id="L406">            doSendMail(config, users, email);</span>
+<span class="nc" id="L407">        } catch (Exception e) {</span>
+<span class="nc" id="L408">            logger.error(&quot;error send email&quot;, e);</span>
+<span class="nc" id="L409">        }</span>
+<span class="nc" id="L410">    }</span>
+
+    public void checkJobPaused() {
+<span class="fc" id="L413">        AbstractExecutable job = this;</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        if (getParentId() != null) {</span>
+<span class="fc" id="L415">            job = getParent();</span>
+        }
+<span class="fc" id="L417">        logger.info(&quot;The state of job is:&quot; + job.getStatus());</span>
+<span class="pc bpc" id="L418" title="2 of 4 branches missed.">        if (ExecutableState.STOPPED.equals(job.getStatus()) || ExecutableState.DISCARDED.equals(job.getStatus())) {</span>
+<span class="nc" id="L419">            throw new JobStoppedException();</span>
+        }
+<span class="fc" id="L421">    }</span>
+
+    public final String getSubmitter() {
+<span class="nc" id="L424">        return getParam(SUBMITTER);</span>
+    }
+
+    public final String getCubeName() {
+<span class="nc" id="L428">        return getParam(CUBE_NAME);</span>
+    }
+
+    @Override
+    public final Output getOutput() {
+<span class="fc" id="L433">        return getManager().getOutput(getId());</span>
+    }
+
+    protected long getExtraInfoAsLong(String key, long defaultValue) {
+<span class="fc" id="L437">        return getExtraInfoAsLong(getOutput(), key, defaultValue);</span>
+    }
+
+    public static String getBuildInstance(Output output) {
+<span class="nc" id="L441">        final String str = output.getExtra().get(BUILD_INSTANCE);</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        if (str != null) {</span>
+<span class="nc" id="L443">            return str;</span>
+        }
+<span class="nc" id="L445">        return &quot;unknown&quot;;</span>
+    }
+
+    public static long getStartTime(Output output) {
+<span class="nc" id="L449">        return getExtraInfoAsLong(output, START_TIME, 0L);</span>
+    }
+
+    public static long getEndTime(Output output) {
+<span class="nc" id="L453">        return getExtraInfoAsLong(output, END_TIME, 0L);</span>
+    }
+
+    public static long getInterruptTime(Output output) {
+<span class="nc" id="L457">        return getExtraInfoAsLong(output, INTERRUPT_TIME, 0L);</span>
+    }
+
+    public static long getDuration(long startTime, long endTime, long interruptTime) {
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        if (startTime == 0) {</span>
+<span class="nc" id="L462">            return 0;</span>
+        }
+<span class="nc bnc" id="L464" title="All 2 branches missed.">        if (endTime == 0) {</span>
+<span class="nc" id="L465">            return System.currentTimeMillis() - startTime - interruptTime;</span>
+        } else {
+<span class="nc" id="L467">            return endTime - startTime - interruptTime;</span>
+        }
+    }
+
+    public AbstractExecutable getParentExecutable() {
+<span class="nc" id="L472">        return parentExecutable;</span>
+    }
+    public void setParentExecutable(AbstractExecutable parentExecutable) {
+<span class="fc" id="L475">        this.parentExecutable = parentExecutable;</span>
+<span class="fc" id="L476">    }</span>
+
+    public static long getExtraInfoAsLong(Output output, String key, long defaultValue) {
+<span class="fc" id="L479">        final String str = output.getExtra().get(key);</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        if (str != null) {</span>
+<span class="fc" id="L481">            return Long.parseLong(str);</span>
+        } else {
+<span class="fc" id="L483">            return defaultValue;</span>
+        }
+    }
+
+    public final void addExtraInfo(String key, String value) {
+<span class="fc" id="L488">        getManager().addJobInfo(getId(), key, value);</span>
+<span class="fc" id="L489">    }</span>
+
+    public final String getExtraInfo(String key) {
+<span class="nc" id="L492">        return getExtraInfo().get(key);</span>
+    }
+
+    protected final Map&lt;String, String&gt; getExtraInfo() {
+<span class="nc" id="L496">        return getOutput().getExtra();</span>
+    }
+
+    public final void setStartTime(long time) {
+<span class="nc" id="L500">        addExtraInfo(START_TIME, time + &quot;&quot;);</span>
+<span class="nc" id="L501">    }</span>
+
+    public final void setEndTime(long time) {
+<span class="fc" id="L504">        addExtraInfo(END_TIME, time + &quot;&quot;);</span>
+<span class="fc" id="L505">    }</span>
+
+    public final void setInterruptTime(long time) {
+<span class="nc" id="L508">        addExtraInfo(INTERRUPT_TIME, time + &quot;&quot;);</span>
+<span class="nc" id="L509">    }</span>
+
+    public final long getStartTime() {
+<span class="fc" id="L512">        return getExtraInfoAsLong(START_TIME, 0L);</span>
+    }
+
+    public final long getEndTime() {
+<span class="nc" id="L516">        return getExtraInfoAsLong(END_TIME, 0L);</span>
+    }
+
+    public final long getInterruptTime() {
+<span class="nc" id="L520">        return getExtraInfoAsLong(INTERRUPT_TIME, 0L);</span>
+    }
+
+    public final long getDuration() {
+<span class="nc" id="L524">        return getDuration(getStartTime(), getEndTime(), getInterruptTime());</span>
+    }
+
+    public boolean isReady() {
+<span class="fc" id="L528">        final Output output = getManager().getOutput(id);</span>
+<span class="pc bpc" id="L529" title="1 of 2 branches missed.">        return output.getState() == ExecutableState.READY;</span>
+    }
+
+    /**
+     *
+     * The larger the value, the higher priority
+     * */
+    public int getDefaultPriority() {
+<span class="fc" id="L537">        return DEFAULT_PRIORITY;</span>
+    }
+
+    public Integer getPriority() {
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">        return priority == null ? getDefaultPriority() : priority;</span>
+    }
+
+    public void setPriority(Integer priority) {
+<span class="fc" id="L545">        this.priority = priority;</span>
+<span class="fc" id="L546">    }</span>
+
+    /**
+     * The different jobs have different default priorities.
+     * */
+    public void setPriorityBasedOnPriorityOffset(Integer priorityOffset) {
+<span class="nc bnc" id="L552" title="All 2 branches missed.">        this.priority = getDefaultPriority() + (priorityOffset == null ? 0 : priorityOffset);</span>
+<span class="nc" id="L553">    }</span>
+
+    /*
+    * discarded is triggered by JobService, the Scheduler is not awake of that
+    *
+    * */
+    protected final boolean isDiscarded() {
+<span class="fc" id="L560">        final ExecutableState status = getOutput().getState();</span>
+<span class="fc bfc" id="L561" title="All 2 branches covered.">        return status == ExecutableState.DISCARDED;</span>
+    }
+
+    protected final boolean isPaused() {
+<span class="fc" id="L565">        final ExecutableState status = getOutput().getState();</span>
+<span class="pc bpc" id="L566" title="1 of 2 branches missed.">        return status == ExecutableState.STOPPED;</span>
+    }
+
+    // Retry will happen in below cases:
+    // 1) if property &quot;kylin.job.retry-exception-classes&quot; is not set or is null, all jobs with exceptions will retry according to the retry times.
+    // 2) if property &quot;kylin.job.retry-exception-classes&quot; is set and is not null, only jobs with the specified exceptions will retry according to the retry times.
+    public boolean needRetry(int retry, Throwable t) {
+<span class="fc bfc" id="L573" title="All 6 branches covered.">        if (retry &gt; KylinConfig.getInstanceFromEnv().getJobRetry() || t == null</span>
+                || (this instanceof DefaultChainedExecutable)) {
+<span class="fc" id="L575">            return false;</span>
+        } else {
+<span class="fc" id="L577">            return isRetryableException(t.getClass().getName());</span>
+        }
+    }
+
+    // pauseOnRetry should only works when retry has been triggered
+    public void pauseOnRetry() {
+<span class="nc" id="L583">        int interval = KylinConfig.getInstanceFromEnv().getJobRetryInterval();</span>
+<span class="nc" id="L584">        logger.info(&quot;Pause {} milliseconds before retry&quot;, interval);</span>
+        try {
+<span class="nc" id="L586">            TimeUnit.MILLISECONDS.sleep(interval);</span>
+<span class="nc" id="L587">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L588">            logger.error(&quot;Job retry was interrupted, details: {}&quot;, e);</span>
+<span class="nc" id="L589">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L590">        }</span>
+<span class="nc" id="L591">    }</span>
+
+    private static boolean isRetryableException(String exceptionName) {
+<span class="fc" id="L594">        String[] jobRetryExceptions = KylinConfig.getInstanceFromEnv().getJobRetryExceptions();</span>
+<span class="fc bfc" id="L595" title="All 4 branches covered.">        return ArrayUtils.isEmpty(jobRetryExceptions) || ArrayUtils.contains(jobRetryExceptions, exceptionName);</span>
+    }
+
+    public final String getProject() {
+<span class="nc bnc" id="L599" title="All 2 branches missed.">        if (project == null) {</span>
+<span class="nc" id="L600">            throw new IllegalStateException(&quot;project is not set for abstract executable &quot; + getId());</span>
+        }
+<span class="nc" id="L602">        return project;</span>
+    }
+
+    public final void setProject(String project) {
+<span class="nc" id="L606">        this.project = project;</span>
+<span class="nc" id="L607">    }</span>
+
+    public void setJobType(CubeBuildTypeEnum jobType) {
+<span class="nc" id="L610">        this.jobType = jobType;</span>
+<span class="nc" id="L611">    }</span>
+
+    public String getTargetSubject() {
+<span class="nc" id="L614">        return targetSubject;</span>
+    }
+
+    public void setTargetSubject(String targetSubject) {
+<span class="nc" id="L618">        this.targetSubject = targetSubject;</span>
+<span class="nc" id="L619">    }</span>
+
+    public List&lt;String&gt; getTargetSegments() {
+<span class="nc" id="L622">        return targetSegments;</span>
+    }
+
+    public void setTargetSegments(List&lt;String&gt; targetSegments) {
+<span class="nc" id="L626">        this.targetSegments = targetSegments;</span>
+<span class="nc" id="L627">    }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L631">        ExecutableState state = null;</span>
+        try {
+<span class="fc" id="L633">            state = getStatus();</span>
+<span class="nc" id="L634">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L635">            logger.error(&quot;failed to get job status:&quot; + getId(), e);</span>
+<span class="fc" id="L636">        }</span>
+<span class="fc" id="L637">        return MoreObjects.toStringHelper(this).add(&quot;id&quot;, getId()).add(&quot;name&quot;, getName()).add(&quot;state&quot;, state)</span>
+<span class="fc" id="L638">                .toString();</span>
+    }
+
+    public String getProjectName() {
+<span class="nc" id="L642">        return getParam(PROJECT_INSTANCE_NAME);</span>
+    }
+
+    public void setProjectName(String name) {
+<span class="nc" id="L646">        setParam(PROJECT_INSTANCE_NAME, name);</span>
+<span class="nc" id="L647">    }</span>
+
+    //kylin on parquet
+    public final String getParentId() {
+<span class="fc" id="L651">        return getParam(PARENT_ID);</span>
+    }
+
+    public final AbstractExecutable getParent() {
+<span class="fc" id="L655">        return getManager().getJob(getParam(PARENT_ID));</span>
+    }
+
+    public final void setParentId(String parentId) {
+<span class="fc" id="L659">        setParam(PARENT_ID, parentId);</span>
+<span class="fc" id="L660">    }</span>
+
+    public final void setParent(AbstractExecutable parent) {
+<span class="fc" id="L663">        setParentId(parent.getId());</span>
+<span class="fc" id="L664">    }</span>
+
+    //will modify input info
+    public Map&lt;String, String&gt; makeExtraInfo(Map&lt;String, String&gt; info) {
+<span class="nc bnc" id="L668" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L669">            return Maps.newHashMap();</span>
+        }
+
+        // post process
+<span class="nc bnc" id="L673" title="All 4 branches missed.">        if (info.containsKey(MR_JOB_ID) &amp;&amp; !info.containsKey(YARN_APP_ID)) {</span>
+<span class="nc" id="L674">            String jobId = info.get(MR_JOB_ID);</span>
+<span class="nc bnc" id="L675" title="All 2 branches missed.">            if (jobId.startsWith(&quot;job_&quot;)) {</span>
+<span class="nc" id="L676">                info.put(YARN_APP_ID, jobId.replace(&quot;job_&quot;, &quot;application_&quot;));</span>
+            }
+        }
+
+<span class="nc bnc" id="L680" title="All 2 branches missed.">        if (info.containsKey(YARN_APP_ID)</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">                &amp;&amp; !org.apache.commons.lang3.StringUtils.isEmpty(getConfig().getJobTrackingURLPattern())) {</span>
+<span class="nc" id="L682">            String pattern = getConfig().getJobTrackingURLPattern();</span>
+            try {
+<span class="nc" id="L684">                String newTrackingURL = String.format(Locale.ROOT, pattern, info.get(YARN_APP_ID));</span>
+<span class="nc" id="L685">                info.put(YARN_APP_URL, newTrackingURL);</span>
+<span class="nc" id="L686">            } catch (IllegalFormatException ife) {</span>
+<span class="nc" id="L687">                logger.error(&quot;Illegal tracking url pattern: {}&quot;, getConfig().getJobTrackingURLPattern());</span>
+<span class="nc" id="L688">            }</span>
+        }
+
+<span class="nc" id="L691">        return info;</span>
+    }
+
+    public int computeStepDriverMemory() {
+<span class="nc" id="L695">        String cuboidsNum = getParam(MetadataConstants.P_CUBOID_NUMBER);</span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">        if (cuboidsNum != null) {</span>
+<span class="nc" id="L697">            return computeDriverMemory(Integer.valueOf(cuboidsNum));</span>
+        }
+<span class="nc" id="L699">        return 1024;</span>
+    }
+
+    // Default driver memory base is 1024M
+    // Adjust driver memory by cuboid number with stratogy[2 -&gt; 20 -&gt; 100]
+    // If cuboid number is 10, then driver.memory=2*1024=2048M
+    public static Integer computeDriverMemory(Integer cuboidNum) {
+<span class="nc" id="L706">        KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L707">        int[] driverMemoryStrategy = config.getSparkEngineDriverMemoryStrategy();</span>
+<span class="nc" id="L708">        List strategy = Lists.newArrayList(cuboidNum);</span>
+<span class="nc" id="L709">        Arrays.stream(driverMemoryStrategy).forEach(x -&gt; strategy.add(Integer.valueOf(x)));</span>
+<span class="nc" id="L710">        Collections.sort(strategy);</span>
+<span class="nc" id="L711">        int index = strategy.indexOf(cuboidNum);</span>
+<span class="nc" id="L712">        int driverMemoryMaximum = config.getSparkEngineDriverMemoryMaximum();</span>
+<span class="nc" id="L713">        int driverMemoryBase = config.getSparkEngineDriverMemoryBase();</span>
+
+<span class="nc" id="L715">        driverMemoryBase += driverMemoryBase * index;</span>
+<span class="nc" id="L716">        return Math.min(driverMemoryBase, driverMemoryMaximum);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

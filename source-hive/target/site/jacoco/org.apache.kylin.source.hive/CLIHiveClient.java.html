@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CLIHiveClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">CLIHiveClient.java</span></div><h1>CLIHiveClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.hadoop.hive.common.StatsSetupConst;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+import org.apache.hadoop.hive.metastore.MetaStoreUtils;
+import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.Table;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HiveCmdBuilder;
+import org.apache.kylin.common.util.Pair;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Hive meta API client for Kylin
+ * @author shaoshi
+ *
+ */
+public class CLIHiveClient implements IHiveClient {
+<span class="nc" id="L43">    protected HiveConf hiveConf = null;</span>
+<span class="nc" id="L44">    protected IMetaStoreClient metaStoreClient = null;</span>
+
+<span class="nc" id="L46">    public CLIHiveClient() {</span>
+<span class="nc" id="L47">        hiveConf = new HiveConf(CLIHiveClient.class);</span>
+<span class="nc" id="L48">    }</span>
+
+    /**
+     * only used by Deploy Util
+     * @throws IOException 
+     */
+    @Override
+    public void executeHQL(String hql) throws IOException {
+<span class="nc" id="L56">        final HiveCmdBuilder hiveCmdBuilder = new HiveCmdBuilder();</span>
+<span class="nc" id="L57">        hiveCmdBuilder.addStatement(hql);</span>
+<span class="nc" id="L58">        Pair&lt;Integer, String&gt; response = KylinConfig.getInstanceFromEnv().getCliCommandExecutor()</span>
+<span class="nc" id="L59">                .execute(hiveCmdBuilder.toString());</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (response.getFirst() != 0) {</span>
+<span class="nc" id="L61">            throw new IllegalArgumentException(&quot;Failed to execute hql [&quot; + hql + &quot;], error message is: &quot; + response.getSecond());</span>
+        }
+
+<span class="nc" id="L64">    }</span>
+
+    /**
+     * only used by Deploy Util
+     */
+    @Override
+    public void executeHQL(String[] hqls) throws IOException {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        for (String sql : hqls)</span>
+<span class="nc" id="L72">            executeHQL(sql);</span>
+<span class="nc" id="L73">    }</span>
+
+    @Override
+    public HiveTableMeta getHiveTableMeta(String database, String tableName) throws Exception {
+<span class="nc" id="L77">        HiveTableMetaBuilder builder = new HiveTableMetaBuilder();</span>
+<span class="nc" id="L78">        Table table = getMetaStoreClient().getTable(database, tableName);</span>
+
+<span class="nc" id="L80">        List&lt;FieldSchema&gt; allFields = getMetaStoreClient().getFields(database, tableName);</span>
+<span class="nc" id="L81">        List&lt;FieldSchema&gt; partitionFields = table.getPartitionKeys();</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (allFields == null) {</span>
+<span class="nc" id="L83">            allFields = Lists.newArrayList();</span>
+        }
+<span class="nc bnc" id="L85" title="All 4 branches missed.">        if (partitionFields != null &amp;&amp; partitionFields.size() &gt; 0) {</span>
+<span class="nc" id="L86">            allFields.addAll(partitionFields);</span>
+        }
+<span class="nc" id="L88">        List&lt;HiveTableMeta.HiveTableColumnMeta&gt; allColumns = Lists.newArrayList();</span>
+<span class="nc" id="L89">        List&lt;HiveTableMeta.HiveTableColumnMeta&gt; partitionColumns = Lists.newArrayList();</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        for (FieldSchema fieldSchema : allFields) {</span>
+<span class="nc" id="L91">            allColumns.add(new HiveTableMeta.HiveTableColumnMeta(fieldSchema.getName(), fieldSchema.getType(), fieldSchema.getComment()));</span>
+<span class="nc" id="L92">        }</span>
+<span class="nc bnc" id="L93" title="All 4 branches missed.">        if (partitionFields != null &amp;&amp; partitionFields.size() &gt; 0) {</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">            for (FieldSchema fieldSchema : partitionFields) {</span>
+<span class="nc" id="L95">                partitionColumns.add(new HiveTableMeta.HiveTableColumnMeta(fieldSchema.getName(), fieldSchema.getType(), fieldSchema.getComment()));</span>
+<span class="nc" id="L96">            }</span>
+        }
+<span class="nc" id="L98">        builder.setAllColumns(allColumns);</span>
+<span class="nc" id="L99">        builder.setPartitionColumns(partitionColumns);</span>
+
+<span class="nc" id="L101">        builder.setSdLocation(table.getSd().getLocation());</span>
+<span class="nc" id="L102">        builder.setFileSize(getBasicStatForTable(new org.apache.hadoop.hive.ql.metadata.Table(table), StatsSetupConst.TOTAL_SIZE));</span>
+<span class="nc" id="L103">        builder.setFileNum(getBasicStatForTable(new org.apache.hadoop.hive.ql.metadata.Table(table), StatsSetupConst.NUM_FILES));</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        builder.setIsNative(!MetaStoreUtils.isNonNativeTable(table));</span>
+<span class="nc" id="L105">        builder.setTableName(tableName);</span>
+<span class="nc" id="L106">        builder.setSdInputFormat(table.getSd().getInputFormat());</span>
+<span class="nc" id="L107">        builder.setSdOutputFormat(table.getSd().getOutputFormat());</span>
+<span class="nc" id="L108">        builder.setOwner(table.getOwner());</span>
+<span class="nc" id="L109">        builder.setLastAccessTime(table.getLastAccessTime());</span>
+<span class="nc" id="L110">        builder.setTableType(table.getTableType());</span>
+<span class="nc" id="L111">        builder.setSkipHeaderLineCount(table.getParameters().get(&quot;skip.header.line.count&quot;));</span>
+
+<span class="nc" id="L113">        return builder.createHiveTableMeta();</span>
+    }
+
+    @Override
+    public List&lt;String&gt; getHiveDbNames() throws Exception {
+<span class="nc" id="L118">        return getMetaStoreClient().getAllDatabases();</span>
+    }
+
+    @Override
+    public List&lt;String&gt; getHiveTableNames(String database) throws Exception {
+<span class="nc" id="L123">        return getMetaStoreClient().getAllTables(database);</span>
+    }
+
+    @Override
+    public long getHiveTableRows(String database, String tableName) throws Exception {
+<span class="nc" id="L128">        Table table = getMetaStoreClient().getTable(database, tableName);</span>
+<span class="nc" id="L129">        return getBasicStatForTable(new org.apache.hadoop.hive.ql.metadata.Table(table), StatsSetupConst.ROW_COUNT);</span>
+    }
+
+    @Override
+    public List&lt;Object[]&gt; getHiveResult(String hql) throws Exception {
+<span class="nc" id="L134">        List&lt;Object[]&gt; data = new ArrayList&lt;&gt;();</span>
+
+<span class="nc" id="L136">        final HiveCmdBuilder hiveCmdBuilder = new HiveCmdBuilder();</span>
+<span class="nc" id="L137">        hiveCmdBuilder.addStatement(hql);</span>
+<span class="nc" id="L138">        Pair&lt;Integer, String&gt; response = KylinConfig.getInstanceFromEnv().getCliCommandExecutor().execute(hiveCmdBuilder.toString());</span>
+
+<span class="nc" id="L140">        String[] respData = response.getSecond().split(&quot;\n&quot;);</span>
+
+<span class="nc" id="L142">        boolean isData = false;</span>
+
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        for (String item : respData) {</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">            if (item.trim().equalsIgnoreCase(&quot;OK&quot;)) {</span>
+<span class="nc" id="L146">                isData = true;</span>
+<span class="nc" id="L147">                continue;</span>
+            }
+<span class="nc bnc" id="L149" title="All 2 branches missed.">            if (item.trim().startsWith(&quot;Time taken&quot;)) {</span>
+<span class="nc" id="L150">                isData = false;</span>
+            }
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            if (isData) {</span>
+<span class="nc" id="L153">                Object[] arr = item.split(&quot;\t&quot;);</span>
+<span class="nc" id="L154">                data.add(arr);</span>
+            }
+
+        }
+
+<span class="nc" id="L159">        return data;</span>
+    }
+
+    private IMetaStoreClient getMetaStoreClient() throws Exception {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (metaStoreClient == null) {</span>
+<span class="nc" id="L164">            metaStoreClient = HiveMetaStoreClientFactory.getHiveMetaStoreClient(hiveConf);</span>
+        }
+<span class="nc" id="L166">        return metaStoreClient;</span>
+    }
+
+    /**
+     * COPIED FROM org.apache.hadoop.hive.ql.stats.StatsUtil for backward compatibility
+     * &lt;p&gt;
+     * Get basic stats of table
+     *
+     * @param table    - table
+     * @param statType - type of stats
+     * @return value of stats
+     */
+    private long getBasicStatForTable(org.apache.hadoop.hive.ql.metadata.Table table, String statType) {
+<span class="nc" id="L179">        Map&lt;String, String&gt; params = table.getParameters();</span>
+<span class="nc" id="L180">        long result = 0;</span>
+
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (params != null) {</span>
+            try {
+<span class="nc" id="L184">                result = Long.parseLong(params.get(statType));</span>
+<span class="nc" id="L185">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L186">                result = 0;</span>
+<span class="nc" id="L187">            }</span>
+        }
+<span class="nc" id="L189">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

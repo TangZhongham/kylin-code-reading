@@ -1,0 +1,825 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResourceStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">ResourceStore.java</span></div><h1>ResourceStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.OptionsHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * A general purpose resource store to persist small metadata, like JSON files.
+ * 
+ * In additional to raw bytes save and load, the store takes special care for concurrent modifications
+ * by using a timestamp based test-and-set mechanism to detect (and refuse) dirty writes.
+ */
+abstract public class ResourceStore {
+
+<span class="fc" id="L59">    private static final Logger logger = LoggerFactory.getLogger(ResourceStore.class);</span>
+
+    public static final String CUBE_RESOURCE_ROOT = &quot;/cube&quot;;
+    public static final String CUBE_DESC_RESOURCE_ROOT = &quot;/cube_desc&quot;;
+    public static final String DATA_MODEL_DESC_RESOURCE_ROOT = &quot;/model_desc&quot;;
+    public static final String DICT_RESOURCE_ROOT = &quot;/dict&quot;;
+    public static final String PROJECT_RESOURCE_ROOT = &quot;/project&quot;;
+    public static final String SNAPSHOT_RESOURCE_ROOT = &quot;/table_snapshot&quot;;
+    public static final String TABLE_EXD_RESOURCE_ROOT = &quot;/table_exd&quot;;
+    public static final String TEMP_STATMENT_RESOURCE_ROOT = &quot;/temp_statement&quot;;
+    public static final String TABLE_RESOURCE_ROOT = &quot;/table&quot;;
+    public static final String EXTERNAL_FILTER_RESOURCE_ROOT = &quot;/ext_filter&quot;;
+    public static final String HYBRID_RESOURCE_ROOT = &quot;/hybrid&quot;;
+    public static final String EXECUTE_RESOURCE_ROOT = &quot;/execute&quot;;
+    public static final String EXECUTE_OUTPUT_RESOURCE_ROOT = &quot;/execute_output&quot;;
+    public static final String STREAMING_RESOURCE_ROOT = &quot;/streaming&quot;;
+    public static final String STREAMING_V2_RESOURCE_ROOT = &quot;/streaming_v2&quot;;
+    public static final String KAFKA_RESOURCE_ROOT = &quot;/kafka&quot;;
+    public static final String STREAMING_OUTPUT_RESOURCE_ROOT = &quot;/streaming_output&quot;;
+    public static final String CUBE_STATISTICS_ROOT = &quot;/cube_statistics&quot;;
+    public static final String BAD_QUERY_RESOURCE_ROOT = &quot;/bad_query&quot;;
+    public static final String DRAFT_RESOURCE_ROOT = &quot;/draft&quot;;
+    public static final String USER_ROOT = &quot;/user&quot;;
+    public static final String EXT_SNAPSHOT_RESOURCE_ROOT = &quot;/ext_table_snapshot&quot;;
+
+    public static final String METASTORE_UUID_TAG = &quot;/UUID&quot;;
+
+<span class="fc" id="L86">    private static final ConcurrentMap&lt;KylinConfig, ResourceStore&gt; CACHE = new ConcurrentHashMap&lt;&gt;();</span>
+
+    private static ResourceStore createResourceStore(KylinConfig kylinConfig) {
+<span class="fc" id="L89">        StorageURL metadataUrl = kylinConfig.getMetadataUrl();</span>
+<span class="fc" id="L90">        logger.info(&quot;Using metadata url {} for resource store&quot;, metadataUrl);</span>
+<span class="fc" id="L91">        String clsName = kylinConfig.getResourceStoreImpls().get(metadataUrl.getScheme());</span>
+        try {
+<span class="fc" id="L93">            Class&lt;? extends ResourceStore&gt; cls = ClassUtil.forName(clsName, ResourceStore.class);</span>
+<span class="fc" id="L94">            ResourceStore store = cls.getConstructor(KylinConfig.class).newInstance(kylinConfig);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            if (!store.exists(METASTORE_UUID_TAG)) {</span>
+<span class="fc" id="L96">                store.checkAndPutResource(METASTORE_UUID_TAG, new StringEntity(store.createMetaStoreUUID()), 0,</span>
+                        StringEntity.serializer);
+            }
+<span class="fc" id="L99">            return store;</span>
+<span class="nc" id="L100">        } catch (Throwable e) {</span>
+<span class="nc" id="L101">            throw new IllegalArgumentException(&quot;Failed to find metadata store by url: &quot; + metadataUrl, e);</span>
+        }
+    }
+
+    public static ResourceStore getStore(KylinConfig kylinConfig) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (CACHE.containsKey(kylinConfig)) {</span>
+<span class="fc" id="L107">            return CACHE.get(kylinConfig);</span>
+        }
+<span class="fc" id="L109">        synchronized (ResourceStore.class) {</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (CACHE.containsKey(kylinConfig)) {</span>
+<span class="nc" id="L111">                return CACHE.get(kylinConfig);</span>
+            } else {
+<span class="fc" id="L113">                CACHE.putIfAbsent(kylinConfig, createResourceStore(kylinConfig));</span>
+            }
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        return CACHE.get(kylinConfig);</span>
+    }
+
+    // ============================================================================
+
+    final protected KylinConfig kylinConfig;
+
+<span class="fc" id="L123">    protected ResourceStore(KylinConfig kylinConfig) {</span>
+<span class="fc" id="L124">        this.kylinConfig = kylinConfig;</span>
+<span class="fc" id="L125">    }</span>
+
+    final public KylinConfig getConfig() {
+<span class="fc" id="L128">        return kylinConfig;</span>
+    }
+
+    protected String createMetaStoreUUID() throws IOException {
+<span class="fc" id="L132">        return UUID.randomUUID().toString();</span>
+    }
+
+    public String getMetaStoreUUID() throws IOException {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (!exists(ResourceStore.METASTORE_UUID_TAG)) {</span>
+<span class="nc" id="L137">            checkAndPutResource(ResourceStore.METASTORE_UUID_TAG, new StringEntity(createMetaStoreUUID()), 0,</span>
+                    StringEntity.serializer);
+        }
+<span class="nc" id="L140">        StringEntity entity = getResource(ResourceStore.METASTORE_UUID_TAG, StringEntity.serializer);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        return entity == null ? &quot;&quot; : entity.toString();</span>
+    }
+
+    /**
+     * Collect resources recursively under a folder, return empty list if folder does not exist
+     */
+    final public List&lt;String&gt; collectResourceRecursively(final String folderPath, final String suffix)
+            throws IOException {
+<span class="fc" id="L149">        return new ExponentialBackoffRetry(this).doWithRetry(new Callable&lt;List&lt;String&gt;&gt;() {</span>
+            @Override
+            public List&lt;String&gt; call() throws Exception {
+<span class="fc" id="L152">                final ArrayList&lt;String&gt; collector = Lists.newArrayList();</span>
+<span class="fc" id="L153">                visitFolder(folderPath, true, new Visitor() {</span>
+                    @Override
+                    public void visit(RawResource resource) {
+<span class="fc" id="L156">                        String path = resource.path();</span>
+<span class="pc bpc" id="L157" title="3 of 4 branches missed.">                        if (suffix == null || path.endsWith(suffix))</span>
+<span class="fc" id="L158">                            collector.add(path);</span>
+<span class="fc" id="L159">                    }</span>
+                });
+<span class="fc" id="L161">                return collector;</span>
+            }
+        });
+    }
+
+    /**
+     * List resources and sub-folders under a given folder, return null if folder does not exist or is empty
+     */
+    final public NavigableSet&lt;String&gt; listResources(String folderPath) throws IOException {
+<span class="fc" id="L170">        return listResourcesImpl(norm(folderPath));</span>
+    }
+
+    // sub-class may choose to override for better performance
+    protected NavigableSet&lt;String&gt; listResourcesImpl(String folderPath) throws IOException {
+<span class="fc" id="L175">        List&lt;String&gt; list = collectResourceRecursively(folderPath, null);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (list.isEmpty())</span>
+<span class="fc" id="L177">            return null;</span>
+
+<span class="fc" id="L179">        TreeSet&lt;String&gt; result = new TreeSet();</span>
+<span class="fc" id="L180">        String root = norm(folderPath);</span>
+
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (String p : list) {</span>
+<span class="fc" id="L183">            int cut = p.indexOf('/', root.length() + 1);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            result.add(cut &lt; 0 ? p : p.substring(0, cut));</span>
+<span class="fc" id="L185">        }</span>
+<span class="fc" id="L186">        return result;</span>
+    }
+
+    /**
+     * List resources recursively under a folder, return null if folder does not exist or is empty
+     */
+    final public NavigableSet&lt;String&gt; listResourcesRecursively(String folderPath) throws IOException {
+<span class="fc" id="L193">        return listResourcesRecursivelyImpl(norm(folderPath));</span>
+    }
+
+    // sub-class may choose to override
+    protected NavigableSet&lt;String&gt; listResourcesRecursivelyImpl(String folderPath) throws IOException {
+<span class="fc" id="L198">        List&lt;String&gt; list = collectResourceRecursively(folderPath, null);</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        if (list.isEmpty())</span>
+<span class="nc" id="L200">            return null;</span>
+        else
+<span class="fc" id="L202">            return new TreeSet&lt;String&gt;(list);</span>
+    }
+
+    /**
+     * Read all resources under a folder. Return empty list if folder not exist.
+     *
+     * NOTE: Exceptions thrown by ContentReader are swallowed in order to load every resource at best effort.
+     */
+    final public &lt;T extends RootPersistentEntity&gt; List&lt;T&gt; getAllResources(String folderPath, Serializer&lt;T&gt; serializer)
+            throws IOException {
+<span class="fc" id="L212">        return getAllResources(folderPath, false, null, new ContentReader(serializer));</span>
+    }
+
+    /**
+     * Read all resources under a folder having last modified time between given range. Return empty list if folder not exist.
+     *
+     * NOTE: Exceptions thrown by ContentReader are swallowed in order to load every resource at best effort.
+     */
+    final public &lt;T extends RootPersistentEntity&gt; List&lt;T&gt; getAllResources(final String folderPath,
+            final boolean recursive, final VisitFilter filter, final ContentReader&lt;T&gt; reader) throws IOException {
+
+<span class="fc" id="L223">        return new ExponentialBackoffRetry(this).doWithRetry(new Callable&lt;List&lt;T&gt;&gt;() {</span>
+            @Override
+            public List&lt;T&gt; call() throws Exception {
+<span class="fc" id="L226">                final ArrayList&lt;T&gt; collector = Lists.newArrayList();</span>
+<span class="fc" id="L227">                visitFolderAndContent(folderPath, recursive, filter, new Visitor() {</span>
+                    @Override
+                    public void visit(RawResource resource) throws IOException {
+                        try {
+<span class="fc" id="L231">                            T entity = reader.readContent(resource);</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">                            if (entity != null) {</span>
+<span class="fc" id="L233">                                collector.add(entity);</span>
+                            }
+<span class="nc" id="L235">                        } catch (Exception ex) {</span>
+<span class="nc" id="L236">                            logger.error(&quot;Error reading resource &quot; + resource.path(), ex);</span>
+<span class="fc" id="L237">                        }</span>
+<span class="fc" id="L238">                    }</span>
+                });
+<span class="fc" id="L240">                return collector;</span>
+            }
+        });
+    }
+
+    /**
+     * Read all resources under a folder having last modified time between given range. Return empty map if folder not exist.
+     *
+     * NOTE: Different from the getAllResources, this return value will contain the resource path.
+     */
+    final public &lt;T extends RootPersistentEntity&gt; Map&lt;String, T&gt; getAllResourcesMap(final String folderPath,
+                                                                                    final boolean recursive, final VisitFilter filter, final ContentReader&lt;T&gt; reader) throws IOException {
+
+<span class="nc" id="L253">        return new ExponentialBackoffRetry(this).doWithRetry(() -&gt; {</span>
+<span class="nc" id="L254">            final LinkedHashMap&lt;String, T&gt; collector = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L255">            visitFolderAndContent(folderPath, recursive, filter, new Visitor() {</span>
+                @Override
+                public void visit(RawResource resource) throws IOException {
+                    try {
+<span class="nc" id="L259">                        T entity = reader.readContent(resource);</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                        if (entity != null) {</span>
+<span class="nc" id="L261">                            collector.put(resource.path(), entity);</span>
+                        }
+<span class="nc" id="L263">                    } catch (Exception ex) {</span>
+<span class="nc" id="L264">                        logger.error(&quot;Error reading resource &quot; + resource.path(), ex);</span>
+<span class="nc" id="L265">                    }</span>
+<span class="nc" id="L266">                }</span>
+            });
+<span class="nc" id="L268">            return collector;</span>
+        });
+    }
+
+    /**
+     * Return true if a resource exists, return false in case of folder or non-exist
+     */
+    final public boolean exists(String resPath) throws IOException {
+<span class="fc" id="L276">        return existsImpl(norm(resPath));</span>
+    }
+
+    abstract protected boolean existsImpl(String resPath) throws IOException;
+
+    /**
+     * Read a resource, return null in case of not found or is a folder.
+     */
+    final public &lt;T extends RootPersistentEntity&gt; T getResource(String resPath, Serializer&lt;T&gt; serializer)
+            throws IOException {
+<span class="fc" id="L286">        return getResource(resPath, new ContentReader&lt;T&gt;(serializer));</span>
+    }
+
+    /**
+     * Read a resource, return null in case of not found or is a folder.
+     */
+    final public &lt;T extends RootPersistentEntity&gt; T getResource(String resPath, ContentReader&lt;T&gt; reader)
+            throws IOException {
+<span class="fc" id="L294">        resPath = norm(resPath);</span>
+<span class="fc" id="L295">        RawResource res = getResourceWithRetry(resPath);</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        if (res == null)</span>
+<span class="fc" id="L297">            return null;</span>
+
+<span class="fc" id="L299">        return reader.readContent(res);</span>
+    }
+
+    /**
+     * Caution: Caller must close the returned RawResource.
+     */
+    final public RawResource getResource(String resPath) throws IOException {
+<span class="fc" id="L306">        return getResourceWithRetry(norm(resPath));</span>
+    }
+
+    /**
+     * Returns null if not exists.
+     *
+     * NOTE: Broken content exception should be wrapped by RawResource, and return to caller to decide how to handle.
+     */
+    abstract protected RawResource getResourceImpl(String resPath) throws IOException;
+
+    private RawResource getResourceWithRetry(final String resPath) throws IOException {
+<span class="fc" id="L317">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L318">        return retry.doWithRetry(() -&gt; getResourceImpl(resPath));</span>
+    }
+
+    final public long getResourceTimestamp(String resPath) throws IOException {
+<span class="fc" id="L322">        return getResourceTimestampWithRetry(norm(resPath));</span>
+    }
+
+    /**
+     * returns 0 if not exists
+     */
+    abstract protected long getResourceTimestampImpl(String resPath) throws IOException;
+
+    final public long getResourceTimestampWithRetry(String resPath) throws IOException {
+<span class="fc" id="L331">        final String path = norm(resPath);</span>
+
+<span class="fc" id="L333">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L334">        return retry.doWithRetry(() -&gt; getResourceTimestampImpl(path));</span>
+    }
+
+    /**
+     * Overwrite a resource without write conflict check
+     * @return bytes written
+     */
+    final public &lt;T extends RootPersistentEntity&gt; long putResource(String resPath, T obj, long ts,
+            Serializer&lt;T&gt; serializer) throws IOException {
+<span class="fc" id="L343">        resPath = norm(resPath);</span>
+<span class="fc" id="L344">        obj.setLastModified(ts);</span>
+<span class="fc" id="L345">        ContentWriter writer = ContentWriter.create(obj, serializer);</span>
+<span class="fc" id="L346">        putResourceCheckpoint(resPath, writer, ts);</span>
+<span class="fc" id="L347">        return writer.bytesWritten();</span>
+    }
+
+    /**
+     * Overwrite a resource without write conflict check
+     * @return bytes written
+     */
+    final public &lt;T extends RootPersistentEntity&gt; long putBigResource(String resPath, T obj, long ts,
+            Serializer&lt;T&gt; serializer) throws IOException {
+<span class="nc" id="L356">        resPath = norm(resPath);</span>
+<span class="nc" id="L357">        obj.setLastModified(ts);</span>
+<span class="nc" id="L358">        ContentWriter writer = ContentWriter.create(obj, serializer);</span>
+<span class="nc" id="L359">        writer.markBigContent();</span>
+<span class="nc" id="L360">        putResourceCheckpoint(resPath, writer, ts);</span>
+<span class="nc" id="L361">        return writer.bytesWritten();</span>
+    }
+
+    final public void putBigResource(String resPath, InputStream content, long ts) throws IOException {
+<span class="nc" id="L365">        resPath = norm(resPath);</span>
+<span class="nc" id="L366">        ContentWriter writer = ContentWriter.create(content);</span>
+<span class="nc" id="L367">        writer.markBigContent();</span>
+<span class="nc" id="L368">        putResourceCheckpoint(resPath, writer, ts);</span>
+<span class="nc" id="L369">    }</span>
+
+    /**
+     * Overwrite a resource without write conflict check
+     * @return bytes written
+     */
+    final public long putResource(String resPath, InputStream content, long ts) throws IOException {
+<span class="fc" id="L376">        resPath = norm(resPath);</span>
+<span class="fc" id="L377">        ContentWriter writer = ContentWriter.create(content);</span>
+<span class="fc" id="L378">        putResourceCheckpoint(resPath, writer, ts);</span>
+<span class="fc" id="L379">        return writer.bytesWritten();</span>
+    }
+
+    private void putResourceCheckpoint(String resPath, ContentWriter content, long ts) throws IOException {
+<span class="fc" id="L383">        logger.trace(&quot;Directly saving resource {} (Store {})&quot;, resPath, kylinConfig.getMetadataUrl());</span>
+<span class="fc" id="L384">        beforeChange(resPath);</span>
+<span class="fc" id="L385">        putResourceWithRetry(resPath, content, ts);</span>
+<span class="fc" id="L386">    }</span>
+
+    abstract protected void putResourceImpl(String resPath, ContentWriter content, long ts) throws IOException;
+
+    protected void putResourceWithRetry(final String resPath, final ContentWriter content, final long ts)
+            throws IOException {
+<span class="fc" id="L392">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L393">        retry.doWithRetry(() -&gt; {</span>
+<span class="fc" id="L394">            putResourceImpl(resPath, content, ts);</span>
+<span class="fc" id="L395">            return null;</span>
+        });
+<span class="fc" id="L397">    }</span>
+
+    /**
+     * check &amp; set, overwrite a resource
+     */
+    public final &lt;T extends RootPersistentEntity&gt; void checkAndPutResource(String resPath, T obj,
+            Serializer&lt;T&gt; serializer) throws IOException, WriteConflictException {
+<span class="fc" id="L404">        checkAndPutResource(resPath, obj, System.currentTimeMillis(), serializer);</span>
+<span class="fc" id="L405">    }</span>
+
+    /**
+     * check &amp; set, overwrite a resource
+     */
+    public final &lt;T extends RootPersistentEntity&gt; void checkAndPutResource(String resPath, T obj, long newTS,
+            Serializer&lt;T&gt; serializer) throws IOException, WriteConflictException {
+<span class="fc" id="L412">        resPath = norm(resPath);</span>
+
+<span class="fc" id="L414">        long oldTS = obj.getLastModified();</span>
+<span class="fc" id="L415">        obj.setLastModified(newTS);</span>
+
+        try {
+<span class="fc" id="L418">            ByteArrayOutputStream buf = new ByteArrayOutputStream();</span>
+<span class="fc" id="L419">            DataOutputStream dout = new DataOutputStream(buf);</span>
+<span class="fc" id="L420">            serializer.serialize(obj, dout);</span>
+<span class="fc" id="L421">            dout.close();</span>
+<span class="fc" id="L422">            buf.close();</span>
+
+<span class="fc" id="L424">            long confirmedTS = checkAndPutResource(resPath, buf.toByteArray(), oldTS, newTS);</span>
+<span class="fc" id="L425">            obj.setLastModified(confirmedTS); // update again the confirmed TS</span>
+            //return confirmedTS;
+
+<span class="fc" id="L428">        } catch (IOException | RuntimeException e) {</span>
+<span class="fc" id="L429">            obj.setLastModified(oldTS); // roll back TS when write fail</span>
+<span class="fc" id="L430">            throw e;</span>
+<span class="fc" id="L431">        }</span>
+<span class="fc" id="L432">    }</span>
+
+    /**
+     * Check &amp; set, overwrite a resource.
+     *
+     * @return a confirmed TS, as some store may lose timestamp precision.
+     */
+    public final long checkAndPutResource(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, WriteConflictException {
+<span class="fc" id="L441">        return checkAndPutResourceCheckpoint(norm(resPath), content, oldTS, newTS);</span>
+    }
+
+    private long checkAndPutResourceCheckpoint(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, WriteConflictException {
+<span class="fc" id="L446">        beforeChange(resPath);</span>
+<span class="fc" id="L447">        return checkAndPutResourceWithRetry(resPath, content, oldTS, newTS);</span>
+    }
+
+    /**
+     * checks old timestamp when overwriting existing
+     */
+    protected abstract long checkAndPutResourceImpl(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, WriteConflictException;
+
+    private long checkAndPutResourceWithRetry(final String resPath, final byte[] content, final long oldTS,
+                                              final long newTS) throws IOException, WriteConflictException {
+<span class="fc" id="L458">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L459">        return retry.doWithRetry(() -&gt; checkAndPutResourceImpl(resPath, content, oldTS, newTS));</span>
+    }
+
+    /**
+     * update resource timestamp to timestamp
+     */
+    public final void updateTimestamp(String resPath, long timestamp) throws IOException {
+<span class="fc" id="L466">        logger.trace(&quot;Updating resource: {} with timestamp {} (Store {})&quot;, resPath, timestamp,</span>
+<span class="fc" id="L467">                kylinConfig.getMetadataUrl());</span>
+<span class="fc" id="L468">        updateTimestampCheckPoint(norm(resPath), timestamp);</span>
+<span class="fc" id="L469">    }</span>
+
+    private void updateTimestampCheckPoint(String resPath, long timestamp) throws IOException {
+<span class="fc" id="L472">        beforeChange(resPath);</span>
+<span class="fc" id="L473">        updateTimestampWithRetry(resPath, timestamp);</span>
+<span class="fc" id="L474">    }</span>
+
+    private void updateTimestampWithRetry(final String resPath, final long timestamp) throws IOException {
+<span class="fc" id="L477">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L478">        retry.doWithRetry(() -&gt; {</span>
+<span class="fc" id="L479">            updateTimestampImpl(resPath, timestamp);</span>
+<span class="fc" id="L480">            return null;</span>
+        });
+<span class="fc" id="L482">    }</span>
+
+    protected abstract void updateTimestampImpl(String resPath, long timestamp) throws IOException;
+
+    /**
+     * delete a resource, does nothing on a folder
+     */
+    public final void deleteResource(String resPath) throws IOException {
+<span class="fc" id="L490">        logger.trace(&quot;Deleting resource {} (Store {})&quot;, resPath, kylinConfig.getMetadataUrl());</span>
+<span class="fc" id="L491">        deleteResourceCheckpoint(norm(resPath));</span>
+<span class="fc" id="L492">    }</span>
+
+    /**
+     * Delete a resource with comparing its timestamp
+     * Success to delete if resource lastModified &lt; timestamp + 1000 (considering timestamp precision loose)
+     * throw an IOException when the resource lastModified &gt;= timestamp + 1000
+     * See  https://issues.apache.org/jira/browse/KYLIN-4030
+     */
+    public final void deleteResource(String resPath, long timestamp) throws IOException {
+<span class="fc" id="L501">        logger.trace(&quot;Deleting resource {} within timestamp {} (Store {})&quot;, resPath, timestamp,</span>
+<span class="fc" id="L502">                kylinConfig.getMetadataUrl());</span>
+<span class="fc" id="L503">        deleteResourceCheckpoint(norm(resPath), timestamp);</span>
+<span class="fc" id="L504">    }</span>
+
+    private void deleteResourceCheckpoint(String resPath) throws IOException {
+<span class="fc" id="L507">        beforeChange(resPath);</span>
+<span class="fc" id="L508">        deleteResourceWithRetry(resPath);</span>
+<span class="fc" id="L509">    }</span>
+
+    private void deleteResourceCheckpoint(String resPath, long timestamp) throws IOException {
+<span class="fc" id="L512">        beforeChange(resPath);</span>
+<span class="fc" id="L513">        deleteResourceWithRetry(resPath, timestamp);</span>
+<span class="fc" id="L514">    }</span>
+
+    protected abstract void deleteResourceImpl(String resPath) throws IOException;
+
+    protected abstract void deleteResourceImpl(String resPath, long timestamp) throws IOException;
+
+    private void deleteResourceWithRetry(final String resPath) throws IOException {
+<span class="fc" id="L521">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L522">        retry.doWithRetry(() -&gt; {</span>
+<span class="fc" id="L523">            deleteResourceImpl(resPath);</span>
+<span class="fc" id="L524">            return null;</span>
+        });
+<span class="fc" id="L526">    }</span>
+
+    private void deleteResourceWithRetry(final String resPath, final long timestamp) throws IOException {
+<span class="fc" id="L529">        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(this);</span>
+<span class="fc" id="L530">        retry.doWithRetry(() -&gt; {</span>
+<span class="fc" id="L531">            deleteResourceImpl(resPath, timestamp);</span>
+<span class="fc" id="L532">            return null;</span>
+        });
+<span class="fc" id="L534">    }</span>
+
+    protected boolean checkTimeStampBeforeDelete(long originLastModified, long timestamp) {
+        // note here is originLastModified may be 0
+        // 0 means resource doesn't exists in general, it's safe to pass the check
+<span class="fc" id="L539">        boolean passCheck = false;</span>
+<span class="fc bfc" id="L540" title="All 2 branches covered.">        if (originLastModified &gt; timestamp) {</span>
+            // file system may loose time precision with milliseconds
+            // because of the new born resource time, so here if time diff less than 1000 ms, we will treat it the same
+<span class="fc" id="L543">            long timeDiff = originLastModified - timestamp;</span>
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">            passCheck = timeDiff &lt; 1000;</span>
+<span class="fc" id="L545">        } else {</span>
+            // if timestamp &gt;= originLastModified, it's safe to delete
+<span class="fc" id="L547">            passCheck = true;</span>
+        }
+<span class="fc" id="L549">        logger.trace(&quot;check timestamp before delete: {}, [originLastModified: {}, timestamp: {}]&quot;, passCheck,</span>
+<span class="fc" id="L550">                originLastModified, timestamp);</span>
+<span class="fc" id="L551">        return passCheck;</span>
+    }
+
+    /**
+     * called by ExponentialBackoffRetry, to check if an exception is due to unreachable server and worth retry
+     */
+    protected boolean isUnreachableException(Throwable ex) {
+<span class="nc" id="L558">        List&lt;String&gt; connectionExceptions = Lists</span>
+<span class="nc" id="L559">                .newArrayList(kylinConfig.getResourceStoreConnectionExceptions().split(&quot;,&quot;));</span>
+<span class="nc" id="L560">        boolean hasException = false;</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">        for (String exception : connectionExceptions) {</span>
+<span class="nc" id="L562">            hasException = containsException(ex, exception);</span>
+
+<span class="nc bnc" id="L564" title="All 2 branches missed.">            if (hasException)</span>
+<span class="nc" id="L565">                break;</span>
+<span class="nc" id="L566">        }</span>
+<span class="nc" id="L567">        return hasException;</span>
+    }
+
+    private boolean containsException(Throwable ex, String targetException) {
+<span class="nc" id="L571">        Throwable t = ex;</span>
+<span class="nc" id="L572">        int depth = 0;</span>
+<span class="nc bnc" id="L573" title="All 4 branches missed.">        while (t != null &amp;&amp; depth &lt; 5) {</span>
+<span class="nc" id="L574">            depth++;</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">            if (t.getClass().getName().equals(targetException)) {</span>
+<span class="nc" id="L576">                return true;</span>
+            }
+<span class="nc" id="L578">            t = t.getCause();</span>
+        }
+<span class="nc" id="L580">        return false;</span>
+    }
+
+    /**
+     * get a readable string of a resource path
+     */
+    public final String getReadableResourcePath(String resPath) {
+<span class="nc" id="L587">        return getReadableResourcePathImpl(norm(resPath));</span>
+    }
+
+    protected abstract String getReadableResourcePathImpl(String resPath);
+
+    private String norm(String resPath) {
+<span class="fc" id="L593">        resPath = resPath.trim();</span>
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">        while (resPath.startsWith(&quot;//&quot;))</span>
+<span class="nc" id="L595">            resPath = resPath.substring(1);</span>
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        while (resPath.endsWith(&quot;/&quot;))</span>
+<span class="fc" id="L597">            resPath = resPath.substring(0, resPath.length() - 1);</span>
+<span class="fc bfc" id="L598" title="All 2 branches covered.">        if (!resPath.startsWith(&quot;/&quot;))</span>
+<span class="fc" id="L599">            resPath = &quot;/&quot; + resPath;</span>
+<span class="fc" id="L600">        return resPath;</span>
+    }
+
+    // ============================================================================
+
+<span class="fc" id="L605">    ThreadLocal&lt;Checkpoint&gt; checkpointing = new ThreadLocal&lt;&gt;();</span>
+
+    public Checkpoint checkpoint() {
+<span class="fc" id="L608">        Checkpoint cp = checkpointing.get();</span>
+<span class="pc bpc" id="L609" title="1 of 2 branches missed.">        if (cp != null)</span>
+<span class="nc" id="L610">            throw new IllegalStateException(&quot;A checkpoint has been open for this thread: &quot; + cp);</span>
+
+<span class="fc" id="L612">        cp = new Checkpoint();</span>
+<span class="fc" id="L613">        checkpointing.set(cp);</span>
+<span class="fc" id="L614">        return cp;</span>
+    }
+
+    private void beforeChange(String resPath) throws IOException {
+<span class="fc" id="L618">        Checkpoint cp = checkpointing.get();</span>
+<span class="fc bfc" id="L619" title="All 2 branches covered.">        if (cp != null)</span>
+<span class="fc" id="L620">            cp.beforeChange(resPath);</span>
+<span class="fc" id="L621">    }</span>
+
+<span class="fc" id="L623">    public class Checkpoint implements Closeable {</span>
+
+<span class="fc" id="L625">        LinkedHashMap&lt;String, byte[]&gt; origResData = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L626">        LinkedHashMap&lt;String, Long&gt; origResTimestamp = new LinkedHashMap&lt;&gt;();</span>
+
+        private void beforeChange(String resPath) throws IOException {
+<span class="fc bfc" id="L629" title="All 2 branches covered.">            if (origResData.containsKey(resPath))</span>
+<span class="fc" id="L630">                return;</span>
+
+<span class="fc" id="L632">            RawResource raw = getResourceWithRetry(resPath);</span>
+<span class="fc bfc" id="L633" title="All 2 branches covered.">            if (raw == null) {</span>
+<span class="fc" id="L634">                origResData.put(resPath, null);</span>
+<span class="fc" id="L635">                origResTimestamp.put(resPath, null);</span>
+            } else {
+<span class="fc" id="L637">                origResData.put(resPath, readAll(raw.content()));</span>
+<span class="fc" id="L638">                origResTimestamp.put(resPath, raw.lastModified());</span>
+            }
+<span class="fc" id="L640">        }</span>
+
+        private byte[] readAll(InputStream inputStream) throws IOException {
+<span class="fc" id="L643">            ByteArrayOutputStream out = new ByteArrayOutputStream();</span>
+<span class="fc" id="L644">            IOUtils.copy(inputStream, out);</span>
+<span class="fc" id="L645">            inputStream.close();</span>
+<span class="fc" id="L646">            out.close();</span>
+<span class="fc" id="L647">            return out.toByteArray();</span>
+        }
+
+        public void rollback() {
+<span class="fc" id="L651">            checkThread();</span>
+
+<span class="fc bfc" id="L653" title="All 2 branches covered.">            for (String resPath : origResData.keySet()) {</span>
+<span class="fc" id="L654">                logger.debug(&quot;Rollbacking {}&quot;, resPath);</span>
+                try {
+<span class="fc" id="L656">                    byte[] data = origResData.get(resPath);</span>
+<span class="fc" id="L657">                    Long ts = origResTimestamp.get(resPath);</span>
+<span class="pc bpc" id="L658" title="1 of 4 branches missed.">                    if (data == null || ts == null)</span>
+<span class="fc" id="L659">                        deleteResourceWithRetry(resPath);</span>
+                    else
+<span class="fc" id="L661">                        putResourceWithRetry(resPath, ContentWriter.create(data), ts);</span>
+<span class="nc" id="L662">                } catch (IOException ex) {</span>
+<span class="nc" id="L663">                    logger.error(&quot;Failed to rollback &quot; + resPath, ex);</span>
+<span class="fc" id="L664">                }</span>
+<span class="fc" id="L665">            }</span>
+<span class="fc" id="L666">        }</span>
+
+        @Override
+        public void close() throws IOException {
+<span class="fc" id="L670">            checkThread();</span>
+
+<span class="fc" id="L672">            origResData = null;</span>
+<span class="fc" id="L673">            origResTimestamp = null;</span>
+<span class="fc" id="L674">            checkpointing.set(null);</span>
+<span class="fc" id="L675">        }</span>
+
+        private void checkThread() {
+<span class="fc" id="L678">            Checkpoint cp = checkpointing.get();</span>
+<span class="pc bpc" id="L679" title="1 of 2 branches missed.">            if (this != cp)</span>
+<span class="nc" id="L680">                throw new IllegalStateException();</span>
+<span class="fc" id="L681">        }</span>
+    }
+
+    // ============================================================================
+
+    public static interface Visitor {
+        void visit(RawResource resource) throws IOException;
+    }
+
+    public static class VisitFilter {
+<span class="pc" id="L691">        public String pathPrefix = null;</span>
+<span class="pc" id="L692">        public long lastModStart = Long.MIN_VALUE;</span>
+<span class="pc" id="L693">        public long lastModEndExclusive = Long.MAX_VALUE;</span>
+
+<span class="fc" id="L695">        public VisitFilter() {</span>
+<span class="fc" id="L696">        }</span>
+
+<span class="nc" id="L698">        public VisitFilter(String pathPrefix) {</span>
+<span class="nc" id="L699">            this.pathPrefix = pathPrefix;</span>
+<span class="nc" id="L700">        }</span>
+
+        public VisitFilter(long lastModStart, long lastModEndExclusive) {
+<span class="fc" id="L703">            this(null, lastModStart, lastModEndExclusive);</span>
+<span class="fc" id="L704">        }</span>
+
+<span class="fc" id="L706">        public VisitFilter(String pathPrefix, long lastModStart, long lastModEndExclusive) {</span>
+<span class="fc" id="L707">            this.pathPrefix = pathPrefix;</span>
+<span class="fc" id="L708">            this.lastModStart = lastModStart;</span>
+<span class="fc" id="L709">            this.lastModEndExclusive = lastModEndExclusive;</span>
+<span class="fc" id="L710">        }</span>
+
+        public boolean hasPathPrefixFilter() {
+<span class="pc bpc" id="L713" title="1 of 2 branches missed.">            return pathPrefix != null;</span>
+        }
+
+        public boolean hasTimeFilter() {
+<span class="pc bpc" id="L717" title="1 of 4 branches missed.">            return lastModStart != Long.MIN_VALUE || lastModEndExclusive != Long.MAX_VALUE;</span>
+        }
+
+        public boolean matches(String resPath, long lastModified) {
+<span class="pc bpc" id="L721" title="1 of 2 branches missed.">            if (hasPathPrefixFilter()) {</span>
+<span class="nc bnc" id="L722" title="All 2 branches missed.">                if (!resPath.startsWith(pathPrefix))</span>
+<span class="nc" id="L723">                    return false;</span>
+            }
+
+<span class="fc bfc" id="L726" title="All 2 branches covered.">            if (hasTimeFilter()) {</span>
+<span class="fc bfc" id="L727" title="All 4 branches covered.">                if (!(lastModStart &lt;= lastModified &amp;&amp; lastModified &lt; lastModEndExclusive))</span>
+<span class="fc" id="L728">                    return false;</span>
+            }
+
+<span class="fc" id="L731">            return true;</span>
+        }
+    }
+
+    /**
+     * Visit all resource under a folder (optionally recursively), without loading the content of resource.
+     * Low level API, DON'T support ExponentialBackoffRetry, caller should do necessary retry
+     */
+    public final void visitFolder(String folderPath, boolean recursive, Visitor visitor) throws IOException {
+<span class="fc" id="L740">        visitFolderInner(folderPath, recursive, null, false, visitor);</span>
+<span class="fc" id="L741">    }</span>
+
+    /**
+     * Visit all resource under a folder (optionally recursively), without loading the content of resource.
+     * Low level API, DON'T support ExponentialBackoffRetry, caller should do necessary retry
+     */
+    public final void visitFolder(String folderPath, boolean recursive, VisitFilter filter, Visitor visitor)
+            throws IOException {
+<span class="nc" id="L749">        visitFolderInner(folderPath, recursive, filter, false, visitor);</span>
+<span class="nc" id="L750">    }</span>
+
+    /**
+     * Visit all resource and their content under a folder (optionally recursively).
+     * Low level API, DON'T support ExponentialBackoffRetry, caller should do necessary retry
+     */
+    public final void visitFolderAndContent(String folderPath, boolean recursive, VisitFilter filter, Visitor visitor)
+            throws IOException {
+<span class="fc" id="L758">        visitFolderInner(folderPath, recursive, filter, true, visitor);</span>
+<span class="fc" id="L759">    }</span>
+
+    // Low level API, DON'T support ExponentialBackoffRetry, caller should do necessary retry
+    private void visitFolderInner(String folderPath, boolean recursive, VisitFilter filter, boolean loadContent,
+            Visitor visitor) throws IOException {
+<span class="fc bfc" id="L764" title="All 2 branches covered.">        if (filter == null)</span>
+<span class="fc" id="L765">            filter = new VisitFilter();</span>
+
+<span class="fc" id="L767">        folderPath = norm(folderPath);</span>
+<span class="pc bpc" id="L768" title="1 of 2 branches missed.">        if (filter.hasPathPrefixFilter()) {</span>
+<span class="nc bnc" id="L769" title="All 2 branches missed.">            String folderPrefix = folderPath.endsWith(&quot;/&quot;) ? folderPath : folderPath + &quot;/&quot;;</span>
+<span class="nc" id="L770">            Preconditions.checkArgument(filter.pathPrefix.startsWith(folderPrefix));</span>
+        }
+
+<span class="fc" id="L773">        visitFolderImpl(folderPath, recursive, filter, loadContent, visitor);</span>
+<span class="fc" id="L774">    }</span>
+
+    /**
+     * Visit all resource under a folder.
+     *
+     * - optionally, include sub-folders recursively
+     * - optionally, filter by prefix of resource path
+     * - optionally, filter by last modified time
+     * - optionally, visit content as well
+     *
+     * NOTE: Broken content exception should be wrapped by RawResource, and return to caller to decide how to handle.
+     */
+    protected abstract void visitFolderImpl(String folderPath, boolean recursive, VisitFilter filter,
+            boolean loadContent, Visitor visitor) throws IOException;
+
+    public static String dumpResources(KylinConfig kylinConfig, Collection&lt;String&gt; dumpList) throws IOException {
+<span class="nc" id="L790">        File tmp = File.createTempFile(&quot;kylin_job_meta&quot;, &quot;&quot;);</span>
+<span class="nc" id="L791">        FileUtils.forceDelete(tmp); // we need a directory, so delete the file first</span>
+
+<span class="nc" id="L793">        File metaDir = new File(tmp, &quot;meta&quot;);</span>
+<span class="nc" id="L794">        metaDir.mkdirs();</span>
+
+        // write kylin.properties
+<span class="nc" id="L797">        File kylinPropsFile = new File(metaDir, &quot;kylin.properties&quot;);</span>
+<span class="nc" id="L798">        kylinConfig.exportToFile(kylinPropsFile);</span>
+
+<span class="nc" id="L800">        ResourceStore from = ResourceStore.getStore(kylinConfig);</span>
+<span class="nc" id="L801">        KylinConfig localConfig = KylinConfig.createInstanceFromUri(metaDir.getAbsolutePath());</span>
+<span class="nc" id="L802">        ResourceStore to = ResourceStore.getStore(localConfig);</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">        for (String path : dumpList) {</span>
+<span class="nc" id="L804">            RawResource res = from.getResource(path);</span>
+<span class="nc bnc" id="L805" title="All 2 branches missed.">            if (res == null)</span>
+<span class="nc" id="L806">                throw new IllegalStateException(&quot;No resource found at -- &quot; + path);</span>
+<span class="nc" id="L807">            to.putResource(path, res.content(), res.lastModified());</span>
+<span class="nc" id="L808">            res.close();</span>
+<span class="nc" id="L809">        }</span>
+
+<span class="nc" id="L811">        String metaDirURI = OptionsHelper.convertToFileURL(metaDir.getAbsolutePath());</span>
+<span class="nc bnc" id="L812" title="All 2 branches missed.">        if (metaDirURI.startsWith(&quot;/&quot;)) // note Path on windows is like &quot;d:/../...&quot;</span>
+<span class="nc" id="L813">            metaDirURI = &quot;file://&quot; + metaDirURI;</span>
+        else
+<span class="nc" id="L815">            metaDirURI = &quot;file:///&quot; + metaDirURI;</span>
+<span class="nc" id="L816">        logger.info(&quot;meta dir is: {}&quot;, metaDirURI);</span>
+
+<span class="nc" id="L818">        return metaDirURI;</span>
+    }
+
+    public static boolean isPotentialMemoryLeak() {
+<span class="nc bnc" id="L822" title="All 2 branches missed.">        return CACHE.size() &gt; 100;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

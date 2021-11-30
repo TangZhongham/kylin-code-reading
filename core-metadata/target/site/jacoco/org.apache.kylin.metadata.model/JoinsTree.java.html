@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JoinsTree.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">JoinsTree.java</span></div><h1>JoinsTree.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+public class JoinsTree implements Serializable {
+    private static final long serialVersionUID = 1L;
+<span class="fc" id="L35">    private static final IJoinDescMatcher DEFAULT_JOINDESC_MATCHER = new DefaultJoinDescMatcher();</span>
+
+<span class="pc" id="L37">    private Map&lt;String, Chain&gt; tableChains = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc" id="L38">    private IJoinDescMatcher joinDescMatcher = DEFAULT_JOINDESC_MATCHER;</span>
+
+<span class="fc" id="L40">    public JoinsTree(TableRef rootTable, List&lt;JoinDesc&gt; joins) {</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (JoinDesc join : joins) {</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            for (TblColRef col : join.getForeignKeyColumns())</span>
+<span class="fc" id="L43">                Preconditions.checkState(col.isQualified());</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            for (TblColRef col : join.getPrimaryKeyColumns())</span>
+<span class="fc" id="L45">                Preconditions.checkState(col.isQualified());</span>
+<span class="fc" id="L46">        }</span>
+
+<span class="fc" id="L48">        tableChains.put(rootTable.getAlias(), new Chain(rootTable, null, null));</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (JoinDesc join : joins) {</span>
+<span class="fc" id="L50">            TableRef pkSide = join.getPKSide();</span>
+<span class="fc" id="L51">            Chain fkSide = tableChains.get(join.getFKSide().getAlias());</span>
+<span class="fc" id="L52">            tableChains.put(pkSide.getAlias(), new Chain(pkSide, join, fkSide));</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">    }</span>
+
+<span class="nc" id="L56">    public JoinsTree(Map&lt;String, Chain&gt; tableChains) {</span>
+<span class="nc" id="L57">        this.tableChains = tableChains;</span>
+<span class="nc" id="L58">    }</span>
+
+    public Map&lt;String, String&gt; matches(JoinsTree another) {
+<span class="fc" id="L61">        return matches(another, Collections.&lt;String, String&gt; emptyMap());</span>
+    }
+
+    public Map&lt;String, String&gt; matches(JoinsTree another, Map&lt;String, String&gt; constraints) {
+<span class="fc" id="L65">        Map&lt;String, String&gt; matchUp = new HashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (Chain chain : tableChains.values()) {</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (matchInTree(chain, another, constraints, matchUp) == false)</span>
+<span class="nc" id="L69">                return null;</span>
+<span class="fc" id="L70">        }</span>
+
+<span class="fc" id="L72">        return matchUp;</span>
+    }
+
+    public int matchNum(JoinsTree another) {
+<span class="nc" id="L76">        Map&lt;String, String&gt; matchUp = new HashMap&lt;&gt;();</span>
+
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        for (Chain chain : tableChains.values()) {</span>
+<span class="nc" id="L79">            matchInTree(chain, another, Collections.&lt;String, String&gt; emptyMap(), matchUp);</span>
+<span class="nc" id="L80">        }</span>
+
+<span class="nc" id="L82">        return matchUp.size();</span>
+    }
+
+    private boolean matchInTree(Chain chain, JoinsTree another, Map&lt;String, String&gt; constraints,
+            Map&lt;String, String&gt; matchUp) {
+<span class="fc" id="L87">        String thisAlias = chain.table.getAlias();</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (matchUp.containsKey(thisAlias))</span>
+<span class="nc" id="L89">            return true;</span>
+
+<span class="fc" id="L91">        String constraint = constraints.get(thisAlias);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (constraint != null) {</span>
+<span class="nc" id="L93">            return matchChain(chain, another.tableChains.get(constraint), matchUp);</span>
+        }
+
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        for (Chain anotherChain : another.tableChains.values()) {</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (matchChain(chain, anotherChain, matchUp)) {</span>
+<span class="fc" id="L98">                return true;</span>
+            }
+<span class="fc" id="L100">        }</span>
+<span class="nc" id="L101">        return false;</span>
+    }
+
+    private boolean matchChain(Chain chain, Chain anotherChain, Map&lt;String, String&gt; matchUp) {
+<span class="fc" id="L105">        String thisAlias = chain.table.getAlias();</span>
+<span class="fc" id="L106">        String anotherAlias = anotherChain.table.getAlias();</span>
+
+<span class="fc" id="L108">        String curMatch = matchUp.get(thisAlias);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (curMatch != null)</span>
+<span class="fc" id="L110">            return curMatch.equals(anotherAlias);</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">        if (curMatch == null &amp;&amp; matchUp.values().contains(anotherAlias))</span>
+<span class="fc" id="L112">            return false;</span>
+
+<span class="fc" id="L114">        boolean matches = false;</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (chain.join == null) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">            matches = anotherChain.join == null</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                    &amp;&amp; chain.table.getTableDesc().getIdentity().equals(anotherChain.table.getTableDesc().getIdentity());</span>
+        } else {
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            matches = joinDescMatcher.matches(chain.join, anotherChain.join)</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">                    &amp;&amp; matchChain(chain.fkSide, anotherChain.fkSide, matchUp);</span>
+        }
+
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (matches) {</span>
+<span class="fc" id="L124">            matchUp.put(thisAlias, anotherAlias);</span>
+        }
+<span class="fc" id="L126">        return matches;</span>
+    }
+
+    public JoinDesc getJoinByPKSide(TableRef table) {
+<span class="nc" id="L130">        Chain chain = tableChains.get(table.getAlias());</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (chain == null)</span>
+<span class="nc" id="L132">            return null;</span>
+        else
+<span class="nc" id="L134">            return chain.join;</span>
+    }
+
+    public List&lt;Chain&gt; unmatchedChain(JoinsTree another, Map&lt;String, String&gt; constraints) {
+<span class="nc" id="L138">        Map&lt;String, String&gt; matchUp = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L139">        List&lt;Chain&gt; unmatchedChainList = Lists.newArrayList();</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        for (Chain chain : tableChains.values()) {</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (matchInTree(chain, another, constraints, matchUp) == false)</span>
+<span class="nc" id="L142">                unmatchedChainList.add(chain);</span>
+<span class="nc" id="L143">        }</span>
+
+<span class="nc" id="L145">        return unmatchedChainList;</span>
+    }
+
+    public Map&lt;String, Chain&gt; getTableChains() {
+<span class="fc" id="L149">        return tableChains;</span>
+    }
+
+    public void setJoinDescMatcher(IJoinDescMatcher joinDescMatcher) {
+<span class="nc" id="L153">        this.joinDescMatcher = joinDescMatcher;</span>
+<span class="nc" id="L154">    }</span>
+
+    public JoinsTree getSubgraphByAlias(Set&lt;String&gt; aliases) {
+<span class="nc" id="L157">        Map&lt;String, Chain&gt; subgraph = Maps.newHashMap();</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        for (String alias : aliases) {</span>
+<span class="nc" id="L159">            Chain chain = tableChains.get(alias);</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if (chain == null)</span>
+<span class="nc" id="L161">                throw new IllegalArgumentException(&quot;Table with alias &quot; + alias + &quot; is not found&quot;);</span>
+
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            while (chain.getFkSide() != null) {</span>
+<span class="nc" id="L164">                subgraph.put(chain.table.getAlias(), chain);</span>
+<span class="nc" id="L165">                chain = chain.getFkSide();</span>
+            }
+<span class="nc" id="L167">            subgraph.put(chain.table.getAlias(), chain);</span>
+<span class="nc" id="L168">        }</span>
+<span class="nc" id="L169">        return new JoinsTree(subgraph);</span>
+    }
+
+    public static class Chain implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        TableRef table; // pk side
+        JoinDesc join;
+        Chain fkSide;
+
+<span class="fc" id="L179">        public Chain(TableRef table, JoinDesc join, Chain fkSide) {</span>
+<span class="fc" id="L180">            this.table = table;</span>
+<span class="fc" id="L181">            this.join = join;</span>
+<span class="fc" id="L182">            this.fkSide = fkSide;</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (join != null) {</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                Preconditions.checkArgument(table == join.getPKSide());</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                Preconditions.checkArgument(fkSide.table == join.getFKSide());</span>
+            }
+<span class="fc" id="L187">        }</span>
+
+        public JoinDesc getJoin() {
+<span class="nc" id="L190">            return join;</span>
+        }
+
+        public TableRef getTable() {
+<span class="nc" id="L194">            return table;</span>
+        }
+
+        public Chain getFkSide() {
+<span class="nc" id="L198">            return fkSide;</span>
+        }
+    }
+
+    public static interface IJoinDescMatcher {
+        boolean matches(JoinDesc join1, JoinDesc join2);
+    }
+
+<span class="fc" id="L206">    public static class DefaultJoinDescMatcher implements IJoinDescMatcher, Serializable {</span>
+        @Override
+        public boolean matches(JoinDesc join1, JoinDesc join2) {
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            if (join1 == null) {</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">                return join2 == null;</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            } else if (join2 == null) {</span>
+<span class="nc" id="L212">                return false;</span>
+            } else {
+
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">                if (!join1.getType().equalsIgnoreCase(join2.getType()))</span>
+<span class="nc" id="L216">                    return false;</span>
+
+                // note pk/fk are sorted, sortByFK()
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                if (!this.columnDescEquals(join1.getForeignKeyColumns(), join2.getForeignKeyColumns()))</span>
+<span class="nc" id="L220">                    return false;</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                if (!this.columnDescEquals(join1.getPrimaryKeyColumns(), join2.getPrimaryKeyColumns()))</span>
+<span class="nc" id="L222">                    return false;</span>
+
+<span class="fc" id="L224">                return true;</span>
+            }
+        }
+
+        private boolean columnDescEquals(TblColRef[] a, TblColRef[] b) {
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">            if (a.length != b.length)</span>
+<span class="nc" id="L230">                return false;</span>
+
+<span class="fc bfc" id="L232" title="All 2 branches covered.">            for (int i = 0; i &lt; a.length; i++) {</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                if (columnDescEquals(a[i].getColumnDesc(), b[i].getColumnDesc()) == false)</span>
+<span class="nc" id="L234">                    return false;</span>
+            }
+<span class="fc" id="L236">            return true;</span>
+        }
+
+        protected boolean columnDescEquals(ColumnDesc a, ColumnDesc b) {
+<span class="pc bpc" id="L240" title="3 of 4 branches missed.">            return a == null ? b == null : a.equals(b);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

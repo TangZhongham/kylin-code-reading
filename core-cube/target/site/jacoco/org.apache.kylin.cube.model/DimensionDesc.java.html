@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DimensionDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">DimensionDesc.java</span></div><h1>DimensionDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model;
+
+import java.util.Arrays;
+import java.util.Locale;
+
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.MoreObjects;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L39">public class DimensionDesc implements java.io.Serializable {</span>
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;table&quot;)
+    private String table;
+    @JsonProperty(&quot;column&quot;)
+    private String column;
+    @JsonProperty(&quot;derived&quot;)
+    private String[] derived;
+
+    private TableRef tableRef;
+    private JoinDesc join;
+
+    // computed
+    private TblColRef[] columnRefs;
+
+    public void init(CubeDesc cubeDesc) {
+<span class="fc" id="L57">        DataModelDesc model = cubeDesc.getModel();</span>
+
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (name != null)</span>
+<span class="fc" id="L60">            name = name.toUpperCase(Locale.ROOT);</span>
+
+<span class="fc" id="L62">        tableRef = model.findTable(table);</span>
+<span class="fc" id="L63">        table = tableRef.getAlias();</span>
+
+<span class="fc" id="L65">        join = null;</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (JoinTableDesc joinTable : model.getJoinTables()) {</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            if (joinTable.getTableRef().equals(this.tableRef)) {</span>
+<span class="fc" id="L68">                join = joinTable.getJoin();</span>
+<span class="fc" id="L69">                break;</span>
+            }
+        }
+
+<span class="fc bfc" id="L73" title="All 4 branches covered.">        if (column != null &amp;&amp; !&quot;{FK}&quot;.equals(column)) {</span>
+<span class="fc" id="L74">            column = model.findColumn(table, column).getName();</span>
+        }
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (derived != null &amp;&amp; derived.length == 0) {</span>
+<span class="nc" id="L77">            derived = null;</span>
+        }
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (derived != null) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            for (int i = 0; i &lt; derived.length; i++) {</span>
+<span class="fc" id="L81">                derived[i] = model.findColumn(table, derived[i]).getName();</span>
+            }
+        }
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        if (derived != null &amp;&amp; join == null) {</span>
+<span class="nc" id="L85">            throw new IllegalStateException(</span>
+                    &quot;Derived can only be defined on lookup table, cube &quot; + cubeDesc + &quot;, &quot; + this);
+        }
+
+<span class="fc" id="L89">    }</span>
+
+    public boolean isDerived() {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        return derived != null;</span>
+    }
+
+    public String getTable() {
+<span class="fc" id="L96">        return table;</span>
+    }
+
+    public void setTable(String table) {
+<span class="nc" id="L100">        this.table = table;</span>
+<span class="nc" id="L101">    }</span>
+
+    public JoinDesc getJoin() {
+<span class="fc" id="L104">        return join;</span>
+    }
+
+    public String getName() {
+<span class="nc" id="L108">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="nc" id="L112">        this.name = name;</span>
+<span class="nc" id="L113">    }</span>
+
+    public TblColRef[] getColumnRefs() {
+<span class="nc" id="L116">        return this.columnRefs;</span>
+    }
+
+    public void setColumnRefs(TblColRef[] colRefs) {
+<span class="fc" id="L120">        this.columnRefs = colRefs;</span>
+<span class="fc" id="L121">    }</span>
+
+    public String getColumn() {
+<span class="fc" id="L124">        return this.column;</span>
+    }
+
+    public void setColumn(String column) {
+<span class="nc" id="L128">        this.column = column;</span>
+<span class="nc" id="L129">    }</span>
+
+    public String[] getDerived() {
+<span class="fc" id="L132">        return derived;</span>
+    }
+
+    public void setDerived(String[] derived) {
+<span class="nc" id="L136">        this.derived = derived;</span>
+<span class="nc" id="L137">    }</span>
+
+    public TableRef getTableRef() {
+<span class="nc" id="L140">        return this.tableRef;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L145">        return MoreObjects.toStringHelper(this).add(&quot;name&quot;, name).add(&quot;table&quot;, table).add(&quot;column&quot;, column)</span>
+<span class="nc" id="L146">                .add(&quot;derived&quot;, Arrays.toString(derived)).add(&quot;join&quot;, join).toString();</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (this == o) {</span>
+<span class="nc" id="L152">            return true;</span>
+        }
+
+<span class="nc bnc" id="L155" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass()) {</span>
+<span class="nc" id="L156">            return false;</span>
+        }
+
+<span class="nc" id="L159">        DimensionDesc that = (DimensionDesc) o;</span>
+
+<span class="nc bnc" id="L161" title="All 6 branches missed.">        if (column != null ? !column.equals(that.column) : that.column != null) {</span>
+<span class="nc" id="L162">            return false;</span>
+        }
+
+<span class="nc bnc" id="L165" title="All 6 branches missed.">        if (name != null ? !name.equals(that.name) : that.name != null) {</span>
+<span class="nc" id="L166">            return false;</span>
+        }
+
+<span class="nc bnc" id="L169" title="All 6 branches missed.">        if (table != null ? !table.equals(that.table) : that.table != null) {</span>
+<span class="nc" id="L170">            return false;</span>
+        }
+
+<span class="nc bnc" id="L173" title="All 6 branches missed.">        if (derived != null ? !Arrays.equals(derived, that.derived) : that.derived != null) {</span>
+<span class="nc" id="L174">            return false;</span>
+        }
+
+<span class="nc" id="L177">        return true;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L182">        final int prime = 31;</span>
+<span class="nc" id="L183">        int result = 1;</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        result = prime * result + ((column == null) ? 0 : column.hashCode());</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        result = prime * result + ((table == null) ? 0 : table.hashCode());</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        result = prime * result + ((derived == null) ? 0 : Arrays.hashCode(derived));</span>
+<span class="nc" id="L188">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

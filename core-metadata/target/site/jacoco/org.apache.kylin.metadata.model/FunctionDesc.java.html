@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FunctionDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">FunctionDesc.java</span></div><h1>FunctionDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.measure.basic.BasicMeasureType;
+import org.apache.kylin.measure.percentile.PercentileMeasureType;
+import org.apache.kylin.metadata.datatype.DataType;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.Joiner;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L49">public class FunctionDesc implements Serializable {</span>
+
+    public static FunctionDesc newInstance(String expression, ParameterDesc param, String returnType) {
+<span class="fc" id="L52">        FunctionDesc r = new FunctionDesc();</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        r.expression = (expression == null) ? null : expression.toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L54">        r.parameter = param;</span>
+<span class="fc" id="L55">        r.returnType = returnType;</span>
+<span class="fc" id="L56">        r.returnDataType = DataType.getType(returnType);</span>
+<span class="fc" id="L57">        return r;</span>
+    }
+
+    public static final String FUNC_SUM = &quot;SUM&quot;;
+    public static final String FUNC_MIN = &quot;MIN&quot;;
+    public static final String FUNC_MAX = &quot;MAX&quot;;
+    public static final String FUNC_COUNT = &quot;COUNT&quot;;
+    public static final String FUNC_COUNT_DISTINCT = &quot;COUNT_DISTINCT&quot;;
+    public static final String FUNC_INTERSECT_COUNT = &quot;INTERSECT_COUNT&quot;;
+    public static final String FUNC_INTERSECT_VALUE = &quot;INTERSECT_VALUE&quot;;
+    public static final String FUNC_GROUPING = &quot;GROUPING&quot;;
+    public static final String FUNC_PERCENTILE = &quot;PERCENTILE_APPROX&quot;;
+<span class="fc" id="L69">    public static final Set&lt;String&gt; BUILT_IN_AGGREGATIONS = Sets.newHashSet();</span>
+
+    static {
+<span class="fc" id="L72">        BUILT_IN_AGGREGATIONS.add(FUNC_MAX);</span>
+<span class="fc" id="L73">        BUILT_IN_AGGREGATIONS.add(FUNC_MIN);</span>
+<span class="fc" id="L74">        BUILT_IN_AGGREGATIONS.add(FUNC_COUNT_DISTINCT);</span>
+<span class="fc" id="L75">        BUILT_IN_AGGREGATIONS.add(FUNC_PERCENTILE);</span>
+<span class="fc" id="L76">    }</span>
+
+    public static final String PARAMETER_TYPE_CONSTANT = &quot;constant&quot;;
+    public static final String PARAMETER_TYPE_COLUMN = &quot;column&quot;;
+
+    @JsonProperty(&quot;expression&quot;)
+    private String expression;
+    @JsonProperty(&quot;parameter&quot;)
+    private ParameterDesc parameter;
+    @JsonProperty(&quot;returntype&quot;)
+    private String returnType;
+
+<span class="fc" id="L88">    @JsonProperty(&quot;configuration&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map&lt;String, String&gt; configuration = new LinkedHashMap&lt;String, String&gt;();
+
+    private DataType returnDataType;
+    private MeasureType&lt;?&gt; measureType;
+<span class="fc" id="L94">    private boolean isDimensionAsMetric = false;</span>
+<span class="fc" id="L95">    private boolean isMrDict = false;</span>
+
+    public boolean isMrDict() {
+<span class="nc" id="L98">        return isMrDict;</span>
+    }
+
+    public void setMrDict(boolean mrDict) {
+<span class="nc" id="L102">        isMrDict = mrDict;</span>
+<span class="nc" id="L103">    }</span>
+
+    public void init(DataModelDesc model) {
+<span class="nc" id="L106">        expression = expression.toUpperCase(Locale.ROOT);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (expression.equals(PercentileMeasureType.FUNC_PERCENTILE)) {</span>
+<span class="nc" id="L108">            expression = PercentileMeasureType.FUNC_PERCENTILE_APPROX; // for backward compatibility</span>
+        }
+
+<span class="nc" id="L111">        returnDataType = DataType.getType(returnType);</span>
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        for (ParameterDesc p = parameter; p != null; p = p.getNextParameter()) {</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            if (p.isColumnType()) {</span>
+<span class="nc" id="L115">                TblColRef colRef = model.findColumn(p.getValue());</span>
+<span class="nc" id="L116">                p.setValue(colRef.getIdentity());</span>
+<span class="nc" id="L117">                p.setColRef(colRef);</span>
+            }
+        }
+<span class="nc" id="L120">    }</span>
+
+    private void reInitMeasureType() {
+<span class="pc bpc" id="L123" title="3 of 4 branches missed.">        if (isDimensionAsMetric &amp;&amp; isCountDistinct()) {</span>
+            // create DimCountDis
+<span class="nc" id="L125">            measureType = MeasureTypeFactory.createNoRewriteFieldsMeasureType(getExpression(), getReturnDataType());</span>
+<span class="nc" id="L126">            returnDataType = DataType.getType(&quot;dim_dc&quot;);</span>
+        } else {
+<span class="fc" id="L128">            measureType = MeasureTypeFactory.create(getExpression(), getReturnDataType());</span>
+        }
+<span class="fc" id="L130">    }</span>
+
+    public MeasureType&lt;?&gt; getMeasureType() {
+        //like max(cal_dt)
+<span class="pc bpc" id="L134" title="3 of 4 branches missed.">        if (isDimensionAsMetric &amp;&amp; !isCountDistinct()) {</span>
+<span class="nc" id="L135">            return null;</span>
+        }
+
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (measureType == null) {</span>
+<span class="fc" id="L139">            reInitMeasureType();</span>
+        }
+
+<span class="fc" id="L142">        return measureType;</span>
+    }
+
+    public boolean needRewrite() {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (getMeasureType() == null)</span>
+<span class="nc" id="L147">            return false;</span>
+
+<span class="nc" id="L149">        return getMeasureType().needRewrite();</span>
+    }
+
+    public boolean needRewriteField() {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (!needRewrite())</span>
+<span class="nc" id="L154">            return false;</span>
+
+<span class="nc" id="L156">        return getMeasureType().needRewriteField();</span>
+    }
+
+    public String getRewriteFieldName() {
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (isCountConstant()) {</span>
+<span class="nc" id="L161">            return &quot;_KY_&quot; + &quot;COUNT__&quot;; // ignores parameter, count(*) and count(1) are the same</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        } else if (isCountDistinct()) {</span>
+<span class="nc" id="L163">            return &quot;_KY_&quot; + getFullExpressionInAlphabetOrder().replaceAll(&quot;[(),. ]&quot;, &quot;_&quot;);</span>
+        } else {
+<span class="nc" id="L165">            return &quot;_KY_&quot; + getFullExpression().replaceAll(&quot;[(),. ]&quot;, &quot;_&quot;);</span>
+        }
+    }
+
+    public DataType getRewriteFieldType() {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (getMeasureType() instanceof BasicMeasureType) {</span>
+<span class="fc bfc" id="L171" title="All 4 branches covered.">            if (isMax() || isMin()) {</span>
+<span class="fc" id="L172">                return parameter.getColRefs().get(0).getType();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            } else if (isSum()) {</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                if (parameter.isColumnType()) {</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                    if (parameter.getColRefs().get(0).getType().isIntegerFamily()) {</span>
+<span class="fc" id="L176">                        return DataType.getType(&quot;bigint&quot;);</span>
+                    } else {
+<span class="fc" id="L178">                        return parameter.getColRefs().get(0).getType();</span>
+                    }
+                } else {
+<span class="fc" id="L181">                    return DataType.getType(&quot;bigint&quot;);</span>
+                }
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            } else if (isCount()) {</span>
+<span class="fc" id="L184">                return DataType.getType(&quot;bigint&quot;);</span>
+            } else {
+<span class="nc" id="L186">                throw new IllegalArgumentException(&quot;unknown measure type &quot; + getMeasureType());</span>
+            }
+        } else {
+<span class="fc" id="L189">            return DataType.ANY;</span>
+        }
+    }
+
+    public ColumnDesc newFakeRewriteColumn(TableDesc sourceTable) {
+<span class="nc" id="L194">        ColumnDesc fakeCol = new ColumnDesc();</span>
+<span class="nc" id="L195">        fakeCol.setName(getRewriteFieldName());</span>
+<span class="nc" id="L196">        fakeCol.setDatatype(getRewriteFieldType().toString());</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (isCount())</span>
+<span class="nc" id="L198">            fakeCol.setNullable(false);</span>
+<span class="nc" id="L199">        fakeCol.init(sourceTable);</span>
+<span class="nc" id="L200">        return fakeCol;</span>
+    }
+
+    public boolean isMin() {
+<span class="fc" id="L204">        return FUNC_MIN.equalsIgnoreCase(expression);</span>
+    }
+
+    public boolean isMax() {
+<span class="fc" id="L208">        return FUNC_MAX.equalsIgnoreCase(expression);</span>
+    }
+
+    public boolean isSum() {
+<span class="fc" id="L212">        return FUNC_SUM.equalsIgnoreCase(expression);</span>
+    }
+
+    public boolean isCount() {
+<span class="fc" id="L216">        return FUNC_COUNT.equalsIgnoreCase(expression);</span>
+    }
+
+    public boolean isCountDistinct() {
+<span class="nc" id="L220">        return FUNC_COUNT_DISTINCT.equalsIgnoreCase(expression);</span>
+    }
+
+    public boolean isCountConstant() {//count(*) and count(1)
+<span class="nc bnc" id="L224" title="All 6 branches missed.">        return FUNC_COUNT.equalsIgnoreCase(expression) &amp;&amp; (parameter == null || parameter.isConstant());</span>
+    }
+
+    /**
+     * Get Full Expression such as sum(amount), count(1), count(*)...
+     */
+    public String getFullExpression() {
+<span class="nc" id="L231">        StringBuilder sb = new StringBuilder(expression);</span>
+<span class="nc" id="L232">        sb.append(&quot;(&quot;);</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (parameter != null) {</span>
+<span class="nc" id="L234">            sb.append(parameter.getValue());</span>
+        }
+<span class="nc" id="L236">        sb.append(&quot;)&quot;);</span>
+<span class="nc" id="L237">        return sb.toString();</span>
+    }
+
+    /**
+     * Parameters' name appears in alphabet order.
+     * This method is used for funcs whose parameters appear in arbitrary order
+     */
+    public String getFullExpressionInAlphabetOrder() {
+<span class="nc" id="L245">        StringBuilder sb = new StringBuilder(expression);</span>
+<span class="nc" id="L246">        sb.append(&quot;(&quot;);</span>
+<span class="nc" id="L247">        ParameterDesc localParam = parameter;</span>
+<span class="nc" id="L248">        List&lt;String&gt; flatParams = Lists.newArrayList();</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        while (localParam != null) {</span>
+<span class="nc" id="L250">            flatParams.add(localParam.getValue());</span>
+<span class="nc" id="L251">            localParam = localParam.getNextParameter();</span>
+        }
+<span class="nc" id="L253">        Collections.sort(flatParams);</span>
+<span class="nc" id="L254">        sb.append(Joiner.on(&quot;,&quot;).join(flatParams));</span>
+<span class="nc" id="L255">        sb.append(&quot;)&quot;);</span>
+<span class="nc" id="L256">        return sb.toString();</span>
+    }
+
+    public boolean isDimensionAsMetric() {
+<span class="nc" id="L260">        return isDimensionAsMetric;</span>
+    }
+
+    public void setDimensionAsMetric(boolean isDimensionAsMetric) {
+<span class="nc" id="L264">        this.isDimensionAsMetric = isDimensionAsMetric;</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (measureType != null) {</span>
+<span class="nc" id="L266">            reInitMeasureType();</span>
+        }
+<span class="nc" id="L268">    }</span>
+
+    public String getExpression() {
+<span class="fc" id="L271">        return expression;</span>
+    }
+
+    public void setExpression(String expression) {
+<span class="nc" id="L275">        this.expression = expression;</span>
+<span class="nc" id="L276">    }</span>
+
+    public ParameterDesc getParameter() {
+<span class="nc" id="L279">        return parameter;</span>
+    }
+
+    public void setParameter(ParameterDesc parameter) {
+<span class="nc" id="L283">        this.parameter = parameter;</span>
+<span class="nc" id="L284">    }</span>
+
+    public int getParameterCount() {
+<span class="nc" id="L287">        int count = 0;</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        for (ParameterDesc p = parameter; p != null; p = p.getNextParameter()) {</span>
+<span class="nc" id="L289">            count++;</span>
+        }
+<span class="nc" id="L291">        return count;</span>
+    }
+
+    public String getReturnType() {
+<span class="nc" id="L295">        return returnType;</span>
+    }
+
+    public void setReturnType(String returnType) {
+<span class="nc" id="L299">        this.returnType = returnType;</span>
+<span class="nc" id="L300">        this.returnDataType = DataType.getType(returnType);</span>
+<span class="nc" id="L301">    }</span>
+
+    public DataType getReturnDataType() {
+<span class="fc" id="L304">        return returnDataType;</span>
+    }
+
+    public Map&lt;String, String&gt; getConfiguration() {
+<span class="nc" id="L308">        return configuration;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L313">        final int prime = 31;</span>
+<span class="nc" id="L314">        int result = 1;</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        result = prime * result + ((expression == null) ? 0 : expression.hashCode());</span>
+<span class="nc bnc" id="L316" title="All 4 branches missed.">        result = prime * result + ((isCountConstant() || parameter == null) ? 0 : parameter.hashCode());</span>
+        // NOTE: don't compare returnType, FunctionDesc created at query engine does not have a returnType
+<span class="nc" id="L318">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L324">            return true;</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L326">            return false;</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L328">            return false;</span>
+<span class="nc" id="L329">        FunctionDesc other = (FunctionDesc) obj;</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (expression == null) {</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">            if (other.expression != null)</span>
+<span class="nc" id="L332">                return false;</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">        } else if (!expression.equals(other.expression))</span>
+<span class="nc" id="L334">            return false;</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        if (isCountDistinct()) {</span>
+            // for count distinct func, param's order doesn't matter
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            if (parameter == null) {</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">                if (other.parameter != null)</span>
+<span class="nc" id="L339">                    return false;</span>
+            } else {
+<span class="nc" id="L341">                return parameter.equalInArbitraryOrder(other.parameter);</span>
+            }
+<span class="nc bnc" id="L343" title="All 4 branches missed.">        } else if (isCountConstant() &amp;&amp; ((FunctionDesc) obj).isCountConstant()) { //count(*) and count(1) are equals</span>
+<span class="nc" id="L344">            return true;</span>
+        } else {
+<span class="nc bnc" id="L346" title="All 2 branches missed.">            if (parameter == null) {</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">                if (other.parameter != null)</span>
+<span class="nc" id="L348">                    return false;</span>
+            } else {
+<span class="nc bnc" id="L350" title="All 2 branches missed.">                if (!parameter.equals(other.parameter))</span>
+<span class="nc" id="L351">                    return false;</span>
+            }
+        }
+        // NOTE: don't compare returnType, FunctionDesc created at query engine does not have a returnType
+<span class="nc" id="L355">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L360">        return &quot;FunctionDesc [expression=&quot; + expression + &quot;, parameter=&quot; + parameter + &quot;, returnType=&quot; + returnType</span>
+                + &quot;]&quot;;
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

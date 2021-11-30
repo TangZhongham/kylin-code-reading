@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DFSFileTable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">DFSFileTable.java</span></div><h1>DFSFileTable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.source.IReadableTable;
+
+/**
+ */
+public class DFSFileTable implements IReadableTable {
+
+    public static final String DELIM_AUTO = &quot;auto&quot;;
+    public static final String DELIM_COMMA = &quot;,&quot;;
+
+    String path;
+    String delim;
+    int nColumns;
+
+    public DFSFileTable(String path, int nColumns) {
+<span class="nc" id="L45">        this(path, DELIM_AUTO, nColumns);</span>
+<span class="nc" id="L46">    }</span>
+
+<span class="nc" id="L48">    public DFSFileTable(String path, String delim, int nColumns) {</span>
+<span class="nc" id="L49">        this.path = path;</span>
+<span class="nc" id="L50">        this.delim = delim;</span>
+<span class="nc" id="L51">        this.nColumns = nColumns;</span>
+<span class="nc" id="L52">    }</span>
+
+    public String getColumnDelimeter() {
+<span class="nc" id="L55">        return delim;</span>
+    }
+
+    @Override
+    public TableReader getReader() throws IOException {
+<span class="nc" id="L60">        return new DFSFileTableReader(path, delim, nColumns);</span>
+    }
+
+    @Override
+    public TableSignature getSignature() throws IOException {
+        Pair&lt;Long, Long&gt; sizeAndLastModified;
+        try {
+<span class="nc" id="L67">            sizeAndLastModified = getSizeAndLastModified(path);</span>
+<span class="nc" id="L68">        } catch (FileNotFoundException ex) {</span>
+<span class="nc" id="L69">            sizeAndLastModified = Pair.newPair(-1L, 0L);</span>
+<span class="nc" id="L70">        }</span>
+<span class="nc" id="L71">        return new TableSignature(path, sizeAndLastModified.getFirst(), sizeAndLastModified.getSecond());</span>
+    }
+    
+    @Override
+    public boolean exists() throws IOException {
+        try {
+<span class="nc" id="L77">            getSizeAndLastModified(path);</span>
+<span class="nc" id="L78">            return true;</span>
+<span class="nc" id="L79">        } catch (FileNotFoundException ex) {</span>
+<span class="nc" id="L80">            return false;</span>
+        }
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L86">        return path;</span>
+    }
+
+    public static Pair&lt;Long, Long&gt; getSizeAndLastModified(String path) throws IOException {
+<span class="nc" id="L90">        FileSystem fs = HadoopUtil.getFileSystem(path);</span>
+
+        // get all contained files if path is directory
+<span class="nc" id="L93">        ArrayList&lt;FileStatus&gt; allFiles = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L94">        FileStatus status = fs.getFileStatus(new Path(path));</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (status.isFile()) {</span>
+<span class="nc" id="L96">            allFiles.add(status);</span>
+        } else {
+<span class="nc" id="L98">            FileStatus[] listStatus = fs.listStatus(new Path(path));</span>
+<span class="nc" id="L99">            allFiles.addAll(Arrays.asList(listStatus));</span>
+        }
+
+<span class="nc" id="L102">        long size = 0;</span>
+<span class="nc" id="L103">        long lastModified = 0;</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        for (FileStatus file : allFiles) {</span>
+<span class="nc" id="L105">            size += file.getLen();</span>
+<span class="nc" id="L106">            lastModified = Math.max(lastModified, file.getModificationTime());</span>
+<span class="nc" id="L107">        }</span>
+
+<span class="nc" id="L109">        return Pair.newPair(size, lastModified);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

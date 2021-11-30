@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RexUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.util</a> &gt; <span class="el_source">RexUtil.java</span></div><h1>RexUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.query.util;
+
+import java.util.List;
+
+import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexLiteral;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+
+public class RexUtil {
+
+<span class="nc" id="L31">    private RexUtil() {</span>
+<span class="nc" id="L32">        throw new IllegalStateException(&quot;Class RexUtil is an utility class !&quot;);</span>
+    }
+
+    public static CompareTupleFilter.CompareResultType getCompareResultType(RexCall whenCall) {
+<span class="nc" id="L36">        List&lt;RexNode&gt; operands = whenCall.getOperands();</span>
+<span class="nc bnc" id="L37" title="All 6 branches missed.">        if (SqlKind.EQUALS == whenCall.getKind() &amp;&amp; operands != null &amp;&amp; operands.size() == 2) {</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">            if (operands.get(0).equals(operands.get(1))) {</span>
+<span class="nc" id="L39">                return CompareTupleFilter.CompareResultType.AlwaysTrue;</span>
+            }
+
+<span class="nc bnc" id="L42" title="All 4 branches missed.">            if (isConstant(operands.get(0)) &amp;&amp; isConstant(operands.get(1))) {</span>
+<span class="nc" id="L43">                return CompareTupleFilter.CompareResultType.AlwaysFalse;</span>
+            }
+        }
+<span class="nc" id="L46">        return CompareTupleFilter.CompareResultType.Unknown;</span>
+    }
+
+    public static boolean isConstant(RexNode rexNode) {
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        if (rexNode instanceof RexLiteral) {</span>
+<span class="nc" id="L51">            return true;</span>
+        }
+
+<span class="nc bnc" id="L54" title="All 4 branches missed.">        if (rexNode instanceof RexCall &amp;&amp; SqlKind.CAST.equals(rexNode.getKind())</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">                &amp;&amp; ((RexCall) rexNode).getOperands().get(0) instanceof RexLiteral) {</span>
+<span class="nc" id="L56">            return true;</span>
+        }
+
+<span class="nc" id="L59">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

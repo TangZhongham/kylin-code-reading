@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metastore-hbase/src/main/java/org/apache/kylin/storage/hbase/HBaseConnection.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metastore-hbase/src/main/java/org/apache/kylin/storage/hbase/HBaseResourceStore.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/metastore-hbase/src/test/java/org/apache/kylin/storage/hbase/steps/SandboxMetastoreCLI.java">
+</file>
+</checkstyle>

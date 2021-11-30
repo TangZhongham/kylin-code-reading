@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SparseRegister.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.hllc</a> &gt; <span class="el_source">SparseRegister.java</span></div><h1>SparseRegister.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.kylin.measure.hllc;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
+import java.util.TreeMap;
+
+/**
+ * Created by xiefan on 16-12-9.
+ */
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">public class SparseRegister implements Register, java.io.Serializable {</span>
+
+<span class="fc" id="L30">    private Map&lt;Integer, Byte&gt; sparseRegister = new TreeMap&lt;&gt;();</span>
+
+<span class="fc" id="L32">    public SparseRegister() {</span>
+<span class="fc" id="L33">    }</span>
+
+    public DenseRegister toDense(int p) {
+<span class="fc" id="L36">        DenseRegister dr = new DenseRegister(p);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (Map.Entry&lt;Integer, Byte&gt; entry : sparseRegister.entrySet()) {</span>
+<span class="fc" id="L38">            dr.set(entry.getKey(), entry.getValue());</span>
+<span class="fc" id="L39">        }</span>
+<span class="fc" id="L40">        return dr;</span>
+    }
+
+    @Override
+    public void set(int pos, byte value) {
+<span class="fc" id="L45">        sparseRegister.put(pos, value);</span>
+<span class="fc" id="L46">    }</span>
+
+    @Override
+    public byte get(int pos) {
+<span class="fc" id="L50">        Byte b = sparseRegister.get(pos);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        return b == null ? 0 : b;</span>
+    }
+
+    @Override
+    public void merge(Register another) {
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">        assert another.getRegisterType() != RegisterType.DENSE;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (another.getRegisterType() == RegisterType.SPARSE) {</span>
+<span class="fc" id="L58">            SparseRegister sr = (SparseRegister) another;</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            for (Map.Entry&lt;Integer, Byte&gt; entry : sr.sparseRegister.entrySet()) {</span>
+<span class="fc" id="L60">                byte v = get(entry.getKey());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                if (entry.getValue() &gt; v)</span>
+<span class="fc" id="L62">                    sparseRegister.put(entry.getKey(), entry.getValue());</span>
+<span class="fc" id="L63">            }</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        } else if (another.getRegisterType() == RegisterType.SINGLE_VALUE) {</span>
+<span class="fc" id="L65">            SingleValueRegister sr = (SingleValueRegister) another;</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            if (sr.getSize() &gt; 0) {</span>
+<span class="fc" id="L67">                byte v = get(sr.getSingleValuePos());</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (sr.getValue() &gt; v)</span>
+<span class="fc" id="L69">                    sparseRegister.put(sr.getSingleValuePos(), sr.getValue());</span>
+            }
+        }
+<span class="fc" id="L72">    }</span>
+
+    @Override
+    public void clear() {
+<span class="fc" id="L76">        sparseRegister.clear();</span>
+<span class="fc" id="L77">    }</span>
+
+    @Override
+    public int getSize() {
+<span class="fc" id="L81">        return sparseRegister.size();</span>
+    }
+
+    @Override
+    public RegisterType getRegisterType() {
+<span class="fc" id="L86">        return RegisterType.SPARSE;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L91">        final int prime = 31;</span>
+<span class="nc" id="L92">        int result = 1;</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        result = prime * result + ((sparseRegister == null) ? 0 : sparseRegister.hashCode());</span>
+<span class="nc" id="L94">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L100">            return true;</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L102">            return false;</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L104">            return false;</span>
+<span class="fc" id="L105">        SparseRegister other = (SparseRegister) obj;</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (sparseRegister == null) {</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (other.sparseRegister != null)</span>
+<span class="nc" id="L108">                return false;</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        } else if (!sparseRegister.equals(other.sparseRegister))</span>
+<span class="nc" id="L110">            return false;</span>
+<span class="fc" id="L111">        return true;</span>
+    }
+
+    public Collection&lt;Map.Entry&lt;Integer, Byte&gt;&gt; getAllValue() {
+<span class="fc" id="L115">        return Collections.unmodifiableCollection(sparseRegister.entrySet());</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

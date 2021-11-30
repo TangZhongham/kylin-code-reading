@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidCLI.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid</a> &gt; <span class="el_source">CuboidCLI.java</span></div><h1>CuboidCLI.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.TreeSet;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeDescManager;
+import org.apache.kylin.cube.model.AggregationGroup;
+import org.apache.kylin.cube.model.CubeDesc;
+
+/**
+ * @author yangli9
+ */
+<span class="nc" id="L35">public class CuboidCLI {</span>
+
+    public static void main(String[] args) throws IOException {
+<span class="nc" id="L38">        CubeDescManager cubeDescMgr = CubeDescManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        if (&quot;test&quot;.equals(args[0])) {</span>
+<span class="nc" id="L41">            CubeDesc cubeDesc = cubeDescMgr.getCubeDesc(args[1]);</span>
+<span class="nc" id="L42">            simulateCuboidGeneration(cubeDesc, true);</span>
+        }
+<span class="nc" id="L44">    }</span>
+
+    public static int simulateCuboidGeneration(CubeDesc cubeDesc, boolean validate) {
+<span class="fc" id="L47">        CuboidScheduler scheduler = cubeDesc.getInitialCuboidScheduler();</span>
+<span class="fc" id="L48">        long baseCuboid = Cuboid.getBaseCuboidId(cubeDesc);</span>
+<span class="fc" id="L49">        Collection&lt;Long&gt; cuboidSet = new TreeSet&lt;Long&gt;();</span>
+<span class="fc" id="L50">        cuboidSet.add(baseCuboid);</span>
+<span class="fc" id="L51">        LinkedList&lt;Long&gt; cuboidQueue = new LinkedList&lt;Long&gt;();</span>
+<span class="fc" id="L52">        cuboidQueue.push(baseCuboid);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        while (!cuboidQueue.isEmpty()) {</span>
+<span class="fc" id="L54">            long cuboid = cuboidQueue.pop();</span>
+<span class="fc" id="L55">            Collection&lt;Long&gt; spnanningCuboids = scheduler.getSpanningCuboid(cuboid);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            for (Long sc : spnanningCuboids) {</span>
+<span class="fc" id="L57">                boolean notfound = cuboidSet.add(sc);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                if (!notfound) {</span>
+<span class="nc" id="L59">                    throw new IllegalStateException(&quot;Find duplicate spanning cuboid &quot; + sc + &quot; from cuboid &quot; + cuboid);</span>
+                }
+
+<span class="fc" id="L62">                cuboidQueue.push(sc);</span>
+
+<span class="fc" id="L64">            }</span>
+<span class="fc" id="L65">        }</span>
+
+<span class="fc" id="L67">        boolean enableDimCap = false;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (AggregationGroup agg : cubeDesc.getAggregationGroups()) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (agg.getDimCap() &gt; 0) {</span>
+<span class="fc" id="L70">                enableDimCap = true;</span>
+<span class="fc" id="L71">                break;</span>
+            }
+<span class="fc" id="L73">        }</span>
+
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (validate) {</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (enableDimCap) {</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                if (cubeDesc.getAllCuboids().size() != cuboidSet.size()) {</span>
+<span class="nc" id="L78">                    throw new IllegalStateException(&quot;Expected cuboid set &quot; + cubeDesc.getAllCuboids() + &quot;; but actual cuboid set &quot; + cuboidSet);</span>
+                }
+            } else {
+                //only run this for test purpose, performance is bad when # of dims is large
+<span class="fc" id="L82">                TreeSet&lt;Long&gt; enumCuboids = enumCalcCuboidCount(cubeDesc);</span>
+<span class="fc" id="L83">                System.out.println(Arrays.toString(enumCuboids.toArray(new Long[enumCuboids.size()])));</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                if (enumCuboids.equals(cuboidSet) == false) {</span>
+<span class="nc" id="L85">                    throw new IllegalStateException(&quot;Expected cuboid set &quot; + enumCuboids + &quot;; but actual cuboid set &quot; + cuboidSet);</span>
+                }
+
+                //check all valid and invalid
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                for (long i = 0; i &lt; baseCuboid; ++i) {</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    if (cuboidSet.contains(i)) {</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                        if (!scheduler.isValid(i)) {</span>
+<span class="nc" id="L92">                            throw new RuntimeException();</span>
+                        }
+
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                        if (scheduler.findBestMatchCuboid(i) != i) {</span>
+<span class="nc" id="L96">                            throw new RuntimeException();</span>
+                        }
+                    } else {
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                        if (scheduler.isValid(i)) {</span>
+<span class="nc" id="L100">                            throw new RuntimeException();</span>
+                        }
+
+<span class="fc" id="L103">                        long corrected = scheduler.findBestMatchCuboid(i);</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                        if (corrected == i) {</span>
+<span class="nc" id="L105">                            throw new RuntimeException();</span>
+                        }
+
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                        if (!scheduler.isValid(corrected)) {</span>
+<span class="nc" id="L109">                            throw new RuntimeException();</span>
+                        }
+
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                        if (scheduler.findBestMatchCuboid(corrected) != corrected) {</span>
+<span class="nc" id="L113">                            throw new RuntimeException();</span>
+                        }
+                    }
+                }
+            }
+        }
+
+<span class="fc" id="L120">        return cuboidSet.size();</span>
+
+    }
+
+    public static TreeSet&lt;Long&gt; enumCalcCuboidCount(CubeDesc cube) {
+<span class="fc" id="L125">        long baseCuboid = Cuboid.getBaseCuboidId(cube);</span>
+<span class="fc" id="L126">        TreeSet&lt;Long&gt; expectedCuboids = new TreeSet&lt;Long&gt;();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        for (long cuboid = 0; cuboid &lt;= baseCuboid; cuboid++) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (cube.getInitialCuboidScheduler().isValid(cuboid)) {</span>
+<span class="fc" id="L129">                expectedCuboids.add(cuboid);</span>
+            }
+        }
+<span class="fc" id="L132">        return expectedCuboids;</span>
+    }
+
+    public static int[] calculateAllLevelCount(CubeDesc cube) {
+<span class="fc" id="L136">        int levels = cube.getInitialCuboidScheduler().getBuildLevel();</span>
+<span class="fc" id="L137">        int[] allLevelCounts = new int[levels + 1];</span>
+
+<span class="fc" id="L139">        CuboidScheduler scheduler = cube.getInitialCuboidScheduler();</span>
+<span class="fc" id="L140">        LinkedList&lt;Long&gt; nextQueue = new LinkedList&lt;Long&gt;();</span>
+<span class="fc" id="L141">        LinkedList&lt;Long&gt; currentQueue = new LinkedList&lt;Long&gt;();</span>
+<span class="fc" id="L142">        long baseCuboid = Cuboid.getBaseCuboidId(cube);</span>
+<span class="fc" id="L143">        currentQueue.push(baseCuboid);</span>
+
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        for (int i = 0; i &lt;= levels; i++) {</span>
+<span class="fc" id="L146">            allLevelCounts[i] = currentQueue.size();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            while (!currentQueue.isEmpty()) {</span>
+<span class="fc" id="L148">                long cuboid = currentQueue.pop();</span>
+<span class="fc" id="L149">                Collection&lt;Long&gt; spnanningCuboids = scheduler.getSpanningCuboid(cuboid);</span>
+
+<span class="fc" id="L151">                nextQueue.addAll(spnanningCuboids);</span>
+<span class="fc" id="L152">            }</span>
+<span class="fc" id="L153">            currentQueue = nextQueue;</span>
+<span class="fc" id="L154">            nextQueue = new LinkedList&lt;Long&gt;();</span>
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (i == levels) {</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">                if (!currentQueue.isEmpty()) {</span>
+<span class="nc" id="L158">                    throw new IllegalStateException();</span>
+                }
+            }
+        }
+
+<span class="fc" id="L163">        return allLevelCounts;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

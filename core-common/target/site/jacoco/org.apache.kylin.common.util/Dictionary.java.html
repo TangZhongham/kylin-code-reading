@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Dictionary.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">Dictionary.java</span></div><h1>Dictionary.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.io.Serializable;
+import java.io.UnsupportedEncodingException;
+import java.util.List;
+
+import org.apache.kylin.common.KylinConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * A bi-way dictionary that maps from dimension/column values to IDs and vice
+ * versa. By storing IDs instead of real values, the size of cube is
+ * significantly reduced.
+ * 
+ * - IDs are smallest integers possible for the cardinality of a column, for the
+ * purpose of minimal storage space - IDs preserve ordering of values, such that
+ * range query can be applied to IDs directly
+ * 
+ * A dictionary once built, is immutable. This allows optimal memory footprint
+ * by e.g. flatten the Trie structure into a byte array, replacing node pointers
+ * with array offsets.
+ * 
+ * @author yangli9
+ */
+<span class="nc" id="L50">abstract public class Dictionary&lt;T&gt; implements Serializable {</span>
+<span class="nc" id="L51">    private static final Logger logger = LoggerFactory.getLogger(Dictionary.class);</span>
+
+    private static final long serialVersionUID = 1L;
+
+    // ID with all bit-1 (0xff e.g.) reserved for NULL value
+<span class="nc" id="L56">    public static final int[] NULL_ID = new int[] { 0, 0xff, 0xffff, 0xffffff, 0xffffffff };</span>
+
+    abstract public int getMinId();
+
+    abstract public int getMaxId();
+
+    public int getSize() {
+<span class="nc" id="L63">        return getMaxId() - getMinId() + 1;</span>
+    }
+
+    /**
+     * @return the size of an ID in bytes, determined by the cardinality of column
+     */
+    abstract public int getSizeOfId();
+
+    /**
+     * @return the (maximum) size of value in bytes, determined by the longest value
+     */
+    abstract public int getSizeOfValue();
+
+    /**
+     * @return true if each entry of this dict is contained by the dict in param
+     */
+    abstract public boolean contains(Dictionary&lt;?&gt; another);
+
+    /**
+     * Convenient form of &lt;code&gt;getIdFromValue(value, 0)&lt;/code&gt;
+     */
+    final public int getIdFromValue(T value) throws IllegalArgumentException {
+<span class="nc" id="L85">        return getIdFromValue(value, 0);</span>
+    }
+
+    /**
+     * Returns the ID integer of given value. In case of not found
+     * &lt;p&gt;
+     * - if roundingFlag=0, throw IllegalArgumentException; &lt;br&gt;
+     * - if roundingFlag&lt;0, the closest smaller ID integer if exist; &lt;br&gt;
+     * - if roundingFlag&gt;0, the closest bigger ID integer if exist. &lt;br&gt;
+     * &lt;p&gt;
+     * The implementation often has cache, thus faster than the byte[] version getIdFromValueBytes()
+     * 
+     * @throws IllegalArgumentException
+     *             if value is not found in dictionary and rounding is off;
+     *             or if rounding cannot find a smaller or bigger ID
+     */
+    final public int getIdFromValue(T value, int roundingFlag) throws IllegalArgumentException {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (isNullObjectForm(value))</span>
+<span class="nc" id="L103">            return nullId();</span>
+
+<span class="nc" id="L105">        int id = getIdFromValueImpl(value, roundingFlag);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (id == -1) {</span>
+<span class="nc" id="L107">            throw new IllegalArgumentException(&quot;Value : &quot; + value + &quot; not exists&quot;);</span>
+        }
+<span class="nc" id="L109">        return id;</span>
+    }
+
+    final public boolean containsValue(T value) throws IllegalArgumentException {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (isNullObjectForm(value)) {</span>
+<span class="nc" id="L114">            return true;</span>
+        } else {
+            try {
+                //if no key found, it will throw exception
+<span class="nc" id="L118">                getIdFromValueImpl(value, 0);</span>
+<span class="nc" id="L119">            } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L120">                return false;</span>
+<span class="nc" id="L121">            }</span>
+<span class="nc" id="L122">            return true;</span>
+        }
+    }
+
+    protected boolean isNullObjectForm(T value) {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        return value == null;</span>
+    }
+
+    abstract protected int getIdFromValueImpl(T value, int roundingFlag);
+
+    /**
+     * @return the value corresponds to the given ID
+     * @throws IllegalArgumentException
+     *             if ID is not found in dictionary
+     */
+    final public T getValueFromId(int id) throws IllegalArgumentException {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (isNullId(id))</span>
+<span class="nc" id="L139">            return null;</span>
+        else
+<span class="nc" id="L141">            return getValueFromIdImpl(id);</span>
+    }
+
+    /**
+     * @return the value bytes corresponds to the given ID
+     * @throws IllegalArgumentException
+     *             if ID is not found in dictionary
+     */
+    final public byte[] getValueByteFromId(int id) throws IllegalArgumentException {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (isNullId(id))</span>
+<span class="nc" id="L151">            return null;</span>
+        else
+<span class="nc" id="L153">            return getValueBytesFromIdImpl(id);</span>
+    }
+
+<span class="nc" id="L156">    protected int cacheHitCount = 0;</span>
+<span class="nc" id="L157">    protected int cacheMissCount = 0;</span>
+
+    protected byte[] getValueBytesFromIdImpl(int id) {
+<span class="nc" id="L160">        throw new  UnsupportedOperationException() ;</span>
+
+    }
+
+    public void printlnStatistics() {
+<span class="nc" id="L165">        logger.info(&quot;cache hit count: &quot; + cacheHitCount);</span>
+<span class="nc" id="L166">        logger.info(&quot;cache miss count: &quot; + cacheMissCount);</span>
+<span class="nc" id="L167">        logger.info(&quot;cache hit percent: &quot; + cacheHitCount * 1.0 / (cacheMissCount + cacheHitCount));</span>
+<span class="nc" id="L168">        cacheHitCount = 0;</span>
+<span class="nc" id="L169">        cacheMissCount = 0;</span>
+<span class="nc" id="L170">    }</span>
+
+    abstract protected T getValueFromIdImpl(int id);
+
+    abstract public void dump(PrintStream out);
+
+    public List&lt;T&gt; enumeratorValues() {
+<span class="nc" id="L177">        List&lt;T&gt; ret = Lists.newArrayListWithExpectedSize(getSize());</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        for (int i = getMinId(); i &lt;= getMaxId(); i++) {</span>
+<span class="nc" id="L179">            ret.add(getValueFromId(i));</span>
+        }
+<span class="nc" id="L181">        return ret;</span>
+    }
+
+    public int nullId() {
+<span class="nc" id="L185">        return NULL_ID[getSizeOfId()];</span>
+    }
+
+    public boolean isNullId(int id) {
+<span class="nc" id="L189">        int nullId = NULL_ID[getSizeOfId()];</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        return (nullId &amp; id) == nullId;</span>
+    }
+
+    // Some dict need updated when copy from one metadata environment to another
+    public Dictionary copyToAnotherMeta(KylinConfig srcConfig, KylinConfig dstConfig) throws IOException {
+<span class="nc" id="L195">        return this;</span>
+    }
+
+    /** utility that converts a dictionary ID to string, preserving order */
+    public static String dictIdToString(byte[] idBytes, int offset, int length) {
+        try {
+<span class="nc" id="L201">            return new String(idBytes, offset, length, &quot;ISO-8859-1&quot;);</span>
+<span class="nc" id="L202">        } catch (UnsupportedEncodingException e) {</span>
+            // never happen
+<span class="nc" id="L204">            return null;</span>
+        }
+    }
+
+    /** the reverse of dictIdToString(), returns integer ID */
+    public static int stringToDictId(String str) {
+        try {
+<span class="nc" id="L211">            byte[] bytes = str.getBytes(&quot;ISO-8859-1&quot;);</span>
+<span class="nc" id="L212">            return BytesUtil.readUnsigned(bytes, 0, bytes.length);</span>
+<span class="nc" id="L213">        } catch (UnsupportedEncodingException e) {</span>
+            // never happen
+<span class="nc" id="L215">            return 0;</span>
+        }
+    }
+
+    /** 
+     * Serialize the fields of this object to &lt;code&gt;out&lt;/code&gt;.
+     * 
+     * @param out &lt;code&gt;DataOuput&lt;/code&gt; to serialize this object into.
+     * @throws IOException
+     */
+    public abstract void write(DataOutput out) throws IOException;
+
+    /** 
+     * Deserialize the fields of this object from &lt;code&gt;in&lt;/code&gt;.  
+     * 
+     * &lt;p&gt;For efficiency, implementations should attempt to re-use storage in the 
+     * existing object where possible.&lt;/p&gt;
+     * 
+     * @param in &lt;code&gt;DataInput&lt;/code&gt; to deseriablize this object from.
+     * @throws IOException
+     */
+    public abstract void readFields(DataInput in) throws IOException;
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

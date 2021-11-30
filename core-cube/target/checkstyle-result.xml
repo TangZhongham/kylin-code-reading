@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/upgrade/common/CubeMetadataUpgrade.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/upgrade/common/MetadataVersionRefresher.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/RowKeyDecoder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/FuzzyMaskEncoder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/AbstractRowKeyEncoder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/RowKeyEncoder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/RowConstants.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/CubeDimEncMap.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/RowKeyColumnIO.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/FuzzyKeyEncoder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/RowKeyEncoderProvider.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/kv/LazyRowKeyEncoder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/util/KeyValueBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/util/CubingUtils.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/DimensionRangeInfo.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing2/CuboidTask.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing2/InMemCubeBuilder2.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing2/ICuboidCollectorWithCallBack.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing2/ICuboidResultListener.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing2/DefaultCuboidCollectorWithCallBack.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing2/DoggedCubeBuilder2.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeSegment.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/ConcurrentDiskStore.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/DoggedCubeBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/CuboidResult.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/MemDiskStore.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/InputConverterUnitForRawData.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/InputConverterUnitForBaseCuboid.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/CompoundCuboidWriter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/AbstractInMemCubeBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/InputConverter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/RecordConsumeBlockingQueueController.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/InMemCubeBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/ICuboidGTTableWriter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/InMemCubeBuilderUtils.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/InputConverterUnit.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/ICuboidWriter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/inmemcubing/ConsumeBlockingQueueController.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeDescManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cli/CubeSignatureRefresher.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cli/DictionaryGeneratorCLI.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cli/DumpDictionaryCLI.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/TreeCuboidScheduler.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/CuboidModeEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/DefaultCuboidScheduler.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/CuboidManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/CuboidRecommendAlgorithm.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/CuboidBenefitModel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/PBPUSCalculator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/BPUSCalculator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/CuboidStats.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/greedy/GreedyAlgorithm.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/AbstractRecommendAlgorithm.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/BenefitPolicy.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/GeneticAlgorithm.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/BitsChromosome.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/BitsMutation.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/BitsChromosomeHelper.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/RouletteWheelSelection.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/BitsOnePointCrossover.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/generic/CombinedStoppingCondition.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/SPBPUSCalculator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/CuboidStatsUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/algorithm/CuboidRecommender.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/CuboidScheduler.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/CuboidCLI.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/Cuboid.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/cuboid/CuboidUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/common/TupleFilterNode.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/common/FuzzyValueCombination.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/common/RowKeySplitter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/common/SegmentPruner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeInstance.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/RowKeyColDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/CubeJoinedFlatTableEnrich.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/HierarchyDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/AggregationGroup.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/HBaseMappingDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/SnapshotTableDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/CubeDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/SelectRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/HBaseColumnDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/DimensionDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/RowKeyDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/DictionaryDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/CubeDescTiretreeGlobalDomainDictUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/CubeBuildTypeEnum.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/TooManyCuboidException.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/HBaseColumnFamilyDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/SourceTableMetadataValidator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/IValidatorRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/rule/StreamingCubeRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/rule/AggregationGroupRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/rule/FunctionRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/rule/RowKeyAttrRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/rule/DictionaryRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/ResultLevel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/ValidateContext.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/validation/CubeMetadataValidator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/model/CubeJoinedFlatTableDesc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/RawQueryLastHacker.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeSegmentAdvisor.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeCapabilityChecker.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/CubeUpdate.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/CuboidToGridTableMapping.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/SegmentGTStartAndEnd.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/ComparatorEx.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/TrimmedCubeCodeSystem.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/TrimmedDimEnc.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/ScanRangePlannerBase.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/CubeGridTable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/RecordComparator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/TrimmedDimensionSerializer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/AsymmetricRecordComparator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/RecordComparators.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/CubeCodeSystem.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/cube/gridtable/CuboidToGridTableMappingExt.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/benchmark/GTScannerBenchmark2.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/benchmark/SortedGTRecordGenerator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/benchmark/GTScannerBenchmark.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTRowBlock.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTScanRequest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTAggregateScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTStorage.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTSampleCodeSystem.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTFilterScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTInfo.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTScanRequestBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/EmptyGTScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTComparator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/memstore/GTSimpleMemStore.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/UnitTestSupport.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/StorageSideBehavior.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTStore.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTRecord.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTForwardingScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTWriter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTBypassChecker.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTScanRange.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GridTable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTStreamAggregateScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/GTFunctionScanner.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/IGTCodeSystem.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/StorageLimitLevel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/main/java/org/apache/kylin/gridtable/DefaultGTComparator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/RowKeyAttrRuleTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/kv/RowKeyDecoderTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/kv/RowKeyEncoderTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeDescManagerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/inmemcubing/ConsumeBlockingQueueControllerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/inmemcubing/MemDiskStoreTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/inmemcubing/ConcurrentDiskStoreTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/inmemcubing/MemoryBudgetControllerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/DimensionRangeInfoTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/cuboid/CuboidSchedulerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/cuboid/CuboidUtilTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/cuboid/CuboidTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/cuboid/algorithm/CuboidStatsUtilTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/cuboid/TreeCuboidSchedulerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/cuboid/CombinationTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/AggregationGroupRuleTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeDescTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/project/ProjectManagerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/common/BytesSplitterTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/common/RowKeySplitterTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/common/SegmentPrunerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeManagerConcurrencyTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/model/validation/rule/FunctionRuleTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/ProjectSpecificConfigTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeSpecificConfigTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeManagerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeInstanceTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeSegmentsTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/cube/CubeManagerCacheTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/metadata/measure/MeasureCodecTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/metadata/measure/TopNMeasureTypeTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/gridtable/AggregationCacheSpillTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/gridtable/GTScanReqSerDerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/gridtable/TrimmedCubeCodeSystemTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/gridtable/AggregationCacheMemSizeTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/gridtable/DimEncodingPreserveOrderTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-cube/src/test/java/org/apache/kylin/gridtable/SimpleGridTableTest.java">
+</file>
+</checkstyle>

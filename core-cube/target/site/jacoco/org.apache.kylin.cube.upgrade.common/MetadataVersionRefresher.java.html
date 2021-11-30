@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetadataVersionRefresher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.upgrade.common</a> &gt; <span class="el_source">MetadataVersionRefresher.java</span></div><h1>MetadataVersionRefresher.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.upgrade.common;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.List;
+import java.util.NavigableSet;
+
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.metadata.MetadataConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * After upgrade a metadata store to current version,
+ * we'll label every RootPersistentEntity's version as KylinVersion.getCurrentVersion()
+ */
+public class MetadataVersionRefresher {
+
+<span class="nc" id="L43">    private static final Logger logger = LoggerFactory.getLogger(MetadataVersionRefresher.class);</span>
+
+    private ResourceStore store;
+    private String version;
+
+<span class="nc" id="L48">    public MetadataVersionRefresher(ResourceStore resourceStore, String version) {</span>
+<span class="nc" id="L49">        this.store = resourceStore;</span>
+<span class="nc" id="L50">        this.version = version;</span>
+
+<span class="nc" id="L52">    }</span>
+
+    public void refresh() throws IOException {
+<span class="nc" id="L55">        ObjectMapper mapper = new ObjectMapper();</span>
+<span class="nc" id="L56">        mapper.configure(SerializationFeature.INDENT_OUTPUT, true);</span>
+
+<span class="nc" id="L58">        List&lt;String&gt; all = Lists.newArrayList();</span>
+<span class="nc" id="L59">        collectFiles(this.store, &quot;/&quot;, all);</span>
+
+<span class="nc bnc" id="L61" title="All 2 branches missed.">        for (String path : all) {</span>
+<span class="nc bnc" id="L62" title="All 6 branches missed.">            if (path.endsWith(MetadataConstants.FILE_SURFIX) &amp;&amp; !(path.startsWith(ResourceStore.DICT_RESOURCE_ROOT) || path.startsWith(ResourceStore.SNAPSHOT_RESOURCE_ROOT))) {</span>
+<span class="nc" id="L63">                logger.info(&quot;Updating metadata version of path {}&quot;, path);</span>
+<span class="nc" id="L64">                ObjectNode objectNode = (ObjectNode) mapper.readTree(this.store.getResource(path).content());</span>
+<span class="nc" id="L65">                objectNode.put(&quot;version&quot;, version);</span>
+<span class="nc" id="L66">                ByteArrayOutputStream baos = new ByteArrayOutputStream();</span>
+<span class="nc" id="L67">                mapper.writeValue(baos, objectNode);</span>
+<span class="nc" id="L68">                ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());</span>
+<span class="nc" id="L69">                this.store.putResource(path, bais, System.currentTimeMillis());</span>
+            }
+<span class="nc" id="L71">        }</span>
+<span class="nc" id="L72">    }</span>
+
+    public static void collectFiles(ResourceStore src, String path, List&lt;String&gt; ret) throws IOException {
+<span class="nc" id="L75">        NavigableSet&lt;String&gt; children = src.listResources(path);</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (children == null) {</span>
+            // case of resource (not a folder)
+
+<span class="nc" id="L80">            ret.add(path);</span>
+        } else {
+            // case of folder
+
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            for (String child : children) {</span>
+<span class="nc" id="L85">                collectFiles(src, child, ret);</span>
+<span class="nc" id="L86">            }</span>
+        }
+<span class="nc" id="L88">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

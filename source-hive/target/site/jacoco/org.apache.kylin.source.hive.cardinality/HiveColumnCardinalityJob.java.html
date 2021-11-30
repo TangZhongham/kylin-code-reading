@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveColumnCardinalityJob.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive.cardinality</a> &gt; <span class="el_source">HiveColumnCardinalityJob.java</span></div><h1>HiveColumnCardinalityJob.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive.cardinality;
+
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.engine.mr.IMRInput.IMRTableInputFormat;
+import org.apache.kylin.engine.mr.MRUtil;
+import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
+import org.apache.kylin.engine.mr.common.BatchConstants;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * This hadoop job will scan all rows of the hive table and then calculate the cardinality on each column.
+ * @author shaoshi
+ *
+ */
+<span class="nc" id="L48">public class HiveColumnCardinalityJob extends AbstractHadoopJob {</span>
+<span class="nc" id="L49">    private static final Logger logger = LoggerFactory.getLogger(HiveColumnCardinalityJob.class);</span>
+    public static final String JOB_TITLE = &quot;Kylin Hive Column Cardinality Job&quot;;
+
+    @SuppressWarnings(&quot;static-access&quot;)
+<span class="nc" id="L53">    protected static final Option OPTION_TABLE = OptionBuilder.withArgName(&quot;table name&quot;).hasArg().isRequired(true)</span>
+<span class="nc" id="L54">            .withDescription(&quot;The hive table name&quot;).create(&quot;table&quot;);</span>
+
+    @Override
+    public int run(String[] args) throws Exception {
+        try {
+<span class="nc" id="L59">            Options options = new Options();</span>
+
+<span class="nc" id="L61">            options.addOption(OPTION_PROJECT);</span>
+<span class="nc" id="L62">            options.addOption(OPTION_TABLE);</span>
+<span class="nc" id="L63">            options.addOption(OPTION_OUTPUT_PATH);</span>
+
+<span class="nc" id="L65">            parseOptions(options, args);</span>
+
+            // start job
+<span class="nc" id="L68">            String jobName = JOB_TITLE + getOptionsAsString();</span>
+<span class="nc" id="L69">            logger.info(&quot;Starting: {}&quot;, jobName);</span>
+<span class="nc" id="L70">            Configuration conf = getConf();</span>
+
+<span class="nc" id="L72">            KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L73">            JobEngineConfig jobEngineConfig = new JobEngineConfig(kylinConfig);</span>
+<span class="nc" id="L74">            conf.addResource(new Path(jobEngineConfig.getHadoopJobConfFilePath(null)));</span>
+
+<span class="nc" id="L76">            job = Job.getInstance(conf, jobName);</span>
+
+<span class="nc" id="L78">            setJobClasspath(job, kylinConfig);</span>
+
+<span class="nc" id="L80">            String project = getOptionValue(OPTION_PROJECT);</span>
+<span class="nc" id="L81">            String table = getOptionValue(OPTION_TABLE);</span>
+<span class="nc" id="L82">            job.getConfiguration().set(BatchConstants.CFG_PROJECT_NAME, project);</span>
+<span class="nc" id="L83">            job.getConfiguration().set(BatchConstants.CFG_TABLE_NAME, table);</span>
+
+<span class="nc" id="L85">            Path output = new Path(getOptionValue(OPTION_OUTPUT_PATH));</span>
+<span class="nc" id="L86">            FileOutputFormat.setOutputPath(job, output);</span>
+<span class="nc" id="L87">            job.getConfiguration().set(&quot;dfs.blocksize&quot;, &quot;67108864&quot;);</span>
+<span class="nc" id="L88">            job.getConfiguration().set(&quot;mapreduce.output.fileoutputformat.compress&quot;, &quot;false&quot;);</span>
+
+            // Mapper
+<span class="nc" id="L91">            IMRTableInputFormat tableInputFormat = MRUtil.getTableInputFormat(table, project,</span>
+<span class="nc" id="L92">                    getOptionValue(OPTION_CUBING_JOB_ID));</span>
+<span class="nc" id="L93">            tableInputFormat.configureJob(job);</span>
+
+<span class="nc" id="L95">            job.setMapperClass(ColumnCardinalityMapper.class);</span>
+<span class="nc" id="L96">            job.setMapOutputKeyClass(IntWritable.class);</span>
+<span class="nc" id="L97">            job.setMapOutputValueClass(BytesWritable.class);</span>
+
+            // Reducer - only one
+<span class="nc" id="L100">            job.setReducerClass(ColumnCardinalityReducer.class);</span>
+<span class="nc" id="L101">            job.setOutputFormatClass(TextOutputFormat.class);</span>
+<span class="nc" id="L102">            job.setOutputKeyClass(IntWritable.class);</span>
+<span class="nc" id="L103">            job.setOutputValueClass(LongWritable.class);</span>
+<span class="nc" id="L104">            job.setNumReduceTasks(1);</span>
+
+<span class="nc" id="L106">            this.deletePath(job.getConfiguration(), output);</span>
+
+<span class="nc" id="L108">            logger.info(&quot;Going to submit HiveColumnCardinalityJob for table '{}'&quot;, table);</span>
+
+<span class="nc" id="L110">            TableDesc tableDesc = TableMetadataManager.getInstance(kylinConfig).getTableDesc(table, project);</span>
+<span class="nc" id="L111">            attachTableMetadata(tableDesc, job.getConfiguration());</span>
+<span class="nc" id="L112">            return waitForCompletion(job);</span>
+        } finally {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            if (job != null)</span>
+<span class="nc" id="L115">                cleanupTempConfFile(job.getConfiguration());</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

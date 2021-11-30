@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RealizationRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.realization</a> &gt; <span class="el_source">RealizationRegistry.java</span></div><h1>RealizationRegistry.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.realization;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ClassUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ */
+public class RealizationRegistry {
+
+<span class="nc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(RealizationRegistry.class);</span>
+
+    public static RealizationRegistry getInstance(KylinConfig config) {
+<span class="nc" id="L40">        return config.getManager(RealizationRegistry.class);</span>
+    }
+
+    // called by reflection
+    static RealizationRegistry newInstance(KylinConfig config) throws IOException {
+<span class="nc" id="L45">        return new RealizationRegistry(config);</span>
+    }
+
+    // ============================================================================
+
+    private Map&lt;RealizationType, IRealizationProvider&gt; providers;
+    private KylinConfig config;
+
+<span class="nc" id="L53">    private RealizationRegistry(KylinConfig config) throws IOException {</span>
+<span class="nc" id="L54">        logger.info(&quot;Initializing RealizationRegistry with metadata url &quot; + config);</span>
+<span class="nc" id="L55">        this.config = config;</span>
+<span class="nc" id="L56">        init();</span>
+<span class="nc" id="L57">    }</span>
+
+    private void init() {
+<span class="nc" id="L60">        providers = Maps.newConcurrentMap();</span>
+
+        // use reflection to load providers
+<span class="nc" id="L63">        String[] providerNames = config.getRealizationProviders();</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        for (String clsName : providerNames) {</span>
+            try {
+<span class="nc" id="L66">                Class&lt;? extends IRealizationProvider&gt; cls = ClassUtil.forName(clsName, IRealizationProvider.class);</span>
+<span class="nc" id="L67">                IRealizationProvider p = (IRealizationProvider) cls.getMethod(&quot;getInstance&quot;, KylinConfig.class).invoke(null, config);</span>
+<span class="nc" id="L68">                providers.put(p.getRealizationType(), p);</span>
+
+<span class="nc" id="L70">            } catch (Exception | NoClassDefFoundError e) {</span>
+<span class="nc bnc" id="L71" title="All 4 branches missed.">                if (e instanceof ClassNotFoundException || e instanceof NoClassDefFoundError)</span>
+<span class="nc" id="L72">                    logger.warn(&quot;Failed to create realization provider &quot; + e);</span>
+                else
+<span class="nc" id="L74">                    logger.error(&quot;Failed to create realization provider&quot;, e);</span>
+<span class="nc" id="L75">            }</span>
+        }
+
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (providers.isEmpty())</span>
+<span class="nc" id="L79">            throw new IllegalArgumentException(&quot;Failed to find realization provider by url: &quot; + config.getMetadataUrl());</span>
+
+<span class="nc" id="L81">        logger.info(&quot;RealizationRegistry is &quot; + providers);</span>
+<span class="nc" id="L82">    }</span>
+
+    public Set&lt;RealizationType&gt; getRealizationTypes() {
+<span class="nc" id="L85">        return Collections.unmodifiableSet(providers.keySet());</span>
+    }
+
+    public IRealization getRealization(RealizationType type, String name) {
+<span class="nc" id="L89">        IRealizationProvider p = providers.get(type);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        if (p == null) {</span>
+<span class="nc" id="L91">            logger.warn(&quot;No provider for realization type &quot; + type);</span>
+<span class="nc" id="L92">            return null;</span>
+        }
+
+        try {
+<span class="nc" id="L96">            return p.getRealization(name);</span>
+<span class="nc" id="L97">        } catch (Exception ex) {</span>
+            // exception is possible if e.g. cube metadata is wrong
+<span class="nc" id="L99">            logger.warn(&quot;Failed to load realization &quot; + type + &quot;:&quot; + name, ex);</span>
+<span class="nc" id="L100">            return null;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

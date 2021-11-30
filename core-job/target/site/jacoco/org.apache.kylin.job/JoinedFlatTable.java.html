@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JoinedFlatTable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job</a> &gt; <span class="el_source">JoinedFlatTable.java</span></div><h1>JoinedFlatTable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.RowKeyColDesc;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.PartitionDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import static org.apache.kylin.job.util.FlatTableSqlQuoteUtils.quoteIdentifier;
+import static org.apache.kylin.job.util.FlatTableSqlQuoteUtils.quoteTableIdentity;
+import static org.apache.kylin.job.util.FlatTableSqlQuoteUtils.quoteIdentifierInSqlExpr;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+<span class="nc" id="L51">public class JoinedFlatTable {</span>
+    public static final String TEXTFILE = &quot;TEXTFILE&quot;;
+    public static final String SEQUENCEFILE = &quot;SEQUENCEFILE&quot;;
+
+    public static String getTableDir(IJoinedFlatTableDesc flatDesc, String storageDfsDir) {
+<span class="nc" id="L56">        return storageDfsDir + &quot;/&quot; + flatDesc.getTableName();</span>
+    }
+
+    public static String generateHiveInitStatements(String flatTableDatabase) {
+
+<span class="nc" id="L61">        StringBuilder buffer = new StringBuilder();</span>
+<span class="nc" id="L62">        buffer.append(&quot;USE &quot;).append(flatTableDatabase).append(&quot;;\n&quot;);</span>
+<span class="nc" id="L63">        return buffer.toString();</span>
+    }
+
+    public static String generateCreateTableStatement(IJoinedFlatTableDesc flatDesc, String storageDfsDir) {
+<span class="nc" id="L67">        String storageFormat = flatDesc.getSegment().getConfig().getFlatTableStorageFormat();</span>
+<span class="nc" id="L68">        return generateCreateTableStatement(flatDesc, storageDfsDir, storageFormat);</span>
+    }
+
+    public static String generateCreateTableStatement(IJoinedFlatTableDesc flatDesc, String storageDfsDir,
+            String storageFormat) {
+<span class="nc" id="L73">        String fieldDelimiter = flatDesc.getDataModel().getConfig().getFlatTableFieldDelimiter();</span>
+<span class="nc" id="L74">        return generateCreateTableStatement(flatDesc, storageDfsDir, storageFormat, fieldDelimiter);</span>
+    }
+
+    public static String generateCreateTableStatement(IJoinedFlatTableDesc flatDesc, String storageDfsDir,
+            String storageFormat, String fieldDelimiter) {
+<span class="nc" id="L79">        StringBuilder ddl = new StringBuilder();</span>
+
+<span class="nc" id="L81">        ddl.append(&quot;CREATE EXTERNAL TABLE IF NOT EXISTS &quot; + flatDesc.getTableName() + &quot;\n&quot;);</span>
+
+<span class="nc" id="L83">        ddl.append(&quot;(&quot; + &quot;\n&quot;);</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        for (int i = 0; i &lt; flatDesc.getAllColumns().size(); i++) {</span>
+<span class="nc" id="L85">            TblColRef col = flatDesc.getAllColumns().get(i);</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">            if (i &gt; 0) {</span>
+<span class="nc" id="L87">                ddl.append(&quot;,&quot;);</span>
+            }
+<span class="nc" id="L89">            ddl.append(quoteIdentifier(colName(col, flatDesc.useAlias()), null) + &quot; &quot; + getHiveDataType(col.getDatatype()) + &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L91">        ddl.append(&quot;)&quot; + &quot;\n&quot;);</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (TEXTFILE.equals(storageFormat)) {</span>
+<span class="nc" id="L93">            ddl.append(&quot;ROW FORMAT DELIMITED FIELDS TERMINATED BY '&quot; + fieldDelimiter + &quot;'\n&quot;);</span>
+        }
+<span class="nc" id="L95">        ddl.append(&quot;STORED AS &quot; + storageFormat + &quot;\n&quot;);</span>
+<span class="nc" id="L96">        ddl.append(&quot;LOCATION '&quot; + getTableDir(flatDesc, storageDfsDir) + &quot;';&quot;).append(&quot;\n&quot;);</span>
+<span class="nc" id="L97">        ddl.append(&quot;ALTER TABLE &quot; + flatDesc.getTableName() + &quot; SET TBLPROPERTIES('auto.purge'='true');\n&quot;);</span>
+<span class="nc" id="L98">        return ddl.toString();</span>
+    }
+
+    public static String generateDropTableStatement(IJoinedFlatTableDesc flatDesc) {
+<span class="nc" id="L102">        StringBuilder ddl = new StringBuilder();</span>
+<span class="nc" id="L103">        ddl.append(&quot;DROP TABLE IF EXISTS &quot; + flatDesc.getTableName() + &quot;;&quot;).append(&quot;\n&quot;);</span>
+<span class="nc" id="L104">        return ddl.toString();</span>
+    }
+
+    public static String generateInsertDataStatement(IJoinedFlatTableDesc flatDesc) {
+<span class="nc" id="L108">        CubeSegment segment = ((CubeSegment) flatDesc.getSegment());</span>
+        KylinConfig kylinConfig;
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (null == segment) {</span>
+<span class="nc" id="L111">            kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+        } else {
+<span class="nc" id="L113">            kylinConfig = (flatDesc.getSegment()).getConfig();</span>
+        }
+
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (kylinConfig.isAdvancedFlatTableUsed()) {</span>
+            try {
+<span class="nc" id="L118">                Class advancedFlatTable = Class.forName(kylinConfig.getAdvancedFlatTableClass());</span>
+<span class="nc" id="L119">                Method method = advancedFlatTable.getMethod(&quot;generateInsertDataStatement&quot;, IJoinedFlatTableDesc.class,</span>
+                        JobEngineConfig.class);
+<span class="nc" id="L121">                return (String) method.invoke(null, flatDesc);</span>
+<span class="nc" id="L122">            } catch (Exception e) {</span>
+<span class="nc" id="L123">                throw new RuntimeException(e);</span>
+            }
+        }
+
+<span class="nc" id="L127">        return &quot;INSERT OVERWRITE TABLE &quot; + quoteIdentifier(flatDesc.getTableName(), null) + &quot; &quot; + generateSelectDataStatement(flatDesc)</span>
+                + &quot;;\n&quot;;
+    }
+
+    public static String generateSelectDataStatement(IJoinedFlatTableDesc flatDesc) {
+<span class="fc" id="L132">        return generateSelectDataStatement(flatDesc, false, null, null);</span>
+    }
+
+    public static String generateSelectDataStatement(IJoinedFlatTableDesc flatDesc, boolean singleLine,
+                                                     String[] skipAs, SqlDialect sqlDialect) {
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        final String sep = singleLine ? &quot; &quot; : &quot;\n&quot;;</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        final List&lt;String&gt; skipAsList = (skipAs == null) ? new ArrayList&lt;&gt;() : Arrays.asList(skipAs);</span>
+
+<span class="fc" id="L140">        StringBuilder sql = new StringBuilder();</span>
+<span class="fc" id="L141">        sql.append(&quot;SELECT&quot; + sep);</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        for (int i = 0; i &lt; flatDesc.getAllColumns().size(); i++) {</span>
+<span class="fc" id="L144">            TblColRef col = flatDesc.getAllColumns().get(i);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (i &gt; 0) {</span>
+<span class="fc" id="L146">                sql.append(&quot;,&quot;);</span>
+            }
+<span class="fc" id="L148">            String colTotalName = String.format(Locale.ROOT, &quot;%s.%s&quot;, col.getTableRef().getTableName(), col.getName());</span>
+<span class="fc" id="L149">            String quotedColTotalName = String.format(Locale.ROOT, &quot;%s.%s&quot;,</span>
+<span class="fc" id="L150">                    quoteIdentifier(col.getTableAlias(), sqlDialect),</span>
+<span class="fc" id="L151">                    quoteIdentifier(col.getName(), sqlDialect));</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (skipAsList.contains(colTotalName)) {</span>
+<span class="nc" id="L153">                sql.append(quotedColTotalName).append(sep);</span>
+            } else {
+<span class="fc" id="L155">                sql.append(quotedColTotalName).append(&quot; as &quot;).append(quoteIdentifier(colName(col), sqlDialect))</span>
+<span class="fc" id="L156">                        .append(sep);</span>
+            }
+        }
+<span class="fc" id="L159">        appendJoinStatement(flatDesc, sql, singleLine, sqlDialect);</span>
+<span class="fc" id="L160">        appendWhereStatement(flatDesc, sql, singleLine, sqlDialect);</span>
+<span class="fc" id="L161">        return sql.toString();</span>
+    }
+
+    static void appendJoinStatement(IJoinedFlatTableDesc flatDesc, StringBuilder sql, boolean singleLine, SqlDialect sqlDialect) {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        final String sep = singleLine ? &quot; &quot; : &quot;\n&quot;;</span>
+<span class="fc" id="L166">        Set&lt;TableRef&gt; dimTableCache = new HashSet&lt;&gt;();</span>
+
+<span class="fc" id="L168">        DataModelDesc model = flatDesc.getDataModel();</span>
+<span class="fc" id="L169">        TableRef rootTable = model.getRootFactTable();</span>
+<span class="fc" id="L170">        sql.append(&quot; FROM &quot;).append(quoteTableIdentity(flatDesc.getDataModel().getRootFactTable(), sqlDialect))</span>
+<span class="fc" id="L171">                .append(&quot; as &quot;).append(quoteIdentifier(rootTable.getAlias(), sqlDialect)).append(sep);</span>
+
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        for (JoinTableDesc lookupDesc : model.getJoinTables()) {</span>
+<span class="nc" id="L174">            JoinDesc join = lookupDesc.getJoin();</span>
+<span class="nc bnc" id="L175" title="All 4 branches missed.">            if (join != null &amp;&amp; join.getType().equals(&quot;&quot;) == false) {</span>
+<span class="nc" id="L176">                TableRef dimTable = lookupDesc.getTableRef();</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                if (!dimTableCache.contains(dimTable)) {</span>
+<span class="nc" id="L178">                    TblColRef[] pk = join.getPrimaryKeyColumns();</span>
+<span class="nc" id="L179">                    TblColRef[] fk = join.getForeignKeyColumns();</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                    if (pk.length != fk.length) {</span>
+<span class="nc" id="L181">                        throw new RuntimeException(&quot;Invalid join condition of lookup table:&quot; + lookupDesc);</span>
+                    }
+<span class="nc" id="L183">                    String joinType = join.getType().toUpperCase(Locale.ROOT);</span>
+<span class="nc" id="L184">                    sql.append(joinType).append(&quot; JOIN &quot;).append(quoteTableIdentity(dimTable, sqlDialect))</span>
+<span class="nc" id="L185">                            .append(&quot; as &quot;).append(quoteIdentifier(dimTable.getAlias(), sqlDialect)).append(sep);</span>
+<span class="nc" id="L186">                    sql.append(&quot;ON &quot;);</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">                    for (int i = 0; i &lt; pk.length; i++) {</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">                        if (i &gt; 0) {</span>
+<span class="nc" id="L189">                            sql.append(&quot; AND &quot;);</span>
+                        }
+<span class="nc" id="L191">                        sql.append(getQuotedColExpressionInSourceDB(flatDesc, fk[i], sqlDialect)).append(&quot; = &quot;)</span>
+<span class="nc" id="L192">                                .append(getQuotedColExpressionInSourceDB(flatDesc, pk[i], sqlDialect));</span>
+                    }
+<span class="nc" id="L194">                    sql.append(sep);</span>
+
+<span class="nc" id="L196">                    dimTableCache.add(dimTable);</span>
+                }
+            }
+        }
+<span class="fc" id="L200">    }</span>
+
+    private static void appendDistributeStatement(StringBuilder sql, List&lt;TblColRef&gt; redistCols) {
+<span class="nc" id="L203">        sql.append(&quot; DISTRIBUTE BY &quot;);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        for (TblColRef redistCol : redistCols) {</span>
+<span class="nc" id="L205">            sql.append(colName(redistCol, true)).append(&quot;,&quot;);</span>
+<span class="nc" id="L206">        }</span>
+<span class="nc" id="L207">        sql.deleteCharAt(sql.length() - 1);</span>
+<span class="nc" id="L208">        sql.append(&quot;;\n&quot;);</span>
+<span class="nc" id="L209">    }</span>
+
+    private static void appendClusterStatement(StringBuilder sql, TblColRef clusterCol) {
+<span class="nc" id="L212">        sql.append(&quot; CLUSTER BY CAST(&quot;).append(colName(clusterCol)).append(&quot; AS STRING);\n&quot;);</span>
+<span class="nc" id="L213">    }</span>
+
+    private static void appendWhereStatement(IJoinedFlatTableDesc flatDesc, StringBuilder sql, boolean singleLine, SqlDialect sqlDialect) {
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        final String sep = singleLine ? &quot; &quot; : &quot;\n&quot;;</span>
+
+<span class="fc" id="L218">        StringBuilder whereBuilder = new StringBuilder();</span>
+<span class="fc" id="L219">        whereBuilder.append(&quot;WHERE 1=1&quot;);</span>
+
+<span class="fc" id="L221">        DataModelDesc model = flatDesc.getDataModel();</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if (StringUtils.isNotEmpty(model.getFilterCondition())) {</span>
+<span class="fc" id="L223">            String filterCondition = model.getFilterCondition();</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">            if (flatDesc.getSegment() != null) {</span>
+<span class="fc" id="L225">                JoinedFormatter formatter = new JoinedFormatter(flatDesc);</span>
+<span class="fc" id="L226">                filterCondition = formatter.formatSentence(model.getFilterCondition());</span>
+            }
+<span class="fc" id="L228">            String quotedFilterCondition = quoteIdentifierInSqlExpr(flatDesc, filterCondition, null);</span>
+<span class="fc" id="L229">            whereBuilder.append(&quot; AND (&quot;).append(quotedFilterCondition).append(&quot;) &quot;); // -&gt; filter condition contains special character may cause bug</span>
+        }
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if (flatDesc.getSegment() != null) {</span>
+<span class="fc" id="L232">            PartitionDesc partDesc = model.getPartitionDesc();</span>
+<span class="pc bpc" id="L233" title="2 of 4 branches missed.">            if (partDesc != null &amp;&amp; partDesc.getPartitionDateColumn() != null) {</span>
+<span class="nc" id="L234">                SegmentRange segRange = flatDesc.getSegRange();</span>
+
+<span class="nc bnc" id="L236" title="All 4 branches missed.">                if (segRange != null &amp;&amp; !segRange.isInfinite()) {</span>
+<span class="nc" id="L237">                    whereBuilder.append(&quot; AND (&quot;);</span>
+<span class="nc" id="L238">                    String quotedPartitionCond = quoteIdentifierInSqlExpr(flatDesc,</span>
+<span class="nc" id="L239">                            partDesc.getPartitionConditionBuilder().buildDateRangeCondition(partDesc, flatDesc.getSegment(), segRange, null), sqlDialect);</span>
+<span class="nc" id="L240">                    whereBuilder.append(quotedPartitionCond);</span>
+<span class="nc" id="L241">                    whereBuilder.append(&quot;)&quot; + sep);</span>
+                }
+            }
+        }
+
+<span class="fc" id="L246">        sql.append(whereBuilder.toString());</span>
+<span class="fc" id="L247">    }</span>
+
+    public static String colName(TblColRef col) {
+<span class="fc" id="L250">        return colName(col, true);</span>
+    }
+
+    public static String colName(TblColRef col, boolean useAlias) {
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        return useAlias ? col.getTableAlias() + &quot;_&quot; + col.getName() : col.getName();</span>
+    }
+
+    private static String getHiveDataType(String javaDataType) {
+<span class="nc" id="L258">        String originDataType = javaDataType.toLowerCase(Locale.ROOT);</span>
+        String hiveDataType;
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (originDataType.startsWith(&quot;varchar&quot;)) {</span>
+<span class="nc" id="L261">            hiveDataType = &quot;string&quot;;</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        } else if (originDataType.startsWith(&quot;integer&quot;)) {</span>
+<span class="nc" id="L263">            hiveDataType = &quot;int&quot;;</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        } else if (originDataType.startsWith(&quot;bigint&quot;)) {</span>
+<span class="nc" id="L265">            hiveDataType = &quot;bigint&quot;;</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        } else if (originDataType.startsWith(&quot;double&quot;)) {</span>
+<span class="nc" id="L267">            hiveDataType = &quot;double&quot;;</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        } else if (originDataType.startsWith(&quot;float&quot;)) {</span>
+<span class="nc" id="L269">            hiveDataType = &quot;float&quot;;</span>
+        } else {
+<span class="nc" id="L271">            hiveDataType = originDataType;</span>
+        }
+
+<span class="nc" id="L274">        return hiveDataType;</span>
+    }
+
+    public static String generateRedistributeFlatTableStatement(IJoinedFlatTableDesc flatDesc, CubeDesc cubeDesc) {
+<span class="nc" id="L278">        final String tableName = flatDesc.getTableName();</span>
+<span class="nc" id="L279">        StringBuilder sql = new StringBuilder();</span>
+<span class="nc" id="L280">        sql.append(&quot;INSERT OVERWRITE TABLE &quot; + quoteIdentifier(tableName, null) + &quot; SELECT * FROM &quot; + quoteIdentifier(tableName, null));</span>
+
+<span class="nc bnc" id="L282" title="All 2 branches missed.">        if (flatDesc.getClusterBy() != null) {</span>
+<span class="nc" id="L283">            appendClusterStatement(sql, flatDesc.getClusterBy());</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        } else if (flatDesc.getDistributedBy() != null) {</span>
+<span class="nc" id="L285">            appendDistributeStatement(sql, Lists.newArrayList(flatDesc.getDistributedBy()));</span>
+        } else {
+<span class="nc" id="L287">            int redistColumnCount = cubeDesc.getConfig().getHiveRedistributeColumnCount();</span>
+
+<span class="nc" id="L289">            RowKeyColDesc[] rowKeyColDescs = cubeDesc.getRowkey().getRowKeyColumns();</span>
+
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (rowKeyColDescs.length &lt; redistColumnCount)</span>
+<span class="nc" id="L292">                redistColumnCount = rowKeyColDescs.length;</span>
+
+<span class="nc" id="L294">            List&lt;TblColRef&gt; redistColumns = Lists.newArrayListWithCapacity(redistColumnCount);</span>
+
+<span class="nc bnc" id="L296" title="All 2 branches missed.">            for (int i = 0; i &lt; redistColumnCount; i++) {</span>
+<span class="nc" id="L297">                redistColumns.add(rowKeyColDescs[i].getColRef());</span>
+            }
+
+<span class="nc" id="L300">            appendDistributeStatement(sql, redistColumns);</span>
+        }
+
+<span class="nc" id="L303">        return sql.toString();</span>
+    }
+
+    public static String getQuotedColExpressionInSourceDB(IJoinedFlatTableDesc flatDesc, TblColRef col, SqlDialect sqlDialect) {
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        if (!col.getColumnDesc().isComputedColumn()) {</span>
+<span class="nc" id="L308">            return quoteIdentifier(col.getTableAlias(), sqlDialect) + &quot;.&quot;</span>
+<span class="nc" id="L309">                    + quoteIdentifier(col.getName(), sqlDialect);</span>
+        } else {
+<span class="nc" id="L311">            String computeExpr = col.getColumnDesc().getComputedColumnExpr();</span>
+<span class="nc" id="L312">            return quoteIdentifierInSqlExpr(flatDesc, computeExpr, sqlDialect);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

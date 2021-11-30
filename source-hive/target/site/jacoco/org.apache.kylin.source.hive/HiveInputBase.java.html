@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveInputBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">HiveInputBase.java</span></div><h1>HiveInputBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.hive;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Base64;
+import java.util.Objects;
+import java.util.Set;
+import java.util.Locale;
+import java.util.Collections;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.HiveCmdBuilder;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.engine.mr.IInput;
+import org.apache.kylin.engine.mr.JobBuilderSupport;
+import org.apache.kylin.engine.mr.steps.CubingExecutableUtil;
+import org.apache.kylin.job.JoinedFlatTable;
+import org.apache.kylin.job.common.ShellExecutable;
+import org.apache.kylin.job.constant.ExecutableConstants;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.job.util.FlatTableSqlQuoteUtils;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.IEngineAware;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+<span class="nc" id="L64">public class HiveInputBase {</span>
+
+<span class="fc" id="L66">    private static final Logger logger = LoggerFactory.getLogger(HiveInputBase.class);</span>
+
+    public static class BaseBatchCubingInputSide implements IInput.IBatchCubingInputSide {
+
+        final protected IJoinedFlatTableDesc flatDesc;
+        final protected String flatTableDatabase;
+        final protected String hdfsWorkingDir;
+
+<span class="nc" id="L74">        List&lt;String&gt; hiveViewIntermediateTables = Lists.newArrayList();</span>
+
+<span class="nc" id="L76">        public BaseBatchCubingInputSide(IJoinedFlatTableDesc flatDesc) {</span>
+<span class="nc" id="L77">            KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L78">            this.flatDesc = flatDesc;</span>
+<span class="nc" id="L79">            this.flatTableDatabase = config.getHiveDatabaseForIntermediateTable();</span>
+<span class="nc" id="L80">            this.hdfsWorkingDir = config.getHdfsWorkingDirectory();</span>
+<span class="nc" id="L81">        }</span>
+
+        @Override
+        public void addStepPhase1_CreateFlatTable(DefaultChainedExecutable jobFlow) {
+<span class="nc" id="L85">            final String cubeName = CubingExecutableUtil.getCubeName(jobFlow.getParams());</span>
+<span class="nc" id="L86">            CubeInstance cubeInstance = CubeManager.getInstance(KylinConfig.getInstanceFromEnv()).getCube(cubeName);</span>
+<span class="nc" id="L87">            final KylinConfig cubeConfig = cubeInstance.getConfig();</span>
+
+<span class="nc" id="L89">            final String hiveInitStatements = JoinedFlatTable.generateHiveInitStatements(flatTableDatabase);</span>
+
+            // create flat table first
+<span class="nc" id="L92">            addStepPhase1_DoCreateFlatTable(jobFlow);</span>
+
+            // create global dict
+<span class="nc" id="L95">            KylinConfig dictConfig = (flatDesc.getSegment()).getConfig();</span>
+<span class="nc" id="L96">            String[] mrHiveDictColumns = dictConfig.getMrHiveDictColumns();</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (mrHiveDictColumns.length &gt; 0) {</span>
+<span class="nc" id="L98">                String globalDictDatabase = dictConfig.getMrHiveDictDB();</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                if (null == globalDictDatabase) {</span>
+<span class="nc" id="L100">                    throw new IllegalArgumentException(&quot;Mr-Hive Global dict database is null.&quot;);</span>
+                }
+<span class="nc" id="L102">                String globalDictTable = cubeName + dictConfig.getMrHiveDictTableSuffix();</span>
+<span class="nc" id="L103">                addStepPhase1_DoCreateMrHiveGlobalDict(jobFlow, mrHiveDictColumns, globalDictDatabase, globalDictTable);</span>
+            }
+
+            // then count and redistribute
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (cubeConfig.isHiveRedistributeEnabled()) {</span>
+<span class="nc" id="L108">                final KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+                //jobFlow.addTask(createRedistributeFlatHiveTableStep(hiveInitStatements, cubeName, flatDesc, cubeInstance.getDescriptor()));
+<span class="nc bnc" id="L110" title="All 4 branches missed.">                if (kylinConfig.isLivyEnabled() &amp;&amp; cubeInstance.getEngineType() == IEngineAware.ID_SPARK) {</span>
+<span class="nc" id="L111">                    jobFlow.addTask(createRedistributeFlatHiveTableByLivyStep(hiveInitStatements, cubeName, flatDesc,</span>
+<span class="nc" id="L112">                            cubeInstance.getDescriptor()));</span>
+                } else {
+<span class="nc" id="L114">                    jobFlow.addTask(createRedistributeFlatHiveTableStep(hiveInitStatements, cubeName, flatDesc,</span>
+<span class="nc" id="L115">                            cubeInstance.getDescriptor()));</span>
+                }
+            }
+
+            // special for hive
+<span class="nc" id="L120">            addStepPhase1_DoMaterializeLookupTable(jobFlow);</span>
+<span class="nc" id="L121">        }</span>
+
+        protected void addStepPhase1_DoCreateMrHiveGlobalDict(DefaultChainedExecutable jobFlow,
+                String[] mrHiveDictColumns, String globalDictDatabase, String globalDictTable) {
+<span class="nc" id="L125">            final String cubeName = CubingExecutableUtil.getCubeName(jobFlow.getParams());</span>
+<span class="nc" id="L126">            final String hiveInitStatements = JoinedFlatTable.generateHiveInitStatements(flatTableDatabase);</span>
+<span class="nc" id="L127">            final String jobWorkingDir = getJobWorkingDir(jobFlow, hdfsWorkingDir);</span>
+
+<span class="nc" id="L129">            jobFlow.addTask(createMrHiveGlobalDictExtractStep(flatDesc, hiveInitStatements, jobWorkingDir, cubeName,</span>
+                    mrHiveDictColumns, globalDictDatabase, globalDictTable));
+<span class="nc" id="L131">            jobFlow.addTask(createMrHIveGlobalDictBuildStep(flatDesc, hiveInitStatements, hdfsWorkingDir, cubeName,</span>
+                    mrHiveDictColumns, flatTableDatabase, globalDictDatabase, globalDictTable));
+<span class="nc" id="L133">            jobFlow.addTask(createMrHiveGlobalDictReplaceStep(flatDesc, hiveInitStatements, hdfsWorkingDir, cubeName,</span>
+                    mrHiveDictColumns, flatTableDatabase, globalDictDatabase, globalDictTable));
+<span class="nc" id="L135">        }</span>
+
+        protected static AbstractExecutable createMrHiveGlobalDictExtractStep(IJoinedFlatTableDesc flatDesc,
+                String hiveInitStatements, String jobWorkingDir, String cubeName, String[] mrHiveDictColumns,
+                String globalDictDatabase, String globalDictTable) {
+            // Firstly, determine if the global dict hive table of cube is exists.
+<span class="nc" id="L141">            String createGlobalDictTableHql = &quot;CREATE TABLE IF NOT EXISTS &quot; + globalDictDatabase + &quot;.&quot; + globalDictTable</span>
+                    + &quot;\n&quot; + &quot;( dict_key STRING COMMENT '', \n&quot; + &quot;dict_val INT COMMENT '' \n&quot; + &quot;) \n&quot;
+                    + &quot;COMMENT '' \n&quot; + &quot;PARTITIONED BY (dict_column string) \n&quot; + &quot;STORED AS TEXTFILE; \n&quot;;
+
+<span class="nc" id="L145">            final String dropDictIntermediateTableHql = MRHiveDictUtil.generateDropTableStatement(flatDesc);</span>
+<span class="nc" id="L146">            final String createDictIntermediateTableHql = MRHiveDictUtil.generateCreateTableStatement(flatDesc);</span>
+
+<span class="nc" id="L148">            StringBuilder insertDataToDictIntermediateTableSql = new StringBuilder();</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">            for (String dictColumn : mrHiveDictColumns) {</span>
+<span class="nc" id="L150">                insertDataToDictIntermediateTableSql</span>
+<span class="nc" id="L151">                        .append(MRHiveDictUtil.generateInsertDataStatement(flatDesc, dictColumn));</span>
+            }
+
+<span class="nc" id="L154">            CreateMrHiveDictStep step = new CreateMrHiveDictStep();</span>
+<span class="nc" id="L155">            step.setInitStatement(hiveInitStatements);</span>
+<span class="nc" id="L156">            step.setCreateTableStatement(createGlobalDictTableHql + dropDictIntermediateTableHql</span>
+<span class="nc" id="L157">                    + createDictIntermediateTableHql + insertDataToDictIntermediateTableSql.toString());</span>
+<span class="nc" id="L158">            CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L159">            step.setName(ExecutableConstants.STEP_NAME_GLOBAL_DICT_MRHIVE_EXTRACT_DICTVAL);</span>
+<span class="nc" id="L160">            return step;</span>
+        }
+
+        protected static AbstractExecutable createMrHIveGlobalDictBuildStep(IJoinedFlatTableDesc flatDesc,
+                String hiveInitStatements, String hdfsWorkingDir, String cubeName, String[] mrHiveDictColumns,
+                String flatTableDatabase, String globalDictDatabase, String globalDictTable) {
+<span class="nc" id="L166">            String flatTable = flatTableDatabase + &quot;.&quot;</span>
+<span class="nc" id="L167">                    + MRHiveDictUtil.getHiveTableName(flatDesc, MRHiveDictUtil.DictHiveType.GroupBy);</span>
+<span class="nc" id="L168">            Map&lt;String, String&gt; maxDictValMap = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L169">            Map&lt;String, String&gt; dictHqlMap = new HashMap&lt;&gt;();</span>
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">            for (String dictColumn : mrHiveDictColumns) {</span>
+                // get dict max value
+<span class="nc" id="L173">                String maxDictValHql = &quot;SELECT if(max(dict_val) is null,0,max(dict_val)) as max_dict_val \n&quot; + &quot; FROM &quot;</span>
+                        + globalDictDatabase + &quot;.&quot; + globalDictTable + &quot; \n&quot; + &quot; WHERE dict_column = '&quot; + dictColumn
+                        + &quot;' \n&quot;;
+<span class="nc" id="L176">                maxDictValMap.put(dictColumn, maxDictValHql);</span>
+                try {
+<span class="nc" id="L178">                    String dictHql = &quot;INSERT OVERWRITE TABLE &quot; + globalDictDatabase + &quot;.&quot; + globalDictTable + &quot; \n&quot;</span>
+                            + &quot;PARTITION (dict_column = '&quot; + dictColumn + &quot;') \n&quot; + &quot;SELECT dict_key, dict_val FROM &quot;
+                            + globalDictDatabase + &quot;.&quot; + globalDictTable + &quot; \n&quot; + &quot;WHERE dict_column = '&quot; + dictColumn
+<span class="nc" id="L181">                            + &quot;' \n&quot; + flatDesc.getDataModel().getConfig().getHiveUnionStyle()</span>
+                            + &quot;\nSELECT a.dict_key as dict_key, (row_number() over(order by a.dict_key asc)) + (___maxDictVal___) as dict_val \n&quot;
+                            + &quot;FROM \n&quot; + &quot;( \n&quot; + &quot; SELECT dict_key FROM &quot; + flatTable + &quot; WHERE dict_column = '&quot;
+                            + dictColumn + &quot;' AND dict_key is not null \n&quot; + &quot;) a \n&quot; + &quot;LEFT JOIN \n&quot; + &quot;( \n&quot;
+                            + &quot;SELECT dict_key, dict_val FROM &quot; + globalDictDatabase + &quot;.&quot; + globalDictTable
+                            + &quot; WHERE dict_column = '&quot; + dictColumn + &quot;' \n&quot; + &quot;) b \n&quot;
+                            + &quot;ON a.dict_key = b.dict_key \n&quot; + &quot;WHERE b.dict_val is null; \n&quot;;
+<span class="nc" id="L188">                    dictHqlMap.put(dictColumn, dictHql);</span>
+<span class="nc" id="L189">                } catch (Exception e) {</span>
+<span class="nc" id="L190">                    logger.error(&quot;&quot;, e);</span>
+<span class="nc" id="L191">                }</span>
+            }
+<span class="nc" id="L193">            String hiveInitStatementForUnstrict = &quot;set hive.mapred.mode=unstrict;&quot;;</span>
+<span class="nc" id="L194">            CreateMrHiveDictStep step = new CreateMrHiveDictStep();</span>
+<span class="nc" id="L195">            step.setInitStatement(hiveInitStatements + hiveInitStatementForUnstrict);</span>
+<span class="nc" id="L196">            step.setCreateTableStatementMap(dictHqlMap);</span>
+<span class="nc" id="L197">            step.setMaxDictStatementMap(maxDictValMap);</span>
+<span class="nc" id="L198">            step.setIsLock(true);</span>
+<span class="nc" id="L199">            step.setLockPathName(cubeName);</span>
+<span class="nc" id="L200">            CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L201">            step.setName(ExecutableConstants.STEP_NAME_GLOBAL_DICT_MRHIVE_BUILD_DICTVAL);</span>
+<span class="nc" id="L202">            return step;</span>
+        }
+
+        protected static AbstractExecutable createMrHiveGlobalDictReplaceStep(IJoinedFlatTableDesc flatDesc,
+                String hiveInitStatements, String hdfsWorkingDir, String cubeName, String[] mrHiveDictColumns,
+                String flatTableDatabase, String globalDictDatabase, String globalDictTable) {
+<span class="nc" id="L208">            Map&lt;String, String&gt; dictHqlMap = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">            for (String dictColumn : mrHiveDictColumns) {</span>
+<span class="nc" id="L210">                StringBuilder dictHql = new StringBuilder();</span>
+<span class="nc" id="L211">                TblColRef dictColumnRef = null;</span>
+
+<span class="nc" id="L213">                String flatTable = flatTableDatabase + &quot;.&quot; + flatDesc.getTableName();</span>
+                // replace the flat table's dict column value
+<span class="nc" id="L215">                dictHql.append(&quot;INSERT OVERWRITE TABLE &quot; + flatTable + &quot; \n&quot;);</span>
+                try {
+<span class="nc" id="L217">                    dictHql.append(&quot;SELECT \n&quot;);</span>
+<span class="nc" id="L218">                    Integer flatTableColumnSize = flatDesc.getAllColumns().size();</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                    for (int i = 0; i &lt; flatTableColumnSize; i++) {</span>
+<span class="nc" id="L220">                        TblColRef tblColRef = flatDesc.getAllColumns().get(i);</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                        if (i &gt; 0) {</span>
+<span class="nc" id="L222">                            dictHql.append(&quot;,&quot;);</span>
+                        }
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                        if (JoinedFlatTable.colName(tblColRef, flatDesc.useAlias()).equalsIgnoreCase(dictColumn)) {</span>
+<span class="nc" id="L225">                            dictHql.append(&quot;b. dict_val \n&quot;);</span>
+<span class="nc" id="L226">                            dictColumnRef = tblColRef;</span>
+                        } else {
+<span class="nc" id="L228">                            dictHql.append(&quot;a.&quot; + JoinedFlatTable.colName(tblColRef) + &quot; \n&quot;);</span>
+                        }
+                    }
+<span class="nc" id="L231">                    dictHql.append(&quot;FROM &quot; + flatTable + &quot; a \n&quot; + &quot;LEFT OUTER JOIN \n&quot; + &quot;( \n&quot;</span>
+                            + &quot;SELECT dict_key, dict_val FROM &quot; + globalDictDatabase + &quot;.&quot; + globalDictTable
+                            + &quot; WHERE dict_column = '&quot; + dictColumn + &quot;' \n&quot; + &quot;) b \n&quot; + &quot; ON a.&quot;
+<span class="nc" id="L234">                            + JoinedFlatTable.colName(dictColumnRef) + &quot; = b.dict_key;&quot;);</span>
+<span class="nc" id="L235">                    dictHqlMap.put(dictColumn, dictHql.toString());</span>
+<span class="nc" id="L236">                } catch (Exception e) {</span>
+<span class="nc" id="L237">                    logger.error(&quot;&quot;, e);</span>
+<span class="nc" id="L238">                }</span>
+            }
+<span class="nc" id="L240">            CreateMrHiveDictStep step = new CreateMrHiveDictStep();</span>
+<span class="nc" id="L241">            step.setInitStatement(hiveInitStatements);</span>
+<span class="nc" id="L242">            step.setCreateTableStatementMap(dictHqlMap);</span>
+<span class="nc" id="L243">            step.setIsUnLock(true);</span>
+<span class="nc" id="L244">            step.setLockPathName(cubeName);</span>
+
+<span class="nc" id="L246">            CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L247">            step.setName(ExecutableConstants.STEP_NAME_GLOBAL_DICT_MRHIVE_REPLACE_DICTVAL);</span>
+<span class="nc" id="L248">            return step;</span>
+        }
+
+        protected void addStepPhase1_DoCreateFlatTable(DefaultChainedExecutable jobFlow) {
+<span class="nc" id="L252">            final String cubeName = CubingExecutableUtil.getCubeName(jobFlow.getParams());</span>
+<span class="nc" id="L253">            final String hiveInitStatements = JoinedFlatTable.generateHiveInitStatements(flatTableDatabase);</span>
+<span class="nc" id="L254">            final String jobWorkingDir = getJobWorkingDir(jobFlow, hdfsWorkingDir);</span>
+
+<span class="nc" id="L256">            final KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L257">            CubeInstance cubeInstance = CubeManager.getInstance(kylinConfig).getCube(cubeName);</span>
+
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            if (cubeInstance.getEngineType() == IEngineAware.ID_SPARK) {</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                if (kylinConfig.isLivyEnabled()) {</span>
+<span class="nc" id="L261">                    jobFlow.addTask(createFlatHiveTableByLivyStep(hiveInitStatements,</span>
+                            jobWorkingDir, cubeName, flatDesc));
+                }
+            } else {
+<span class="nc" id="L265">                jobFlow.addTask(createFlatHiveTableStep(hiveInitStatements, jobWorkingDir, cubeName, flatDesc));</span>
+            }
+            //jobFlow.addTask(createFlatHiveTableStep(hiveInitStatements, jobWorkingDir, cubeName, flatDesc));
+<span class="nc" id="L268">        }</span>
+
+        protected void addStepPhase1_DoMaterializeLookupTable(DefaultChainedExecutable jobFlow) {
+<span class="nc" id="L271">            final String hiveInitStatements = JoinedFlatTable.generateHiveInitStatements(flatTableDatabase);</span>
+<span class="nc" id="L272">            final String jobWorkingDir = getJobWorkingDir(jobFlow, hdfsWorkingDir);</span>
+
+<span class="nc" id="L274">            AbstractExecutable task = createLookupHiveViewMaterializationStep(hiveInitStatements, jobWorkingDir,</span>
+<span class="nc" id="L275">                    flatDesc, hiveViewIntermediateTables, jobFlow.getId());</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            if (task != null) {</span>
+<span class="nc" id="L277">                jobFlow.addTask(task);</span>
+            }
+<span class="nc" id="L279">        }</span>
+
+        @Override
+        public void addStepPhase4_Cleanup(DefaultChainedExecutable jobFlow) {
+<span class="nc" id="L283">            final String jobWorkingDir = getJobWorkingDir(jobFlow, hdfsWorkingDir);</span>
+
+<span class="nc" id="L285">            org.apache.kylin.source.hive.GarbageCollectionStep step = new org.apache.kylin.source.hive.GarbageCollectionStep();</span>
+<span class="nc" id="L286">            step.setName(ExecutableConstants.STEP_NAME_HIVE_CLEANUP);</span>
+
+<span class="nc" id="L288">            List&lt;String&gt; deleteTables = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L289">            deleteTables.add(getIntermediateTableIdentity());</span>
+
+            // mr-hive dict and inner table do not need delete hdfs
+<span class="nc" id="L292">            String[] mrHiveDicts = flatDesc.getSegment().getConfig().getMrHiveDictColumns();</span>
+<span class="nc bnc" id="L293" title="All 4 branches missed.">            if (Objects.nonNull(mrHiveDicts) &amp;&amp; mrHiveDicts.length &gt; 0) {</span>
+<span class="nc" id="L294">                String dictDb = flatDesc.getSegment().getConfig().getMrHiveDictDB();</span>
+<span class="nc" id="L295">                String tableName = dictDb + &quot;.&quot; + flatDesc.getTableName() + &quot;_&quot;</span>
+<span class="nc" id="L296">                        + MRHiveDictUtil.DictHiveType.GroupBy.getName();</span>
+<span class="nc" id="L297">                deleteTables.add(tableName);</span>
+            }
+<span class="nc" id="L299">            step.setIntermediateTables(deleteTables);</span>
+
+<span class="nc" id="L301">            step.setExternalDataPaths(Collections.singletonList(JoinedFlatTable.getTableDir(flatDesc, jobWorkingDir)));</span>
+<span class="nc" id="L302">            step.setHiveViewIntermediateTableIdentities(StringUtil.join(hiveViewIntermediateTables, &quot;,&quot;));</span>
+<span class="nc" id="L303">            jobFlow.addTask(step);</span>
+<span class="nc" id="L304">        }</span>
+
+        protected String getIntermediateTableIdentity() {
+<span class="nc" id="L307">            return flatTableDatabase + &quot;.&quot; + flatDesc.getTableName();</span>
+        }
+    }
+
+    // ===== static methods ======
+
+    protected static String getTableNameForHCat(TableDesc table, String uuid) {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        String tableName = (table.isView()) ? table.getMaterializedName(uuid) : table.getName();</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        String database = (table.isView()) ? KylinConfig.getInstanceFromEnv().getHiveDatabaseForIntermediateTable()</span>
+<span class="nc" id="L316">                : table.getDatabase();</span>
+<span class="nc" id="L317">        return String.format(Locale.ROOT, &quot;%s.%s&quot;, database, tableName).toUpperCase(Locale.ROOT);</span>
+    }
+
+    protected static AbstractExecutable createFlatHiveTableStep(String hiveInitStatements, String jobWorkingDir,
+            String cubeName, IJoinedFlatTableDesc flatDesc) {
+        //from hive to hive
+<span class="nc" id="L323">        final String dropTableHql = JoinedFlatTable.generateDropTableStatement(flatDesc);</span>
+<span class="nc" id="L324">        final String createTableHql = JoinedFlatTable.generateCreateTableStatement(flatDesc, jobWorkingDir);</span>
+<span class="nc" id="L325">        String insertDataHqls = JoinedFlatTable.generateInsertDataStatement(flatDesc);</span>
+
+<span class="nc" id="L327">        CreateFlatHiveTableStep step = new CreateFlatHiveTableStep();</span>
+<span class="nc" id="L328">        step.setInitStatement(hiveInitStatements);</span>
+<span class="nc" id="L329">        step.setCreateTableStatement(dropTableHql + createTableHql + insertDataHqls);</span>
+<span class="nc" id="L330">        CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L331">        step.setName(ExecutableConstants.STEP_NAME_CREATE_FLAT_HIVE_TABLE);</span>
+<span class="nc" id="L332">        return step;</span>
+    }
+
+    protected static AbstractExecutable createFlatHiveTableByLivyStep(String hiveInitStatements, String jobWorkingDir,
+            String cubeName, IJoinedFlatTableDesc flatDesc) {
+        //from hive to hive
+<span class="nc" id="L338">        final String dropTableHql = JoinedFlatTable.generateDropTableStatement(flatDesc);</span>
+<span class="nc" id="L339">        final String createTableHql = JoinedFlatTable.generateCreateTableStatement(flatDesc, jobWorkingDir);</span>
+<span class="nc" id="L340">        String insertDataHqls = JoinedFlatTable.generateInsertDataStatement(flatDesc);</span>
+
+<span class="nc" id="L342">        CreateFlatHiveTableByLivyStep step = new CreateFlatHiveTableByLivyStep();</span>
+<span class="nc" id="L343">        step.setInitStatement(hiveInitStatements);</span>
+<span class="nc" id="L344">        step.setCreateTableStatement(dropTableHql + createTableHql + insertDataHqls);</span>
+<span class="nc" id="L345">        CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L346">        step.setName(ExecutableConstants.STEP_NAME_CREATE_FLAT_HIVE_TABLE);</span>
+<span class="nc" id="L347">        return step;</span>
+    }
+
+    private static String base64EncodeStr(String str) {
+<span class="nc" id="L351">        return new String(</span>
+<span class="nc" id="L352">                Base64.getEncoder().encode(str.getBytes(StandardCharsets.UTF_8)),</span>
+                StandardCharsets.UTF_8
+        );
+    }
+
+    protected static AbstractExecutable createRedistributeFlatHiveTableStep(String hiveInitStatements, String cubeName,
+            IJoinedFlatTableDesc flatDesc, CubeDesc cubeDesc) {
+<span class="nc" id="L359">        RedistributeFlatHiveTableStep step = new RedistributeFlatHiveTableStep();</span>
+<span class="nc" id="L360">        step.setInitStatement(hiveInitStatements);</span>
+<span class="nc" id="L361">        step.setIntermediateTable(flatDesc.getTableName());</span>
+<span class="nc" id="L362">        step.setRedistributeDataStatement(JoinedFlatTable.generateRedistributeFlatTableStatement(flatDesc, cubeDesc));</span>
+<span class="nc" id="L363">        CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L364">        step.setName(ExecutableConstants.STEP_NAME_REDISTRIBUTE_FLAT_HIVE_TABLE);</span>
+<span class="nc" id="L365">        return step;</span>
+    }
+
+    protected static AbstractExecutable createRedistributeFlatHiveTableByLivyStep(String hiveInitStatements,
+            String cubeName, IJoinedFlatTableDesc flatDesc, CubeDesc cubeDesc) {
+<span class="nc" id="L370">        RedistributeFlatHiveTableByLivyStep step = new RedistributeFlatHiveTableByLivyStep();</span>
+<span class="nc" id="L371">        step.setInitStatement(hiveInitStatements);</span>
+<span class="nc" id="L372">        step.setIntermediateTable(flatDesc.getTableName());</span>
+<span class="nc" id="L373">        step.setRedistributeDataStatement(JoinedFlatTable.generateRedistributeFlatTableStatement(flatDesc, cubeDesc));</span>
+<span class="nc" id="L374">        CubingExecutableUtil.setCubeName(cubeName, step.getParams());</span>
+<span class="nc" id="L375">        step.setName(ExecutableConstants.STEP_NAME_REDISTRIBUTE_FLAT_HIVE_TABLE);</span>
+<span class="nc" id="L376">        return step;</span>
+    }
+
+    protected static ShellExecutable createLookupHiveViewMaterializationStep(String hiveInitStatements,
+            String jobWorkingDir, IJoinedFlatTableDesc flatDesc, List&lt;String&gt; intermediateTables, String uuid) {
+<span class="nc" id="L381">        ShellExecutable step = new ShellExecutable();</span>
+<span class="nc" id="L382">        step.setName(ExecutableConstants.STEP_NAME_MATERIALIZE_HIVE_VIEW_IN_LOOKUP);</span>
+
+<span class="nc" id="L384">        KylinConfig kylinConfig = flatDesc.getSegment().getConfig();</span>
+<span class="nc" id="L385">        TableMetadataManager metadataManager = TableMetadataManager.getInstance(kylinConfig);</span>
+<span class="nc" id="L386">        final Set&lt;TableDesc&gt; lookupViewsTables = Sets.newHashSet();</span>
+
+<span class="nc" id="L388">        String prj = flatDesc.getDataModel().getProject();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        for (JoinTableDesc lookupDesc : flatDesc.getDataModel().getJoinTables()) {</span>
+<span class="nc" id="L390">            TableDesc tableDesc = metadataManager.getTableDesc(lookupDesc.getTable(), prj);</span>
+<span class="nc bnc" id="L391" title="All 4 branches missed.">            if (lookupDesc.getKind() == DataModelDesc.TableKind.LOOKUP &amp;&amp; tableDesc.isView()) {</span>
+<span class="nc" id="L392">                lookupViewsTables.add(tableDesc);</span>
+            }
+        }
+
+<span class="nc bnc" id="L396" title="All 2 branches missed.">        if (lookupViewsTables.size() == 0) {</span>
+<span class="nc" id="L397">            return null;</span>
+        }
+
+<span class="nc" id="L400">        HiveCmdBuilder hiveCmdBuilder = new HiveCmdBuilder();</span>
+<span class="nc" id="L401">        hiveCmdBuilder.overwriteHiveProps(kylinConfig.getHiveConfigOverride());</span>
+<span class="nc" id="L402">        hiveCmdBuilder.addStatement(hiveInitStatements);</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        for (TableDesc lookUpTableDesc : lookupViewsTables) {</span>
+<span class="nc" id="L404">            String identity = FlatTableSqlQuoteUtils.quoteTableIdentity(lookUpTableDesc.getDatabase(), lookUpTableDesc.getName(), null);</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">            if (lookUpTableDesc.isView()) {</span>
+<span class="nc" id="L406">                String intermediate = lookUpTableDesc.getMaterializedName(uuid);</span>
+<span class="nc" id="L407">                String materializeViewHql = materializeViewHql(intermediate, identity, jobWorkingDir);</span>
+<span class="nc" id="L408">                hiveCmdBuilder.addStatement(materializeViewHql);</span>
+<span class="nc" id="L409">                intermediateTables.add(intermediate);</span>
+            }
+<span class="nc" id="L411">        }</span>
+
+<span class="nc" id="L413">        step.setCmd(hiveCmdBuilder.build());</span>
+<span class="nc" id="L414">        return step;</span>
+    }
+
+    // each append must be a complete hql.
+    protected static String materializeViewHql(String viewName, String tableName, String jobWorkingDir) {
+<span class="fc" id="L419">        StringBuilder createIntermediateTableHql = new StringBuilder();</span>
+<span class="fc" id="L420">        createIntermediateTableHql.append(&quot;DROP TABLE IF EXISTS `&quot; + viewName + &quot;`;\n&quot;);</span>
+<span class="fc" id="L421">        createIntermediateTableHql.append(&quot;CREATE TABLE IF NOT EXISTS `&quot; + viewName + &quot;` LIKE &quot; + tableName</span>
+                + &quot; LOCATION '&quot; + jobWorkingDir + &quot;/&quot; + viewName + &quot;';\n&quot;);
+<span class="fc" id="L423">        createIntermediateTableHql.append(&quot;ALTER TABLE `&quot; + viewName + &quot;` SET TBLPROPERTIES('auto.purge'='true');\n&quot;);</span>
+<span class="fc" id="L424">        createIntermediateTableHql</span>
+<span class="fc" id="L425">                .append(&quot;INSERT OVERWRITE TABLE `&quot; + viewName + &quot;` SELECT * FROM &quot; + tableName + &quot;;\n&quot;);</span>
+<span class="fc" id="L426">        return createIntermediateTableHql.toString();</span>
+    }
+
+    protected static String getJobWorkingDir(DefaultChainedExecutable jobFlow, String hdfsWorkingDir) {
+
+<span class="fc" id="L431">        String jobWorkingDir = JobBuilderSupport.getJobWorkingDir(hdfsWorkingDir, jobFlow.getId());</span>
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (KylinConfig.getInstanceFromEnv().getHiveTableDirCreateFirst()) {</span>
+            // Create work dir to avoid hive create it,
+            // the difference is that the owners are different.
+<span class="fc" id="L435">            checkAndCreateWorkDir(jobWorkingDir);</span>
+        }
+<span class="fc" id="L437">        return jobWorkingDir;</span>
+    }
+
+    protected static void checkAndCreateWorkDir(String jobWorkingDir) {
+        try {
+<span class="fc" id="L442">            Path path = new Path(jobWorkingDir);</span>
+<span class="fc" id="L443">            FileSystem fileSystem = HadoopUtil.getFileSystem(path);</span>
+<span class="pc bpc" id="L444" title="1 of 2 branches missed.">            if (!fileSystem.exists(path)) {</span>
+<span class="fc" id="L445">                logger.info(&quot;Create jobWorkDir : &quot; + jobWorkingDir);</span>
+<span class="fc" id="L446">                fileSystem.mkdirs(path);</span>
+            }
+<span class="nc" id="L448">        } catch (IOException e) {</span>
+<span class="nc" id="L449">            logger.error(&quot;Could not create lookUp table dir : &quot; + jobWorkingDir);</span>
+<span class="fc" id="L450">        }</span>
+<span class="fc" id="L451">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

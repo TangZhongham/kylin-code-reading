@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JsonUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">JsonUtil.java</span></div><h1>JsonUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
+
+import com.fasterxml.jackson.core.JsonGenerationException;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+
+public class JsonUtil {
+
+<span class="nc" id="L41">    private JsonUtil() {</span>
+<span class="nc" id="L42">        throw new IllegalStateException(&quot;Class JsonUtil is an utility class !&quot;);</span>
+    }
+
+    // reuse the object mapper to save memory footprint
+<span class="fc" id="L46">    private static final ObjectMapper mapper = new ObjectMapper();</span>
+<span class="fc" id="L47">    private static final ObjectMapper indentMapper = new ObjectMapper();</span>
+
+    static {
+<span class="fc" id="L50">        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);</span>
+<span class="fc" id="L51">        indentMapper.configure(SerializationFeature.INDENT_OUTPUT, true);</span>
+<span class="fc" id="L52">    }</span>
+
+    public static &lt;T&gt; T readValue(File src, Class&lt;T&gt; valueType)
+            throws IOException, JsonParseException, JsonMappingException {
+<span class="nc" id="L56">        return mapper.readValue(src, valueType);</span>
+    }
+
+    public static &lt;T&gt; T readValue(String content, Class&lt;T&gt; valueType)
+            throws IOException, JsonParseException, JsonMappingException {
+<span class="fc" id="L61">        return mapper.readValue(content, valueType);</span>
+    }
+
+    public static &lt;T&gt; T readValue(Reader src, Class&lt;T&gt; valueType)
+            throws IOException, JsonParseException, JsonMappingException {
+<span class="nc" id="L66">        return mapper.readValue(src, valueType);</span>
+    }
+
+    public static &lt;T&gt; T readValue(InputStream src, Class&lt;T&gt; valueType)
+            throws IOException, JsonParseException, JsonMappingException {
+<span class="nc" id="L71">        return mapper.readValue(src, valueType);</span>
+    }
+
+    public static &lt;T&gt; T readValue(byte[] src, Class&lt;T&gt; valueType)
+            throws IOException, JsonParseException, JsonMappingException {
+<span class="nc" id="L76">        return mapper.readValue(src, valueType);</span>
+    }
+
+    public static &lt;T&gt; T readValue(String content, TypeReference&lt;T&gt; valueTypeRef)
+            throws IOException, JsonParseException, JsonMappingException {
+<span class="nc" id="L81">        return mapper.readValue(content, valueTypeRef);</span>
+    }
+
+    public static Map&lt;String, String&gt; readValueAsMap(String content) throws IOException {
+<span class="nc" id="L85">        TypeReference&lt;HashMap&lt;String, String&gt;&gt; typeRef = new TypeReference&lt;HashMap&lt;String, String&gt;&gt;() {</span>
+        };
+<span class="nc" id="L87">        return mapper.readValue(content, typeRef);</span>
+    }
+
+    public static JsonNode readValueAsTree(String content) throws IOException {
+<span class="nc" id="L91">        return mapper.readTree(content);</span>
+    }
+
+    public static void writeValueIndent(OutputStream out, Object value)
+            throws IOException, JsonGenerationException, JsonMappingException {
+<span class="nc" id="L96">        indentMapper.writeValue(out, value);</span>
+<span class="nc" id="L97">    }</span>
+
+    public static void writeValue(OutputStream out, Object value)
+            throws IOException, JsonGenerationException, JsonMappingException {
+<span class="nc" id="L101">        mapper.writeValue(out, value);</span>
+<span class="nc" id="L102">    }</span>
+
+    public static String writeValueAsString(Object value) throws JsonProcessingException {
+<span class="fc" id="L105">        return mapper.writeValueAsString(value);</span>
+    }
+
+    public static byte[] writeValueAsBytes(Object value) throws JsonProcessingException {
+<span class="nc" id="L109">        return mapper.writeValueAsBytes(value);</span>
+    }
+
+    public static String writeValueAsIndentString(Object value) throws JsonProcessingException {
+<span class="nc" id="L113">        return indentMapper.writeValueAsString(value);</span>
+    }
+
+    public static &lt;T&gt; T deepCopy(T src, Class&lt;T&gt; valueType) throws IOException {
+<span class="nc" id="L117">        String s = mapper.writeValueAsString(src);</span>
+<span class="nc" id="L118">        return mapper.readValue(s, valueType);</span>
+    }
+
+    public static &lt;T&gt; T deepCopy(T src, TypeReference&lt;T&gt; valueType) throws IOException {
+<span class="nc" id="L122">        String s = mapper.writeValueAsString(src);</span>
+<span class="nc" id="L123">        return mapper.readValue(s, valueType);</span>
+    }
+
+    public static &lt;T&gt; T deepCopyQuietly(T src, Class&lt;T&gt; valueType) {
+        try {
+<span class="nc" id="L128">            return deepCopy(src, valueType);</span>
+<span class="nc" id="L129">        } catch (IOException e) {</span>
+<span class="nc" id="L130">            throw new IllegalStateException(&quot;Cannot copy &quot; + valueType.getName(), e);</span>
+        }
+    }
+
+    public static &lt;T&gt; T deepCopyQuietly(T src, TypeReference&lt;T&gt; typeReference) {
+        try {
+<span class="nc" id="L136">            return deepCopy(src, typeReference);</span>
+<span class="nc" id="L137">        } catch (IOException e) {</span>
+<span class="nc" id="L138">            throw new IllegalStateException(&quot;Cannot copy &quot; + typeReference.getType(), e);</span>
+        }
+    }
+
+    public static boolean isJson(String content) {
+        try {
+<span class="nc" id="L144">            mapper.readTree(content);</span>
+<span class="nc" id="L145">            return true;</span>
+<span class="nc" id="L146">        } catch (IOException e) {</span>
+<span class="nc" id="L147">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

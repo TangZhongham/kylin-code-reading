@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HBaseConnection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - HBase Metastore</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.hbase</a> &gt; <span class="el_source">HBaseConnection.java</span></div><h1>HBaseConnection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.storage.hbase;
+
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.util.Threads;
+import org.apache.hadoop.hdfs.DFSConfigKeys;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.lock.DistributedLock;
+import org.apache.kylin.common.threadlocal.InternalThreadLocal;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Sets;
+
+/**
+ * @author yangli9
+ * 
+ */
+<span class="nc" id="L63">public class HBaseConnection {</span>
+
+    public static final String HTABLE_UUID_TAG = &quot;UUID&quot;;
+
+<span class="nc" id="L67">    private static final Logger logger = LoggerFactory.getLogger(HBaseConnection.class);</span>
+
+<span class="nc" id="L69">    private static final Map&lt;StorageURL, Configuration&gt; configCache = new ConcurrentHashMap&lt;StorageURL, Configuration&gt;();</span>
+<span class="nc" id="L70">    private static final Map&lt;StorageURL, Connection&gt; connPool = new ConcurrentHashMap&lt;StorageURL, Connection&gt;();</span>
+<span class="nc" id="L71">    private static final InternalThreadLocal&lt;Configuration&gt; configThreadLocal = new InternalThreadLocal&lt;&gt;();</span>
+
+<span class="nc" id="L73">    private static ExecutorService coprocessorPool = null;</span>
+
+    static {
+<span class="nc" id="L76">        Runtime.getRuntime().addShutdownHook(new Thread() {</span>
+            @Override
+            public void run() {
+                try {
+<span class="nc" id="L80">                    closeCoprocessorPool();</span>
+<span class="nc" id="L81">                    closeAndRestConnPool().join();</span>
+<span class="nc" id="L82">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L83">                    logger.error(&quot;&quot;, e);</span>
+<span class="nc" id="L84">                }</span>
+<span class="nc" id="L85">            }</span>
+        });
+<span class="nc" id="L87">    }</span>
+
+    public static ExecutorService getCoprocessorPool() {
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        if (coprocessorPool != null) {</span>
+<span class="nc" id="L91">            return coprocessorPool;</span>
+        }
+
+<span class="nc" id="L94">        synchronized (HBaseConnection.class) {</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">            if (coprocessorPool != null) {</span>
+<span class="nc" id="L96">                return coprocessorPool;</span>
+            }
+
+<span class="nc" id="L99">            KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+
+            // copy from HConnectionImplementation.getBatchPool()
+<span class="nc" id="L102">            int maxThreads = config.getHBaseMaxConnectionThreads();</span>
+<span class="nc" id="L103">            int coreThreads = config.getHBaseCoreConnectionThreads();</span>
+<span class="nc" id="L104">            long keepAliveTime = config.getHBaseConnectionThreadPoolAliveSeconds();</span>
+<span class="nc" id="L105">            LinkedBlockingQueue&lt;Runnable&gt; workQueue = new LinkedBlockingQueue&lt;Runnable&gt;(maxThreads * 100);</span>
+<span class="nc" id="L106">            ThreadPoolExecutor tpe = new ThreadPoolExecutor(coreThreads, maxThreads, keepAliveTime, TimeUnit.SECONDS, workQueue, //</span>
+<span class="nc" id="L107">                    Threads.newDaemonThreadFactory(&quot;kylin-coproc-&quot;));</span>
+<span class="nc" id="L108">            tpe.allowCoreThreadTimeOut(true);</span>
+
+<span class="nc" id="L110">            logger.info(&quot;Creating coprocessor thread pool with max of {}, core of {}&quot;, maxThreads, coreThreads);</span>
+
+<span class="nc" id="L112">            coprocessorPool = tpe;</span>
+<span class="nc" id="L113">            return coprocessorPool;</span>
+        }
+    }
+
+    private static void closeCoprocessorPool() {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (coprocessorPool == null)</span>
+<span class="nc" id="L119">            return;</span>
+
+<span class="nc" id="L121">        coprocessorPool.shutdown();</span>
+        try {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (!coprocessorPool.awaitTermination(10, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L124">                coprocessorPool.shutdownNow();</span>
+            }
+<span class="nc" id="L126">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L127">            coprocessorPool.shutdownNow();</span>
+<span class="nc" id="L128">        }</span>
+<span class="nc" id="L129">    }</span>
+    
+    private static Thread closeAndRestConnPool() {
+<span class="nc" id="L132">        final List&lt;Connection&gt; copy = new ArrayList&lt;&gt;(connPool.values());</span>
+<span class="nc" id="L133">        connPool.clear();</span>
+        
+<span class="nc" id="L135">        Thread t = new Thread() {</span>
+            public void run() {
+<span class="nc" id="L137">                logger.info(&quot;Closing HBase connections...&quot;);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                for (Connection conn : copy) {</span>
+                    try {
+<span class="nc" id="L140">                        conn.close();</span>
+<span class="nc" id="L141">                    } catch (Exception e) {</span>
+<span class="nc" id="L142">                        logger.error(&quot;error closing hbase connection &quot; + conn, e);</span>
+<span class="nc" id="L143">                    }</span>
+<span class="nc" id="L144">                }</span>
+<span class="nc" id="L145">            }</span>
+        };
+<span class="nc" id="L147">        t.setName(&quot;close-hbase-conn&quot;);</span>
+<span class="nc" id="L148">        t.start();</span>
+<span class="nc" id="L149">        return t;</span>
+    }
+
+    public static void clearConnCache() {
+<span class="nc" id="L153">        closeAndRestConnPool();</span>
+<span class="nc" id="L154">    }</span>
+
+    public static Configuration getCurrentHBaseConfiguration() {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (configThreadLocal.get() == null) {</span>
+<span class="nc" id="L158">            StorageURL storageUrl = KylinConfig.getInstanceFromEnv().getStorageUrl();</span>
+<span class="nc" id="L159">            configThreadLocal.set(newHBaseConfiguration(storageUrl));</span>
+        }
+<span class="nc" id="L161">        return configThreadLocal.get();</span>
+    }
+
+    private static Configuration newHBaseConfiguration(StorageURL url) {
+        // using a hbase:xxx URL is deprecated, instead hbase config is always loaded from hbase-site.xml in classpath
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (!&quot;hbase&quot;.equals(url.getScheme()))</span>
+<span class="nc" id="L167">            throw new IllegalArgumentException(&quot;to use hbase storage, pls set 'kylin.storage.url=hbase' in kylin.properties&quot;);</span>
+
+<span class="nc" id="L169">        Configuration conf = HBaseConfiguration.create(HadoopUtil.getCurrentConfiguration());</span>
+<span class="nc" id="L170">        addHBaseClusterNNHAConfiguration(conf);</span>
+
+        // support hbase using a different FS
+<span class="nc" id="L173">        KylinConfig kylinConf = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L174">        String hbaseClusterFs = kylinConf.getHBaseClusterFs();</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (StringUtils.isNotEmpty(hbaseClusterFs)) {</span>
+<span class="nc" id="L176">            conf.set(FileSystem.FS_DEFAULT_NAME_KEY, hbaseClusterFs);</span>
+        } else {
+            try {
+<span class="nc" id="L179">                FileSystem fs = HadoopUtil.getWorkingFileSystem(HadoopUtil.getCurrentConfiguration());</span>
+<span class="nc" id="L180">                conf.set(FileSystem.FS_DEFAULT_NAME_KEY, fs.getUri().toString());</span>
+<span class="nc" id="L181">                logger.debug(&quot;Using the working dir FS for HBase: &quot; + fs.getUri().toString());</span>
+<span class="nc" id="L182">            } catch (IOException e) {</span>
+<span class="nc" id="L183">                logger.error(&quot;Fail to set working dir to HBase configuration&quot;, e);</span>
+<span class="nc" id="L184">            }</span>
+        }
+
+        // https://issues.apache.org/jira/browse/KYLIN-953
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (StringUtils.isBlank(conf.get(&quot;hadoop.tmp.dir&quot;))) {</span>
+<span class="nc" id="L189">            conf.set(&quot;hadoop.tmp.dir&quot;, &quot;/tmp&quot;);</span>
+        }
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (StringUtils.isBlank(conf.get(&quot;hbase.fs.tmp.dir&quot;))) {</span>
+<span class="nc" id="L192">            conf.set(&quot;hbase.fs.tmp.dir&quot;, &quot;/tmp&quot;);</span>
+        }
+        
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        for (Entry&lt;String, String&gt; entry : url.getAllParameters().entrySet()) {</span>
+<span class="nc" id="L196">            conf.set(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L197">        }</span>
+
+<span class="nc" id="L199">        return conf;</span>
+    }
+
+    // See YARN-3021. Copy here in case of missing in dependency MR client jars
+    public static final String JOB_NAMENODES_TOKEN_RENEWAL_EXCLUDE = &quot;mapreduce.job.hdfs-servers.token-renewal.exclude&quot;;
+
+    public static void addHBaseClusterNNHAConfiguration(Configuration conf) {
+<span class="nc" id="L206">        String hdfsConfigFile = KylinConfig.getInstanceFromEnv().getHBaseClusterHDFSConfigFile();</span>
+<span class="nc bnc" id="L207" title="All 4 branches missed.">        if (hdfsConfigFile == null || hdfsConfigFile.isEmpty()) {</span>
+<span class="nc" id="L208">            return;</span>
+        }
+<span class="nc" id="L210">        Configuration hdfsConf = new Configuration(false);</span>
+<span class="nc" id="L211">        hdfsConf.addResource(hdfsConfigFile);</span>
+<span class="nc" id="L212">        Collection&lt;String&gt; nameServices = hdfsConf.getTrimmedStringCollection(DFSConfigKeys.DFS_NAMESERVICES);</span>
+<span class="nc" id="L213">        Collection&lt;String&gt; mainNameServices = conf.getTrimmedStringCollection(DFSConfigKeys.DFS_NAMESERVICES);</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        for (String serviceId : nameServices) {</span>
+<span class="nc" id="L215">            mainNameServices.add(serviceId);</span>
+
+<span class="nc" id="L217">            String serviceConfKey = DFSConfigKeys.DFS_HA_NAMENODES_KEY_PREFIX + &quot;.&quot; + serviceId;</span>
+<span class="nc" id="L218">            String proxyConfKey = DFSConfigKeys.DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX + &quot;.&quot; + serviceId;</span>
+<span class="nc" id="L219">            conf.set(serviceConfKey, hdfsConf.get(serviceConfKey, &quot;&quot;));</span>
+<span class="nc" id="L220">            conf.set(proxyConfKey, hdfsConf.get(proxyConfKey, &quot;&quot;));</span>
+
+<span class="nc" id="L222">            Collection&lt;String&gt; nameNodes = hdfsConf.getTrimmedStringCollection(serviceConfKey);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            for (String nameNode : nameNodes) {</span>
+<span class="nc" id="L224">                String rpcConfKey = DFSConfigKeys.DFS_NAMENODE_RPC_ADDRESS_KEY + &quot;.&quot; + serviceId + &quot;.&quot; + nameNode;</span>
+<span class="nc" id="L225">                conf.set(rpcConfKey, hdfsConf.get(rpcConfKey, &quot;&quot;));</span>
+<span class="nc" id="L226">            }</span>
+<span class="nc" id="L227">        }</span>
+<span class="nc" id="L228">        conf.setStrings(DFSConfigKeys.DFS_NAMESERVICES, mainNameServices.toArray(new String[0]));</span>
+        // See YARN-3021, instruct RM skip renew token of hbase cluster name services
+<span class="nc" id="L230">        conf.setStrings(JOB_NAMENODES_TOKEN_RENEWAL_EXCLUDE, nameServices.toArray(new String[0]));</span>
+<span class="nc" id="L231">    }</span>
+
+    public static String makeQualifiedPathInHBaseCluster(String inPath) {
+<span class="nc" id="L234">        Path path = new Path(inPath);</span>
+<span class="nc" id="L235">        path = Path.getPathWithoutSchemeAndAuthority(path);</span>
+
+<span class="nc" id="L237">        FileSystem fs = HadoopUtil.getFileSystem(path, getCurrentHBaseConfiguration()); // Must be HBase's FS, not working FS</span>
+<span class="nc" id="L238">        return fs.makeQualified(path).toString();</span>
+    }
+
+    public static FileSystem getFileSystemInHBaseCluster(String inPath) {
+<span class="nc" id="L242">        Path path = new Path(inPath);</span>
+<span class="nc" id="L243">        path = Path.getPathWithoutSchemeAndAuthority(path);</span>
+
+<span class="nc" id="L245">        FileSystem fs = HadoopUtil.getFileSystem(path, getCurrentHBaseConfiguration()); // Must be HBase's FS, not working FS</span>
+<span class="nc" id="L246">        return fs;</span>
+    }
+
+
+    // ============================================================================
+
+    // returned Connection can be shared by multiple threads and does not require close()
+    @SuppressWarnings(&quot;resource&quot;)
+    public static Connection get(StorageURL url) {
+        // find configuration
+<span class="nc" id="L256">        Configuration conf = configCache.get(url);</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (conf == null) {</span>
+<span class="nc" id="L258">            conf = newHBaseConfiguration(url);</span>
+<span class="nc" id="L259">            configCache.put(url, conf);</span>
+        }
+
+<span class="nc" id="L262">        Connection connection = connPool.get(url);</span>
+        try {
+            while (true) {
+                // I don't use DCL since recreate a connection is not a big issue.
+<span class="nc bnc" id="L266" title="All 4 branches missed.">                if (connection == null || connection.isClosed()) {</span>
+<span class="nc" id="L267">                    logger.info(&quot;connection is null or closed, creating a new one&quot;);</span>
+<span class="nc" id="L268">                    connection = ConnectionFactory.createConnection(conf);</span>
+<span class="nc" id="L269">                    connPool.put(url, connection);</span>
+                }
+
+<span class="nc bnc" id="L272" title="All 4 branches missed.">                if (connection == null || connection.isClosed()) {</span>
+<span class="nc" id="L273">                    Thread.sleep(10000);// wait a while and retry</span>
+                } else {
+                    break;
+                }
+            }
+
+<span class="nc" id="L279">        } catch (Throwable t) {</span>
+<span class="nc" id="L280">            logger.error(&quot;Error when open connection &quot; + url, t);</span>
+<span class="nc" id="L281">            throw new RuntimeException(&quot;Error when open connection &quot; + url, t);</span>
+<span class="nc" id="L282">        }</span>
+
+<span class="nc" id="L284">        return connection;</span>
+    }
+
+    public static boolean tableExists(Connection conn, String tableName) throws IOException {
+<span class="nc" id="L288">        Admin hbase = conn.getAdmin();</span>
+        try {
+<span class="nc" id="L290">            return hbase.tableExists(TableName.valueOf(tableName));</span>
+        } finally {
+<span class="nc" id="L292">            hbase.close();</span>
+        }
+    }
+
+    public static boolean tableExists(StorageURL hbaseUrl, String tableName) throws IOException {
+<span class="nc" id="L297">        return tableExists(HBaseConnection.get(hbaseUrl), tableName);</span>
+    }
+
+    public static void createHTableIfNeeded(StorageURL hbaseUrl, String tableName, String... families) throws IOException {
+<span class="nc" id="L301">        createHTableIfNeeded(HBaseConnection.get(hbaseUrl), tableName, families);</span>
+<span class="nc" id="L302">    }</span>
+
+    public static void deleteTable(StorageURL hbaseUrl, String tableName) throws IOException {
+<span class="nc" id="L305">        deleteTable(HBaseConnection.get(hbaseUrl), tableName);</span>
+<span class="nc" id="L306">    }</span>
+
+    public static void createHTableIfNeeded(Connection conn, String table, String... families) throws IOException {
+<span class="nc" id="L309">        Admin admin = conn.getAdmin();</span>
+<span class="nc" id="L310">        TableName tableName = TableName.valueOf(table);</span>
+<span class="nc" id="L311">        DistributedLock lock = null;</span>
+<span class="nc" id="L312">        String lockPath = getLockPath(table);</span>
+        
+        try {
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            if (tableExists(conn, table)) {</span>
+<span class="nc" id="L316">                logger.debug(&quot;HTable '&quot; + table + &quot;' already exists&quot;);</span>
+<span class="nc" id="L317">                Set&lt;String&gt; existingFamilies = getFamilyNames(admin.getTableDescriptor(tableName));</span>
+<span class="nc" id="L318">                boolean wait = false;</span>
+<span class="nc bnc" id="L319" title="All 2 branches missed.">                for (String family : families) {</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">                    if (existingFamilies.contains(family) == false) {</span>
+<span class="nc" id="L321">                        logger.debug(&quot;Adding family '&quot; + family + &quot;' to HTable '&quot; + table + &quot;'&quot;);</span>
+<span class="nc" id="L322">                        admin.addColumn(tableName, newFamilyDescriptor(family));</span>
+                        // addColumn() is async, is there a way to wait it finish?
+<span class="nc" id="L324">                        wait = true;</span>
+                    }
+                }
+<span class="nc bnc" id="L327" title="All 2 branches missed.">                if (wait) {</span>
+                    try {
+<span class="nc" id="L329">                        Thread.sleep(10000);</span>
+<span class="nc" id="L330">                    } catch (InterruptedException e) {</span>
+<span class="nc" id="L331">                        logger.warn(&quot;&quot;, e);</span>
+<span class="nc" id="L332">                    }</span>
+                }
+<span class="nc" id="L334">                return;</span>
+            }
+
+<span class="nc" id="L337">            lock = KylinConfig.getInstanceFromEnv().getDistributedLockFactory().lockForCurrentProcess();</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">            if (!lock.lock(lockPath, Long.MAX_VALUE))</span>
+<span class="nc" id="L339">                throw new RuntimeException(&quot;Cannot acquire lock to create HTable &quot; + table);</span>
+
+<span class="nc bnc" id="L341" title="All 2 branches missed.">            if (tableExists(conn, table)) {</span>
+<span class="nc" id="L342">                logger.debug(&quot;HTable '&quot; + table + &quot;' already exists&quot;);</span>
+<span class="nc" id="L343">                return;</span>
+            }
+
+<span class="nc" id="L346">            logger.debug(&quot;Creating HTable '&quot; + table + &quot;'&quot;);</span>
+
+<span class="nc" id="L348">            HTableDescriptor desc = new HTableDescriptor(TableName.valueOf(table));</span>
+
+<span class="nc bnc" id="L350" title="All 4 branches missed.">            if (null != families &amp;&amp; families.length &gt; 0) {</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">                for (String family : families) {</span>
+<span class="nc" id="L352">                    HColumnDescriptor fd = newFamilyDescriptor(family);</span>
+<span class="nc" id="L353">                    desc.addFamily(fd);</span>
+                }
+            }
+
+<span class="nc" id="L357">            admin.createTable(desc);</span>
+
+<span class="nc" id="L359">            logger.debug(&quot;HTable '&quot; + table + &quot;' created&quot;);</span>
+        } finally {
+<span class="nc" id="L361">            admin.close();</span>
+<span class="nc bnc" id="L362" title="All 4 branches missed.">            if (lock != null &amp;&amp; lock.isLockedByMe(lockPath))</span>
+<span class="nc" id="L363">                lock.unlock(lockPath);</span>
+        }
+<span class="nc" id="L365">    }</span>
+
+    private static Set&lt;String&gt; getFamilyNames(HTableDescriptor desc) {
+<span class="nc" id="L368">        HashSet&lt;String&gt; result = Sets.newHashSet();</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        for (byte[] bytes : desc.getFamiliesKeys()) {</span>
+            try {
+<span class="nc" id="L371">                result.add(new String(bytes, &quot;UTF-8&quot;));</span>
+<span class="nc" id="L372">            } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L373">                logger.error(e.toString());</span>
+<span class="nc" id="L374">            }</span>
+<span class="nc" id="L375">        }</span>
+<span class="nc" id="L376">        return result;</span>
+    }
+
+    private static HColumnDescriptor newFamilyDescriptor(String family) {
+<span class="nc" id="L380">        HColumnDescriptor fd = new HColumnDescriptor(family);</span>
+<span class="nc" id="L381">        fd.setInMemory(true); // metadata tables are best in memory</span>
+<span class="nc" id="L382">        return fd;</span>
+    }
+
+    public static void deleteTable(Connection conn, String tableName) throws IOException {
+<span class="nc" id="L386">        Admin hbase = conn.getAdmin();</span>
+
+        try {
+<span class="nc bnc" id="L389" title="All 2 branches missed.">            if (!tableExists(conn, tableName)) {</span>
+<span class="nc" id="L390">                logger.debug(&quot;HTable '&quot; + tableName + &quot;' does not exists&quot;);</span>
+<span class="nc" id="L391">                return;</span>
+            }
+
+<span class="nc" id="L394">            logger.debug(&quot;delete HTable '&quot; + tableName + &quot;'&quot;);</span>
+
+<span class="nc bnc" id="L396" title="All 2 branches missed.">            if (hbase.isTableEnabled(TableName.valueOf(tableName))) {</span>
+<span class="nc" id="L397">                hbase.disableTable(TableName.valueOf(tableName));</span>
+            }
+<span class="nc" id="L399">            hbase.deleteTable(TableName.valueOf(tableName));</span>
+
+<span class="nc" id="L401">            logger.debug(&quot;HTable '&quot; + tableName + &quot;' deleted&quot;);</span>
+        } finally {
+<span class="nc" id="L403">            hbase.close();</span>
+        }
+<span class="nc" id="L405">    }</span>
+
+    private static String getLockPath(String table) {
+<span class="nc" id="L408">        return &quot;/create_htable/&quot; + table + &quot;/lock&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

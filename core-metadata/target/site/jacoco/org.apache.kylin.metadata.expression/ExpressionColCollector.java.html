@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExpressionColCollector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.expression</a> &gt; <span class="el_source">ExpressionColCollector.java</span></div><h1>ExpressionColCollector.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.expression;
+
+import java.util.Set;
+
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class ExpressionColCollector implements ExpressionVisitor {
+
+    public static Set&lt;TblColRef&gt; collectColumns(TupleExpression tupleExpression) {
+<span class="nc" id="L32">        Pair&lt;Set&lt;TblColRef&gt;, Set&lt;TblColRef&gt;&gt; pairRet = collectColumnsPair(tupleExpression);</span>
+<span class="nc" id="L33">        Set&lt;TblColRef&gt; ret = Sets.newHashSet();</span>
+<span class="nc" id="L34">        ret.addAll(pairRet.getFirst());</span>
+<span class="nc" id="L35">        ret.addAll(pairRet.getSecond());</span>
+<span class="nc" id="L36">        return ret;</span>
+    }
+
+    public static Pair&lt;Set&lt;TblColRef&gt;, Set&lt;TblColRef&gt;&gt; collectColumnsPair(TupleExpression tupleExpression) {
+<span class="nc" id="L40">        ExpressionColCollector collector = new ExpressionColCollector();</span>
+<span class="nc" id="L41">        tupleExpression.accept(collector);</span>
+<span class="nc" id="L42">        return new Pair&lt;&gt;(collector.filterColumns, collector.measureColumns);</span>
+    }
+
+    public static Set&lt;TblColRef&gt; collectFilterColumns(TupleExpression tupleExpression) {
+<span class="nc" id="L46">        ExpressionColCollector collector = new ExpressionColCollector();</span>
+<span class="nc" id="L47">        collector.ifMCols = false;</span>
+<span class="nc" id="L48">        tupleExpression.accept(collector);</span>
+<span class="nc" id="L49">        return collector.filterColumns;</span>
+    }
+
+    public static Set&lt;TblColRef&gt; collectMeasureColumns(TupleExpression tupleExpression) {
+<span class="fc" id="L53">        ExpressionColCollector collector = new ExpressionColCollector();</span>
+<span class="fc" id="L54">        collector.ifFCols = false;</span>
+<span class="fc" id="L55">        tupleExpression.accept(collector);</span>
+<span class="fc" id="L56">        return collector.measureColumns;</span>
+    }
+
+<span class="fc" id="L59">    private final Set&lt;TblColRef&gt; filterColumns = Sets.newHashSet();</span>
+<span class="fc" id="L60">    private final Set&lt;TblColRef&gt; measureColumns = Sets.newHashSet();</span>
+<span class="fc" id="L61">    private boolean ifFCols = true;</span>
+<span class="fc" id="L62">    private boolean ifMCols = true;</span>
+
+<span class="fc" id="L64">    private ExpressionColCollector() {</span>
+<span class="fc" id="L65">    }</span>
+
+    @Override
+    public TupleExpression visitNumber(NumberTupleExpression numExpr) {
+<span class="fc" id="L69">        return numExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitString(StringTupleExpression strExpr) {
+<span class="nc" id="L74">        return strExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitColumn(ColumnTupleExpression colExpr) {
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (ifMCols) {</span>
+<span class="fc" id="L80">            measureColumns.add(colExpr.getColumn());</span>
+        }
+<span class="fc" id="L82">        return colExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitBinary(BinaryTupleExpression binaryExpr) {
+<span class="fc" id="L87">        binaryExpr.getLeft().accept(this);</span>
+<span class="fc" id="L88">        binaryExpr.getRight().accept(this);</span>
+<span class="fc" id="L89">        return binaryExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitCaseCall(CaseTupleExpression caseExpr) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        for (Pair&lt;TupleFilter, TupleExpression&gt; entry : caseExpr.getWhenList()) {</span>
+<span class="fc" id="L95">            TupleFilter filter = entry.getFirst();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (ifFCols) {</span>
+<span class="nc" id="L97">                TupleFilter.collectColumns(filter, filterColumns);</span>
+            }
+
+<span class="fc" id="L100">            entry.getSecond().accept(this);</span>
+<span class="fc" id="L101">        }</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (caseExpr.getElseExpr() != null) {</span>
+<span class="fc" id="L103">            caseExpr.getElseExpr().accept(this);</span>
+        }
+<span class="fc" id="L105">        return caseExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitRexCall(RexCallTupleExpression rexCallExpr) {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        for (TupleExpression child : rexCallExpr.getChildren()) {</span>
+<span class="nc" id="L111">            child.accept(this);</span>
+<span class="nc" id="L112">        }</span>
+<span class="nc" id="L113">        return rexCallExpr;</span>
+    }
+
+    @Override
+    public TupleExpression visitNone(NoneTupleExpression noneExpr) {
+<span class="nc" id="L118">        return noneExpr;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

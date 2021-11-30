@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubingJob.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">CubingJob.java</span></div><h1>CubingJob.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr;
+
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.regex.Matcher;
+
+import com.google.common.collect.Lists;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.engine.mr.common.CubeStatsReader;
+import org.apache.kylin.engine.mr.common.MapReduceExecutable;
+import org.apache.kylin.engine.mr.steps.CubingExecutableUtil;
+import org.apache.kylin.job.constant.ExecutableConstants;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.job.execution.ExecutableContext;
+import org.apache.kylin.job.execution.ExecutableState;
+import org.apache.kylin.job.execution.ExecuteResult;
+import org.apache.kylin.job.execution.Output;
+import org.apache.kylin.job.metrics.JobMetricsFacade;
+import org.apache.kylin.job.util.MailNotificationUtil;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.google.common.collect.Maps;
+
+/**
+ */
+public class CubingJob extends DefaultChainedExecutable {
+
+<span class="nc" id="L67">    private static final Logger logger = LoggerFactory.getLogger(CubingJob.class);</span>
+
+<span class="nc" id="L69">    public enum AlgorithmEnum {</span>
+<span class="nc" id="L70">        LAYER, INMEM</span>
+    }
+<span class="nc" id="L72">    public enum CubingJobTypeEnum {</span>
+<span class="nc" id="L73">        BUILD(&quot;BUILD&quot;, 20), OPTIMIZE(&quot;OPTIMIZE&quot;, 5), MERGE(&quot;MERGE&quot;, 25), STREAM(&quot;STREAM&quot;, 30);</span>
+
+        private final String name;
+        private final int defaultPriority;
+
+<span class="nc" id="L78">        CubingJobTypeEnum(String name, int priority) {</span>
+<span class="nc" id="L79">            this.name = name;</span>
+<span class="nc" id="L80">            this.defaultPriority = priority;</span>
+<span class="nc" id="L81">        }</span>
+
+        public int getDefaultPriority() {
+<span class="nc" id="L84">            return defaultPriority;</span>
+        }
+
+        public String toString() {
+<span class="nc" id="L88">            return name;</span>
+        }
+
+        public static CubingJobTypeEnum getByName(String name) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (Strings.isNullOrEmpty(name)) {</span>
+<span class="nc" id="L93">                return null;</span>
+            }
+<span class="nc bnc" id="L95" title="All 2 branches missed.">            for (CubingJobTypeEnum jobTypeEnum : CubingJobTypeEnum.values()) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">                if (jobTypeEnum.name.equals(name.toUpperCase(Locale.ROOT))) {</span>
+<span class="nc" id="L97">                    return jobTypeEnum;</span>
+                }
+            }
+<span class="nc" id="L100">            return null;</span>
+        }
+    }
+
+    //32MB per block created by the first step
+    private static final long MIN_SOURCE_SIZE = 33554432L;
+
+    // KEYS of Output.extraInfo map, info passed across job steps
+    public static final String SOURCE_RECORD_COUNT = &quot;sourceRecordCount&quot;;
+    public static final String SOURCE_SIZE_BYTES = &quot;sourceSizeBytes&quot;;
+    public static final String CUBE_SIZE_BYTES = &quot;byteSizeBytes&quot;;
+    public static final String MAP_REDUCE_WAIT_TIME = &quot;mapReduceWaitTime&quot;;
+    private static final String DEPLOY_ENV_NAME = &quot;envName&quot;;
+    private static final String JOB_TYPE = &quot;jobType&quot;;
+    private static final String SEGMENT_NAME = &quot;segmentName&quot;;
+
+    public static CubingJob createBuildJob(CubeSegment seg, String submitter, JobEngineConfig config) {
+<span class="nc" id="L117">        return initCubingJob(seg, CubingJobTypeEnum.BUILD.toString(), submitter, config);</span>
+    }
+
+    public static CubingJob createOptimizeJob(CubeSegment seg, String submitter, JobEngineConfig config) {
+<span class="nc" id="L121">        return initCubingJob(seg, CubingJobTypeEnum.OPTIMIZE.toString(), submitter, config);</span>
+    }
+
+    public static CubingJob createMergeJob(CubeSegment seg, String submitter, JobEngineConfig config) {
+<span class="nc" id="L125">        return initCubingJob(seg, CubingJobTypeEnum.MERGE.toString(), submitter, config);</span>
+    }
+
+    public static CubingJob createStreamJob(CubeSegment seg, String submitter, JobEngineConfig config) {
+<span class="nc" id="L129">        return initCubingJob(seg, CubingJobTypeEnum.STREAM.toString(), submitter, config);</span>
+    }
+
+    private static CubingJob initCubingJob(CubeSegment seg, String jobType, String submitter, JobEngineConfig config) {
+<span class="nc" id="L133">        KylinConfig kylinConfig = config.getConfig();</span>
+<span class="nc" id="L134">        CubeInstance cube = seg.getCubeInstance();</span>
+<span class="nc" id="L135">        List&lt;ProjectInstance&gt; projList = ProjectManager.getInstance(kylinConfig).findProjects(cube.getType(),</span>
+<span class="nc" id="L136">                cube.getName());</span>
+<span class="nc bnc" id="L137" title="All 4 branches missed.">        if (projList == null || projList.size() == 0) {</span>
+<span class="nc" id="L138">            throw new RuntimeException(&quot;Cannot find the project containing the cube &quot; + cube.getName() + &quot;!!!&quot;);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        } else if (projList.size() &gt;= 2) {</span>
+<span class="nc" id="L140">            String msg = &quot;Find more than one project containing the cube &quot; + cube.getName()</span>
+                    + &quot;. It does't meet the uniqueness requirement!!! &quot;;
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if (!config.getConfig().allowCubeAppearInMultipleProjects()) {</span>
+<span class="nc" id="L143">                throw new RuntimeException(msg);</span>
+            } else {
+<span class="nc" id="L145">                logger.warn(msg);</span>
+            }
+        }
+
+<span class="nc" id="L149">        CubingJob result = new CubingJob();</span>
+<span class="nc" id="L150">        SimpleDateFormat format = new SimpleDateFormat(&quot;z yyyy-MM-dd HH:mm:ss&quot;, Locale.ROOT);</span>
+<span class="nc" id="L151">        format.setTimeZone(TimeZone.getTimeZone(config.getTimeZone()));</span>
+<span class="nc" id="L152">        result.setDeployEnvName(kylinConfig.getDeployEnv());</span>
+<span class="nc" id="L153">        result.setProjectName(projList.get(0).getName());</span>
+<span class="nc" id="L154">        result.setJobType(jobType);</span>
+<span class="nc" id="L155">        CubingExecutableUtil.setCubeName(seg.getCubeInstance().getName(), result.getParams());</span>
+<span class="nc" id="L156">        CubingExecutableUtil.setSegmentId(seg.getUuid(), result.getParams());</span>
+<span class="nc" id="L157">        CubingExecutableUtil.setSegmentName(seg.getName(), result.getParams());</span>
+<span class="nc" id="L158">        result.setName(jobType + &quot; CUBE - &quot; + seg.getCubeInstance().getDisplayName() + &quot; - &quot; + seg.getName() + &quot; - &quot;</span>
+<span class="nc" id="L159">                + format.format(new Date(System.currentTimeMillis())));</span>
+<span class="nc" id="L160">        result.setSubmitter(submitter);</span>
+<span class="nc" id="L161">        result.setNotifyList(seg.getCubeInstance().getDescriptor().getNotifyList());</span>
+<span class="nc" id="L162">        return result;</span>
+    }
+
+    public CubingJob() {
+<span class="nc" id="L166">        super();</span>
+<span class="nc" id="L167">    }</span>
+
+    @Override
+    public int getDefaultPriority() {
+<span class="nc" id="L171">        CubingJobTypeEnum jobType = CubingJobTypeEnum.getByName(getJobType());</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (jobType == null) {</span>
+<span class="nc" id="L173">            return super.getDefaultPriority();</span>
+        }
+<span class="nc" id="L175">        return jobType.getDefaultPriority();</span>
+    }
+
+    protected void setDeployEnvName(String name) {
+<span class="nc" id="L179">        setParam(DEPLOY_ENV_NAME, name);</span>
+<span class="nc" id="L180">    }</span>
+
+    public String getDeployEnvName() {
+<span class="nc" id="L183">        return getParam(DEPLOY_ENV_NAME);</span>
+    }
+
+    public String getJobType() {
+<span class="nc" id="L187">        return getParam(JOB_TYPE);</span>
+    }
+
+    public String getSegmentName() {
+<span class="nc" id="L191">        return getParam(SEGMENT_NAME);</span>
+    }
+
+    void setJobType(String jobType) {
+<span class="nc" id="L195">        setParam(JOB_TYPE, jobType);</span>
+<span class="nc" id="L196">    }</span>
+
+    @Override
+    protected Pair&lt;String, String&gt; formatNotifications(ExecutableContext context, ExecutableState state) {
+<span class="nc" id="L200">        CubeInstance cubeInstance = CubeManager.getInstance(context.getConfig())</span>
+<span class="nc" id="L201">                .getCube(CubingExecutableUtil.getCubeName(this.getParams()));</span>
+<span class="nc" id="L202">        final Output output = getManager().getOutput(getId());</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (state != ExecutableState.ERROR</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                &amp;&amp; !cubeInstance.getDescriptor().getStatusNeedNotify().contains(state.toString())) {</span>
+<span class="nc" id="L205">            logger.info(&quot;state:&quot; + state + &quot; no need to notify users&quot;);</span>
+<span class="nc" id="L206">            return null;</span>
+        }
+
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (!MailNotificationUtil.hasMailNotification(state)) {</span>
+<span class="nc" id="L210">            logger.info(&quot;Cannot find email template for job state: &quot; + state);</span>
+<span class="nc" id="L211">            return null;</span>
+        }
+
+<span class="nc" id="L214">        Map&lt;String, Object&gt; dataMap = Maps.newHashMap();</span>
+<span class="nc" id="L215">        dataMap.put(&quot;job_name&quot;, getName());</span>
+<span class="nc" id="L216">        dataMap.put(&quot;env_name&quot;, getDeployEnvName());</span>
+<span class="nc" id="L217">        dataMap.put(&quot;submitter&quot;, StringUtil.noBlank(getSubmitter(), &quot;missing submitter&quot;));</span>
+<span class="nc" id="L218">        dataMap.put(&quot;job_engine&quot;, MailNotificationUtil.getLocalHostName());</span>
+<span class="nc" id="L219">        dataMap.put(&quot;project_name&quot;, getProjectName());</span>
+<span class="nc" id="L220">        dataMap.put(&quot;cube_name&quot;, cubeInstance.getName());</span>
+<span class="nc" id="L221">        dataMap.put(&quot;source_records_count&quot;, String.valueOf(findSourceRecordCount()));</span>
+<span class="nc" id="L222">        dataMap.put(&quot;start_time&quot;, new Date(getStartTime()).toString());</span>
+<span class="nc" id="L223">        dataMap.put(&quot;duration&quot;, getDuration() / 60000 + &quot;mins&quot;);</span>
+<span class="nc" id="L224">        dataMap.put(&quot;mr_waiting&quot;, getMapReduceWaitTime() / 60000 + &quot;mins&quot;);</span>
+<span class="nc" id="L225">        dataMap.put(&quot;last_update_time&quot;, new Date(getLastModified()).toString());</span>
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (state == ExecutableState.ERROR) {</span>
+<span class="nc" id="L228">            AbstractExecutable errorTask = null;</span>
+<span class="nc" id="L229">            Output errorOutput = null;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            for (AbstractExecutable task : getTasks()) {</span>
+<span class="nc" id="L231">                errorOutput = getManager().getOutput(task.getId());</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">                if (errorOutput.getState() == ExecutableState.ERROR) {</span>
+<span class="nc" id="L233">                    errorTask = task;</span>
+<span class="nc" id="L234">                    break;</span>
+                }
+<span class="nc" id="L236">            }</span>
+<span class="nc" id="L237">            Preconditions.checkNotNull(errorTask,</span>
+<span class="nc" id="L238">                    &quot;None of the sub tasks of cubing job &quot; + getId() + &quot; is error and this job should become success.&quot;);</span>
+
+<span class="nc" id="L240">            dataMap.put(&quot;error_step&quot;, errorTask.getName());</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (errorTask instanceof MapReduceExecutable) {</span>
+<span class="nc" id="L242">                final String mrJobId = errorOutput.getExtra().get(ExecutableConstants.MR_JOB_ID);</span>
+<span class="nc" id="L243">                dataMap.put(&quot;mr_job_id&quot;, StringUtil.noBlank(mrJobId, &quot;Not initialized&quot;));</span>
+<span class="nc" id="L244">            } else {</span>
+<span class="nc" id="L245">                dataMap.put(&quot;mr_job_id&quot;, MailNotificationUtil.NA);</span>
+            }
+<span class="nc" id="L247">            dataMap.put(&quot;error_log&quot;,</span>
+<span class="nc" id="L248">                    Matcher.quoteReplacement(StringUtil.noBlank(output.getVerboseMsg(), &quot;no error message&quot;)));</span>
+        }
+
+<span class="nc" id="L251">        String content = MailNotificationUtil.getMailContent(state, dataMap);</span>
+<span class="nc" id="L252">        String title = MailNotificationUtil.getMailTitle(&quot;JOB&quot;, state.toString(), getDeployEnvName(), getProjectName(),</span>
+<span class="nc" id="L253">                cubeInstance.getName());</span>
+<span class="nc" id="L254">        return Pair.newPair(title, content);</span>
+    }
+
+    @Override
+    protected void onExecuteStart(ExecutableContext executableContext) {
+<span class="nc" id="L259">        KylinConfig.setAndUnsetThreadLocalConfig(getCubeSpecificConfig());</span>
+<span class="nc" id="L260">        super.onExecuteStart(executableContext);</span>
+<span class="nc" id="L261">    }</span>
+
+    @Override
+    protected void onExecuteFinished(ExecuteResult result, ExecutableContext executableContext) {
+<span class="nc" id="L265">        long time = 0L;</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        for (AbstractExecutable task : getTasks()) {</span>
+<span class="nc" id="L267">            final ExecutableState status = task.getStatus();</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            if (status != ExecutableState.SUCCEED) {</span>
+<span class="nc" id="L269">                break;</span>
+            }
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (task instanceof MapReduceExecutable) {</span>
+<span class="nc" id="L272">                time += ((MapReduceExecutable) task).getMapReduceWaitTime();</span>
+            }
+<span class="nc" id="L274">        }</span>
+<span class="nc" id="L275">        setMapReduceWaitTime(time);</span>
+<span class="nc" id="L276">        super.onExecuteFinished(result, executableContext);</span>
+<span class="nc" id="L277">    }</span>
+
+    protected void onStatusChange(ExecutableContext context, ExecuteResult result, ExecutableState state) {
+<span class="nc" id="L280">        super.onStatusChange(context, result, state);</span>
+
+<span class="nc" id="L282">        updateMetrics(context, result, state);</span>
+<span class="nc" id="L283">    }</span>
+
+    protected void updateMetrics(ExecutableContext context, ExecuteResult result, ExecutableState state) {
+<span class="nc" id="L286">        JobMetricsFacade.JobStatisticsResult jobStats = new JobMetricsFacade.JobStatisticsResult();</span>
+<span class="nc" id="L287">        jobStats.setWrapper(getSubmitter(), getProjectName(), CubingExecutableUtil.getCubeName(getParams()), getId(),</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                getJobType(), getAlgorithm() == null ? &quot;NULL&quot; : getAlgorithm().toString());</span>
+
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        if (state == ExecutableState.SUCCEED) {</span>
+<span class="nc" id="L291">            jobStats.setJobStats(findSourceSizeBytes(), findCubeSizeBytes(), getDuration(), getMapReduceWaitTime(),</span>
+<span class="nc" id="L292">                    getPerBytesTimeCost(findSourceSizeBytes(), getDuration()));</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">            if (CubingJobTypeEnum.getByName(getJobType()) == CubingJobTypeEnum.BUILD) {</span>
+<span class="nc" id="L294">                jobStats.setJobStepStats(getTaskDurationByName(ExecutableConstants.STEP_NAME_FACT_DISTINCT_COLUMNS),</span>
+<span class="nc" id="L295">                        getTaskDurationByName(ExecutableConstants.STEP_NAME_BUILD_DICTIONARY),</span>
+<span class="nc" id="L296">                        getTaskDurationByName(ExecutableConstants.STEP_NAME_BUILD_IN_MEM_CUBE),</span>
+<span class="nc" id="L297">                        getTaskDurationByName(ExecutableConstants.STEP_NAME_CONVERT_CUBOID_TO_HFILE));</span>
+            }
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        } else if (state == ExecutableState.ERROR) {</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">            jobStats.setJobException(result.getThrowable() != null ? result.getThrowable() : new Exception());</span>
+        }
+<span class="nc" id="L302">        JobMetricsFacade.updateMetrics(jobStats);</span>
+<span class="nc" id="L303">    }</span>
+
+    private long getTaskDurationByName(String name) {
+<span class="nc" id="L306">        AbstractExecutable task = getTaskByName(name);</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        if (task != null) {</span>
+<span class="nc" id="L308">            return task.getDuration();</span>
+        } else {
+<span class="nc" id="L310">            return 0;</span>
+        }
+    }
+
+    private static double getPerBytesTimeCost(long size, long timeCost) {
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        if (size &lt;= 0) {</span>
+<span class="nc" id="L316">            return 0;</span>
+        }
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        if (size &lt; MIN_SOURCE_SIZE) {</span>
+<span class="nc" id="L319">            size = MIN_SOURCE_SIZE;</span>
+        }
+<span class="nc" id="L321">        return timeCost * 1.0 / size;</span>
+    }
+
+    public void setAlgorithm(AlgorithmEnum alg) {
+<span class="nc" id="L325">        addExtraInfo(&quot;algorithm&quot;, alg.name());</span>
+<span class="nc" id="L326">    }</span>
+
+    public AlgorithmEnum getAlgorithm() {
+<span class="nc" id="L329">        String alg = getExtraInfo().get(&quot;algorithm&quot;);</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        return alg == null ? null : AlgorithmEnum.valueOf(alg);</span>
+    }
+
+    public boolean isLayerCubing() {
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        return AlgorithmEnum.LAYER == getAlgorithm();</span>
+    }
+
+    public boolean isInMemCubing() {
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        return AlgorithmEnum.INMEM == getAlgorithm();</span>
+    }
+
+    public long findSourceRecordCount() {
+<span class="nc" id="L342">        return Long.parseLong(findExtraInfo(SOURCE_RECORD_COUNT, &quot;0&quot;));</span>
+    }
+
+    public long findSourceSizeBytes() {
+<span class="nc" id="L346">        return Long.parseLong(findExtraInfo(SOURCE_SIZE_BYTES, &quot;0&quot;));</span>
+    }
+
+    public long findCubeSizeBytes() {
+        // look for the info BACKWARD, let the last step that claims the cube size win
+<span class="nc" id="L351">        return Long.parseLong(findExtraInfoBackward(CUBE_SIZE_BYTES, &quot;0&quot;));</span>
+    }
+
+    public List&lt;Double&gt; findEstimateRatio(CubeSegment seg, KylinConfig config) {
+<span class="nc" id="L355">        CubeInstance cubeInstance = seg.getCubeInstance();</span>
+<span class="nc" id="L356">        CuboidScheduler cuboidScheduler = cubeInstance.getCuboidScheduler();</span>
+<span class="nc" id="L357">        List&lt;List&lt;Long&gt;&gt; layeredCuboids = cuboidScheduler.getCuboidsByLayer();</span>
+<span class="nc" id="L358">        int totalLevels = cuboidScheduler.getBuildLevel();</span>
+
+<span class="nc" id="L360">        List&lt;Double&gt; result = Lists.newArrayList();</span>
+
+        Map&lt;Long, Double&gt; estimatedSizeMap;
+
+<span class="nc" id="L364">        String cuboidRootPath = getCuboidRootPath(seg, config);</span>
+
+        try {
+<span class="nc" id="L367">            estimatedSizeMap = new CubeStatsReader(seg, config).getCuboidSizeMap(true);</span>
+<span class="nc" id="L368">        } catch (IOException e) {</span>
+<span class="nc" id="L369">            logger.warn(&quot;Cannot get segment {} estimated size map&quot;, seg.getName());</span>
+
+<span class="nc" id="L371">            return null;</span>
+<span class="nc" id="L372">        }</span>
+
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        for (int level = 0; level &lt;= totalLevels; level++) {</span>
+<span class="nc" id="L375">            double levelEstimatedSize = 0;</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">            for (Long cuboidId : layeredCuboids.get(level)) {</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">                levelEstimatedSize += estimatedSizeMap.get(cuboidId) == null ? 0.0 : estimatedSizeMap.get(cuboidId);</span>
+<span class="nc" id="L378">            }</span>
+
+<span class="nc" id="L380">            double levelRealSize = getRealSizeByLevel(cuboidRootPath, level);</span>
+
+<span class="nc bnc" id="L382" title="All 4 branches missed.">            if (levelEstimatedSize == 0.0 || levelRealSize == 0.0){</span>
+<span class="nc" id="L383">                result.add(level, -1.0);</span>
+            } else {
+<span class="nc" id="L385">                result.add(level, levelRealSize / levelEstimatedSize);</span>
+            }
+        }
+
+<span class="nc" id="L389">        return result;</span>
+    }
+
+
+    private double getRealSizeByLevel(String rootPath, int level) {
+        try {
+<span class="nc" id="L395">            String levelPath = JobBuilderSupport.getCuboidOutputPathsByLevel(rootPath, level);</span>
+<span class="nc" id="L396">            FileSystem fs = HadoopUtil.getFileSystem(levelPath);</span>
+<span class="nc" id="L397">            return fs.getContentSummary(new Path(levelPath)).getLength() / (1024L * 1024L);</span>
+<span class="nc" id="L398">        } catch (Exception e) {</span>
+<span class="nc" id="L399">            logger.warn(&quot;get level real size failed.&quot; + e);</span>
+<span class="nc" id="L400">            return 0L;</span>
+        }
+    }
+
+    private String getCuboidRootPath(CubeSegment seg, KylinConfig kylinConfig) {
+<span class="nc" id="L405">        String rootDir = kylinConfig.getHdfsWorkingDirectory();</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">        if (!rootDir.endsWith(&quot;/&quot;)) {</span>
+<span class="nc" id="L407">            rootDir = rootDir + &quot;/&quot;;</span>
+        }
+<span class="nc" id="L409">        String jobID = this.getId();</span>
+<span class="nc" id="L410">        return rootDir + &quot;kylin-&quot; + jobID + &quot;/&quot; + seg.getRealization().getName() + &quot;/cuboid/&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

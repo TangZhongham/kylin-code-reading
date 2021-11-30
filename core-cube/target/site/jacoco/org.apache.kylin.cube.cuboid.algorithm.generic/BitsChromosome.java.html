@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitsChromosome.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm.generic</a> &gt; <span class="el_source">BitsChromosome.java</span></div><h1>BitsChromosome.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm.generic;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableSet;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+import org.apache.commons.math3.genetics.Chromosome;
+import org.apache.kylin.cube.cuboid.algorithm.BenefitPolicy;
+import org.apache.kylin.cube.cuboid.algorithm.CuboidBenefitModel;
+
+import java.util.BitSet;
+
+public class BitsChromosome extends Chromosome {
+
+    /**
+     * Global unmodified
+     */
+    private final BitsChromosomeHelper helper;
+
+    /**
+     * BitSet representing the chromosome
+     */
+    private final BitSet representation;
+    private final ImmutableSet&lt;Long&gt; cuboids;
+
+    private final BenefitPolicy benefitPolicy;
+
+    private final double spaceCost;
+
+<span class="nc" id="L46">    public BitsChromosome(final BitSet representation, final BenefitPolicy benefitPolicy, BitsChromosomeHelper helper) {</span>
+<span class="nc" id="L47">        this.helper = helper;</span>
+
+<span class="nc" id="L49">        this.representation = representation;</span>
+<span class="nc" id="L50">        this.cuboids = ImmutableSet.copyOf(helper.toCuboidList(representation));</span>
+
+<span class="nc" id="L52">        this.benefitPolicy = benefitPolicy;</span>
+
+<span class="nc" id="L54">        this.spaceCost = helper.getCuboidSize(Sets.newHashSet(cuboids));</span>
+<span class="nc" id="L55">    }</span>
+
+    public BitsChromosome newBitsChromosome(BitSet newRepresentation) {
+<span class="nc" id="L58">        return new BitsChromosome(newRepresentation, benefitPolicy.getInstance(), helper);</span>
+    }
+
+    public BitSet getRepresentation() {
+<span class="nc" id="L62">        return representation;</span>
+    }
+
+    /**
+     * Returns the length of the chromosome.
+     *
+     * @return the length of the chromosome
+     */
+    public int getLength() {
+<span class="nc" id="L71">        return helper.getLength();</span>
+    }
+
+    public ImmutableSet&lt;Long&gt; getCuboids() {
+<span class="nc" id="L75">        return cuboids;</span>
+    }
+
+    @Override
+    public synchronized double fitness() {
+<span class="nc" id="L80">        CuboidBenefitModel.BenefitModel benefitModel = benefitPolicy.calculateBenefitTotal(cuboids,</span>
+<span class="nc" id="L81">                helper.getMandatoryCuboids());</span>
+<span class="nc" id="L82">        double totalBenefit = benefitModel.benefit;</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (spaceCost &gt; helper.spaceLimit) {</span>
+<span class="nc" id="L84">            totalBenefit = totalBenefit * helper.spaceLimit / spaceCost;</span>
+        }
+<span class="nc" id="L86">        return totalBenefit;</span>
+    }
+
+    @Override
+    protected boolean isSame(final Chromosome another) {
+<span class="nc" id="L91">        return this.equals(another);</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L97">            return true;</span>
+<span class="nc bnc" id="L98" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L99">            return false;</span>
+
+<span class="nc" id="L101">        BitsChromosome that = (BitsChromosome) o;</span>
+
+<span class="nc bnc" id="L103" title="All 6 branches missed.">        if (helper != null ? !helper.equals(that.helper) : that.helper != null)</span>
+<span class="nc" id="L104">            return false;</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">        return representation != null ? representation.equals(that.representation) : that.representation == null;</span>
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        int result = helper != null ? helper.hashCode() : 0;</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        result = 31 * result + (representation != null ? representation.hashCode() : 0);</span>
+<span class="nc" id="L113">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

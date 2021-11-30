@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTRecord.java</span></div><h1>GTRecord.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Comparator;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.ImmutableBitSet;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">public class GTRecord implements Comparable&lt;GTRecord&gt; {</span>
+
+    final transient GTInfo info;
+    final ByteArray[] cols;
+
+<span class="nc" id="L35">    public GTRecord(GTInfo info, ByteArray[] cols) {</span>
+<span class="nc" id="L36">        this.info = info;</span>
+<span class="nc" id="L37">        this.cols = cols;</span>
+<span class="nc" id="L38">    }</span>
+
+<span class="fc" id="L40">    public GTRecord(GTInfo info) {</span>
+<span class="fc" id="L41">        this.cols = new ByteArray[info.getColumnCount()];</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (int i = 0; i &lt; this.cols.length; i++) {</span>
+            // consider column projection by pass in another bit set
+<span class="fc" id="L44">            this.cols[i] = new ByteArray();</span>
+        }
+<span class="fc" id="L46">        this.info = info;</span>
+<span class="fc" id="L47">    }</span>
+
+    public void shallowCopyFrom(GTRecord source) {
+<span class="nc bnc" id="L50" title="All 4 branches missed.">        assert info == source.info;</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        for (int i = 0; i &lt; cols.length; i++) {</span>
+<span class="nc" id="L52">            cols[i].reset(source.cols[i].array(), source.cols[i].offset(), source.cols[i].length());</span>
+        }
+<span class="nc" id="L54">    }</span>
+
+    public GTInfo getInfo() {
+<span class="nc" id="L57">        return info;</span>
+    }
+
+    public ByteArray get(int i) {
+<span class="nc" id="L61">        return cols[i];</span>
+    }
+
+    public Object getValue(int i) {
+<span class="nc" id="L65">        return info.codeSystem.decodeColumnValue(i, cols[i].asBuffer());</span>
+    }
+
+    public ByteArray[] getInternal() {
+<span class="nc" id="L69">        return cols;</span>
+    }
+
+    public void set(int i, ByteArray data) {
+<span class="nc" id="L73">        cols[i].reset(data.array(), data.offset(), data.length());</span>
+<span class="nc" id="L74">    }</span>
+
+    public void setValue(int i, Object value) {
+<span class="nc" id="L77">        ByteArray space = new ByteArray(info.codeSystem.maxCodeLength(i));</span>
+<span class="nc" id="L78">        ByteBuffer buf = space.asBuffer();</span>
+<span class="nc" id="L79">        info.codeSystem.encodeColumnValue(i, value, buf);</span>
+<span class="nc" id="L80">        set(i, space);</span>
+<span class="nc" id="L81">        cols[i].reset(buf.array(), buf.arrayOffset(), buf.position());</span>
+<span class="nc" id="L82">    }</span>
+
+    /** set record to the codes of specified values, new space allocated to hold the codes */
+    public GTRecord setValues(Object... values) {
+<span class="fc" id="L86">        setValues(info.colAll, new ByteArray(info.getMaxRecordLength()), values);</span>
+<span class="fc" id="L87">        return this;</span>
+    }
+
+    /** set record to the codes of specified values, reuse given space to hold the codes */
+    public GTRecord setValues(ImmutableBitSet selectedCols, ByteArray space, Object... values) {
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        assert selectedCols.cardinality() == values.length;</span>
+
+<span class="fc" id="L94">        ByteBuffer buf = space.asBuffer();</span>
+<span class="fc" id="L95">        int pos = buf.position();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="fc" id="L97">            int c = selectedCols.trueBitAt(i);</span>
+<span class="fc" id="L98">            info.codeSystem.encodeColumnValue(c, values[i], buf);</span>
+<span class="fc" id="L99">            int newPos = buf.position();</span>
+<span class="fc" id="L100">            cols[c].reset(buf.array(), buf.arrayOffset() + pos, newPos - pos);</span>
+<span class="fc" id="L101">            pos = newPos;</span>
+        }
+<span class="fc" id="L103">        return this;</span>
+    }
+
+    /** decode and return the values of this record */
+    public Object[] getValues() {
+<span class="fc" id="L108">        return getValues(info.colAll, new Object[info.getColumnCount()]);</span>
+    }
+
+    /** decode and return the values of this record */
+    public Object[] getValues(ImmutableBitSet selectedCols, Object[] result) {
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">        assert selectedCols.cardinality() == result.length;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="fc" id="L115">            result[i] = decodeValue(selectedCols.trueBitAt(i));</span>
+        }
+<span class="fc" id="L117">        return result;</span>
+    }
+
+    /** decode and return the values of this record */
+    public Object[] getValues(int[] selectedColumns, Object[] result) {
+<span class="nc bnc" id="L122" title="All 4 branches missed.">        assert selectedColumns.length &lt;= result.length;</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        for (int i = 0; i &lt; selectedColumns.length; i++) {</span>
+<span class="nc" id="L124">            result[i] = decodeValue(selectedColumns[i]);</span>
+        }
+<span class="nc" id="L126">        return result;</span>
+    }
+
+    public Object decodeValue(int c) {
+<span class="fc" id="L130">        ByteArray col = cols[c];</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">        if (col != null &amp;&amp; col.array() != null) {</span>
+<span class="fc" id="L132">            return info.codeSystem.decodeColumnValue(c, col.asBuffer());</span>
+        }
+<span class="fc" id="L134">        return null;</span>
+    }
+
+    public int sizeOf(ImmutableBitSet selectedCols) {
+<span class="fc" id="L138">        int size = 0;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="fc" id="L140">            int c = selectedCols.trueBitAt(i);</span>
+<span class="fc" id="L141">            size += cols[c].length();</span>
+        }
+<span class="fc" id="L143">        return size;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L149">            return true;</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L151">            return false;</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L153">            return false;</span>
+
+<span class="fc" id="L155">        GTRecord o = (GTRecord) obj;</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        if (this.info != o.info)</span>
+<span class="nc" id="L157">            return false;</span>
+
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (int i = 0; i &lt; info.colAll.trueBitCount(); i++) {</span>
+<span class="fc" id="L160">            int c = info.colAll.trueBitAt(i);</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (!this.cols[c].equals(o.cols[c])) {</span>
+<span class="nc" id="L162">                return false;</span>
+            }
+        }
+<span class="fc" id="L165">        return true;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L170">        int hash = 1;</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        for (int i = 0; i &lt; info.colAll.trueBitCount(); i++) {</span>
+<span class="nc" id="L172">            int c = info.colAll.trueBitAt(i);</span>
+<span class="nc" id="L173">            hash = (31 * hash) + cols[c].hashCode();</span>
+        }
+<span class="nc" id="L175">        return hash;</span>
+    }
+
+    @Override
+    public int compareTo(GTRecord o) {
+<span class="nc" id="L180">        return compareToInternal(o, info.colAll);</span>
+    }
+
+    public static Comparator&lt;GTRecord&gt; getComparator(final ImmutableBitSet participateCols) {
+<span class="nc" id="L184">        return new Comparator&lt;GTRecord&gt;() {</span>
+            public int compare(GTRecord o1, GTRecord o2) {
+<span class="nc bnc" id="L186" title="All 4 branches missed.">                if (o1 == null || o2 == null) {</span>
+<span class="nc" id="L187">                    throw new IllegalStateException(&quot;Cannot handle null&quot;);</span>
+                }
+<span class="nc" id="L189">                return o1.compareToInternal(o2, participateCols);</span>
+            }
+        };
+    }
+
+    private int compareToInternal(GTRecord o, ImmutableBitSet participateCols) {
+<span class="nc bnc" id="L195" title="All 4 branches missed.">        assert this.info == o.info; // reference equal for performance</span>
+<span class="nc" id="L196">        IGTComparator comparator = info.codeSystem.getComparator();</span>
+
+<span class="nc" id="L198">        int comp = 0;</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        for (int i = 0; i &lt; participateCols.trueBitCount(); i++) {</span>
+<span class="nc" id="L200">            int c = participateCols.trueBitAt(i);</span>
+<span class="nc" id="L201">            comp = comparator.compare(cols[c], o.cols[c]);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if (comp != 0)</span>
+<span class="nc" id="L203">                return comp;</span>
+        }
+<span class="nc" id="L205">        return comp;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L210">        return toString(info.colAll);</span>
+    }
+
+    /** toString for MemoryHungry Measure is expensive, please invoke carefully */
+    public String toString(ImmutableBitSet selectedColumns) {
+<span class="fc" id="L215">        Object[] values = new Object[selectedColumns.cardinality()];</span>
+<span class="fc" id="L216">        getValues(selectedColumns, values);</span>
+<span class="fc" id="L217">        return Arrays.toString(values);</span>
+    }
+
+    // ============================================================================
+
+    public ByteArray exportColumns(ImmutableBitSet selectedCols) {
+<span class="fc" id="L223">        int len = sizeOf(selectedCols);</span>
+
+<span class="fc" id="L225">        ByteArray buf = ByteArray.allocate(len);</span>
+<span class="fc" id="L226">        exportColumns(selectedCols, buf);</span>
+<span class="fc" id="L227">        return buf;</span>
+    }
+
+    /** write data to given buffer, like serialize */
+    public void exportColumns(ImmutableBitSet selectedCols, ByteArray buf) {
+<span class="fc" id="L232">        int pos = 0;</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="fc" id="L234">            int c = selectedCols.trueBitAt(i);</span>
+<span class="fc" id="L235">            Preconditions.checkNotNull(cols[c].array());</span>
+<span class="fc" id="L236">            System.arraycopy(cols[c].array(), cols[c].offset(), buf.array(), buf.offset() + pos, cols[c].length());</span>
+<span class="fc" id="L237">            pos += cols[c].length();</span>
+        }
+<span class="fc" id="L239">        buf.setLength(pos);</span>
+<span class="fc" id="L240">    }</span>
+
+    /** write data to given buffer, like serialize */
+    public void exportColumns(ImmutableBitSet selectedCols, ByteBuffer buf) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="fc" id="L245">            int c = selectedCols.trueBitAt(i);</span>
+<span class="fc" id="L246">            buf.put(cols[c].array(), cols[c].offset(), cols[c].length());</span>
+        }
+<span class="fc" id="L248">    }</span>
+
+    public void exportColumns(int[] fieldIndex, ByteBuffer buf) {
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        for (int i : fieldIndex) {</span>
+<span class="nc" id="L252">            buf.put(cols[i].array(), cols[i].offset(), cols[i].length());</span>
+        }
+<span class="nc" id="L254">    }</span>
+
+    /** write data to given buffer, like serialize */
+    public void exportColumnBlock(int c, ByteBuffer buf) {
+<span class="nc" id="L258">        exportColumns(info.colBlocks[c], buf);</span>
+<span class="nc" id="L259">    }</span>
+
+    /** change pointers to point to data in given buffer, UNLIKE deserialize */
+    public void loadCellBlock(int c, ByteBuffer buf) {
+<span class="nc" id="L263">        loadColumns(info.colBlocks[c], buf);</span>
+<span class="nc" id="L264">    }</span>
+
+    /** change pointers to point to data in given buffer, UNLIKE deserialize */
+    public void loadColumns(ByteBuffer buf) {
+<span class="nc" id="L268">        loadColumns(info.colAll, buf);</span>
+<span class="nc" id="L269">    }</span>
+
+    /**
+     * Change pointers to point to data in given buffer, UNLIKE deserialize
+     * @param selectedCols positions of column to load
+     * @param buf buffer containing continuous data of selected columns
+     */
+    public void loadColumns(Iterable&lt;Integer&gt; selectedCols, ByteBuffer buf) {
+<span class="fc" id="L277">        int pos = buf.position();</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        for (int c : selectedCols) {</span>
+<span class="fc" id="L279">            int len = info.codeSystem.codeLength(c, buf);</span>
+<span class="fc" id="L280">            cols[c].reset(buf.array(), buf.arrayOffset() + pos, len);</span>
+<span class="fc" id="L281">            pos += len;</span>
+<span class="fc" id="L282">            buf.position(pos);</span>
+<span class="fc" id="L283">        }</span>
+<span class="fc" id="L284">    }</span>
+
+
+    /** change pointers to point to data in given buffer, this
+     *  method allows to defined specific column to load */
+    public void loadColumns(int selectedCol, ByteBuffer buf) {
+<span class="nc" id="L290">        int pos = buf.position();</span>
+<span class="nc" id="L291">        int len = info.codeSystem.codeLength(selectedCol, buf);</span>
+<span class="nc" id="L292">        cols[selectedCol].reset(buf.array(), buf.arrayOffset() + pos, len);</span>
+<span class="nc" id="L293">    }</span>
+
+    public void loadColumnsFromColumnBlocks(ImmutableBitSet[] selectedColumnBlocks, ImmutableBitSet selectedCols,
+            ByteBuffer buf) {
+<span class="nc" id="L297">        int pos = buf.position();</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        for (ImmutableBitSet selectedColBlock : selectedColumnBlocks) {</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">            for (int i = 0; i &lt; selectedColBlock.trueBitCount(); i++) {</span>
+<span class="nc" id="L300">                int c = selectedColBlock.trueBitAt(i);</span>
+<span class="nc" id="L301">                int len = info.codeSystem.codeLength(c, buf);</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                if (selectedCols.get(c)) {</span>
+<span class="nc" id="L303">                    cols[c].reset(buf.array(), buf.arrayOffset() + pos, len);</span>
+                }
+<span class="nc" id="L305">                pos += len;</span>
+<span class="nc" id="L306">                buf.position(pos);</span>
+            }
+        }
+<span class="nc" id="L309">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

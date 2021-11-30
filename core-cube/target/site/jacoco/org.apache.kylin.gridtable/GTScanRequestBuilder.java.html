@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTScanRequestBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTScanRequestBuilder.java</span></div><h1>GTScanRequestBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.util.BitSet;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.common.debug.BackdoorToggles;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.TupleFilter;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+<span class="fc" id="L32">public class GTScanRequestBuilder {</span>
+    private GTInfo info;
+    private List&lt;GTScanRange&gt; ranges;
+    private TupleFilter filterPushDown;
+    private TupleFilter havingFilterPushDown;
+    private ImmutableBitSet dimensions;
+<span class="fc" id="L38">    private ImmutableBitSet aggrGroupBy = null;</span>
+<span class="fc" id="L39">    private ImmutableBitSet aggrMetrics = null;</span>
+<span class="fc" id="L40">    private String[] aggrMetricsFuncs = null;</span>
+    private ImmutableBitSet dynamicColumns;
+    private ImmutableBitSet rtAggrMetrics;
+    private Map&lt;Integer, TupleExpression&gt; exprsPushDown;
+<span class="fc" id="L44">    private boolean allowStorageAggregation = true;</span>
+<span class="fc" id="L45">    private double aggCacheMemThreshold = 0;</span>
+<span class="fc" id="L46">    private int storageScanRowNumThreshold = Integer.MAX_VALUE;// storage should terminate itself when $storageScanRowNumThreshold cuboid rows are scanned, and throw exception.   </span>
+<span class="fc" id="L47">    private int storagePushDownLimit = Integer.MAX_VALUE;// storage can quit scanning safely when $toragePushDownLimit aggregated rows are produced. </span>
+<span class="fc" id="L48">    private StorageLimitLevel storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="fc" id="L49">    private long startTime = -1;</span>
+<span class="fc" id="L50">    private long timeout = -1;</span>
+<span class="fc" id="L51">    private String storageBehavior = null;</span>
+
+    public GTScanRequestBuilder setInfo(GTInfo info) {
+<span class="fc" id="L54">        this.info = info;</span>
+<span class="fc" id="L55">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setRanges(List&lt;GTScanRange&gt; ranges) {
+<span class="fc" id="L59">        this.ranges = ranges;</span>
+<span class="fc" id="L60">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setDynamicColumns(ImmutableBitSet dynamicColumns) {
+<span class="nc" id="L64">        this.dynamicColumns = dynamicColumns;</span>
+<span class="nc" id="L65">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setRtAggrMetrics(ImmutableBitSet rtAggrMetrics) {
+<span class="nc" id="L69">        this.rtAggrMetrics = rtAggrMetrics;</span>
+<span class="nc" id="L70">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setExprsPushDown(Map&lt;Integer, TupleExpression&gt; exprsPushDown) {
+<span class="nc" id="L74">        this.exprsPushDown = exprsPushDown;</span>
+<span class="nc" id="L75">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setFilterPushDown(TupleFilter filterPushDown) {
+<span class="fc" id="L79">        this.filterPushDown = filterPushDown;</span>
+<span class="fc" id="L80">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setHavingFilterPushDown(TupleFilter havingFilterPushDown) {
+<span class="nc" id="L84">        this.havingFilterPushDown = havingFilterPushDown;</span>
+<span class="nc" id="L85">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setDimensions(ImmutableBitSet dimensions) {
+<span class="fc" id="L89">        this.dimensions = dimensions;</span>
+<span class="fc" id="L90">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setAggrGroupBy(ImmutableBitSet aggrGroupBy) {
+<span class="fc" id="L94">        this.aggrGroupBy = aggrGroupBy;</span>
+<span class="fc" id="L95">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setAggrMetrics(ImmutableBitSet aggrMetrics) {
+<span class="fc" id="L99">        this.aggrMetrics = aggrMetrics;</span>
+<span class="fc" id="L100">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setAggrMetricsFuncs(String[] aggrMetricsFuncs) {
+<span class="fc" id="L104">        this.aggrMetricsFuncs = aggrMetricsFuncs;</span>
+<span class="fc" id="L105">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setAllowStorageAggregation(boolean allowStorageAggregation) {
+<span class="nc" id="L109">        this.allowStorageAggregation = allowStorageAggregation;</span>
+<span class="nc" id="L110">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setAggCacheMemThreshold(double aggCacheMemThreshold) {
+<span class="fc" id="L114">        this.aggCacheMemThreshold = aggCacheMemThreshold;</span>
+<span class="fc" id="L115">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setStorageScanRowNumThreshold(int storageScanRowNumThreshold) {
+<span class="nc" id="L119">        this.storageScanRowNumThreshold = storageScanRowNumThreshold;</span>
+<span class="nc" id="L120">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setStoragePushDownLimit(int storagePushDownLimit) {
+<span class="nc" id="L124">        this.storagePushDownLimit = storagePushDownLimit;</span>
+<span class="nc" id="L125">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setStorageLimitLevel(StorageLimitLevel storageLimitLevel) {
+<span class="nc" id="L129">        this.storageLimitLevel = storageLimitLevel;</span>
+<span class="nc" id="L130">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setStartTime(long startTime) {
+<span class="nc" id="L134">        this.startTime = startTime;</span>
+<span class="nc" id="L135">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setTimeout(long timeout) {
+<span class="nc" id="L139">        this.timeout = timeout;</span>
+<span class="nc" id="L140">        return this;</span>
+    }
+
+    public GTScanRequestBuilder setStorageBehavior(String storageBehavior) {
+<span class="nc" id="L144">        this.storageBehavior = storageBehavior;</span>
+<span class="nc" id="L145">        return this;</span>
+    }
+
+    public GTScanRequest createGTScanRequest() {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (aggrGroupBy == null) {</span>
+<span class="fc" id="L150">            aggrGroupBy = new ImmutableBitSet(new BitSet());</span>
+        }
+
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (aggrMetrics == null) {</span>
+<span class="fc" id="L154">            aggrMetrics = new ImmutableBitSet(new BitSet());</span>
+        }
+
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (aggrMetricsFuncs == null) {</span>
+<span class="fc" id="L158">            aggrMetricsFuncs = new String[0];</span>
+        }
+
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (rtAggrMetrics == null) {</span>
+<span class="fc" id="L162">            rtAggrMetrics = new ImmutableBitSet(new BitSet());</span>
+        }
+
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        if (dynamicColumns == null) {</span>
+<span class="fc" id="L166">            dynamicColumns = new ImmutableBitSet(new BitSet());</span>
+        }
+
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (exprsPushDown == null) {</span>
+<span class="fc" id="L170">            exprsPushDown = Maps.newHashMap();</span>
+        }
+
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (storageBehavior == null) {</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">            storageBehavior = BackdoorToggles.getCoprocessorBehavior() == null</span>
+<span class="fc" id="L175">                    ? StorageSideBehavior.SCAN_FILTER_AGGR_CHECKMEM.toString()</span>
+<span class="pc" id="L176">                    : BackdoorToggles.getCoprocessorBehavior();</span>
+        }
+
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        this.startTime = startTime == -1 ? System.currentTimeMillis() : startTime;</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        this.timeout = timeout == -1 ? 300000 : timeout;</span>
+
+<span class="fc" id="L182">        return new GTScanRequest(info, ranges, dimensions, aggrGroupBy, aggrMetrics, aggrMetricsFuncs, rtAggrMetrics,</span>
+                dynamicColumns, exprsPushDown, filterPushDown, havingFilterPushDown, allowStorageAggregation,
+                aggCacheMemThreshold, storageScanRowNumThreshold, storagePushDownLimit, storageLimitLevel,
+                storageBehavior, startTime, timeout);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

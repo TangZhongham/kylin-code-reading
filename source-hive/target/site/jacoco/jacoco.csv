@@ -1,0 +1,36 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,CreateFlatHiveTableByLivyStep,109,0,4,0,25,0,11,0,9,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveInputBase,299,119,18,2,66,19,18,4,8,4
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,GarbageCollectionStep,268,0,16,0,51,0,18,0,10,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,RedistributeFlatHiveTableStep,306,0,8,0,58,0,15,0,11,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMRInput,20,0,0,0,4,0,4,0,4,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveTable,137,0,8,0,31,0,12,0,8,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMetadataExplorer,655,0,26,0,119,0,31,0,18,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveTableMetaBuilder,115,0,2,0,33,0,16,0,15,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveTableMeta,121,0,0,0,16,0,2,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,RedistributeFlatHiveTableByLivyStep,287,0,6,0,53,0,14,0,11,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMRInput.HiveMRBatchCubingInputSide,10,0,0,0,3,0,2,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveSource,61,0,4,0,18,0,10,0,8,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMRInput.new IMRInput.IMRBatchMergeInputSide() {...},7,0,0,0,2,0,2,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMetaStoreClientFactory,75,0,4,0,14,0,4,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,CreateFlatHiveTableStep,217,0,8,0,46,0,14,0,10,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,DBConnConf,123,0,0,0,27,0,12,0,12,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,CreateMrHiveDictStep,792,0,66,0,164,0,63,0,30,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,MRHiveDictUtil,349,0,10,0,70,0,14,0,9,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,CLIHiveClient,365,0,32,0,77,0,26,0,10,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveTableMeta.HiveTableColumnMeta,40,0,0,0,6,0,2,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveInputBase.BaseBatchCubingInputSide,751,0,32,0,137,0,26,0,10,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMRInput.HiveTableInputFormat,67,0,0,0,15,0,4,0,4,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,MRHiveDictUtil.DictHiveType,37,0,0,0,6,0,3,0,3,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,BeelineOptionsProcessor,55,0,0,0,9,0,2,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMRInput.GarbageCollectionStep,3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveMRInput.RedistributeFlatHiveTableStep,3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveClientFactory,28,0,4,0,6,0,4,0,2,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,HiveTableReader,259,0,22,0,61,0,24,0,13,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive,BeelineHiveClient,666,53,71,11,148,8,52,5,15,1
+Apache Kylin - Hive Source,org.apache.kylin.source.hive.exception,SegmentEmptyException,23,0,0,0,10,0,5,0,5,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive.cardinality,ColumnCardinalityMapper,191,0,14,0,39,0,12,0,5,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive.cardinality,HiveColumnCardinalityJob,206,0,2,0,43,0,4,0,3,0
+Apache Kylin - Hive Source,org.apache.kylin.source.hive.cardinality,ColumnCardinalityReducer,0,129,1,7,0,32,1,8,0,5
+Apache Kylin - Hive Source,org.apache.kylin.source.hive.cardinality,HiveColumnCardinalityUpdateJob,316,0,16,0,72,0,13,0,5,0
+Apache Kylin - Hive Source,org.apache.kylin.source.jdbc,CmdStep,106,0,2,0,19,0,6,0,5,0

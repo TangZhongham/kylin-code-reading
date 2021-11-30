@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RowKeyEncoder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.kv</a> &gt; <span class="el_source">RowKeyEncoder.java</span></div><h1>RowKeyEncoder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.kv;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.common.util.ShardingHash;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+public class RowKeyEncoder extends AbstractRowKeyEncoder implements java.io.Serializable {
+
+<span class="nc" id="L39">    private int bodyLength = 0;</span>
+    private RowKeyColumnIO colIO;
+
+    protected boolean enableSharding;
+<span class="nc" id="L43">    private int uhcOffset = -1;//it's a offset to the beginning of body</span>
+<span class="nc" id="L44">    private int uhcLength = -1;</span>
+    private int headerLength;
+
+    public RowKeyEncoder(CubeSegment cubeSeg, Cuboid cuboid) {
+<span class="nc" id="L48">        super(cubeSeg, cuboid);</span>
+<span class="nc" id="L49">        enableSharding = cubeSeg.isEnableSharding();</span>
+<span class="nc" id="L50">        headerLength = cubeSeg.getRowKeyPreambleSize();</span>
+<span class="nc" id="L51">        Set&lt;TblColRef&gt; shardByColumns = cubeSeg.getCubeDesc().getShardByColumns();</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (shardByColumns.size() &gt; 1) {</span>
+<span class="nc" id="L53">            throw new IllegalStateException(&quot;Does not support multiple UHC now&quot;);</span>
+        }
+<span class="nc" id="L55">        colIO = new RowKeyColumnIO(cubeSeg.getDimensionEncodingMap());</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        for (TblColRef column : cuboid.getColumns()) {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (shardByColumns.contains(column)) {</span>
+<span class="nc" id="L58">                uhcOffset = bodyLength;</span>
+<span class="nc" id="L59">                uhcLength = colIO.getColumnLength(column);</span>
+            }
+<span class="nc" id="L61">            bodyLength += colIO.getColumnLength(column);</span>
+<span class="nc" id="L62">        }</span>
+<span class="nc" id="L63">    }</span>
+
+    public int getHeaderLength() {
+<span class="nc" id="L66">        return headerLength;</span>
+    }
+
+    public int getBytesLength() {
+<span class="nc" id="L70">        return getHeaderLength() + bodyLength;</span>
+    }
+
+    protected short calculateShard(byte[] key) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (enableSharding) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            int shardSeedOffset = uhcOffset == -1 ? 0 : uhcOffset;</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            int shardSeedLength = uhcLength == -1 ? bodyLength : uhcLength;</span>
+<span class="nc" id="L77">            short cuboidShardNum = cubeSeg.getCuboidShardNum(cuboid.getId());</span>
+<span class="nc" id="L78">            short shardOffset = ShardingHash.getShard(key, RowConstants.ROWKEY_SHARD_AND_CUBOID_LEN + shardSeedOffset, shardSeedLength, cuboidShardNum);</span>
+<span class="nc" id="L79">            return ShardingHash.normalize(cubeSeg.getCuboidBaseShard(cuboid.getId()), shardOffset, cubeSeg.getTotalShards(cuboid.getId()));</span>
+        } else {
+<span class="nc" id="L81">            throw new RuntimeException(&quot;If enableSharding false, you should never calculate shard&quot;);</span>
+        }
+    }
+
+    public int getColumnLength(TblColRef col) {
+<span class="nc" id="L86">        return colIO.getColumnLength(col);</span>
+    }
+
+    @Override
+    public byte[] createBuf() {
+<span class="nc" id="L91">        return new byte[this.getBytesLength()];</span>
+    }
+
+    @Override
+    public void encode(GTRecord record, ImmutableBitSet keyColumns, byte[] buf) {
+<span class="nc" id="L96">        ByteArray byteArray = new ByteArray(buf, getHeaderLength(), 0);</span>
+
+<span class="nc" id="L98">        encodeDims(record, keyColumns, byteArray, defaultValue());</span>
+
+        //fill shard and cuboid
+<span class="nc" id="L101">        fillHeader(buf);</span>
+<span class="nc" id="L102">    }</span>
+
+    //ByteArray representing dimension does not have extra header
+    private void encodeDims(GTRecord record, ImmutableBitSet selectedCols, ByteArray buf, byte defaultValue) {
+<span class="nc" id="L106">        int pos = 0;</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (int i = 0; i &lt; selectedCols.trueBitCount(); i++) {</span>
+<span class="nc" id="L108">            int c = selectedCols.trueBitAt(i);</span>
+<span class="nc" id="L109">            ByteArray columnC = record.get(c);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            if (columnC.array() != null) {</span>
+<span class="nc" id="L111">                System.arraycopy(record.get(c).array(), columnC.offset(), buf.array(), buf.offset() + pos, columnC.length());</span>
+<span class="nc" id="L112">                pos += columnC.length();</span>
+            } else {
+<span class="nc" id="L114">                int maxLength = record.getInfo().getCodeSystem().maxCodeLength(c);</span>
+<span class="nc" id="L115">                Arrays.fill(buf.array(), buf.offset() + pos, buf.offset() + pos + maxLength, defaultValue);</span>
+<span class="nc" id="L116">                pos += maxLength;</span>
+            }
+        }
+<span class="nc" id="L119">        buf.setLength(pos);</span>
+<span class="nc" id="L120">    }</span>
+
+    @Override
+    public void encode(ByteArray bodyBytes, ByteArray outputBuf) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        Preconditions.checkState(bodyBytes.length() == bodyLength);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        Preconditions.checkState(bodyBytes.length() + getHeaderLength() == outputBuf.length(), //</span>
+<span class="nc" id="L126">                &quot;bodybytes length: &quot; + bodyBytes.length() + &quot; outputBuf length: &quot; + outputBuf.length() + &quot; header length: &quot; + getHeaderLength());</span>
+<span class="nc" id="L127">        System.arraycopy(bodyBytes.array(), bodyBytes.offset(), outputBuf.array(), getHeaderLength(), bodyLength);</span>
+
+        //fill shard and cuboid
+<span class="nc" id="L130">        fillHeader(outputBuf.array());</span>
+<span class="nc" id="L131">    }</span>
+
+    @Override
+    public byte[] encode(Map&lt;TblColRef, String&gt; valueMap) {
+<span class="nc" id="L135">        List&lt;TblColRef&gt; columns = cuboid.getColumns();</span>
+<span class="nc" id="L136">        String[] values = new String[columns.size()];</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        for (int i = 0; i &lt; columns.size(); i++) {</span>
+<span class="nc" id="L138">            values[i] = valueMap.get(columns.get(i));</span>
+        }
+<span class="nc" id="L140">        return encode(values);</span>
+    }
+
+    @Override
+    public byte[] encode(String[] values) {
+<span class="nc" id="L145">        byte[] bytes = new byte[this.getBytesLength()];</span>
+<span class="nc" id="L146">        int offset = getHeaderLength();</span>
+
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        for (int i = 0; i &lt; cuboid.getColumns().size(); i++) {</span>
+<span class="nc" id="L149">            TblColRef column = cuboid.getColumns().get(i);</span>
+<span class="nc" id="L150">            int colLength = colIO.getColumnLength(column);</span>
+<span class="nc" id="L151">            fillColumnValue(column, colLength, values[i], bytes, offset);</span>
+<span class="nc" id="L152">            offset += colLength;</span>
+        }
+
+        //fill shard and cuboid
+<span class="nc" id="L156">        fillHeader(bytes);</span>
+
+<span class="nc" id="L158">        return bytes;</span>
+    }
+
+
+    public void fillHeader(byte[] bytes) {
+<span class="nc" id="L163">        int offset = 0;</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (enableSharding) {</span>
+<span class="nc" id="L165">            short shard = calculateShard(bytes);</span>
+<span class="nc" id="L166">            BytesUtil.writeShort(shard, bytes, offset, RowConstants.ROWKEY_SHARDID_LEN);</span>
+<span class="nc" id="L167">            offset += RowConstants.ROWKEY_SHARDID_LEN;</span>
+        }
+
+<span class="nc" id="L170">        System.arraycopy(cuboid.getBytes(), 0, bytes, offset, RowConstants.ROWKEY_CUBOIDID_LEN);</span>
+        //offset += RowConstants.ROWKEY_CUBOIDID_LEN;
+        //return offset;
+<span class="nc" id="L173">    }</span>
+
+    protected void fillColumnValue(TblColRef column, int columnLen, String valueStr, byte[] outputValue, int outputValueOffset) {
+        // special null value case
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (valueStr == null) {</span>
+<span class="nc" id="L178">            Arrays.fill(outputValue, outputValueOffset, outputValueOffset + columnLen, defaultValue());</span>
+<span class="nc" id="L179">            return;</span>
+        }
+
+<span class="nc" id="L182">        colIO.writeColumn(column, valueStr, 0, this.blankByte, outputValue, outputValueOffset);</span>
+<span class="nc" id="L183">    }</span>
+
+    protected byte defaultValue() {
+<span class="nc" id="L186">        return this.blankByte;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

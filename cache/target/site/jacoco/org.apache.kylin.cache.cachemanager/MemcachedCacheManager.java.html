@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemcachedCacheManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.cachemanager</a> &gt; <span class="el_source">MemcachedCacheManager.java</span></div><h1>MemcachedCacheManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.cachemanager;
+
+import java.net.SocketAddress;
+import java.util.Collection;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.apache.commons.lang3.SerializationUtils;
+import org.apache.kylin.cache.memcached.MemcachedCache;
+import org.apache.kylin.cache.memcached.MemcachedCacheConfig;
+import org.apache.kylin.cache.memcached.MemcachedChunkingCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.support.AbstractCacheManager;
+import org.springframework.cache.support.SimpleValueWrapper;
+
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.util.concurrent.ThreadFactoryBuilder;
+
+import net.spy.memcached.MemcachedClientIF;
+
+<span class="fc" id="L46">public class MemcachedCacheManager extends AbstractCacheManager {</span>
+
+<span class="fc" id="L48">    private static final Logger logger = LoggerFactory.getLogger(MemcachedCacheManager.class);</span>
+<span class="fc" id="L49">    private static final Long ONE_MINUTE = 60 * 1000L;</span>
+
+    @Autowired
+    private MemcachedCacheConfig memcachedCacheConfig;
+
+<span class="fc" id="L54">    private ScheduledExecutorService timer = Executors.newScheduledThreadPool(1,</span>
+<span class="fc" id="L55">            new ThreadFactoryBuilder().setNameFormat(&quot;Memcached-HealthChecker&quot;).build());</span>
+<span class="fc" id="L56">    private AtomicBoolean clusterHealth = new AtomicBoolean(true);</span>
+
+    @Override
+    protected Collection&lt;? extends Cache&gt; loadCaches() {
+<span class="fc" id="L60">        Cache successCache = new MemCachedCacheAdaptor(</span>
+<span class="fc" id="L61">                new MemcachedChunkingCache(MemcachedCache.create(memcachedCacheConfig, CacheConstants.QUERY_CACHE)));</span>
+<span class="fc" id="L62">        Cache userCache = new MemCachedCacheAdaptor(</span>
+<span class="fc" id="L63">                new MemcachedCache(MemcachedCache.create(memcachedCacheConfig, CacheConstants.USER_CACHE, 86400)));</span>
+
+<span class="fc" id="L65">        addCache(successCache);</span>
+<span class="fc" id="L66">        addCache(userCache);</span>
+
+<span class="fc" id="L68">        Collection&lt;String&gt; names = getCacheNames();</span>
+<span class="fc" id="L69">        Collection&lt;Cache&gt; caches = Lists.newArrayList();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (String name : names) {</span>
+<span class="fc" id="L71">            caches.add(getCache(name));</span>
+<span class="fc" id="L72">        }</span>
+
+<span class="fc" id="L74">        timer.scheduleWithFixedDelay(new MemcachedClusterHealthChecker(), ONE_MINUTE, ONE_MINUTE,</span>
+                TimeUnit.MILLISECONDS);
+<span class="fc" id="L76">        return caches;</span>
+    }
+
+    public boolean isClusterDown() {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        return !clusterHealth.get();</span>
+    }
+
+    @VisibleForTesting
+    void setClusterHealth(boolean ifHealth) {
+<span class="fc" id="L85">        clusterHealth.set(ifHealth);</span>
+<span class="fc" id="L86">    }</span>
+
+    public static class MemCachedCacheAdaptor implements Cache {
+        private MemcachedCache memcachedCache;
+
+<span class="fc" id="L91">        public MemCachedCacheAdaptor(MemcachedCache memcachedCache) {</span>
+<span class="fc" id="L92">            this.memcachedCache = memcachedCache;</span>
+<span class="fc" id="L93">        }</span>
+
+        @Override
+        public String getName() {
+<span class="fc" id="L97">            return memcachedCache.getName();</span>
+        }
+
+        @Override
+        public Object getNativeCache() {
+<span class="nc" id="L102">            return memcachedCache.getNativeCache();</span>
+        }
+
+        @Override
+        public ValueWrapper get(Object key) {
+<span class="fc" id="L107">            byte[] value = memcachedCache.get(key);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (value == null) {</span>
+<span class="nc" id="L109">                return null;</span>
+            }
+<span class="fc" id="L111">            return new SimpleValueWrapper(SerializationUtils.deserialize(value));</span>
+        }
+
+        @Override
+        public void put(Object key, Object value) {
+<span class="nc" id="L116">            memcachedCache.put(key, value);</span>
+<span class="nc" id="L117">        }</span>
+
+        @Override
+        public void evict(Object key) {
+<span class="nc" id="L121">            memcachedCache.evict(key);</span>
+<span class="nc" id="L122">        }</span>
+
+        @Override
+        public void clear() {
+<span class="nc" id="L126">            memcachedCache.clear();</span>
+<span class="nc" id="L127">        }</span>
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public &lt;T&gt; T get(Object key, Class&lt;T&gt; type) {
+<span class="nc" id="L132">            byte[] value = memcachedCache.get(key);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (value == null) {</span>
+<span class="nc" id="L134">                return null;</span>
+            }
+<span class="nc" id="L136">            Object obj = SerializationUtils.deserialize(value);</span>
+<span class="nc bnc" id="L137" title="All 6 branches missed.">            if (obj != null &amp;&amp; type != null &amp;&amp; !type.isInstance(value)) {</span>
+<span class="nc" id="L138">                throw new IllegalStateException(</span>
+<span class="nc" id="L139">                        &quot;Cached value is not of required type [&quot; + type.getName() + &quot;]: &quot; + value);</span>
+            }
+<span class="nc" id="L141">            return (T) obj;</span>
+        }
+
+        @Override
+        //TODO
+        public &lt;T&gt; T get(Object key, Callable&lt;T&gt; valueLoader) {
+<span class="nc" id="L147">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        //TODO implementation here doesn't guarantee the atomicity.
+        //Without atomicity, this method should not be invoked
+        public ValueWrapper putIfAbsent(Object key, Object value) {
+<span class="nc" id="L154">            byte[] existing = memcachedCache.get(key);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (existing == null) {</span>
+<span class="nc" id="L156">                memcachedCache.put(key, value);</span>
+<span class="nc" id="L157">                return null;</span>
+            } else {
+<span class="nc" id="L159">                return new SimpleValueWrapper(SerializationUtils.deserialize(existing));</span>
+            }
+        }
+
+    }
+
+<span class="fc" id="L165">    private class MemcachedClusterHealthChecker implements Runnable {</span>
+        @Override
+        public void run() {
+<span class="nc" id="L168">            Cache cache = getCache(CacheConstants.QUERY_CACHE);</span>
+<span class="nc" id="L169">            MemcachedClientIF cacheClient = (MemcachedClientIF) cache.getNativeCache();</span>
+<span class="nc" id="L170">            Collection&lt;SocketAddress&gt; liveServers = cacheClient.getAvailableServers();</span>
+<span class="nc" id="L171">            Collection&lt;SocketAddress&gt; deadServers = cacheClient.getUnavailableServers();</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            if (liveServers.isEmpty()) {</span>
+<span class="nc" id="L173">                clusterHealth.set(false);</span>
+<span class="nc" id="L174">                logger.error(&quot;All the servers in MemcachedCluster is down, UnavailableServers: &quot; + deadServers);</span>
+            } else {
+<span class="nc" id="L176">                clusterHealth.set(true);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                if (deadServers.size() &gt; liveServers.size()) {</span>
+<span class="nc" id="L178">                    logger.warn(&quot;Half of the servers in MemcachedCluster is down, LiveServers: &quot; + liveServers</span>
+                            + &quot;, UnavailableServers: &quot; + deadServers);
+                }
+            }
+<span class="nc" id="L182">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimeUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">TimeUtil.java</span></div><h1>TimeUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.util.Calendar;
+import java.util.Locale;
+import java.util.TimeZone;
+
+/**
+ */
+public class TimeUtil {
+
+<span class="nc" id="L29">    private TimeUtil() {</span>
+<span class="nc" id="L30">        throw new IllegalStateException(&quot;Class TimeUtil is an utility class !&quot;);</span>
+    }
+
+<span class="fc" id="L33">    private static TimeZone gmt = TimeZone.getTimeZone(&quot;GMT&quot;);</span>
+    public static final long ONE_MINUTE_TS = 60 * 1000L;
+    public static final long ONE_HOUR_TS = 60 * ONE_MINUTE_TS;
+    public static final long ONE_DAY_TS = 24 * ONE_HOUR_TS;
+
+    public static long getMinuteStart(long ts) {
+<span class="fc" id="L39">        return ts / ONE_MINUTE_TS * ONE_MINUTE_TS;</span>
+    }
+
+    public static long getHourStart(long ts) {
+<span class="fc" id="L43">        return ts / ONE_HOUR_TS * ONE_HOUR_TS;</span>
+    }
+
+    public static long getDayStart(long ts) {
+<span class="fc" id="L47">        return getDayStartWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getDayStartWithTimeZone(TimeZone timeZone, long ts){
+<span class="fc" id="L51">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L52">        calendar.setTimeInMillis(ts);</span>
+<span class="fc" id="L53">        int year = calendar.get(Calendar.YEAR);</span>
+<span class="fc" id="L54">        int month = calendar.get(Calendar.MONTH);</span>
+<span class="fc" id="L55">        int date = calendar.get(Calendar.DATE);</span>
+<span class="fc" id="L56">        calendar.clear();</span>
+<span class="fc" id="L57">        calendar.set(year, month, date);</span>
+<span class="fc" id="L58">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getWeekStart(long ts) {
+<span class="fc" id="L62">        return getWeekStartWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getWeekStartWithTimeZone(TimeZone timeZone, long ts){
+<span class="fc" id="L66">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L67">        calendar.setTimeInMillis(getDayStartWithTimeZone(timeZone, ts));</span>
+<span class="fc" id="L68">        calendar.add(Calendar.DAY_OF_WEEK, calendar.getFirstDayOfWeek() - calendar.get(Calendar.DAY_OF_WEEK));</span>
+<span class="fc" id="L69">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getMonthStart(long ts) {
+<span class="fc" id="L73">        return getMonthStartWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getMonthStartWithTimeZone(TimeZone timeZone, long ts){
+<span class="fc" id="L77">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L78">        calendar.setTimeInMillis(ts);</span>
+<span class="fc" id="L79">        int year = calendar.get(Calendar.YEAR);</span>
+<span class="fc" id="L80">        int month = calendar.get(Calendar.MONTH);</span>
+<span class="fc" id="L81">        calendar.clear();</span>
+<span class="fc" id="L82">        calendar.set(year, month, 1);</span>
+<span class="fc" id="L83">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getQuarterStart(long ts) {
+<span class="fc" id="L87">        return getQuarterStartWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getQuarterStartWithTimeZone(TimeZone timeZone, long ts) {
+<span class="fc" id="L91">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L92">        calendar.setTimeInMillis(ts);</span>
+<span class="fc" id="L93">        int year = calendar.get(Calendar.YEAR);</span>
+<span class="fc" id="L94">        int month = calendar.get(Calendar.MONTH);</span>
+<span class="fc" id="L95">        calendar.clear();</span>
+<span class="fc" id="L96">        calendar.set(year, month / 3 * 3, 1);</span>
+<span class="fc" id="L97">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getYearStart(long ts) {
+<span class="fc" id="L101">        return getYearStartWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getYearStartWithTimeZone(TimeZone timeZone, long ts) {
+<span class="fc" id="L105">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L106">        calendar.setTimeInMillis(ts);</span>
+<span class="fc" id="L107">        int year = calendar.get(Calendar.YEAR);</span>
+<span class="fc" id="L108">        calendar.clear();</span>
+<span class="fc" id="L109">        calendar.set(year, 0, 1);</span>
+<span class="fc" id="L110">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getWeekEnd(long ts) {
+<span class="fc" id="L114">        return getWeekEndWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getWeekEndWithTimeZone(TimeZone timeZone, long ts) {
+<span class="fc" id="L118">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L119">        calendar.setTimeInMillis(getWeekStartWithTimeZone(timeZone, ts));</span>
+<span class="fc" id="L120">        calendar.add(Calendar.DAY_OF_WEEK, 7);</span>
+<span class="fc" id="L121">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getMonthEnd(long ts) {
+<span class="fc" id="L125">        return getMonthEndWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getMonthEndWithTimeZone(TimeZone timeZone, long ts) {
+<span class="fc" id="L129">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L130">        calendar.setTimeInMillis(ts);</span>
+<span class="fc" id="L131">        calendar.set(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONDAY), calendar.get(Calendar.DAY_OF_MONTH), 0, 0, 0);</span>
+<span class="fc" id="L132">        calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH));</span>
+<span class="fc" id="L133">        calendar.set(Calendar.HOUR_OF_DAY, 24);</span>
+<span class="fc" id="L134">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getQuarterEnd(long ts) {
+<span class="fc" id="L138">        return getQuarterEndWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getQuarterEndWithTimeZone(TimeZone timeZone, long ts) {
+<span class="fc" id="L142">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L143">        calendar.setTimeInMillis(getQuarterStartWithTimeZone(timeZone, ts));</span>
+<span class="fc" id="L144">        calendar.add(Calendar.MONTH, 3);</span>
+<span class="fc" id="L145">        return calendar.getTimeInMillis();</span>
+    }
+
+    public static long getYearEnd(long ts) {
+<span class="fc" id="L149">        return getYearEndWithTimeZone(gmt, ts);</span>
+    }
+
+    public static long getYearEndWithTimeZone(TimeZone timeZone, long ts) {
+<span class="fc" id="L153">        Calendar calendar = Calendar.getInstance(timeZone, Locale.ROOT);</span>
+<span class="fc" id="L154">        calendar.setTimeInMillis(getYearStartWithTimeZone(timeZone, ts));</span>
+<span class="fc" id="L155">        calendar.add(Calendar.YEAR, 1);</span>
+<span class="fc" id="L156">        return calendar.getTimeInMillis();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

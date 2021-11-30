@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RealizationSortRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.routing.rules</a> &gt; <span class="el_source">RealizationSortRule.java</span></div><h1>RealizationSortRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.routing.rules;
+
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.kylin.query.routing.Candidate;
+import org.apache.kylin.query.routing.RoutingRule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+<span class="nc" id="L31">public class RealizationSortRule extends RoutingRule {</span>
+<span class="nc" id="L32">    private static final Logger logger = LoggerFactory.getLogger(RealizationSortRule.class);</span>
+
+    @Override
+    public void apply(List&lt;Candidate&gt; candidates) {
+<span class="nc" id="L36">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L37" title="All 2 branches missed.">        for (Candidate candidate : candidates) {</span>
+<span class="nc" id="L38">            sb.append(candidate.getRealization().getCanonicalName() + &quot; priority &quot; + candidate.getPriority() + &quot; cost &quot; + candidate.getCapability().cost + &quot;. &quot;);</span>
+<span class="nc" id="L39">        }</span>
+<span class="nc" id="L40">        logger.info(sb.toString());</span>
+
+<span class="nc" id="L42">        Collections.sort(candidates);</span>
+<span class="nc" id="L43">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Maven: org.apache.calcite:calcite-core:1.16.0-kylin-r5">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/apache/calcite/calcite-core/1.16.0-kylin-r5/calcite-core-1.16.0-kylin-r5.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/org/apache/calcite/calcite-core/1.16.0-kylin-r5/calcite-core-1.16.0-kylin-r5-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/apache/calcite/calcite-core/1.16.0-kylin-r5/calcite-core-1.16.0-kylin-r5-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

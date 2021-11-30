@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DoggedCubeBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.inmemcubing</a> &gt; <span class="el_source">DoggedCubeBuilder.java</span></div><h1>DoggedCubeBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.inmemcubing;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.PriorityQueue;
+import java.util.concurrent.BlockingQueue;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.gridtable.GTScanRequestBuilder;
+import org.apache.kylin.gridtable.IGTScanner;
+import org.apache.kylin.measure.MeasureAggregators;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * When base cuboid does not fit in memory, cut the input into multiple splits and merge the split outputs at last.
+ */
+public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
+
+<span class="nc" id="L51">    private static Logger logger = LoggerFactory.getLogger(DoggedCubeBuilder.class);</span>
+
+<span class="nc" id="L53">    private int unitRows = ConsumeBlockingQueueController.DEFAULT_BATCH_SIZE;</span>
+
+    public DoggedCubeBuilder(CuboidScheduler cuboidScheduler, IJoinedFlatTableDesc flatDesc,
+            Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L57">        super(cuboidScheduler, flatDesc, dictionaryMap);</span>
+
+        // check memory more often if a single row is big
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (cubeDesc.hasMemoryHungryMeasures())</span>
+<span class="nc" id="L61">            unitRows /= 10;</span>
+<span class="nc" id="L62">    }</span>
+
+    @Override
+    public &lt;T&gt; void build(BlockingQueue&lt;T&gt; input, InputConverterUnit&lt;T&gt; inputConverterUnit, ICuboidWriter output)
+            throws IOException {
+<span class="nc" id="L67">        new BuildOnce().build(input, inputConverterUnit, output);</span>
+<span class="nc" id="L68">    }</span>
+
+    private class BuildOnce {
+
+<span class="nc" id="L72">        BuildOnce() {</span>
+<span class="nc" id="L73">        }</span>
+
+        public &lt;T&gt; void build(BlockingQueue&lt;T&gt; input, InputConverterUnit&lt;T&gt; inputConverterUnit, ICuboidWriter output)
+                throws IOException {
+<span class="nc" id="L77">            final RecordConsumeBlockingQueueController&lt;T&gt; inputController = RecordConsumeBlockingQueueController</span>
+<span class="nc" id="L78">                    .getQueueController(inputConverterUnit, input, unitRows);</span>
+
+<span class="nc" id="L80">            final List&lt;SplitThread&gt; splits = new ArrayList&lt;SplitThread&gt;();</span>
+<span class="nc" id="L81">            final Merger merger = new Merger();</span>
+
+<span class="nc" id="L83">            long start = System.currentTimeMillis();</span>
+<span class="nc" id="L84">            logger.info(&quot;Dogged Cube Build start&quot;);</span>
+
+            try {
+                while (true) {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">                    if (inputController.ifEnd()) {</span>
+<span class="nc" id="L89">                        break;</span>
+                    }
+
+<span class="nc" id="L92">                    SplitThread last = new SplitThread(splits.size() + 1, inputController);</span>
+<span class="nc" id="L93">                    splits.add(last);</span>
+
+<span class="nc" id="L95">                    last.start();</span>
+<span class="nc" id="L96">                    logger.info(&quot;Split #{} kickoff&quot;, splits.size());</span>
+
+                    // Build splits sequentially
+<span class="nc" id="L99">                    last.join();</span>
+
+<span class="nc" id="L101">                    checkException(splits);</span>
+<span class="nc" id="L102">                }</span>
+
+<span class="nc" id="L104">                logger.info(&quot;Dogged Cube Build splits complete, took {} ms&quot;, (System.currentTimeMillis() - start));</span>
+
+<span class="nc" id="L106">                merger.mergeAndOutput(splits, output);</span>
+
+<span class="nc" id="L108">            } catch (Throwable e) {</span>
+<span class="nc" id="L109">                logger.error(&quot;Dogged Cube Build error&quot;, e);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (e instanceof Error)</span>
+<span class="nc" id="L111">                    throw (Error) e;</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                else if (e instanceof RuntimeException)</span>
+<span class="nc" id="L113">                    throw (RuntimeException) e;</span>
+                else
+<span class="nc" id="L115">                    throw new IOException(e);</span>
+            } finally {
+<span class="nc" id="L117">                output.close();</span>
+<span class="nc" id="L118">                closeGirdTables(splits);</span>
+<span class="nc" id="L119">                logger.info(&quot;Dogged Cube Build end, totally took {} ms&quot;, (System.currentTimeMillis() - start));</span>
+<span class="nc" id="L120">                ensureExit(splits);</span>
+<span class="nc" id="L121">                logger.info(&quot;Dogged Cube Build return&quot;);</span>
+            }
+<span class="nc" id="L123">        }</span>
+
+        private void closeGirdTables(List&lt;SplitThread&gt; splits) {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            for (SplitThread split : splits) {</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                if (split.buildResult != null) {</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                    for (CuboidResult r : split.buildResult.values()) {</span>
+                        try {
+<span class="nc" id="L130">                            r.table.close();</span>
+<span class="nc" id="L131">                        } catch (Throwable e) {</span>
+<span class="nc" id="L132">                            logger.error(&quot;Error closing grid table &quot; + r.table, e);</span>
+<span class="nc" id="L133">                        }</span>
+<span class="nc" id="L134">                    }</span>
+                }
+<span class="nc" id="L136">            }</span>
+<span class="nc" id="L137">        }</span>
+
+        private void ensureExit(List&lt;SplitThread&gt; splits) throws IOException {
+            try {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">                for (int i = 0; i &lt; splits.size(); i++) {</span>
+<span class="nc" id="L142">                    SplitThread split = splits.get(i);</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">                    if (split.isAlive()) {</span>
+<span class="nc" id="L144">                        abort(splits);</span>
+                    }
+                }
+<span class="nc" id="L147">            } catch (Throwable e) {</span>
+<span class="nc" id="L148">                logger.error(&quot;Dogged Cube Build error&quot;, e);</span>
+<span class="nc" id="L149">            }</span>
+<span class="nc" id="L150">        }</span>
+
+        private void checkException(List&lt;SplitThread&gt; splits) throws IOException {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            for (int i = 0; i &lt; splits.size(); i++) {</span>
+<span class="nc" id="L154">                SplitThread split = splits.get(i);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                if (split.exception != null)</span>
+<span class="nc" id="L156">                    abort(splits);</span>
+            }
+<span class="nc" id="L158">        }</span>
+
+        private void abort(List&lt;SplitThread&gt; splits) throws IOException {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">            for (SplitThread split : splits) {</span>
+<span class="nc" id="L162">                split.builder.abort();</span>
+<span class="nc" id="L163">            }</span>
+
+<span class="nc" id="L165">            ArrayList&lt;Throwable&gt; errors = new ArrayList&lt;Throwable&gt;();</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            for (SplitThread split : splits) {</span>
+                try {
+<span class="nc" id="L168">                    split.join();</span>
+<span class="nc" id="L169">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L170">                    Thread.currentThread().interrupt();</span>
+<span class="nc" id="L171">                    errors.add(e);</span>
+<span class="nc" id="L172">                }</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                if (split.exception != null)</span>
+<span class="nc" id="L174">                    errors.add(split.exception);</span>
+<span class="nc" id="L175">            }</span>
+<span class="nc" id="L176">            InMemCubeBuilder.processErrors(errors);</span>
+<span class="nc" id="L177">        }</span>
+    }
+
+    private class SplitThread extends Thread {
+        final RecordConsumeBlockingQueueController&lt;?&gt; inputController;
+        final InMemCubeBuilder builder;
+
+        NavigableMap&lt;Long, CuboidResult&gt; buildResult;
+        RuntimeException exception;
+
+<span class="nc" id="L187">        public SplitThread(final int num, final RecordConsumeBlockingQueueController&lt;?&gt; inputController) {</span>
+<span class="nc" id="L188">            super(&quot;SplitThread&quot; + num);</span>
+<span class="nc" id="L189">            this.inputController = inputController;</span>
+<span class="nc" id="L190">            this.builder = new InMemCubeBuilder(cuboidScheduler, flatDesc, dictionaryMap);</span>
+<span class="nc" id="L191">            this.builder.setConcurrentThreads(taskThreadCount);</span>
+<span class="nc" id="L192">            this.builder.setReserveMemoryMB(reserveMemoryMB);</span>
+<span class="nc" id="L193">        }</span>
+
+        @Override
+        public void run() {
+            try {
+<span class="nc" id="L198">                buildResult = builder.build(inputController);</span>
+<span class="nc" id="L199">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">                if (e instanceof RuntimeException)</span>
+<span class="nc" id="L201">                    this.exception = (RuntimeException) e;</span>
+                else
+<span class="nc" id="L203">                    this.exception = new RuntimeException(e);</span>
+<span class="nc" id="L204">                inputController.findException();</span>
+<span class="nc" id="L205">            }</span>
+<span class="nc" id="L206">        }</span>
+    }
+
+    private class Merger {
+
+        MeasureAggregators reuseAggrs;
+        Object[] reuseMetricsArray;
+        ByteArray reuseMetricsSpace;
+
+        long lastCuboidColumnCount;
+        ImmutableBitSet lastMetricsColumns;
+
+<span class="nc" id="L218">        Merger() {</span>
+<span class="nc" id="L219">            reuseAggrs = new MeasureAggregators(cubeDesc.getMeasures());</span>
+<span class="nc" id="L220">            reuseMetricsArray = new Object[cubeDesc.getMeasures().size()];</span>
+<span class="nc" id="L221">        }</span>
+
+        public void mergeAndOutput(List&lt;SplitThread&gt; splits, ICuboidWriter output) throws IOException {
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            if (splits.size() == 1) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                for (CuboidResult cuboidResult : splits.get(0).buildResult.values()) {</span>
+<span class="nc" id="L226">                    outputCuboid(cuboidResult.cuboidId, cuboidResult.table, output);</span>
+<span class="nc" id="L227">                    cuboidResult.table.close();</span>
+<span class="nc" id="L228">                }</span>
+<span class="nc" id="L229">                return;</span>
+            }
+
+<span class="nc" id="L232">            LinkedList&lt;MergeSlot&gt; open = Lists.newLinkedList();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            for (SplitThread split : splits) {</span>
+<span class="nc" id="L234">                open.add(new MergeSlot(split));</span>
+<span class="nc" id="L235">            }</span>
+
+<span class="nc" id="L237">            PriorityQueue&lt;MergeSlot&gt; heap = new PriorityQueue&lt;MergeSlot&gt;();</span>
+
+            while (true) {
+                // ready records in open slots and add to heap
+<span class="nc bnc" id="L241" title="All 2 branches missed.">                while (!open.isEmpty()) {</span>
+<span class="nc" id="L242">                    MergeSlot slot = open.removeFirst();</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                    if (slot.fetchNext()) {</span>
+<span class="nc" id="L244">                        heap.add(slot);</span>
+                    }
+<span class="nc" id="L246">                }</span>
+
+                // find the smallest on heap
+<span class="nc" id="L249">                MergeSlot smallest = heap.poll();</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">                if (smallest == null)</span>
+<span class="nc" id="L251">                    break;</span>
+<span class="nc" id="L252">                open.add(smallest);</span>
+
+                // merge with slots having the same key
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                if (smallest.isSameKey(heap.peek())) {</span>
+<span class="nc" id="L256">                    Object[] metrics = getMetricsValues(smallest.currentRecord);</span>
+<span class="nc" id="L257">                    reuseAggrs.reset();</span>
+<span class="nc" id="L258">                    reuseAggrs.aggregate(metrics);</span>
+                    do {
+<span class="nc" id="L260">                        MergeSlot slot = heap.poll();</span>
+<span class="nc" id="L261">                        open.add(slot);</span>
+<span class="nc" id="L262">                        metrics = getMetricsValues(slot.currentRecord);</span>
+<span class="nc" id="L263">                        reuseAggrs.aggregate(metrics);</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">                    } while (smallest.isSameKey(heap.peek()));</span>
+
+<span class="nc" id="L266">                    reuseAggrs.collectStates(metrics);</span>
+<span class="nc" id="L267">                    setMetricsValues(smallest.currentRecord, metrics);</span>
+                }
+
+<span class="nc" id="L270">                output.write(smallest.currentCuboidId, smallest.currentRecord);</span>
+<span class="nc" id="L271">            }</span>
+<span class="nc" id="L272">        }</span>
+
+        private void setMetricsValues(GTRecord record, Object[] metricsValues) {
+<span class="nc" id="L275">            ImmutableBitSet metrics = getMetricsColumns(record);</span>
+
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            if (reuseMetricsSpace == null) {</span>
+<span class="nc" id="L278">                reuseMetricsSpace = new ByteArray(record.getInfo().getMaxColumnLength(metrics));</span>
+            }
+
+<span class="nc" id="L281">            record.setValues(metrics, reuseMetricsSpace, metricsValues);</span>
+<span class="nc" id="L282">        }</span>
+
+        private Object[] getMetricsValues(GTRecord record) {
+<span class="nc" id="L285">            ImmutableBitSet metrics = getMetricsColumns(record);</span>
+<span class="nc" id="L286">            return record.getValues(metrics, reuseMetricsArray);</span>
+        }
+
+        private ImmutableBitSet getMetricsColumns(GTRecord record) {
+            // metrics columns always come after dimension columns
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (lastCuboidColumnCount == record.getInfo().getColumnCount())</span>
+<span class="nc" id="L292">                return lastMetricsColumns;</span>
+
+<span class="nc" id="L294">            int to = record.getInfo().getColumnCount();</span>
+<span class="nc" id="L295">            int from = to - reuseMetricsArray.length;</span>
+<span class="nc" id="L296">            lastCuboidColumnCount = record.getInfo().getColumnCount();</span>
+<span class="nc" id="L297">            lastMetricsColumns = new ImmutableBitSet(from, to);</span>
+<span class="nc" id="L298">            return lastMetricsColumns;</span>
+        }
+    }
+
+    private static class MergeSlot implements Comparable&lt;MergeSlot&gt; {
+
+        final Iterator&lt;CuboidResult&gt; cuboidIterator;
+        IGTScanner scanner;
+        Iterator&lt;GTRecord&gt; recordIterator;
+
+        long currentCuboidId;
+        GTRecord currentRecord;
+
+<span class="nc" id="L311">        public MergeSlot(SplitThread split) {</span>
+<span class="nc" id="L312">            cuboidIterator = split.buildResult.values().iterator();</span>
+<span class="nc" id="L313">        }</span>
+
+        public boolean fetchNext() throws IOException {
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            if (recordIterator == null) {</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">                if (cuboidIterator.hasNext()) {</span>
+<span class="nc" id="L318">                    CuboidResult cuboid = cuboidIterator.next();</span>
+<span class="nc" id="L319">                    currentCuboidId = cuboid.cuboidId;</span>
+<span class="nc" id="L320">                    scanner = cuboid.table.scan(new GTScanRequestBuilder().setInfo(cuboid.table.getInfo()).setRanges(null).setDimensions(null).setFilterPushDown(null).createGTScanRequest());</span>
+<span class="nc" id="L321">                    recordIterator = scanner.iterator();</span>
+<span class="nc" id="L322">                } else {</span>
+<span class="nc" id="L323">                    return false;</span>
+                }
+            }
+
+<span class="nc bnc" id="L327" title="All 2 branches missed.">            if (recordIterator.hasNext()) {</span>
+<span class="nc" id="L328">                currentRecord = recordIterator.next();</span>
+<span class="nc" id="L329">                return true;</span>
+            } else {
+<span class="nc" id="L331">                scanner.close();</span>
+<span class="nc" id="L332">                recordIterator = null;</span>
+<span class="nc" id="L333">                return fetchNext();</span>
+            }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if (this == o) return true;</span>
+<span class="nc bnc" id="L340" title="All 4 branches missed.">            if (o == null || getClass() != o.getClass()) return false;</span>
+<span class="nc" id="L341">            MergeSlot mergeSlot = (MergeSlot) o;</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            return compareTo(mergeSlot) == 0;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L347">            return Long.hashCode(currentCuboidId);</span>
+        }
+
+        @Override
+        public int compareTo(MergeSlot o) {
+<span class="nc" id="L352">            long cuboidComp = this.currentCuboidId - o.currentCuboidId;</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            if (cuboidComp != 0)</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                return cuboidComp &lt; 0 ? -1 : 1;</span>
+
+            // note GTRecord.equals() don't work because the two GTRecord comes from different GridTable
+<span class="nc" id="L357">            ImmutableBitSet pk = this.currentRecord.getInfo().getPrimaryKey();</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">            for (int i = 0; i &lt; pk.trueBitCount(); i++) {</span>
+<span class="nc" id="L359">                int c = pk.trueBitAt(i);</span>
+<span class="nc" id="L360">                int comp = this.currentRecord.get(c).compareTo(o.currentRecord.get(c));</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">                if (comp != 0)</span>
+<span class="nc" id="L362">                    return comp;</span>
+            }
+<span class="nc" id="L364">            return 0;</span>
+        }
+
+        public boolean isSameKey(MergeSlot o) {
+<span class="nc bnc" id="L368" title="All 2 branches missed.">            if (o == null)</span>
+<span class="nc" id="L369">                return false;</span>
+            else
+<span class="nc bnc" id="L371" title="All 2 branches missed.">                return this.compareTo(o) == 0;</span>
+        }
+
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

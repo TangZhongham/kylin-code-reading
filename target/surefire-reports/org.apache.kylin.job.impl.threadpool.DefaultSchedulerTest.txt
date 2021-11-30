@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.kylin.job.impl.threadpool.DefaultSchedulerTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 1, Time elapsed: 37.93 s - in org.apache.kylin.job.impl.threadpool.DefaultSchedulerTest

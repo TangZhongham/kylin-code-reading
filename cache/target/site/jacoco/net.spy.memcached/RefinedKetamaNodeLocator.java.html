@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RefinedKetamaNodeLocator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">net.spy.memcached</a> &gt; <span class="el_source">RefinedKetamaNodeLocator.java</span></div><h1>RefinedKetamaNodeLocator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.spy.memcached;
+
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicReference;
+
+import net.spy.memcached.compat.SpyObject;
+import net.spy.memcached.util.DefaultKetamaNodeLocatorConfiguration;
+import net.spy.memcached.util.KetamaNodeLocatorConfiguration;
+
+/**
+ * Copyright (C) 2006-2009 Dustin Sallings
+ * Copyright (C) 2009-2011 Couchbase, Inc.
+ *
+ * This is a modified version of the Ketama consistent hash strategy from
+ * last.fm. This implementation may not be compatible with libketama as hashing
+ * is considered separate from node location.
+ *
+ * The only modified method is the getSequence(). 
+ * The previous 7 may be too small to reduce the chance to get all down nodes.
+ *
+ * Note that this implementation does not currently supported weighted nodes.
+ *
+ * @see &lt;a href=&quot;http://www.last.fm/user/RJ/journal/2007/04/10/392555/&quot;&gt;RJ's
+ *      blog post&lt;/a&gt;
+ */
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">public final class RefinedKetamaNodeLocator extends SpyObject implements NodeLocator {</span>
+
+    private final HashAlgorithm hashAlg;
+    private final Map&lt;InetSocketAddress, Integer&gt; weights;
+    private final boolean isWeightedKetama;
+    private final KetamaNodeLocatorConfiguration config;
+<span class="pc" id="L58">    private AtomicReference&lt;TreeMap&lt;Long, MemcachedNode&gt;&gt; ketamaNodes = new AtomicReference&lt;&gt;();</span>
+<span class="pc" id="L59">    private AtomicReference&lt;Collection&lt;MemcachedNode&gt;&gt; allNodes = new AtomicReference&lt;&gt;();</span>
+
+    /**
+     * Create a new KetamaNodeLocator using specified nodes and the specifed hash
+     * algorithm.
+     *
+     * @param nodes The List of nodes to use in the Ketama consistent hash
+     *          continuum
+     * @param alg The hash algorithm to use when choosing a node in the Ketama
+     *          consistent hash continuum
+     */
+    public RefinedKetamaNodeLocator(List&lt;MemcachedNode&gt; nodes, HashAlgorithm alg) {
+<span class="fc" id="L71">        this(nodes, alg, KetamaNodeKeyFormatter.Format.SPYMEMCACHED, new HashMap&lt;InetSocketAddress, Integer&gt;());</span>
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Create a new KetamaNodeLocator with specific nodes, hash, node key format,
+     * and weight
+     *
+     * @param nodes The List of nodes to use in the Ketama consistent hash
+     *          continuum
+     * @param alg The hash algorithm to use when choosing a node in the Ketama
+     *          consistent hash continuum
+     * @param nodeKeyFormat the format used to name the nodes in Ketama, either
+     *          SPYMEMCACHED or LIBMEMCACHED
+     * @param weights node weights for ketama, a map from InetSocketAddress to
+     *          weight as Integer
+     */
+    public RefinedKetamaNodeLocator(List&lt;MemcachedNode&gt; nodes, HashAlgorithm alg,
+            KetamaNodeKeyFormatter.Format nodeKeyFormat, Map&lt;InetSocketAddress, Integer&gt; weights) {
+<span class="fc" id="L89">        this(nodes, alg, weights, new DefaultKetamaNodeLocatorConfiguration(new KetamaNodeKeyFormatter(nodeKeyFormat)));</span>
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * Create a new KetamaNodeLocator using specified nodes and the specifed hash
+     * algorithm and configuration.
+     *
+     * @param nodes The List of nodes to use in the Ketama consistent hash
+     *          continuum
+     * @param alg The hash algorithm to use when choosing a node in the Ketama
+     *          consistent hash continuum
+     * @param conf
+     */
+    public RefinedKetamaNodeLocator(List&lt;MemcachedNode&gt; nodes, HashAlgorithm alg, KetamaNodeLocatorConfiguration conf) {
+<span class="nc" id="L103">        this(nodes, alg, new HashMap&lt;InetSocketAddress, Integer&gt;(), conf);</span>
+<span class="nc" id="L104">    }</span>
+
+    /**
+     * Create a new KetamaNodeLocator with specific nodes, hash, node key format,
+     * and weight
+     *
+     * @param nodes The List of nodes to use in the Ketama consistent hash
+     *          continuum
+     * @param alg The hash algorithm to use when choosing a node in the Ketama
+     *          consistent hash continuum
+     * @param nodeWeights node weights for ketama, a map from InetSocketAddress to
+     *          weight as Integer
+     * @param configuration node locator configuration
+     */
+    public RefinedKetamaNodeLocator(List&lt;MemcachedNode&gt; nodes, HashAlgorithm alg,
+            Map&lt;InetSocketAddress, Integer&gt; nodeWeights, KetamaNodeLocatorConfiguration configuration) {
+<span class="fc" id="L120">        super();</span>
+<span class="fc" id="L121">        allNodes.set(nodes);</span>
+<span class="fc" id="L122">        hashAlg = alg;</span>
+<span class="fc" id="L123">        config = configuration;</span>
+<span class="fc" id="L124">        weights = nodeWeights;</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        isWeightedKetama = !weights.isEmpty();</span>
+<span class="fc" id="L126">        setKetamaNodes(nodes);</span>
+<span class="fc" id="L127">    }</span>
+
+    private RefinedKetamaNodeLocator(TreeMap&lt;Long, MemcachedNode&gt; smn, Collection&lt;MemcachedNode&gt; an, HashAlgorithm alg,
+            Map&lt;InetSocketAddress, Integer&gt; nodeWeights, KetamaNodeLocatorConfiguration conf) {
+<span class="nc" id="L131">        super();</span>
+<span class="nc" id="L132">        ketamaNodes.set(smn);</span>
+<span class="nc" id="L133">        allNodes.set(an);</span>
+<span class="nc" id="L134">        hashAlg = alg;</span>
+<span class="nc" id="L135">        config = conf;</span>
+<span class="nc" id="L136">        weights = nodeWeights;</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        isWeightedKetama = !weights.isEmpty();</span>
+<span class="nc" id="L138">    }</span>
+
+    public Collection&lt;MemcachedNode&gt; getAll() {
+<span class="fc" id="L141">        return allNodes.get();</span>
+    }
+
+    public MemcachedNode getPrimary(final String k) {
+<span class="nc" id="L145">        MemcachedNode rv = getNodeForKey(hashAlg.hash(k));</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">        assert rv != null : &quot;Found no node for key &quot; + k;</span>
+<span class="nc" id="L147">        return rv;</span>
+    }
+
+    long getMaxKey() {
+<span class="nc" id="L151">        return getKetamaNodes().lastKey();</span>
+    }
+
+    MemcachedNode getNodeForKey(long hash) {
+        final MemcachedNode rv;
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        if (!ketamaNodes.get().containsKey(hash)) {</span>
+            // Java 1.6 adds a ceilingKey method, but I'm still stuck in 1.5
+            // in a lot of places, so I'm doing this myself.
+<span class="nc" id="L159">            SortedMap&lt;Long, MemcachedNode&gt; tailMap = getKetamaNodes().tailMap(hash);</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if (tailMap.isEmpty()) {</span>
+<span class="nc" id="L161">                hash = getKetamaNodes().firstKey();</span>
+            } else {
+<span class="nc" id="L163">                hash = tailMap.firstKey();</span>
+            }
+        }
+<span class="nc" id="L166">        rv = getKetamaNodes().get(hash);</span>
+<span class="nc" id="L167">        return rv;</span>
+    }
+
+    /**
+     * the previous 7 may be too small to reduce the chance to get all down nodes
+     * @param k
+     * @return
+     */
+    public Iterator&lt;MemcachedNode&gt; getSequence(String k) {
+        // Seven searches gives us a 1 in 2^maxTry chance of hitting the
+        // same dead node all of the time.
+<span class="nc" id="L178">        int maxTry = config.getNodeRepetitions() + 1;</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (maxTry &lt; 20) {</span>
+<span class="nc" id="L180">            maxTry = 20;</span>
+        }
+<span class="nc" id="L182">        return new KetamaIterator(k, maxTry, getKetamaNodes(), hashAlg);</span>
+    }
+
+    public NodeLocator getReadonlyCopy() {
+<span class="nc" id="L186">        TreeMap&lt;Long, MemcachedNode&gt; smn = new TreeMap&lt;Long, MemcachedNode&gt;(getKetamaNodes());</span>
+<span class="nc" id="L187">        Collection&lt;MemcachedNode&gt; an = new ArrayList&lt;MemcachedNode&gt;(allNodes.get().size());</span>
+
+        // Rewrite the values a copy of the map.
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        for (Map.Entry&lt;Long, MemcachedNode&gt; me : smn.entrySet()) {</span>
+<span class="nc" id="L191">            smn.put(me.getKey(), new MemcachedNodeROImpl(me.getValue()));</span>
+<span class="nc" id="L192">        }</span>
+
+        // Copy the allNodes collection.
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        for (MemcachedNode n : allNodes.get()) {</span>
+<span class="nc" id="L196">            an.add(new MemcachedNodeROImpl(n));</span>
+<span class="nc" id="L197">        }</span>
+
+<span class="nc" id="L199">        return new RefinedKetamaNodeLocator(smn, an, hashAlg, weights, config);</span>
+    }
+
+    @Override
+    public void updateLocator(List&lt;MemcachedNode&gt; nodes) {
+<span class="nc" id="L204">        allNodes.set(nodes);</span>
+<span class="nc" id="L205">        setKetamaNodes(nodes);</span>
+<span class="nc" id="L206">    }</span>
+
+    /**
+     * @return the ketamaNodes
+     */
+    protected TreeMap&lt;Long, MemcachedNode&gt; getKetamaNodes() {
+<span class="nc" id="L212">        return ketamaNodes.get();</span>
+    }
+
+    /**
+     * Setup the KetamaNodeLocator with the list of nodes it should use.
+     *
+     * @param nodes a List of MemcachedNodes for this KetamaNodeLocator to use in
+     *          its continuum
+     */
+    protected void setKetamaNodes(List&lt;MemcachedNode&gt; nodes) {
+<span class="fc" id="L222">        TreeMap&lt;Long, MemcachedNode&gt; newNodeMap = new TreeMap&lt;Long, MemcachedNode&gt;();</span>
+<span class="fc" id="L223">        int numReps = config.getNodeRepetitions();</span>
+<span class="fc" id="L224">        int nodeCount = nodes.size();</span>
+<span class="fc" id="L225">        int totalWeight = 0;</span>
+
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (isWeightedKetama) {</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            for (MemcachedNode node : nodes) {</span>
+<span class="nc" id="L229">                totalWeight += weights.get(node.getSocketAddress());</span>
+<span class="nc" id="L230">            }</span>
+        }
+
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        for (MemcachedNode node : nodes) {</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">            if (isWeightedKetama) {</span>
+
+<span class="nc" id="L236">                int thisWeight = weights.get(node.getSocketAddress());</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">                float percent = (totalWeight == 0 ? 0f : (float) thisWeight / (float) totalWeight);</span>
+<span class="nc" id="L238">                int pointerPerServer = (int) ((Math.floor(</span>
+<span class="nc" id="L239">                        (float) (percent * (float) config.getNodeRepetitions() / 4 * (float) nodeCount + 0.0000000001)))</span>
+                        * 4);
+<span class="nc bnc" id="L241" title="All 2 branches missed.">                for (int i = 0; i &lt; pointerPerServer / 4; i++) {</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">                    for (long position : ketamaNodePositionsAtIteration(node, i)) {</span>
+<span class="nc" id="L243">                        newNodeMap.put(position, node);</span>
+<span class="nc" id="L244">                        getLogger().debug(&quot;Adding node %s with weight %s in position %d&quot;, node, thisWeight, position);</span>
+<span class="nc" id="L245">                    }</span>
+                }
+<span class="nc" id="L247">            } else {</span>
+                // Ketama does some special work with md5 where it reuses chunks.
+                // Check to be backwards compatible, the hash algorithm does not
+                // matter for Ketama, just the placement should always be done using
+                // MD5
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">                if (hashAlg == DefaultHashAlgorithm.KETAMA_HASH) {</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                    for (int i = 0; i &lt; numReps / 4; i++) {</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                        for (long position : ketamaNodePositionsAtIteration(node, i)) {</span>
+<span class="nc" id="L255">                            newNodeMap.put(position, node);</span>
+<span class="nc" id="L256">                            getLogger().debug(&quot;Adding node %s in position %d&quot;, node, position);</span>
+<span class="nc" id="L257">                        }</span>
+                    }
+                } else {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                    for (int i = 0; i &lt; numReps; i++) {</span>
+<span class="fc" id="L261">                        newNodeMap.put(hashAlg.hash(config.getKeyForNode(node, i)), node);</span>
+                    }
+                }
+            }
+<span class="fc" id="L265">        }</span>
+<span class="pc bpc" id="L266" title="2 of 4 branches missed.">        assert newNodeMap.size() == numReps * nodes.size();</span>
+<span class="fc" id="L267">        ketamaNodes.set(newNodeMap);</span>
+<span class="fc" id="L268">    }</span>
+
+    private List&lt;Long&gt; ketamaNodePositionsAtIteration(MemcachedNode node, int iteration) {
+<span class="nc" id="L271">        List&lt;Long&gt; positions = new ArrayList&lt;Long&gt;();</span>
+<span class="nc" id="L272">        byte[] digest = DefaultHashAlgorithm.computeMd5(config.getKeyForNode(node, iteration));</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (int h = 0; h &lt; 4; h++) {</span>
+<span class="nc" id="L274">            Long k = ((long) (digest[3 + h * 4] &amp; 0xFF) &lt;&lt; 24) | ((long) (digest[2 + h * 4] &amp; 0xFF) &lt;&lt; 16);</span>
+<span class="nc" id="L275">            k |= ((long) (digest[1 + h * 4] &amp; 0xFF) &lt;&lt; 8) | (digest[h * 4] &amp; 0xFF);</span>
+<span class="nc" id="L276">            positions.add(k);</span>
+        }
+<span class="nc" id="L278">        return positions;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

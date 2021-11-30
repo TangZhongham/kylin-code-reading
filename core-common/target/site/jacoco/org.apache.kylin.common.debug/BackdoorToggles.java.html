@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BackdoorToggles.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.debug</a> &gt; <span class="el_source">BackdoorToggles.java</span></div><h1>BackdoorToggles.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.debug;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.threadlocal.InternalThreadLocal;
+import org.apache.kylin.common.util.Pair;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ * BackdoorToggles and QueryContext are similar because they're both hosting per-query thread local variables.
+ * The difference is that BackdoorToggles are specified by user input and work for debug purpose. QueryContext
+ * is used voluntarily by program itself
+ * 
+ * BackdoorToggles is part of SQLRequest, QueryContext does not belong to SQLRequest
+ */
+<span class="nc" id="L41">public class BackdoorToggles {</span>
+
+<span class="nc" id="L43">    private static final InternalThreadLocal&lt;Map&lt;String, String&gt;&gt; _backdoorToggles = new InternalThreadLocal&lt;Map&lt;String, String&gt;&gt;();</span>
+
+    public static void setToggles(Map&lt;String, String&gt; toggles) {
+<span class="nc" id="L46">        _backdoorToggles.set(toggles);</span>
+<span class="nc" id="L47">    }</span>
+
+    public static void addToggle(String key, String value) {
+<span class="nc" id="L50">        Map&lt;String, String&gt; map = _backdoorToggles.get();</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        if (map == null) {</span>
+<span class="nc" id="L52">            setToggles(Maps.&lt;String, String&gt; newHashMap());</span>
+        }
+<span class="nc" id="L54">        _backdoorToggles.get().put(key, value);</span>
+<span class="nc" id="L55">    }</span>
+
+    public static void addToggles(Map&lt;String, String&gt; toggles) {
+<span class="nc" id="L58">        Map&lt;String, String&gt; map = _backdoorToggles.get();</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        if (map == null) {</span>
+<span class="nc" id="L60">            setToggles(Maps.&lt;String, String&gt; newHashMap());</span>
+        }
+<span class="nc" id="L62">        _backdoorToggles.get().putAll(toggles);</span>
+<span class="nc" id="L63">    }</span>
+
+    // try avoid using this generic method
+    public static String getToggle(String key) {
+<span class="nc" id="L67">        Map&lt;String, String&gt; map = _backdoorToggles.get();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (map == null)</span>
+<span class="nc" id="L69">            return null;</span>
+
+<span class="nc" id="L71">        return map.get(key);</span>
+    }
+
+    public static String getForceHitCube(){
+<span class="nc" id="L75">        return getString(DEBUG_TOGGLE_HIT_CUBE);</span>
+    }
+
+    public static String getDebugToggleSparkPool(){
+<span class="nc" id="L79">        return getString(DEBUG_TOGGLE_SPARK_POOL);</span>
+    }
+
+    public static String getCoprocessorBehavior() {
+<span class="nc" id="L83">        return getString(DEBUG_TOGGLE_COPROCESSOR_BEHAVIOR);</span>
+    }
+
+    public static String getHbaseCubeQueryVersion() {
+<span class="nc" id="L87">        return getString(DEBUG_TOGGLE_HBASE_CUBE_QUERY_VERSION);</span>
+    }
+
+    public static String getHbaseCubeQueryProtocol() {
+<span class="nc" id="L91">        return getString(DEBUG_TOGGLE_HBASE_CUBE_QUERY_PROTOCOL);</span>
+    }
+
+    public static boolean getDisableCache() {
+<span class="nc" id="L95">        return getBoolean(DEBUG_TOGGLE_DISABLE_QUERY_CACHE);</span>
+    }
+
+    public static boolean getDisableSegmentCache() {
+<span class="nc" id="L99">        return getBoolean(DEBUG_TOGGLE_DISABLE_QUERY_SEGMENT_CACHE);</span>
+    }
+
+    public static boolean getDisableFuzzyKey() {
+<span class="nc" id="L103">        return getBoolean(DEBUG_TOGGLE_DISABLE_FUZZY_KEY);</span>
+    }
+
+    public static boolean getRunLocalCoprocessor() {
+<span class="nc" id="L107">        return getBoolean(DEBUG_TOGGLE_LOCAL_COPROCESSOR);</span>
+    }
+
+    public static String getPartitionDumpDir() {
+<span class="nc" id="L111">        return getString(DEBUG_TOGGLE_PARTITION_DUMP_DIR);</span>
+    }
+
+    public static String getDumpedPartitionDir() {
+<span class="nc" id="L115">        return getString(DEBUG_TOGGLE_DUMPED_PARTITION_DIR);</span>
+    }
+
+    public static boolean getCheckAllModels() {
+<span class="nc" id="L119">        return getBoolean(DEBUG_TOGGLE_CHECK_ALL_MODELS);</span>
+    }
+
+    public static boolean getDisabledRawQueryLastHacker() {
+<span class="nc" id="L123">        return getBoolean(DISABLE_RAW_QUERY_HACKER);</span>
+    }
+
+    public static boolean getHtraceEnabled() {
+<span class="nc" id="L127">        return getBoolean(DEBUG_TOGGLE_HTRACE_ENABLED);</span>
+    }
+
+    public static boolean isStreamingProfileEnable() {
+<span class="nc" id="L131">        return getBoolean(DEBUG_TOGGLE_STREAMING_DETAIL_PROFILE);</span>
+    }
+
+    public static int getQueryTimeout() {
+<span class="nc" id="L135">        String v = getString(DEBUG_TOGGLE_QUERY_TIMEOUT);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (v == null)</span>
+<span class="nc" id="L137">            return -1;</span>
+        else
+<span class="nc" id="L139">            return Integer.parseInt(v);</span>
+    }
+
+    public static Pair&lt;Short, Short&gt; getShardAssignment() {
+<span class="nc" id="L143">        String v = getString(DEBUG_TOGGLE_SHARD_ASSIGNMENT);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (v == null) {</span>
+<span class="nc" id="L145">            return null;</span>
+        } else {
+<span class="nc" id="L147">            String[] parts = StringUtils.split(v, &quot;#&quot;);</span>
+<span class="nc" id="L148">            return Pair.newPair(Short.valueOf(parts[0]), Short.valueOf(parts[1]));</span>
+        }
+    }
+
+    public static Integer getStatementMaxRows() {
+<span class="nc" id="L153">        String v = getString(ATTR_STATEMENT_MAX_ROWS);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (v == null)</span>
+<span class="nc" id="L155">            return null;</span>
+        else
+<span class="nc" id="L157">            return Integer.valueOf(v);</span>
+    }
+
+    public static boolean getPrepareOnly() {
+<span class="nc" id="L161">        return getBoolean(DEBUG_TOGGLE_PREPARE_ONLY);</span>
+    }
+
+    private static String getString(String key) {
+<span class="nc" id="L165">        Map&lt;String, String&gt; toggles = _backdoorToggles.get();</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (toggles == null) {</span>
+<span class="nc" id="L167">            return null;</span>
+        } else {
+<span class="nc" id="L169">            return toggles.get(key);</span>
+        }
+    }
+
+    private static boolean getBoolean(String key) {
+<span class="nc" id="L174">        return &quot;true&quot;.equals(getString(key));</span>
+    }
+
+    public static void cleanToggles() {
+<span class="nc" id="L178">        _backdoorToggles.remove();</span>
+<span class="nc" id="L179">    }</span>
+
+    /**
+     * get extra calcite props from jdbc client
+     */
+    public static Properties getJdbcDriverClientCalciteProps() {
+<span class="nc" id="L185">        Properties props = new Properties();</span>
+<span class="nc" id="L186">        String propsStr = getString(JDBC_CLIENT_CALCITE_PROPS);</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        if (propsStr == null) {</span>
+<span class="nc" id="L188">            return props;</span>
+        }
+        try {
+<span class="nc" id="L191">            props.load(new StringReader(propsStr));</span>
+<span class="nc" id="L192">        } catch (IOException ignored) {</span>
+            // ignored
+<span class="nc" id="L194">        }</span>
+<span class="nc" id="L195">        final Set&lt;String&gt; allowedPropsNames = Sets.newHashSet(</span>
+                &quot;caseSensitive&quot;,
+                &quot;unquotedCasing&quot;,
+                &quot;quoting&quot;,
+                &quot;conformance&quot;
+        );
+        // remove un-allowed props
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        for (String key : props.stringPropertyNames()) {</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            if (!allowedPropsNames.contains(key)) {</span>
+<span class="nc" id="L204">                props.remove(key);</span>
+            }
+<span class="nc" id="L206">        }</span>
+<span class="nc" id="L207">        return props;</span>
+    }
+
+    /**
+     * set DEBUG_TOGGLE_DISABLE_FUZZY_KEY=true to disable fuzzy key for debug/profile usage
+     *
+     *
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+        &quot;DEBUG_TOGGLE_DISABLE_FUZZY_KEY&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_DISABLE_FUZZY_KEY = &quot;DEBUG_TOGGLE_DISABLE_FUZZY_KEY&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_DISABLE_QUERY_CACHE=true to prevent using cache for current query
+     *
+     *
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_DISABLE_QUERY_CACHE&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_DISABLE_QUERY_CACHE = &quot;DEBUG_TOGGLE_DISABLE_QUERY_CACHE&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_DISABLE_QUERY_SEGMENT_CACHE=true to prevent using segment cache for current query
+     *
+     *
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_DISABLE_QUERY_SEGMENT_CACHE&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_DISABLE_QUERY_SEGMENT_CACHE = &quot;DEBUG_TOGGLE_DISABLE_QUERY_SEGMENT_CACHE&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_HBASE_CUBE_QUERY_VERSION=v1/v2 to control which version CubeStorageQuery to use
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_HBASE_CUBE_QUERY_VERSION&quot;: &quot;v1&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_HBASE_CUBE_QUERY_VERSION = &quot;DEBUG_TOGGLE_HBASE_CUBE_QUERY_VERSION&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_HBASE_CUBE_QUERY_PROTOCOL=endpoint/scan to control how to visit hbase cube
+     * this param is only valid when DEBUG_TOGGLE_HBASE_CUBE_QUERY_VERSION set to v2(bdefault)
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_HBASE_CUBE_QUERY_PROTOCOL&quot;: &quot;scan&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_HBASE_CUBE_QUERY_PROTOCOL = &quot;DEBUG_TOGGLE_HBASE_CUBE_QUERY_PROTOCOL&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_COPROCESSOR_BEHAVIOR=SCAN/SCAN_FILTER/SCAN_FILTER_AGGR/SCAN_FILTER_AGGR_CHECKMEM to control observer behavior for debug/profile usage
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+        &quot;DEBUG_TOGGLE_COPROCESSOR_BEHAVIOR&quot;: &quot;SCAN&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_COPROCESSOR_BEHAVIOR = &quot;DEBUG_TOGGLE_COPROCESSOR_BEHAVIOR&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_LOCAL_COPROCESSOR=true to run coprocessor at client side (not in HBase region server)
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+        &quot;DEBUG_TOGGLE_LOCAL_COPROCESSOR&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_LOCAL_COPROCESSOR = &quot;DEBUG_TOGGLE_LOCAL_COPROCESSOR&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_QUERY_TIMEOUT=&quot;timeout_millis&quot; to overwrite the global timeout settings
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_QUERY_TIMEOUT&quot;: &quot;120000&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_QUERY_TIMEOUT = &quot;DEBUG_TOGGLE_QUERY_TIMEOUT&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_SHARD_ASSIGNMENT=&quot;totalAssignedWorkers#assignedWorkerID&quot; to specify subset of shards to deal with
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_SHARD_ASSIGNMENT&quot;: &quot;4#0&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_SHARD_ASSIGNMENT = &quot;DEBUG_TOGGLE_SHARD_ASSIGNMENT&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_PARTITION_DUMP_DIR=&quot;dir&quot; to dump the partitions from storage.
+     * The dumped partitions are used for performance profiling, for example.
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_PARTITION_DUMP_DIR&quot;: &quot;/tmp/dumping&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_PARTITION_DUMP_DIR = &quot;DEBUG_TOGGLE_PARTITION_DUMP_DIR&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_DUMPED_PARTITION_DIR=&quot;dir&quot; to specify the dir to retrieve previously dumped partitions
+     * it's a companion toggle with DEBUG_TOGGLE_PARTITION_DUMP_DIR
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_DUMPED_PARTITION_DIR&quot;: &quot;/tmp/dumped&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_DUMPED_PARTITION_DIR = &quot;DEBUG_TOGGLE_DUMPED_PARTITION_DIR&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_PREPARE_ONLY=&quot;true&quot; to prepare the sql statement and get its result set metadata
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_PREPARE_ONLY&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_PREPARE_ONLY = &quot;DEBUG_TOGGLE_PREPARE_ONLY&quot;;
+
+    // properties on statement may go with this &quot;channel&quot; too
+    /**
+     * set ATTR_STATEMENT_MAX_ROWS=&quot;maxRows&quot; to statement's max rows property
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;ATTR_STATEMENT_MAX_ROWS&quot;: &quot;10&quot;
+     }
+     */
+    public final static String ATTR_STATEMENT_MAX_ROWS = &quot;ATTR_STATEMENT_MAX_ROWS&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_CHECK_ALL_MODELS=&quot;true&quot; to check all OlapContexts when selecting realization
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_CHECK_ALL_MODELS&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_CHECK_ALL_MODELS = &quot;DEBUG_TOGGLE_CHECK_ALL_MODELS&quot;;
+
+    /**
+     * set DISABLE_RAW_QUERY_HACKER=&quot;true&quot; to disable RawQueryLastHacker.hackNoAggregations()
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DISABLE_RAW_QUERY_HACKER&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DISABLE_RAW_QUERY_HACKER = &quot;DISABLE_RAW_QUERY_HACKER&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_HTRACE_ENABLED=&quot;true&quot; to enable htrace
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_HTRACE_ENABLED&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_HTRACE_ENABLED = &quot;DEBUG_TOGGLE_HTRACE_ENABLED&quot;;
+
+    /**
+     * extra calcite props from jdbc client
+     */
+    public static final String JDBC_CLIENT_CALCITE_PROPS = &quot;JDBC_CLIENT_CALCITE_PROPS&quot;;
+
+    /**
+     * set DEBUG_TOGGLE_STREAMING_PROFILE=&quot;true&quot; to profile streaming query
+     *
+     example:(put it into request body)
+     &quot;backdoorToggles&quot;: {
+     &quot;DEBUG_TOGGLE_STREAMING_DETAIL_PROFILE&quot;: &quot;true&quot;
+     }
+     */
+    public final static String DEBUG_TOGGLE_STREAMING_DETAIL_PROFILE = &quot;DEBUG_TOGGLE_STREAMING_DETAIL_PROFILE&quot;;
+
+
+    /**
+     * The cube chosen by Kylin may not be enough correct, user should have
+     *  the right to choose which cube he want to query in some case, please
+     *  check https://issues.apache.org/jira/browse/KYLIN-4312 for information.
+     */
+    public final static String DEBUG_TOGGLE_HIT_CUBE = &quot;DEBUG_TOGGLE_HIT_CUBE&quot;;
+
+    public final static String DEBUG_TOGGLE_SPARK_POOL = &quot;DEBUG_TOGGLE_SPARK_POOL&quot;;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

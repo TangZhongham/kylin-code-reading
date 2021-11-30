@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DictionaryDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">DictionaryDesc.java</span></div><h1>DictionaryDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model;
+
+import java.util.Locale;
+import java.util.Objects;
+
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L33">public class DictionaryDesc implements java.io.Serializable {</span>
+
+    @JsonProperty(&quot;column&quot;)
+    private String column;
+    @JsonProperty(&quot;reuse&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String reuseColumn;
+    @JsonProperty(&quot;builder&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String builderClass;
+
+    //for tiretree global domain dic
+    @JsonProperty(&quot;cube&quot;)
+    private String cube;
+
+    //for tiretree global domain dic
+    @JsonProperty(&quot;model&quot;)
+    private String model;
+
+
+    // computed content
+    private TblColRef colRef;
+    private TblColRef reuseColRef;
+
+    void init(CubeDesc cubeDesc) {
+<span class="fc" id="L58">        DataModelDesc model = cubeDesc.getModel();</span>
+
+<span class="fc" id="L60">        column = column.toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L61">        colRef = model.findColumn(column);</span>
+
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (reuseColumn != null) {</span>
+<span class="nc" id="L64">            reuseColumn = reuseColumn.toUpperCase(Locale.ROOT);</span>
+<span class="nc" id="L65">            reuseColRef = model.findColumn(reuseColumn);</span>
+        }
+<span class="fc" id="L67">    }</span>
+
+    public TblColRef getColumnRef() {
+<span class="fc" id="L70">        return colRef;</span>
+    }
+
+    public TblColRef getResuseColumnRef() {
+<span class="fc" id="L74">        return reuseColRef;</span>
+    }
+
+    public String getBuilderClass() {
+<span class="nc" id="L78">        return builderClass;</span>
+    }
+
+    public String getModel() {
+<span class="nc" id="L82">        return model;</span>
+    }
+
+    public void setModel(String model) {
+<span class="nc" id="L86">        this.model = model;</span>
+<span class="nc" id="L87">    }</span>
+
+    public String getCube() {
+<span class="nc" id="L90">        return cube;</span>
+    }
+
+    public void setCube(String cube) {
+<span class="nc" id="L94">        this.cube = cube;</span>
+<span class="nc" id="L95">    }</span>
+
+    public String getReuseColumn() {
+<span class="nc" id="L98">        return reuseColumn;</span>
+    }
+
+    /**
+     * check if the col is tiretree global domain dic
+     * @return
+     */
+    public boolean isDomain() {
+<span class="nc bnc" id="L106" title="All 4 branches missed.">        if (Objects.isNull(reuseColRef) &amp;&amp; Objects.nonNull(reuseColumn)) {</span>
+<span class="nc" id="L107">            return true;</span>
+        }
+<span class="nc" id="L109">        return false;</span>
+    }
+
+
+    // for test
+    public static DictionaryDesc create(String column, String reuseColumn, String builderClass) {
+<span class="nc" id="L115">        DictionaryDesc desc = new DictionaryDesc();</span>
+<span class="nc" id="L116">        desc.column = column;</span>
+<span class="nc" id="L117">        desc.reuseColumn = reuseColumn;</span>
+<span class="nc" id="L118">        desc.builderClass = builderClass;</span>
+<span class="nc" id="L119">        return desc;</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (this == o) return true;</span>
+<span class="nc bnc" id="L125" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass()) return false;</span>
+<span class="nc" id="L126">        DictionaryDesc that = (DictionaryDesc) o;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        return Objects.equals(column, that.column) &amp;&amp;</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                Objects.equals(reuseColumn, that.reuseColumn) &amp;&amp;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                Objects.equals(builderClass, that.builderClass) &amp;&amp;</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                Objects.equals(cube, that.cube) &amp;&amp;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                Objects.equals(model, that.model);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L136">        return Objects.hash(column, reuseColumn, builderClass, cube, model);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

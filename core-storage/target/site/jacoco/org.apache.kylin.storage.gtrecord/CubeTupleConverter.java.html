@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeTupleConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">CubeTupleConverter.java</span></div><h1>CubeTupleConverter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TimeZone;
+
+import org.apache.kylin.common.annotation.Clarification;
+import org.apache.kylin.common.util.Array;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.model.CubeDesc.DeriveInfo;
+import org.apache.kylin.cube.model.RowKeyColDesc;
+import org.apache.kylin.cube.model.RowKeyDesc;
+import org.apache.kylin.dimension.TimeDerivedColumnType;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureType.IAdvMeasureFiller;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+<span class="nc bnc" id="L48" title="All 2 branches missed.">@Clarification(deprecated = true, msg = &quot;Only for HBase storage&quot;)</span>
+public class CubeTupleConverter implements ITupleConverter {
+
+<span class="nc" id="L51">    private static final Logger logger = LoggerFactory.getLogger(CubeTupleConverter.class);</span>
+
+    final CubeSegment cubeSeg;
+    final Cuboid cuboid;
+    final TupleInfo tupleInfo;
+    public final List&lt;IDerivedColumnFiller&gt; derivedColFillers;
+
+    public final int[] gtColIdx;
+    public final int[] tupleIdx;
+    public final MeasureType&lt;?&gt;[] measureTypes;
+
+    public final List&lt;IAdvMeasureFiller&gt; advMeasureFillers;
+    public final List&lt;Integer&gt; advMeasureIndexInGTValues;
+
+<span class="nc" id="L65">    final Set&lt;Integer&gt; timestampColumn = new HashSet&lt;&gt;();</span>
+    String eventTimezone;
+    boolean autoJustByTimezone;
+    private final long timeZoneOffset;
+
+    public final int nSelectedDims;
+
+    private final RowKeyDesc rowKeyDesc;
+
+    public CubeTupleConverter(CubeSegment cubeSeg, Cuboid cuboid, //
+<span class="nc" id="L75">            Set&lt;TblColRef&gt; selectedDimensions, Set&lt;FunctionDesc&gt; selectedMetrics, int[] gtColIdx, TupleInfo returnTupleInfo) {</span>
+<span class="nc" id="L76">        this.cubeSeg = cubeSeg;</span>
+<span class="nc" id="L77">        this.cuboid = cuboid;</span>
+<span class="nc" id="L78">        this.gtColIdx = gtColIdx;</span>
+<span class="nc" id="L79">        this.tupleInfo = returnTupleInfo;</span>
+<span class="nc" id="L80">        this.derivedColFillers = Lists.newArrayList();</span>
+
+<span class="nc" id="L82">        nSelectedDims = selectedDimensions.size();</span>
+<span class="nc" id="L83">        tupleIdx = new int[selectedDimensions.size() + selectedMetrics.size()];</span>
+
+        // measure types don't have this many, but aligned length make programming easier
+<span class="nc" id="L86">        measureTypes = new MeasureType[selectedDimensions.size() + selectedMetrics.size()];</span>
+
+<span class="nc" id="L88">        advMeasureFillers = Lists.newArrayListWithCapacity(1);</span>
+<span class="nc" id="L89">        advMeasureIndexInGTValues = Lists.newArrayListWithCapacity(1);</span>
+//        usedLookupTables = Lists.newArrayList();
+<span class="nc" id="L91">        eventTimezone = cubeSeg.getConfig().getStreamingDerivedTimeTimezone();</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        autoJustByTimezone = eventTimezone.length() &gt; 0</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">                &amp;&amp; cubeSeg.getCubeDesc().getModel().getRootFactTable().getTableDesc().isStreamingTable();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (autoJustByTimezone) {</span>
+<span class="nc" id="L95">            logger.debug(&quot;Will ajust dimsension for Time Derived Column.&quot;);</span>
+<span class="nc" id="L96">            timeZoneOffset = TimeZone.getTimeZone(eventTimezone).getRawOffset();</span>
+        } else {
+<span class="nc" id="L98">            timeZoneOffset = 0;</span>
+        }
+        ////////////
+
+<span class="nc" id="L102">        int i = 0;</span>
+
+        // pre-calculate dimension index mapping to tuple
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (TblColRef dim : selectedDimensions) {</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            tupleIdx[i] = tupleInfo.hasColumn(dim) ? tupleInfo.getColumnIndex(dim) : -1;</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (TimeDerivedColumnType.isTimeDerivedColumn(dim.getName())</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                    &amp;&amp; !TimeDerivedColumnType.isTimeDerivedColumnAboveDayLevel(dim.getName())) {</span>
+<span class="nc" id="L109">                timestampColumn.add(tupleIdx[i]);</span>
+            }
+<span class="nc" id="L111">            i++;</span>
+<span class="nc" id="L112">        }</span>
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        for (FunctionDesc metric : selectedMetrics) {</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            if (metric.needRewrite()) {</span>
+<span class="nc" id="L116">                String rewriteFieldName = metric.getRewriteFieldName();</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                tupleIdx[i] = tupleInfo.hasField(rewriteFieldName) ? tupleInfo.getFieldIndex(rewriteFieldName) : -1;</span>
+<span class="nc" id="L118">            } else {</span>
+                // a non-rewrite metrics (like sum, or dimension playing as metrics) is like a dimension column
+<span class="nc" id="L120">                TblColRef col = metric.getParameter().getColRefs().get(0);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">                tupleIdx[i] = tupleInfo.hasColumn(col) ? tupleInfo.getColumnIndex(col) : -1;</span>
+            }
+
+<span class="nc" id="L124">            MeasureType&lt;?&gt; measureType = metric.getMeasureType();</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (measureType.needAdvancedTupleFilling()) {</span>
+//                Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap = buildDictionaryMap(measureType.getColumnsNeedDictionary(metric));
+//                advMeasureFillers.add(measureType.getAdvancedTupleFiller(metric, returnTupleInfo, dictionaryMap));
+<span class="nc" id="L128">                advMeasureIndexInGTValues.add(i);</span>
+            } else {
+<span class="nc" id="L130">                measureTypes[i] = measureType;</span>
+            }
+
+<span class="nc" id="L133">            i++;</span>
+<span class="nc" id="L134">        }</span>
+
+        // prepare derived columns and filler
+<span class="nc" id="L137">        Map&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt; hostToDerivedInfo = cuboid.getCubeDesc().getHostToDerivedInfo(cuboid.getColumns(), null);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        for (Entry&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt; entry : hostToDerivedInfo.entrySet()) {</span>
+<span class="nc" id="L139">            TblColRef[] hostCols = entry.getKey().data;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            for (DeriveInfo deriveInfo : entry.getValue()) {</span>
+<span class="nc" id="L141">                IDerivedColumnFiller filler = newDerivedColumnFiller(hostCols, deriveInfo);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                if (filler != null) {</span>
+<span class="nc" id="L143">                    derivedColFillers.add(filler);</span>
+                }
+<span class="nc" id="L145">            }</span>
+<span class="nc" id="L146">        }</span>
+
+<span class="nc" id="L148">        rowKeyDesc = cubeSeg.getCubeDesc().getRowkey();</span>
+<span class="nc" id="L149">    }</span>
+
+    // load only needed dictionaries
+//    private Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; buildDictionaryMap(List&lt;TblColRef&gt; columnsNeedDictionary) {
+//        Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; result = Maps.newHashMap();
+//        for (TblColRef col : columnsNeedDictionary) {
+//            result.put(col, cubeSeg.getDictionary(col));
+//        }
+//        return result;
+//    }
+
+    @Override
+    public List&lt;IAdvMeasureFiller&gt; translateResult(Object[] gtValues, Tuple tuple) {
+<span class="nc bnc" id="L162" title="All 4 branches missed.">        assert gtValues.length == gtColIdx.length;</span>
+
+        // dimensions
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        for (int i = 0; i &lt; nSelectedDims; i++) {</span>
+<span class="nc" id="L166">            int ti = tupleIdx[i];</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            if (ti &gt;= 0) {</span>
+                // add offset to return result according to timezone
+<span class="nc bnc" id="L169" title="All 4 branches missed.">                if (autoJustByTimezone &amp;&amp; timestampColumn.contains(ti)) {</span>
+                    // For streaming
+                    try {
+<span class="nc" id="L172">                        String v = toString(gtValues[i]);</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                        if (v != null) {</span>
+<span class="nc" id="L174">                            tuple.setDimensionValue(ti, Long.toString(Long.parseLong(v) + timeZoneOffset));</span>
+                        }
+<span class="nc" id="L176">                    } catch (NumberFormatException nfe) {</span>
+<span class="nc" id="L177">                        logger.warn(&quot;{} is not a long value.&quot;, gtValues[i]);</span>
+<span class="nc" id="L178">                        tuple.setDimensionValue(ti, toString(gtValues[i]));</span>
+<span class="nc" id="L179">                    }</span>
+                } else {
+                    // For batch
+<span class="nc" id="L182">                    setDimensionValue(tuple, ti, toString(gtValues[i]));</span>
+                }
+            }
+        }
+
+        // measures
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        for (int i = nSelectedDims; i &lt; gtColIdx.length; i++) {</span>
+<span class="nc" id="L189">            int ti = tupleIdx[i];</span>
+<span class="nc bnc" id="L190" title="All 4 branches missed.">            if (ti &gt;= 0 &amp;&amp; measureTypes[i] != null) {</span>
+<span class="nc" id="L191">                measureTypes[i].fillTupleSimply(tuple, ti, gtValues[i]);</span>
+            }
+        }
+
+        // derived
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        for (IDerivedColumnFiller filler : derivedColFillers) {</span>
+<span class="nc" id="L197">            filler.fillDerivedColumns(gtValues, tuple);</span>
+<span class="nc" id="L198">        }</span>
+
+        // advanced measure filling, due to possible row split, will complete at caller side
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (advMeasureFillers.isEmpty()) {</span>
+<span class="nc" id="L202">            return null;</span>
+        } else {
+<span class="nc bnc" id="L204" title="All 2 branches missed.">            for (int i = 0; i &lt; advMeasureFillers.size(); i++) {</span>
+<span class="nc" id="L205">                Object measureValue = gtValues[advMeasureIndexInGTValues.get(i)];</span>
+<span class="nc" id="L206">                advMeasureFillers.get(i).reload(measureValue);</span>
+            }
+<span class="nc" id="L208">            return advMeasureFillers;</span>
+        }
+    }
+
+    private void setDimensionValue(Tuple tuple, int idx, String valueStr) {
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (valueStr == null) {</span>
+<span class="nc" id="L214">            tuple.setDimensionValueDirectly(idx, valueStr);</span>
+<span class="nc" id="L215">            return;</span>
+        }
+
+<span class="nc" id="L218">        Object valueConvert = null;</span>
+<span class="nc" id="L219">        TblColRef col = tupleInfo.getColumn(idx);</span>
+<span class="nc" id="L220">        RowKeyColDesc rowKeyColDesc = rowKeyDesc.getColDescUncheck(col);</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if (rowKeyColDesc != null) {</span>
+            // convert value if inconsistency exists between rowkey col encoding &amp; col data type
+<span class="nc bnc" id="L223" title="All 4 branches missed.">            if (col.getType().isDate() &amp;&amp; !RowKeyColDesc.isDateDimEnc(rowKeyColDesc)) {</span>
+<span class="nc" id="L224">                long tmpValue = (Long) Tuple.convertOptiqCellValue(valueStr, &quot;timestamp&quot;);</span>
+<span class="nc" id="L225">                valueConvert = Tuple.millisToEpicDays(tmpValue);</span>
+<span class="nc bnc" id="L226" title="All 4 branches missed.">            } else if (col.getType().isDatetime() &amp;&amp; !RowKeyColDesc.isTimeDimEnc(rowKeyColDesc)) {</span>
+<span class="nc" id="L227">                int tmpValue = (Integer) Tuple.convertOptiqCellValue(valueStr, &quot;date&quot;);</span>
+<span class="nc" id="L228">                valueConvert = Tuple.epicDaysToMillis(tmpValue);</span>
+            }
+        }
+
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (valueConvert != null) {</span>
+<span class="nc" id="L233">            tuple.setDimensionValueDirectly(idx, valueConvert);</span>
+        } else {
+<span class="nc" id="L235">            tuple.setDimensionValue(idx, valueStr);</span>
+        }
+<span class="nc" id="L237">    }</span>
+
+    @Override
+    public void close() throws IOException {
+//        for (ILookupTable usedLookupTable : usedLookupTables) {
+//            try {
+//                usedLookupTable.close();
+//            } catch (Exception e) {
+//                logger.error(&quot;error when close lookup table:&quot; + usedLookupTable);
+//            }
+//        }
+<span class="nc" id="L248">    }</span>
+
+    protected interface IDerivedColumnFiller {
+        public void fillDerivedColumns(Object[] gtValues, Tuple tuple);
+    }
+
+    protected IDerivedColumnFiller newDerivedColumnFiller(TblColRef[] hostCols, final DeriveInfo deriveInfo) {
+<span class="nc" id="L255">        boolean allHostsPresent = true;</span>
+<span class="nc" id="L256">        final int[] hostTmpIdx = new int[hostCols.length];</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        for (int i = 0; i &lt; hostCols.length; i++) {</span>
+<span class="nc" id="L258">            hostTmpIdx[i] = indexOnTheGTValues(hostCols[i]);</span>
+<span class="nc bnc" id="L259" title="All 4 branches missed.">            allHostsPresent = allHostsPresent &amp;&amp; hostTmpIdx[i] &gt;= 0;</span>
+        }
+
+<span class="nc" id="L262">        boolean needCopyDerived = false;</span>
+<span class="nc" id="L263">        final int[] derivedTupleIdx = new int[deriveInfo.columns.length];</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        for (int i = 0; i &lt; deriveInfo.columns.length; i++) {</span>
+<span class="nc" id="L265">            TblColRef col = deriveInfo.columns[i];</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            derivedTupleIdx[i] = tupleInfo.hasColumn(col) ? tupleInfo.getColumnIndex(col) : -1;</span>
+<span class="nc bnc" id="L267" title="All 4 branches missed.">            needCopyDerived = needCopyDerived || derivedTupleIdx[i] &gt;= 0;</span>
+        }
+
+<span class="nc bnc" id="L270" title="All 6 branches missed.">        if ((allHostsPresent &amp;&amp; needCopyDerived) == false)</span>
+<span class="nc" id="L271">            return null;</span>
+
+<span class="nc bnc" id="L273" title="All 3 branches missed.">        switch (deriveInfo.type) {</span>
+        case LOOKUP:
+<span class="nc" id="L275">            return new IDerivedColumnFiller() {</span>
+//                ILookupTable lookupTable = getAndAddLookupTable(cubeSeg, deriveInfo.join);
+//                int[] derivedColIdx = initDerivedColIdx();
+//                Array&lt;String&gt; lookupKey = new Array&lt;String&gt;(new String[hostTmpIdx.length]);
+//
+//                private int[] initDerivedColIdx() {
+//                    int[] idx = new int[deriveInfo.columns.length];
+//                    for (int i = 0; i &lt; idx.length; i++) {
+//                        idx[i] = deriveInfo.columns[i].getColumnDesc().getZeroBasedIndex();
+//                    }
+//                    return idx;
+//                }
+
+                @Override
+                public void fillDerivedColumns(Object[] gtValues, Tuple tuple) {
+//                    for (int i = 0; i &lt; hostTmpIdx.length; i++) {
+//                        lookupKey.data[i] = CubeTupleConverter.toString(gtValues[hostTmpIdx[i]]);
+//                        // if the primary key of lookup table is date time type, do this change in case of data type inconsistency
+//                        if (lookupKey.data[i] != null &amp;&amp; deriveInfo.join.getPrimaryKeyColumns()[i].getType().isDateTimeFamily()) {
+//                            lookupKey.data[i] = String.valueOf(DateFormat.stringToMillis(lookupKey.data[i]));
+//                        }
+//                    }
+//
+//                    String[] lookupRow = lookupTable.getRow(lookupKey);
+//
+//                    if (lookupRow != null) {
+//                        for (int i = 0; i &lt; derivedTupleIdx.length; i++) {
+//                            if (derivedTupleIdx[i] &gt;= 0) {
+//                                String value = lookupRow[derivedColIdx[i]];
+//                                tuple.setDimensionValue(derivedTupleIdx[i], value);
+//                            }
+//                        }
+//                    } else {
+//                        for (int i = 0; i &lt; derivedTupleIdx.length; i++) {
+//                            if (derivedTupleIdx[i] &gt;= 0) {
+//                                tuple.setDimensionValue(derivedTupleIdx[i], null);
+//                            }
+//                        }
+//                    }
+<span class="nc" id="L314">                }</span>
+            };
+        case PK_FK:
+<span class="nc" id="L317">            return new IDerivedColumnFiller() {</span>
+                @Override
+                public void fillDerivedColumns(Object[] gtValues, Tuple tuple) {
+                    // composite keys are split, so only copy [0] is enough, see CubeDesc.initDimensionColumns()
+<span class="nc" id="L321">                    tuple.setDimensionValue(derivedTupleIdx[0], CubeTupleConverter.toString(gtValues[hostTmpIdx[0]]));</span>
+<span class="nc" id="L322">                }</span>
+            };
+        default:
+<span class="nc" id="L325">            throw new IllegalArgumentException();</span>
+        }
+    }
+
+    public int indexOnTheGTValues(TblColRef col) {
+<span class="nc" id="L330">        List&lt;TblColRef&gt; cuboidDims = cuboid.getColumns();</span>
+<span class="nc" id="L331">        int cuboidIdx = cuboidDims.indexOf(col);</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        for (int i = 0; i &lt; gtColIdx.length; i++) {</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">            if (gtColIdx[i] == cuboidIdx)</span>
+<span class="nc" id="L334">                return i;</span>
+        }
+<span class="nc" id="L336">        return -1;</span>
+    }
+
+//    public ILookupTable getAndAddLookupTable(CubeSegment cubeSegment, JoinDesc join) {
+//        ILookupTable lookupTable = CubeManager.getInstance(KylinConfig.getInstanceFromEnv()).getLookupTable(cubeSegment, join);
+//        usedLookupTables.add(lookupTable);
+//        return lookupTable;
+//    }
+
+    private static String toString(Object o) {
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        return o == null ? null : o.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

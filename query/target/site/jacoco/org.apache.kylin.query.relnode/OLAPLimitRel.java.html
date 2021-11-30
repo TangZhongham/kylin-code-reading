@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPLimitRel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPLimitRel.java</span></div><h1>OLAPLimitRel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.List;
+
+import org.apache.calcite.adapter.enumerable.EnumerableConvention;
+import org.apache.calcite.adapter.enumerable.EnumerableLimit;
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.SingleRel;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rex.RexLiteral;
+import org.apache.calcite.rex.RexNode;
+
+import com.google.common.base.Preconditions;
+
+/**
+ */
+public class OLAPLimitRel extends SingleRel implements OLAPRel {
+
+    public final RexNode localOffset; // avoid same name in parent class
+    public final RexNode localFetch; // avoid same name in parent class
+    ColumnRowType columnRowType;
+    OLAPContext context;
+
+    public OLAPLimitRel(RelOptCluster cluster, RelTraitSet traitSet, RelNode child, RexNode offset, RexNode fetch) {
+<span class="nc" id="L50">        super(cluster, traitSet, child);</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == CONVENTION);</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == child.getConvention());</span>
+<span class="nc" id="L53">        this.localOffset = offset;</span>
+<span class="nc" id="L54">        this.localFetch = fetch;</span>
+<span class="nc" id="L55">    }</span>
+
+    @Override
+    public OLAPLimitRel copy(RelTraitSet traitSet, List&lt;RelNode&gt; inputs) {
+<span class="nc" id="L59">        return new OLAPLimitRel(getCluster(), traitSet, sole(inputs), localOffset, localFetch);</span>
+    }
+
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+<span class="nc" id="L64">        return super.computeSelfCost(planner, mq).multiplyBy(.05);</span>
+    }
+
+    @Override
+    public RelWriter explainTerms(RelWriter pw) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        return super.explainTerms(pw)</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                .item(&quot;ctx&quot;, context == null ? &quot;&quot; : String.valueOf(context.id) + &quot;@&quot; + context.realization)</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                .itemIf(&quot;offset&quot;, localOffset, localOffset != null).itemIf(&quot;fetch&quot;, localFetch, localFetch != null);</span>
+    }
+
+    @Override
+    public void implementOLAP(OLAPImplementor implementor) {
+<span class="nc" id="L76">        implementor.fixSharedOlapTableScan(this);</span>
+<span class="nc" id="L77">        implementor.visitChild(getInput(), this);</span>
+
+<span class="nc" id="L79">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L80">        this.context = implementor.getContext();</span>
+<span class="nc" id="L81">        this.context.hasLimit = true;</span>
+
+        // ignore limit after having clause
+        // ignore limit after another limit, e.g. select A, count(*) from (select A,B from fact group by A,B limit 100) limit 10
+        // ignore limit after outer aggregate, e.g. select count(1) from (select A,B from fact group by A,B ) limit 10
+<span class="nc bnc" id="L86" title="All 8 branches missed.">        if (!context.afterHavingClauseFilter &amp;&amp; !context.afterLimit &amp;&amp; !context.afterOuterAggregate</span>
+                &amp;&amp; !context.disableLimitPushdown) {
+<span class="nc" id="L88">            Number limitValue = (Number) (((RexLiteral) localFetch).getValue());</span>
+<span class="nc" id="L89">            int limit = limitValue.intValue();</span>
+<span class="nc" id="L90">            this.context.storageContext.setLimit(limit);</span>
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (localOffset != null) {</span>
+<span class="nc" id="L93">                Number offsetValue = (Number) (((RexLiteral) localOffset).getValue());</span>
+<span class="nc" id="L94">                int offset = offsetValue.intValue();</span>
+<span class="nc" id="L95">                this.context.storageContext.setOffset(offset);</span>
+            }
+
+<span class="nc" id="L98">            context.afterLimit = true;</span>
+<span class="nc" id="L99">        } else {</span>
+<span class="nc" id="L100">            this.context.storageContext.setOverlookOuterLimit();</span>
+        }
+<span class="nc" id="L102">    }</span>
+
+    ColumnRowType buildColumnRowType() {
+<span class="nc" id="L105">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L106">        ColumnRowType inputColumnRowType = olapChild.getColumnRowType();</span>
+<span class="nc" id="L107">        return inputColumnRowType;</span>
+    }
+
+    @Override
+    public void implementRewrite(RewriteImplementor implementor) {
+<span class="nc" id="L112">        implementor.visitChild(this, getInput());</span>
+
+<span class="nc" id="L114">        this.rowType = this.deriveRowType();</span>
+<span class="nc" id="L115">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L116">    }</span>
+
+    @Override
+    public EnumerableRel implementEnumerable(List&lt;EnumerableRel&gt; inputs) {
+<span class="nc" id="L120">        EnumerableRel input = sole(inputs);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (input instanceof OLAPRel) {</span>
+<span class="nc" id="L122">            ((OLAPRel) input).replaceTraitSet(EnumerableConvention.INSTANCE);</span>
+        }
+<span class="nc" id="L124">        return EnumerableLimit.create(input, localOffset, localFetch);</span>
+    }
+
+    @Override
+    public OLAPContext getContext() {
+<span class="nc" id="L129">        return context;</span>
+    }
+
+    @Override
+    public ColumnRowType getColumnRowType() {
+<span class="nc" id="L134">        return columnRowType;</span>
+    }
+
+    @Override
+    public boolean hasSubQuery() {
+<span class="nc" id="L139">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L140">        return olapChild.hasSubQuery();</span>
+    }
+
+    @Override
+    public RelTraitSet replaceTraitSet(RelTrait trait) {
+<span class="nc" id="L145">        RelTraitSet oldTraitSet = this.traitSet;</span>
+<span class="nc" id="L146">        this.traitSet = this.traitSet.replace(trait);</span>
+<span class="nc" id="L147">        return oldTraitSet;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

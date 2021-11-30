@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PercentileMeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.percentile</a> &gt; <span class="el_source">PercentileMeasureType.java</span></div><h1>PercentileMeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.percentile;
+
+import java.util.Map;
+
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+
+public class PercentileMeasureType extends MeasureType&lt;PercentileCounter&gt; {
+    // compression ratio saved in DataType.precision
+    private final DataType dataType;
+    public static final String FUNC_PERCENTILE = &quot;PERCENTILE&quot;;
+    public static final String FUNC_PERCENTILE_APPROX = &quot;PERCENTILE_APPROX&quot;;
+    public static final String DATATYPE_PERCENTILE = &quot;percentile&quot;;
+
+<span class="fc" id="L42">    public PercentileMeasureType(DataType dataType) {</span>
+<span class="fc" id="L43">        this.dataType = dataType;</span>
+<span class="fc" id="L44">    }</span>
+
+<span class="fc" id="L46">    public static class Factory extends MeasureTypeFactory&lt;PercentileCounter&gt; {</span>
+
+        @Override
+        public MeasureType&lt;PercentileCounter&gt; createMeasureType(String funcName, DataType dataType) {
+<span class="fc" id="L50">            return new PercentileMeasureType(dataType);</span>
+        }
+
+        @Override
+        public String getAggrFunctionName() {
+<span class="fc" id="L55">            return FUNC_PERCENTILE_APPROX;</span>
+        }
+
+        @Override
+        public String getAggrDataTypeName() {
+<span class="fc" id="L60">            return DATATYPE_PERCENTILE;</span>
+        }
+
+        @Override
+        public Class&lt;? extends DataTypeSerializer&lt;PercentileCounter&gt;&gt; getAggrDataTypeSerializer() {
+<span class="fc" id="L65">            return PercentileSerializer.class;</span>
+        }
+    }
+
+    @Override
+    public MeasureIngester&lt;PercentileCounter&gt; newIngester() {
+<span class="nc" id="L71">        return new MeasureIngester&lt;PercentileCounter&gt;() {</span>
+<span class="nc" id="L72">            PercentileCounter current = new PercentileCounter(dataType.getPrecision());</span>
+
+            @Override
+            public PercentileCounter valueOf(String[] values, MeasureDesc measureDesc,
+                    Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L77">                PercentileCounter counter = current;</span>
+<span class="nc" id="L78">                counter.clear();</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                for (String v : values) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">                    if (v != null)</span>
+<span class="nc" id="L81">                        counter.add(Double.parseDouble(v));</span>
+                }
+<span class="nc" id="L83">                return counter;</span>
+            }
+
+            @Override
+            public void reset() {
+<span class="nc" id="L88">                current = new PercentileCounter(dataType.getPrecision());</span>
+<span class="nc" id="L89">            }</span>
+        };
+    }
+
+    @Override
+    public MeasureAggregator&lt;PercentileCounter&gt; newAggregator() {
+<span class="nc" id="L95">        return new PercentileAggregator(dataType.getPrecision());</span>
+    }
+
+    @Override
+    public boolean needRewrite() {
+<span class="fc" id="L100">        return true;</span>
+    }
+
+<span class="fc" id="L103">    static final Map&lt;String, Class&lt;?&gt;&gt; UDAF_MAP = ImmutableMap.&lt;String, Class&lt;?&gt;&gt; of(</span>
+            PercentileMeasureType.FUNC_PERCENTILE, PercentileAggFunc.class,
+            PercentileMeasureType.FUNC_PERCENTILE_APPROX, PercentileAggFunc.class);
+
+    @Override
+    public Map&lt;String, Class&lt;?&gt;&gt; getRewriteCalciteAggrFunctions() {
+<span class="fc" id="L109">        return UDAF_MAP;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

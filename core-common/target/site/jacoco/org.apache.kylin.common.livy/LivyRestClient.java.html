@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LivyRestClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.livy</a> &gt; <span class="el_source">LivyRestClient.java</span></div><h1>LivyRestClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.livy;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.PoolingClientConnectionManager;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.params.HttpParams;
+import org.apache.kylin.common.KylinConfig;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+
+public class LivyRestClient {
+
+<span class="nc" id="L41">    private int httpConnectionTimeoutMs = 30000;</span>
+<span class="nc" id="L42">    private int httpSocketTimeoutMs = 120000;</span>
+
+    protected String baseUrl;
+    protected DefaultHttpClient client;
+
+<span class="nc" id="L47">    final private KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+
+<span class="nc" id="L49">    public LivyRestClient() {</span>
+<span class="nc" id="L50">        init();</span>
+<span class="nc" id="L51">    }</span>
+
+
+    private void init() {
+<span class="nc" id="L55">        final HttpParams httpParams = new BasicHttpParams();</span>
+<span class="nc" id="L56">        HttpConnectionParams.setSoTimeout(httpParams, httpSocketTimeoutMs);</span>
+<span class="nc" id="L57">        HttpConnectionParams.setConnectionTimeout(httpParams, httpConnectionTimeoutMs);</span>
+
+<span class="nc" id="L59">        PoolingClientConnectionManager cm = new PoolingClientConnectionManager();</span>
+<span class="nc" id="L60">        cm.setDefaultMaxPerRoute(config.getRestClientDefaultMaxPerRoute());</span>
+<span class="nc" id="L61">        cm.setMaxTotal(config.getRestClientMaxTotal());</span>
+
+<span class="nc" id="L63">        baseUrl = config.getLivyUrl();</span>
+<span class="nc" id="L64">        client = new DefaultHttpClient(cm, httpParams);</span>
+<span class="nc" id="L65">    }</span>
+
+    public String livySubmitJobBatches(String jobJson) throws IOException {
+<span class="nc" id="L68">        String url = baseUrl + &quot;/batches&quot;;</span>
+<span class="nc" id="L69">        HttpPost post = newPost(url);</span>
+
+        // Because livy submit job use JDK's ProcessBuilder, here we need to quote backtick
+        // otherwise backtick make livy throw org.apache.spark.sql.catalyst.parser.ParseException
+<span class="nc" id="L73">        String json = jobJson.replace(&quot;`&quot;, config.getLivyRestApiBacktick());</span>
+
+<span class="nc" id="L75">        post.setEntity(new StringEntity(json, &quot;UTF-8&quot;));</span>
+<span class="nc" id="L76">        HttpResponse response = client.execute(post);</span>
+<span class="nc" id="L77">        String content = getContent(response);</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 201) {</span>
+<span class="nc" id="L79">            throw new IOException(&quot;Invalid response &quot; + response.getStatusLine().getStatusCode() + &quot; with url &quot; + url + &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L81">        return content;</span>
+    }
+
+
+    public String livyGetJobStatusBatches(String jobId) throws IOException {
+<span class="nc" id="L86">        String url = baseUrl + &quot;/batches/&quot; + jobId;</span>
+<span class="nc" id="L87">        HttpGet get = new HttpGet(url);</span>
+
+<span class="nc" id="L89">        HttpResponse response = client.execute(get);</span>
+<span class="nc" id="L90">        String content = getContent(response);</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L92">            throw new IOException(&quot;Invalid response &quot; + response.getStatusLine().getStatusCode() + &quot; with url &quot; + url + &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L94">        return content;</span>
+    }
+
+    public String livyDeleteBatches(String jobId) throws IOException {
+<span class="nc" id="L98">        String url = baseUrl + &quot;/batches/&quot; + jobId;</span>
+<span class="nc" id="L99">        HttpDelete delete = new HttpDelete(url);</span>
+
+<span class="nc" id="L101">        HttpResponse response = client.execute(delete);</span>
+<span class="nc" id="L102">        String content = getContent(response);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (response.getStatusLine().getStatusCode() != 200) {</span>
+<span class="nc" id="L104">            throw new IOException(&quot;Invalid response &quot; + response.getStatusLine().getStatusCode() + &quot; with url &quot; + url + &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L106">        return content;</span>
+    }
+
+    private HttpPost newPost(String url) {
+<span class="nc" id="L110">        HttpPost post = new HttpPost(url);</span>
+<span class="nc" id="L111">        addHttpHeaders(post);</span>
+<span class="nc" id="L112">        return post;</span>
+    }
+
+    private void addHttpHeaders(HttpRequestBase method) {
+<span class="nc" id="L116">        method.addHeader(&quot;Accept&quot;, &quot;application/json, text/plain, */*&quot;);</span>
+<span class="nc" id="L117">        method.addHeader(&quot;Content-Type&quot;, &quot;application/json&quot;);</span>
+<span class="nc" id="L118">    }</span>
+
+    private String getContent(HttpResponse response) throws IOException {
+<span class="nc" id="L121">        InputStreamReader reader = null;</span>
+<span class="nc" id="L122">        BufferedReader rd = null;</span>
+<span class="nc" id="L123">        StringBuffer result = new StringBuffer();</span>
+        try {
+<span class="nc" id="L125">            reader = new InputStreamReader(response.getEntity().getContent(), &quot;UTF-8&quot;);</span>
+<span class="nc" id="L126">            rd = new BufferedReader(reader);</span>
+            String line;
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            while ((line = rd.readLine()) != null) {</span>
+<span class="nc" id="L129">                result.append(line);</span>
+            }
+        } finally {
+<span class="nc" id="L132">            IOUtils.closeQuietly(reader);</span>
+<span class="nc" id="L133">            IOUtils.closeQuietly(rd);</span>
+        }
+<span class="nc" id="L135">        return result.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

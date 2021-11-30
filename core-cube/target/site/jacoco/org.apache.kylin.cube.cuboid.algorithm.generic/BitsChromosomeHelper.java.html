@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitsChromosomeHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm.generic</a> &gt; <span class="el_source">BitsChromosomeHelper.java</span></div><h1>BitsChromosomeHelper.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm.generic;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableList;
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableSet;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.cube.cuboid.algorithm.CuboidStats;
+
+import java.util.BitSet;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+
+public class BitsChromosomeHelper {
+
+    public final double spaceLimit;
+    private final CuboidStats cuboidStats;
+    private final CuboidEncoder cuboidEncoder;
+
+<span class="nc" id="L37">    public BitsChromosomeHelper(final double spaceLimit, final CuboidStats cuboidStats) {</span>
+<span class="nc" id="L38">        this.spaceLimit = spaceLimit;</span>
+<span class="nc" id="L39">        this.cuboidStats = cuboidStats;</span>
+<span class="nc" id="L40">        this.cuboidEncoder = new CuboidEncoder(cuboidStats.getAllCuboidsForSelection());</span>
+<span class="nc" id="L41">    }</span>
+
+    public ImmutableSet&lt;Long&gt; getMandatoryCuboids() {
+<span class="nc" id="L44">        return cuboidStats.getAllCuboidsForMandatory();</span>
+    }
+
+    public List&lt;Long&gt; toCuboidList(BitSet bits) {
+<span class="nc" id="L48">        return cuboidEncoder.toCuboidList(bits);</span>
+    }
+
+    public double getCuboidSize(Set&lt;Long&gt; cuboids) {
+<span class="nc" id="L52">        double ret = 0;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        for (Long cuboid : cuboids) {</span>
+<span class="nc" id="L54">            ret += cuboidStats.getCuboidSize(cuboid);</span>
+<span class="nc" id="L55">        }</span>
+<span class="nc" id="L56">        return ret;</span>
+    }
+
+    public double getCuboidSizeByBitIndex(int index) {
+<span class="nc" id="L60">        return cuboidStats.getCuboidSize(cuboidEncoder.cuboidDomain.get(index));</span>
+    }
+
+    public int getLength() {
+<span class="nc" id="L64">        return cuboidEncoder.cuboidDomain.size();</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L70">            return true;</span>
+<span class="nc bnc" id="L71" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L72">            return false;</span>
+
+<span class="nc" id="L74">        BitsChromosomeHelper that = (BitsChromosomeHelper) o;</span>
+
+<span class="nc bnc" id="L76" title="All 4 branches missed.">        return cuboidEncoder != null ? cuboidEncoder.equals(that.cuboidEncoder) : that.cuboidEncoder == null;</span>
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        return cuboidEncoder != null ? cuboidEncoder.hashCode() : 0;</span>
+    }
+
+    private static class CuboidEncoder {
+        public final ImmutableList&lt;Long&gt; cuboidDomain;
+
+<span class="nc" id="L88">        public CuboidEncoder(Set&lt;Long&gt; cuboidSet) {</span>
+<span class="nc" id="L89">            List&lt;Long&gt; cuboidList = Lists.newArrayList(cuboidSet);</span>
+<span class="nc" id="L90">            Collections.sort(cuboidList, Collections.reverseOrder());</span>
+<span class="nc" id="L91">            this.cuboidDomain = ImmutableList.copyOf(cuboidList);</span>
+<span class="nc" id="L92">        }</span>
+
+        public List&lt;Long&gt; toCuboidList(BitSet bits) {
+<span class="nc" id="L95">            List&lt;Long&gt; cuboids = Lists.newArrayListWithExpectedSize(bits.cardinality());</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            for (int i = bits.nextSetBit(0); i &gt;= 0; i = bits.nextSetBit(i + 1)) {</span>
+<span class="nc" id="L97">                cuboids.add(cuboidDomain.get(i));</span>
+            }
+<span class="nc" id="L99">            return cuboids;</span>
+        }
+
+        @Override
+        public boolean equals(Object o) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (this == o)</span>
+<span class="nc" id="L105">                return true;</span>
+<span class="nc bnc" id="L106" title="All 4 branches missed.">            if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L107">                return false;</span>
+
+<span class="nc" id="L109">            CuboidEncoder that = (CuboidEncoder) o;</span>
+
+<span class="nc bnc" id="L111" title="All 4 branches missed.">            return cuboidDomain != null ? cuboidDomain.equals(that.cuboidDomain) : that.cuboidDomain == null;</span>
+
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            return cuboidDomain != null ? cuboidDomain.hashCode() : 0;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CalciteParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model.tool</a> &gt; <span class="el_source">CalciteParser.java</span></div><h1>CalciteParser.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model.tool;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.parser.SqlParseException;
+import org.apache.calcite.sql.parser.SqlParser;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.util.SqlBasicVisitor;
+import org.apache.calcite.sql.util.SqlVisitor;
+import org.apache.kylin.common.util.Pair;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+<span class="nc" id="L43">public class CalciteParser {</span>
+    public static SqlNode parse(String sql) throws SqlParseException {
+<span class="fc" id="L45">        SqlParser.ConfigBuilder parserBuilder = SqlParser.configBuilder();</span>
+<span class="fc" id="L46">        SqlParser sqlParser = SqlParser.create(sql, parserBuilder.build());</span>
+<span class="fc" id="L47">        return sqlParser.parseQuery();</span>
+    }
+
+    public static SqlNode getOnlySelectNode(String sql) {
+<span class="fc" id="L51">        SqlNodeList selectList = null;</span>
+        try {
+<span class="fc" id="L53">            selectList = ((SqlSelect) CalciteParser.parse(sql)).getSelectList();</span>
+<span class="nc" id="L54">        } catch (SqlParseException e) {</span>
+<span class="nc" id="L55">            throw new RuntimeException(</span>
+                    &quot;Failed to parse expression \'&quot; + sql + &quot;\', please make sure the expression is valid&quot;, e);
+<span class="fc" id="L57">        }</span>
+
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        Preconditions.checkArgument(selectList.size() == 1,</span>
+                &quot;Expression is invalid because size of select list exceeds one&quot;);
+
+<span class="fc" id="L62">        return selectList.get(0);</span>
+    }
+
+    public static SqlNode getExpNode(String expr) {
+<span class="nc" id="L66">        return getOnlySelectNode(&quot;select &quot; + expr + &quot; from t&quot;);</span>
+    }
+
+    public static String getLastNthName(SqlIdentifier id, int n) {
+        //n = 1 is getting column
+        //n = 2 is getting table's alias, if has.
+        //n = 3 is getting database name, if has.
+<span class="nc" id="L73">        return id.names.get(id.names.size() - n).replace(&quot;\&quot;&quot;, &quot;&quot;).toUpperCase(Locale.ROOT);</span>
+    }
+
+    public static void ensureNoAliasInExpr(String expr) {
+<span class="nc" id="L77">        SqlNode sqlNode = getExpNode(expr);</span>
+
+<span class="nc" id="L79">        SqlVisitor sqlVisitor = new SqlBasicVisitor() {</span>
+            @Override
+            public Object visit(SqlIdentifier id) {
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                if (id.names.size() &gt; 1) {</span>
+<span class="nc" id="L83">                    throw new IllegalArgumentException(</span>
+                            &quot;Column Identifier in the computed column expression should only contain COLUMN&quot;);
+                }
+<span class="nc" id="L86">                return null;</span>
+            }
+        };
+
+<span class="nc" id="L90">        sqlNode.accept(sqlVisitor);</span>
+<span class="nc" id="L91">    }</span>
+
+    public static String insertAliasInExpr(String expr, String alias) {
+<span class="fc" id="L94">        String prefix = &quot;select &quot;;</span>
+<span class="fc" id="L95">        String suffix = &quot; from t&quot;;</span>
+<span class="fc" id="L96">        String sql = prefix + expr + suffix;</span>
+<span class="fc" id="L97">        SqlNode sqlNode = getOnlySelectNode(sql);</span>
+
+<span class="fc" id="L99">        final Set&lt;SqlIdentifier&gt; s = Sets.newHashSet();</span>
+<span class="fc" id="L100">        SqlVisitor sqlVisitor = new SqlBasicVisitor() {</span>
+            @Override
+            public Object visit(SqlIdentifier id) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (id.names.size() &gt; 1) {</span>
+<span class="fc" id="L104">                    throw new IllegalArgumentException(&quot;SqlIdentifier &quot; + id + &quot; contains DB/Table name&quot;);</span>
+                }
+<span class="fc" id="L106">                s.add(id);</span>
+<span class="fc" id="L107">                return null;</span>
+            }
+        };
+
+<span class="fc" id="L111">        sqlNode.accept(sqlVisitor);</span>
+<span class="fc" id="L112">        List&lt;SqlIdentifier&gt; sqlIdentifiers = Lists.newArrayList(s);</span>
+
+<span class="fc" id="L114">        descSortByPosition(sqlIdentifiers);</span>
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        for (SqlIdentifier sqlIdentifier : sqlIdentifiers) {</span>
+<span class="fc" id="L117">            Pair&lt;Integer, Integer&gt; replacePos = getReplacePos(sqlIdentifier, sql);</span>
+<span class="fc" id="L118">            int start = replacePos.getFirst();</span>
+<span class="fc" id="L119">            sql = sql.substring(0, start) + alias + &quot;.&quot; + sql.substring(start);</span>
+<span class="fc" id="L120">        }</span>
+
+<span class="fc" id="L122">        return sql.substring(prefix.length(), sql.length() - suffix.length());</span>
+    }
+
+    public static void descSortByPosition(List&lt;SqlIdentifier&gt; sqlIdentifiers) {
+<span class="fc" id="L126">        Collections.sort(sqlIdentifiers, new Comparator&lt;SqlIdentifier&gt;() {</span>
+            @Override
+            public int compare(SqlIdentifier o1, SqlIdentifier o2) {
+<span class="fc" id="L129">                int linegap = o2.getParserPosition().getLineNum() - o1.getParserPosition().getLineNum();</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                if (linegap != 0)</span>
+<span class="nc" id="L131">                    return linegap;</span>
+
+<span class="fc" id="L133">                return o2.getParserPosition().getColumnNum() - o1.getParserPosition().getColumnNum();</span>
+            }
+        });
+<span class="fc" id="L136">    }</span>
+
+    public static Pair&lt;Integer, Integer&gt; getReplacePos(SqlNode node, String inputSql) {
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (inputSql == null) {</span>
+<span class="nc" id="L140">            return Pair.newPair(0, 0);</span>
+        }
+<span class="fc" id="L142">        String[] lines = inputSql.split(&quot;\n&quot;);</span>
+<span class="fc" id="L143">        SqlParserPos pos = node.getParserPosition();</span>
+<span class="fc" id="L144">        int lineStart = pos.getLineNum();</span>
+<span class="fc" id="L145">        int lineEnd = pos.getEndLineNum();</span>
+<span class="fc" id="L146">        int columnStart = pos.getColumnNum() - 1;</span>
+<span class="fc" id="L147">        int columnEnd = pos.getEndColumnNum();</span>
+        //for the case that sql is multi lines
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (int i = 0; i &lt; lineStart - 1; i++) {</span>
+<span class="fc" id="L150">            columnStart += lines[i].length() + 1;</span>
+        }
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        for (int i = 0; i &lt; lineEnd - 1; i++) {</span>
+<span class="fc" id="L153">            columnEnd += lines[i].length() + 1;</span>
+        }
+        //for calcite's bug CALCITE-1875
+<span class="fc" id="L156">        Pair&lt;Integer, Integer&gt; startEndPos = getPosWithBracketsCompletion(inputSql, columnStart, columnEnd);</span>
+<span class="fc" id="L157">        return startEndPos;</span>
+    }
+
+    private static Pair&lt;Integer, Integer&gt; getPosWithBracketsCompletion(String inputSql, int left, int right) {
+<span class="fc" id="L161">        int leftBracketNum = 0;</span>
+<span class="fc" id="L162">        int rightBracketNum = 0;</span>
+<span class="fc" id="L163">        boolean constantFlag = false;</span>
+<span class="fc" id="L164">        String substring = inputSql.substring(left, right);</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        for (int i = 0; i &lt; substring.length(); i++) {</span>
+<span class="fc" id="L166">            char temp = substring.charAt(i);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (temp == '\'') {</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                constantFlag = !constantFlag;</span>
+            }
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (constantFlag) {</span>
+<span class="fc" id="L171">                continue;</span>
+            }
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (temp == '(') {</span>
+<span class="nc" id="L174">                leftBracketNum++;</span>
+            }
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">            if (temp == ')') {</span>
+<span class="nc" id="L177">                rightBracketNum++;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">                if (leftBracketNum &lt; rightBracketNum) {</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">                    while ('(' != inputSql.charAt(left - 1)) {</span>
+<span class="nc" id="L180">                        left--;</span>
+                    }
+<span class="nc" id="L182">                    left--;</span>
+<span class="nc" id="L183">                    leftBracketNum++;</span>
+                }
+            }
+        }
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        while (rightBracketNum &lt; leftBracketNum) {</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            while (')' != inputSql.charAt(right)) {</span>
+<span class="nc" id="L189">                right++;</span>
+            }
+<span class="nc" id="L191">            right++;</span>
+<span class="nc" id="L192">            rightBracketNum++;</span>
+        }
+<span class="fc" id="L194">        return Pair.newPair(left, right);</span>
+    }
+
+    public static String replaceAliasInExpr(String expr, Map&lt;String, String&gt; renaming) {
+<span class="nc" id="L198">        String prefix = &quot;select &quot;;</span>
+<span class="nc" id="L199">        String suffix = &quot; from t&quot;;</span>
+<span class="nc" id="L200">        String sql = prefix + expr + suffix;</span>
+<span class="nc" id="L201">        SqlNode sqlNode = CalciteParser.getOnlySelectNode(sql);</span>
+
+<span class="nc" id="L203">        final Set&lt;SqlIdentifier&gt; s = Sets.newHashSet();</span>
+<span class="nc" id="L204">        SqlVisitor sqlVisitor = new SqlBasicVisitor() {</span>
+            @Override
+            public Object visit(SqlIdentifier id) {
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                Preconditions.checkState(id.names.size() == 2);</span>
+<span class="nc" id="L208">                s.add(id);</span>
+<span class="nc" id="L209">                return null;</span>
+            }
+        };
+
+<span class="nc" id="L213">        sqlNode.accept(sqlVisitor);</span>
+<span class="nc" id="L214">        List&lt;SqlIdentifier&gt; sqlIdentifiers = Lists.newArrayList(s);</span>
+
+<span class="nc" id="L216">        CalciteParser.descSortByPosition(sqlIdentifiers);</span>
+
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        for (SqlIdentifier sqlIdentifier : sqlIdentifiers) {</span>
+<span class="nc" id="L219">            Pair&lt;Integer, Integer&gt; replacePos = CalciteParser.getReplacePos(sqlIdentifier, sql);</span>
+<span class="nc" id="L220">            int start = replacePos.getFirst();</span>
+<span class="nc" id="L221">            int end = replacePos.getSecond();</span>
+<span class="nc" id="L222">            String aliasInExpr = sqlIdentifier.names.get(0);</span>
+<span class="nc" id="L223">            String col = sqlIdentifier.names.get(1);</span>
+<span class="nc" id="L224">            String renamedAlias = renaming.get(aliasInExpr);</span>
+<span class="nc" id="L225">            Preconditions.checkNotNull(renamedAlias,</span>
+                    &quot;rename for alias &quot; + aliasInExpr + &quot; in expr (&quot; + expr + &quot;) is not found&quot;);
+<span class="nc" id="L227">            sql = sql.substring(0, start) + renamedAlias + &quot;.&quot; + col + sql.substring(end);</span>
+<span class="nc" id="L228">        }</span>
+
+<span class="nc" id="L230">        return sql.substring(prefix.length(), sql.length() - suffix.length());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

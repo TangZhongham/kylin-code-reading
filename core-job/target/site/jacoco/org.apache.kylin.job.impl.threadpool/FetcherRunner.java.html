@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FetcherRunner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.impl.threadpool</a> &gt; <span class="el_source">FetcherRunner.java</span></div><h1>FetcherRunner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.impl.threadpool;
+
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.Executable;
+import org.apache.kylin.job.execution.ExecutableManager;
+import org.apache.kylin.job.execution.ExecutableState;
+import org.apache.kylin.job.execution.Output;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+
+public abstract class FetcherRunner implements Runnable {
+
+<span class="fc" id="L38">    private static final Logger logger = LoggerFactory.getLogger(FetcherRunner.class);</span>
+
+    protected JobEngineConfig jobEngineConfig;
+    protected DefaultContext context;
+    protected JobExecutor jobExecutor;
+<span class="fc" id="L43">    protected volatile boolean fetchFailed = false;</span>
+<span class="fc" id="L44">    protected Set&lt;String&gt; succeedJobs = Sets.newHashSet();//cache succeed jobid</span>
+    protected static int nRunning, nReady, nStopped, nOthers, nError, nDiscarded, nSUCCEED;
+
+<span class="fc" id="L47">    public FetcherRunner(JobEngineConfig jobEngineConfig, DefaultContext context, JobExecutor jobExecutor) {</span>
+<span class="fc" id="L48">        this.jobEngineConfig = jobEngineConfig;</span>
+<span class="fc" id="L49">        this.context = context;</span>
+<span class="fc" id="L50">        this.jobExecutor = jobExecutor;</span>
+<span class="fc" id="L51">    }</span>
+
+    protected boolean isJobPoolFull() {
+<span class="fc" id="L54">        Map&lt;String, Executable&gt; runningJobs = context.getRunningJobs();</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        if (runningJobs.size() &gt;= jobEngineConfig.getMaxConcurrentJobLimit()) {</span>
+<span class="nc" id="L56">            logger.warn(&quot;There are too many jobs running, Job Fetch will wait until next schedule time&quot;);</span>
+<span class="nc" id="L57">            return true;</span>
+        }
+
+<span class="fc" id="L60">        return false;</span>
+    }
+
+    protected void addToJobPool(AbstractExecutable executable, int priority) {
+<span class="fc" id="L64">        String jobDesc = executable.toString();</span>
+<span class="fc" id="L65">        logger.info(jobDesc + &quot; prepare to schedule and its priority is &quot; + priority);</span>
+        try {
+<span class="fc" id="L67">            context.addRunningJob(executable);</span>
+<span class="fc" id="L68">            jobExecutor.execute(executable);</span>
+<span class="fc" id="L69">            logger.info(jobDesc + &quot; scheduled&quot;);</span>
+<span class="nc" id="L70">        } catch (Exception ex) {</span>
+<span class="nc" id="L71">            context.removeRunningJob(executable);</span>
+<span class="nc" id="L72">            logger.warn(jobDesc + &quot; fail to schedule&quot;, ex);</span>
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">    }</span>
+    
+    protected void jobStateCount(String id) {
+<span class="fc" id="L77">        final Output outputDigest = getExecutableManager().getOutputDigest(id);</span>
+        // logger.debug(&quot;Job id:&quot; + id + &quot; not runnable&quot;);
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (outputDigest.getState() == ExecutableState.SUCCEED) {</span>
+<span class="fc" id="L80">            succeedJobs.add(id);</span>
+<span class="fc" id="L81">            nSUCCEED++;</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        } else if (outputDigest.getState() == ExecutableState.ERROR) {</span>
+<span class="fc" id="L83">            nError++;</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        } else if (outputDigest.getState() == ExecutableState.DISCARDED) {</span>
+<span class="fc" id="L85">            nDiscarded++;</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        } else if (outputDigest.getState() == ExecutableState.STOPPED) {</span>
+<span class="nc" id="L87">            nStopped++;</span>
+        } else {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">            if (fetchFailed) {</span>
+<span class="nc" id="L90">                getExecutableManager().forceKillJob(id);</span>
+<span class="nc" id="L91">                nError++;</span>
+            } else {
+<span class="nc" id="L93">                nOthers++;</span>
+            }
+        }
+<span class="fc" id="L96">    }</span>
+
+    @VisibleForTesting
+    void setFetchFailed(boolean fetchFailed) {
+<span class="nc" id="L100">        this.fetchFailed = fetchFailed;</span>
+<span class="nc" id="L101">    }</span>
+
+    ExecutableManager getExecutableManager() {
+<span class="fc" id="L104">        return ExecutableManager.getInstance(jobEngineConfig.getConfig());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

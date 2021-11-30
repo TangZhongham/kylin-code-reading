@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RoutingRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.routing</a> &gt; <span class="el_source">RoutingRule.java</span></div><h1>RoutingRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.routing;
+
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.RealizationType;
+import org.apache.kylin.query.routing.rules.RealizationSortRule;
+import org.apache.kylin.query.routing.rules.RemoveBlackoutRealizationsRule;
+import org.apache.kylin.query.routing.rules.RemoveUncapableRealizationsRule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Lists;
+
+/**
+ */
+<span class="nc" id="L36">public abstract class RoutingRule {</span>
+<span class="nc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(QueryRouter.class);</span>
+<span class="nc" id="L38">    private static List&lt;RoutingRule&gt; rules = Lists.newLinkedList();</span>
+
+    static {
+<span class="nc" id="L41">        rules.add(new RemoveBlackoutRealizationsRule());</span>
+<span class="nc" id="L42">        rules.add(new RemoveUncapableRealizationsRule());</span>
+<span class="nc" id="L43">        rules.add(new RealizationSortRule());</span>
+<span class="nc" id="L44">    }</span>
+
+    public static void applyRules(List&lt;Candidate&gt; candidates) {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        for (RoutingRule rule : rules) {</span>
+<span class="nc" id="L48">            String before = getPrintableText(candidates);</span>
+<span class="nc" id="L49">            rule.apply(candidates);</span>
+<span class="nc" id="L50">            String after = getPrintableText(candidates);</span>
+<span class="nc" id="L51">            logger.debug(&quot;Applying rule: &quot; + rule + &quot;, realizations before: &quot; + before + &quot;, realizations after: &quot; + after);</span>
+<span class="nc" id="L52">        }</span>
+<span class="nc" id="L53">    }</span>
+
+    public static String getPrintableText(List&lt;Candidate&gt; candidates) {
+<span class="nc" id="L56">        StringBuffer sb = new StringBuffer();</span>
+<span class="nc" id="L57">        sb.append(&quot;[&quot;);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        for (Candidate candidate : candidates) {</span>
+<span class="nc" id="L59">            IRealization r = candidate.realization;</span>
+<span class="nc" id="L60">            sb.append(r.getCanonicalName());</span>
+<span class="nc" id="L61">            sb.append(&quot;,&quot;);</span>
+<span class="nc" id="L62">        }</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (sb.charAt(sb.length() - 1) != '[')</span>
+<span class="nc" id="L64">            sb.deleteCharAt(sb.length() - 1);</span>
+<span class="nc" id="L65">        sb.append(&quot;]&quot;);</span>
+<span class="nc" id="L66">        return sb.toString();</span>
+    }
+
+    /**
+     *
+     * @param rule
+     * @param applyOrder RoutingRule are applied in order, latter rules can override previous rules
+     */
+    public static void registerRule(RoutingRule rule, int applyOrder) {
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (applyOrder &gt; rules.size()) {</span>
+<span class="nc" id="L76">            logger.warn(&quot;apply order &quot; + applyOrder + &quot;  is larger than rules size &quot; + rules.size() + &quot;, will put the new rule at the end&quot;);</span>
+<span class="nc" id="L77">            rules.add(rule);</span>
+        }
+
+<span class="nc" id="L80">        rules.add(applyOrder, rule);</span>
+<span class="nc" id="L81">    }</span>
+
+    public static void removeRule(RoutingRule rule) {
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        for (Iterator&lt;RoutingRule&gt; iter = rules.iterator(); iter.hasNext();) {</span>
+<span class="nc" id="L85">            RoutingRule r = iter.next();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">            if (r.getClass() == rule.getClass()) {</span>
+<span class="nc" id="L87">                iter.remove();</span>
+            }
+<span class="nc" id="L89">        }</span>
+<span class="nc" id="L90">    }</span>
+
+    protected List&lt;Integer&gt; findRealizationsOf(List&lt;IRealization&gt; realizations, RealizationType type) {
+<span class="nc" id="L93">        List&lt;Integer&gt; itemIndexes = Lists.newArrayList();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        for (int i = 0; i &lt; realizations.size(); ++i) {</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">            if (realizations.get(i).getType() == type) {</span>
+<span class="nc" id="L96">                itemIndexes.add(i);</span>
+            }
+        }
+<span class="nc" id="L99">        return itemIndexes;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L104">        return this.getClass().toString();</span>
+    }
+
+    public abstract void apply(List&lt;Candidate&gt; candidates);
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

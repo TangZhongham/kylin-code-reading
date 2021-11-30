@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TopNMeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.topn</a> &gt; <span class="el_source">TopNMeasureType.java</span></div><h1>TopNMeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.topn;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.dimension.DateDimEnc;
+import org.apache.kylin.dimension.DictionaryDimEnc;
+import org.apache.kylin.dimension.DimensionEncoding;
+import org.apache.kylin.dimension.DimensionEncodingFactory;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+import static org.apache.kylin.metadata.realization.SQLDigest.OrderEnum.DESCENDING;
+
+public class TopNMeasureType extends MeasureType&lt;TopNCounter&lt;ByteArray&gt;&gt; {
+
+<span class="fc" id="L60">    private static final Logger logger = LoggerFactory.getLogger(TopNMeasureType.class);</span>
+
+    public static final String FUNC_TOP_N = &quot;TOP_N&quot;;
+    public static final String DATATYPE_TOPN = &quot;topn&quot;;
+
+    public static final String CONFIG_ENCODING_PREFIX = &quot;topn.encoding.&quot;;
+    public static final String CONFIG_ENCODING_VERSION_PREFIX = &quot;topn.encoding_version.&quot;;
+    public static final String CONFIG_AGG = &quot;topn.aggregation&quot;;
+    public static final String CONFIG_ORDER = &quot;topn.order&quot;;
+
+    private boolean cuboidCanAnswer;
+
+<span class="fc" id="L72">    public static class Factory extends MeasureTypeFactory&lt;TopNCounter&lt;ByteArray&gt;&gt; {</span>
+
+        @Override
+        public MeasureType&lt;TopNCounter&lt;ByteArray&gt;&gt; createMeasureType(String funcName, DataType dataType) {
+<span class="fc" id="L76">            return new TopNMeasureType(dataType);</span>
+        }
+
+        @Override
+        public String getAggrFunctionName() {
+<span class="fc" id="L81">            return FUNC_TOP_N;</span>
+        }
+
+        @Override
+        public String getAggrDataTypeName() {
+<span class="fc" id="L86">            return DATATYPE_TOPN;</span>
+        }
+
+        @Override
+        public Class&lt;? extends DataTypeSerializer&lt;TopNCounter&lt;ByteArray&gt;&gt;&gt; getAggrDataTypeSerializer() {
+<span class="fc" id="L91">            return TopNCounterSerializer.class;</span>
+        }
+    }
+
+    // ============================================================================
+
+    private final DataType dataType;
+
+<span class="fc" id="L99">    public TopNMeasureType(DataType dataType) {</span>
+        // note at query parsing phase, the data type may be null, because only function and parameters are known
+<span class="fc" id="L101">        this.dataType = dataType;</span>
+<span class="fc" id="L102">    }</span>
+
+    public void validate(FunctionDesc functionDesc) throws IllegalArgumentException {
+<span class="nc" id="L105">        validate(functionDesc.getExpression(), functionDesc.getReturnDataType(), true);</span>
+<span class="nc" id="L106">    }</span>
+
+    private void validate(String funcName, DataType dataType, boolean checkDataType) {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (!FUNC_TOP_N.equals(funcName))</span>
+<span class="nc" id="L110">            throw new IllegalArgumentException();</span>
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (!DATATYPE_TOPN.equals(dataType.getName()))</span>
+<span class="nc" id="L113">            throw new IllegalArgumentException();</span>
+
+<span class="nc bnc" id="L115" title="All 4 branches missed.">        if (dataType.getPrecision() &lt; 1 || dataType.getPrecision() &gt; 10000)</span>
+<span class="nc" id="L116">            throw new IllegalArgumentException();</span>
+<span class="nc" id="L117">    }</span>
+
+    @Override
+    public boolean isMemoryHungry() {
+<span class="nc" id="L121">        return true;</span>
+    }
+
+    @Override
+    public MeasureIngester&lt;TopNCounter&lt;ByteArray&gt;&gt; newIngester() {
+<span class="nc" id="L126">        return new MeasureIngester&lt;TopNCounter&lt;ByteArray&gt;&gt;() {</span>
+
+<span class="nc" id="L128">            private DimensionEncoding[] dimensionEncodings = null;</span>
+<span class="nc" id="L129">            private List&lt;TblColRef&gt; literalCols = null;</span>
+<span class="nc" id="L130">            private int keyLength = 0;</span>
+
+<span class="nc" id="L132">            private volatile DimensionEncoding[] newDimensionEncodings = null;</span>
+<span class="nc" id="L133">            private int newKeyLength = 0;</span>
+<span class="nc" id="L134">            private boolean needReEncode = true;</span>
+
+            @Override
+            public TopNCounter&lt;ByteArray&gt; valueOf(String[] values, MeasureDesc measureDesc,
+                    Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">                double counter = values[0] == null ? 0 : Double.parseDouble(values[0]);</span>
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">                if (dimensionEncodings == null) {</span>
+<span class="nc" id="L142">                    literalCols = getTopNLiteralColumn(measureDesc.getFunction());</span>
+<span class="nc" id="L143">                    dimensionEncodings = getDimensionEncodings(measureDesc.getFunction(), literalCols, dictionaryMap);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                    for (DimensionEncoding encoding : dimensionEncodings) {</span>
+<span class="nc" id="L145">                        keyLength += encoding.getLengthOfEncoding();</span>
+                    }
+
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                    if (values.length != (literalCols.size() + 1)) {</span>
+<span class="nc" id="L149">                        throw new IllegalArgumentException();</span>
+                    }
+                }
+
+<span class="nc" id="L153">                final ByteArray key = new ByteArray(keyLength);</span>
+<span class="nc" id="L154">                int offset = 0;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                for (int i = 0; i &lt; dimensionEncodings.length; i++) {</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">                    if (values[i + 1] == null) {</span>
+<span class="nc" id="L157">                        Arrays.fill(key.array(), offset, offset + dimensionEncodings[i].getLengthOfEncoding(),</span>
+                                DimensionEncoding.NULL);
+                    } else {
+<span class="nc" id="L160">                        dimensionEncodings[i].encode(values[i + 1], key.array(), offset);</span>
+                    }
+<span class="nc" id="L162">                    offset += dimensionEncodings[i].getLengthOfEncoding();</span>
+                }
+
+<span class="nc" id="L165">                TopNCounter&lt;ByteArray&gt; topNCounter = new TopNCounter&lt;ByteArray&gt;(</span>
+<span class="nc" id="L166">                        dataType.getPrecision() * TopNCounter.EXTRA_SPACE_RATE);</span>
+<span class="nc" id="L167">                topNCounter.offer(key, counter);</span>
+<span class="nc" id="L168">                return topNCounter;</span>
+            }
+
+            @Override
+            public void reset() {
+
+<span class="nc" id="L174">            }</span>
+
+            @Override
+            public TopNCounter&lt;ByteArray&gt; reEncodeDictionary(TopNCounter&lt;ByteArray&gt; value, MeasureDesc measureDesc,
+                    Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; oldDicts, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; newDicts) {
+<span class="nc" id="L179">                TopNCounter&lt;ByteArray&gt; topNCounter = value;</span>
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                if (newDimensionEncodings == null) {</span>
+<span class="nc" id="L182">                    synchronized (MeasureIngester.class) {</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">                        if (newDimensionEncodings == null) {</span>
+<span class="nc" id="L184">                            initialize(measureDesc, oldDicts, newDicts);</span>
+                        }
+<span class="nc" id="L186">                    }</span>
+                }
+
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                if (!needReEncode) {</span>
+                    // no need re-encode
+<span class="nc" id="L191">                    return topNCounter;</span>
+                }
+
+<span class="nc" id="L194">                int topNSize = topNCounter.size();</span>
+<span class="nc" id="L195">                byte[] newIdBuf = new byte[topNSize * newKeyLength];</span>
+
+<span class="nc" id="L197">                int bufOffset = 0;</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">                for (Counter&lt;ByteArray&gt; c : topNCounter) {</span>
+<span class="nc" id="L199">                    int offset = c.getItem().offset();</span>
+<span class="nc" id="L200">                    int innerBuffOffset = 0;</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                    for (int i = 0; i &lt; dimensionEncodings.length; i++) {</span>
+<span class="nc" id="L202">                        String dimValue = dimensionEncodings[i].decode(c.getItem().array(), offset,</span>
+<span class="nc" id="L203">                                dimensionEncodings[i].getLengthOfEncoding());</span>
+<span class="nc" id="L204">                        newDimensionEncodings[i].encode(dimValue, newIdBuf, bufOffset + innerBuffOffset);</span>
+<span class="nc" id="L205">                        innerBuffOffset += newDimensionEncodings[i].getLengthOfEncoding();</span>
+<span class="nc" id="L206">                        offset += dimensionEncodings[i].getLengthOfEncoding();</span>
+                    }
+
+<span class="nc" id="L209">                    c.getItem().reset(newIdBuf, bufOffset, newKeyLength);</span>
+<span class="nc" id="L210">                    bufOffset += newKeyLength;</span>
+<span class="nc" id="L211">                }</span>
+<span class="nc" id="L212">                return topNCounter;</span>
+            }
+
+            private void initialize(MeasureDesc measureDesc, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; oldDicts,
+                    Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; newDicts) {
+<span class="nc" id="L217">                literalCols = getTopNLiteralColumn(measureDesc.getFunction());</span>
+<span class="nc" id="L218">                dimensionEncodings = getDimensionEncodings(measureDesc.getFunction(), literalCols, oldDicts);</span>
+<span class="nc" id="L219">                keyLength = 0;</span>
+<span class="nc" id="L220">                boolean hasDictEncoding = false;</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                for (DimensionEncoding encoding : dimensionEncodings) {</span>
+<span class="nc" id="L222">                    keyLength += encoding.getLengthOfEncoding();</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                    if (encoding instanceof DictionaryDimEnc) {</span>
+<span class="nc" id="L224">                        hasDictEncoding = true;</span>
+                    }
+                }
+
+<span class="nc" id="L228">                newDimensionEncodings = getDimensionEncodings(measureDesc.getFunction(), literalCols, newDicts);</span>
+<span class="nc" id="L229">                newKeyLength = 0;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">                for (DimensionEncoding encoding : newDimensionEncodings) {</span>
+<span class="nc" id="L231">                    newKeyLength += encoding.getLengthOfEncoding();</span>
+                }
+
+<span class="nc" id="L234">                needReEncode = hasDictEncoding;</span>
+<span class="nc" id="L235">            }</span>
+        };
+    }
+
+    @Override
+    public MeasureAggregator&lt;TopNCounter&lt;ByteArray&gt;&gt; newAggregator() {
+<span class="nc" id="L241">        return new TopNAggregator();</span>
+    }
+
+    @Override
+    public List&lt;TblColRef&gt; getColumnsNeedDictionary(FunctionDesc functionDesc) {
+<span class="nc" id="L246">        List&lt;TblColRef&gt; columnsNeedDict = Lists.newArrayList();</span>
+<span class="nc" id="L247">        List&lt;TblColRef&gt; allCols = functionDesc.getParameter().getColRefs();</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">        int start = (functionDesc.getParameter().isColumnType() == true) ? 1 : 0;</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        for (int i = start; i &lt; allCols.size(); i++) {</span>
+<span class="nc" id="L250">            TblColRef tblColRef = allCols.get(i);</span>
+<span class="nc" id="L251">            String encoding = getEncoding(functionDesc, tblColRef).getFirst();</span>
+<span class="nc bnc" id="L252" title="All 4 branches missed.">            if (StringUtils.isEmpty(encoding) || DictionaryDimEnc.ENCODING_NAME.equals(encoding)) {</span>
+<span class="nc" id="L253">                columnsNeedDict.add(tblColRef);</span>
+            }
+        }
+
+<span class="nc" id="L257">        return columnsNeedDict;</span>
+    }
+
+    @Override
+    public CapabilityInfluence influenceCapabilityCheck(Collection&lt;TblColRef&gt; unmatchedDimensions,
+            Collection&lt;FunctionDesc&gt; unmatchedAggregations, SQLDigest digest, final MeasureDesc topN) {
+        // TopN measure can (and only can) provide one numeric measure and one literal dimension
+        // e.g. select seller, sum(gmv) from ... group by seller order by 2 desc limit 100
+
+<span class="nc" id="L266">        cuboidCanAnswer = true; // true: have cuboid can answer query， false: no cuboid can answer query</span>
+
+<span class="nc" id="L268">        List&lt;TblColRef&gt; literalCol = getTopNLiteralColumn(topN.getFunction());</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">        for (TblColRef colRef : literalCol) {</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">            if (digest.filterColumns.contains(colRef) == true) {</span>
+                // doesn't allow filtering by topn literal column
+<span class="nc" id="L272">                return null;</span>
+            }
+<span class="nc" id="L274">        }</span>
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (digest.groupbyColumns.containsAll(literalCol) == false)</span>
+<span class="nc" id="L277">            return null;</span>
+
+<span class="nc" id="L279">        List retainList = unmatchedDimensions.stream().filter(colRef -&gt; literalCol.contains(colRef)).collect(Collectors.toList());</span>
+
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        if (retainList.size() &gt; 0){</span>
+<span class="nc" id="L282">            cuboidCanAnswer = false;</span>
+        }
+
+        // check digest requires only one measure
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (digest.aggregations.size() == 1) {</span>
+
+            // the measure function must be SUM
+<span class="nc" id="L289">            FunctionDesc onlyFunction = digest.aggregations.iterator().next();</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">            if (isTopNCompatibleSum(topN.getFunction(), onlyFunction) == false)</span>
+<span class="nc" id="L291">                return null;</span>
+
+<span class="nc" id="L293">            unmatchedDimensions.removeAll(literalCol);</span>
+<span class="nc" id="L294">            unmatchedAggregations.remove(onlyFunction);</span>
+
+<span class="nc" id="L296">            return new CapabilityInfluence() {</span>
+                @Override
+                public double suggestCostMultiplier() {
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                    if (totallyMatchTopN(digest)) {</span>
+<span class="nc" id="L300">                        return 0.3; // make sure TopN get ahead of other matched realizations</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">                    } else if (cuboidCanAnswer) {</span>
+<span class="nc" id="L302">                        return 1.3; // fuzzy topN match, but have cuboid can answer query</span>
+                    } else {
+<span class="nc" id="L304">                        return 2;</span>
+                    }
+                }
+
+                @Override
+                public MeasureDesc getInvolvedMeasure() {
+<span class="nc" id="L310">                    return topN;</span>
+                }
+            };
+        }
+
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        if (digest.aggregations.isEmpty()) {</span>
+            // directly query the UHC column without sorting
+<span class="nc" id="L317">            boolean b = unmatchedDimensions.removeAll(literalCol);</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">            if (b) {</span>
+<span class="nc" id="L319">                return new CapabilityInfluence() {</span>
+                    @Override
+                    public double suggestCostMultiplier() {
+<span class="nc" id="L322">                        return 2.0; // topn can answer but with a higher cost</span>
+                    }
+
+                    @Override
+                    public MeasureDesc getInvolvedMeasure() {
+<span class="nc" id="L327">                        return topN;</span>
+                    }
+                };
+            }
+        }
+
+<span class="nc" id="L333">        return null;</span>
+    }
+
+    private boolean checkSortAndOrder(List&lt;TblColRef&gt; sort, List&lt;SQLDigest.OrderEnum&gt; order) {
+<span class="nc bnc" id="L337" title="All 6 branches missed.">        return CollectionUtils.isNotEmpty(sort) &amp;&amp; CollectionUtils.isNotEmpty(order) &amp;&amp; sort.size() == order.size();</span>
+    }
+
+    private boolean totallyMatchTopN(SQLDigest digest) {
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (!checkSortAndOrder(digest.sortColumns, digest.sortOrders)) {</span>
+<span class="nc" id="L342">            return false;</span>
+        }
+
+<span class="nc" id="L345">        TblColRef sortColumn = digest.sortColumns.get(0);</span>
+
+        // first sort column must be sum()
+<span class="nc bnc" id="L348" title="All 2 branches missed.">        if (digest.groupbyColumns.contains(sortColumn)) {</span>
+<span class="nc" id="L349">            return false;</span>
+        }
+
+        // first order must be desc
+<span class="nc bnc" id="L353" title="All 2 branches missed.">        if (!DESCENDING.equals(digest.sortOrders.get(0))) {</span>
+<span class="nc" id="L354">            return false;</span>
+        }
+
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if (!digest.hasLimit) {</span>
+<span class="nc" id="L358">            return false;</span>
+        }
+
+<span class="nc" id="L361">        return true;</span>
+    }
+
+    private boolean isTopNCompatibleSum(FunctionDesc topN, FunctionDesc sum) {
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        if (sum == null)</span>
+<span class="nc" id="L366">            return false;</span>
+
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        if (!isTopN(topN))</span>
+<span class="nc" id="L369">            return false;</span>
+
+<span class="nc" id="L371">        TblColRef topnNumCol = getTopNNumericColumn(topN);</span>
+
+<span class="nc bnc" id="L373" title="All 2 branches missed.">        if (topnNumCol == null) {</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            if (sum.isCount())</span>
+<span class="nc" id="L375">                return true;</span>
+
+<span class="nc" id="L377">            return false;</span>
+        }
+
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (!sum.isSum())</span>
+<span class="nc" id="L381">            return false;</span>
+
+<span class="nc bnc" id="L383" title="All 4 branches missed.">        if (sum.getParameter() == null || sum.getParameter().getColRefs() == null</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">                || sum.getParameter().getColRefs().size() == 0)</span>
+<span class="nc" id="L385">            return false;</span>
+
+<span class="nc" id="L387">        TblColRef sumCol = sum.getParameter().getColRefs().get(0);</span>
+<span class="nc" id="L388">        return sumCol.equals(topnNumCol);</span>
+    }
+
+    @Override
+    public boolean needRewrite() {
+<span class="fc" id="L393">        return false;</span>
+    }
+
+    @Override
+    public void adjustSqlDigest(List&lt;MeasureDesc&gt; measureDescs, SQLDigest sqlDigest) {
+        // If sqlDiegest is already adjusted, then not to adjust it again.
+<span class="nc bnc" id="L399" title="All 2 branches missed.">        if (sqlDigest.isBorrowedContext) {</span>
+<span class="nc" id="L400">            return;</span>
+        }
+
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        if (sqlDigest.aggregations.size() &gt; 1) {</span>
+<span class="nc" id="L404">            return;</span>
+        }
+
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        for (MeasureDesc measureDesc : measureDescs) {</span>
+<span class="nc bnc" id="L408" title="All 2 branches missed.">            if (!sqlDigest.involvedMeasure.contains(measureDesc)) {</span>
+<span class="nc" id="L409">                continue;</span>
+            }
+<span class="nc" id="L411">            FunctionDesc topnFunc = measureDesc.getFunction();</span>
+<span class="nc" id="L412">            List&lt;TblColRef&gt; topnLiteralCol = getTopNLiteralColumn(topnFunc);</span>
+
+<span class="nc bnc" id="L414" title="All 2 branches missed.">            if (!sqlDigest.groupbyColumns.containsAll(topnLiteralCol)) {</span>
+<span class="nc" id="L415">                continue;</span>
+            }
+
+<span class="nc bnc" id="L418" title="All 2 branches missed.">            if (!sqlDigest.aggregations.isEmpty()) {</span>
+<span class="nc" id="L419">                FunctionDesc origFunc = sqlDigest.aggregations.iterator().next();</span>
+<span class="nc bnc" id="L420" title="All 4 branches missed.">                if (!origFunc.isSum() &amp;&amp; !origFunc.isCount()) {</span>
+<span class="nc" id="L421">                    logger.warn(&quot;When query with topN, only SUM/Count function is allowed.&quot;);</span>
+<span class="nc" id="L422">                    return;</span>
+                }
+
+<span class="nc bnc" id="L425" title="All 2 branches missed.">                if (!isTopNCompatibleSum(measureDesc.getFunction(), origFunc)) {</span>
+<span class="nc" id="L426">                    continue;</span>
+                }
+
+                // topN not totally match, but have cuboid can answer, not use topN to adjust
+                // topN totally match or (topN fuzzy match, but no cuboid can answer), use topN to adjust
+<span class="nc bnc" id="L431" title="All 4 branches missed.">                if (!totallyMatchTopN(sqlDigest) &amp;&amp; cuboidCanAnswer) {</span>
+<span class="nc" id="L432">                    continue;</span>
+                }
+
+<span class="nc" id="L435">                logger.info(&quot;Rewrite function &quot; + origFunc + &quot; to &quot; + topnFunc);</span>
+            }
+
+
+<span class="nc" id="L439">            sqlDigest.aggregations = Lists.newArrayList(topnFunc);</span>
+<span class="nc" id="L440">            sqlDigest.groupbyColumns.removeAll(topnLiteralCol);</span>
+<span class="nc" id="L441">            sqlDigest.metricColumns.addAll(topnLiteralCol);</span>
+<span class="nc" id="L442">            break;</span>
+        }
+<span class="nc" id="L444">    }</span>
+
+    @Override
+    public boolean needAdvancedTupleFilling() {
+<span class="nc" id="L448">        return true;</span>
+    }
+
+    @Override
+    public void fillTupleSimply(Tuple tuple, int indexInTuple, Object measureValue) {
+<span class="nc" id="L453">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public IAdvMeasureFiller getAdvancedTupleFiller(FunctionDesc function, TupleInfo tupleInfo,
+            Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L459">        final List&lt;TblColRef&gt; literalCols = getTopNLiteralColumn(function);</span>
+<span class="nc" id="L460">        final TblColRef numericCol = getTopNNumericColumn(function);</span>
+<span class="nc" id="L461">        final int[] literalTupleIdx = new int[literalCols.size()];</span>
+<span class="nc" id="L462">        final DimensionEncoding[] dimensionEncodings = getDimensionEncodings(function, literalCols, dictionaryMap);</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">        for (int i = 0; i &lt; literalCols.size(); i++) {</span>
+<span class="nc" id="L464">            TblColRef colRef = literalCols.get(i);</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">            literalTupleIdx[i] = tupleInfo.hasColumn(colRef) ? tupleInfo.getColumnIndex(colRef) : -1;</span>
+        }
+
+        // for TopN, the aggr must be SUM
+        final int numericTupleIdx;
+<span class="nc bnc" id="L470" title="All 2 branches missed.">        if (numericCol != null) {</span>
+<span class="nc" id="L471">            FunctionDesc sumFunc = FunctionDesc.newInstance(FunctionDesc.FUNC_SUM,</span>
+<span class="nc" id="L472">                    ParameterDesc.newInstance(numericCol), numericCol.getType().toString());</span>
+<span class="nc" id="L473">            String sumFieldName = sumFunc.getRewriteFieldName();</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            numericTupleIdx = tupleInfo.hasField(sumFieldName) ? tupleInfo.getFieldIndex(sumFieldName) : -1;</span>
+<span class="nc" id="L475">        } else {</span>
+<span class="nc" id="L476">            FunctionDesc countFunction = FunctionDesc.newInstance(FunctionDesc.FUNC_COUNT,</span>
+<span class="nc" id="L477">                    ParameterDesc.newInstance(&quot;1&quot;), &quot;bigint&quot;);</span>
+<span class="nc" id="L478">            numericTupleIdx = tupleInfo.getFieldIndex(countFunction.getRewriteFieldName());</span>
+        }
+<span class="nc" id="L480">        return new IAdvMeasureFiller() {</span>
+            private TopNCounter&lt;ByteArray&gt; topNCounter;
+            private Iterator&lt;Counter&lt;ByteArray&gt;&gt; topNCounterIterator;
+<span class="nc" id="L483">            private int expectRow = 0;</span>
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+            @Override
+            public void reload(Object measureValue) {
+<span class="nc" id="L488">                this.topNCounter = (TopNCounter&lt;ByteArray&gt;) measureValue;</span>
+<span class="nc" id="L489">                this.topNCounterIterator = topNCounter.iterator();</span>
+<span class="nc" id="L490">                this.expectRow = 0;</span>
+<span class="nc" id="L491">            }</span>
+
+            @Override
+            public int getNumOfRows() {
+<span class="nc" id="L495">                return topNCounter.size();</span>
+            }
+
+            @Override
+            public void fillTuple(Tuple tuple, int row) {
+<span class="nc bnc" id="L500" title="All 2 branches missed.">                if (expectRow++ != row)</span>
+<span class="nc" id="L501">                    throw new IllegalStateException();</span>
+
+<span class="nc" id="L503">                Counter&lt;ByteArray&gt; counter = topNCounterIterator.next();</span>
+<span class="nc" id="L504">                int offset = counter.getItem().offset();</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">                for (int i = 0; i &lt; dimensionEncodings.length; i++) {</span>
+<span class="nc" id="L506">                    String colValue = dimensionEncodings[i].decode(counter.getItem().array(), offset,</span>
+<span class="nc" id="L507">                            dimensionEncodings[i].getLengthOfEncoding());</span>
+<span class="nc" id="L508">                    tuple.setDimensionValue(literalTupleIdx[i], colValue);</span>
+<span class="nc" id="L509">                    offset += dimensionEncodings[i].getLengthOfEncoding();</span>
+                }
+<span class="nc" id="L511">                tuple.setMeasureValue(numericTupleIdx, counter.getCount());</span>
+<span class="nc" id="L512">            }</span>
+        };
+    }
+
+    private static DimensionEncoding[] getDimensionEncodings(FunctionDesc function, List&lt;TblColRef&gt; literalCols,
+            Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="nc" id="L518">        final DimensionEncoding[] dimensionEncodings = new DimensionEncoding[literalCols.size()];</span>
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        for (int i = 0; i &lt; literalCols.size(); i++) {</span>
+<span class="nc" id="L520">            TblColRef colRef = literalCols.get(i);</span>
+
+<span class="nc" id="L522">            Pair&lt;String, String&gt; topNEncoding = TopNMeasureType.getEncoding(function, colRef);</span>
+<span class="nc" id="L523">            String encoding = topNEncoding.getFirst();</span>
+<span class="nc" id="L524">            String encodingVersionStr = topNEncoding.getSecond();</span>
+<span class="nc bnc" id="L525" title="All 4 branches missed.">            if (StringUtils.isEmpty(encoding) || DictionaryDimEnc.ENCODING_NAME.equals(encoding)) {</span>
+<span class="nc" id="L526">                dimensionEncodings[i] = new DictionaryDimEnc(dictionaryMap.get(colRef));</span>
+            } else {
+<span class="nc" id="L528">                int encodingVersion = 1;</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">                if (!StringUtils.isEmpty(encodingVersionStr)) {</span>
+                    try {
+<span class="nc" id="L531">                        encodingVersion = Integer.parseInt(encodingVersionStr);</span>
+<span class="nc" id="L532">                    } catch (NumberFormatException e) {</span>
+<span class="nc" id="L533">                        throw new RuntimeException(TopNMeasureType.CONFIG_ENCODING_VERSION_PREFIX + colRef.getName()</span>
+                                + &quot; has to be an integer&quot;);
+<span class="nc" id="L535">                    }</span>
+                }
+<span class="nc" id="L537">                Object[] encodingConf = DimensionEncoding.parseEncodingConf(encoding);</span>
+<span class="nc" id="L538">                String encodingName = (String) encodingConf[0];</span>
+<span class="nc" id="L539">                String[] encodingArgs = (String[]) encodingConf[1];</span>
+
+<span class="nc" id="L541">                encodingArgs = DateDimEnc.replaceEncodingArgs(encoding, encodingArgs, encodingName,</span>
+<span class="nc" id="L542">                        literalCols.get(i).getType());</span>
+
+<span class="nc" id="L544">                dimensionEncodings[i] = DimensionEncodingFactory.create(encodingName, encodingArgs, encodingVersion);</span>
+            }
+        }
+
+<span class="nc" id="L548">        return dimensionEncodings;</span>
+    }
+
+    private TblColRef getTopNNumericColumn(FunctionDesc functionDesc) {
+<span class="nc bnc" id="L552" title="All 2 branches missed.">        if (functionDesc.getParameter().isColumnType()) {</span>
+<span class="nc" id="L553">            return functionDesc.getParameter().getColRefs().get(0);</span>
+        }
+<span class="nc" id="L555">        return null;</span>
+    }
+
+    private List&lt;TblColRef&gt; getTopNLiteralColumn(FunctionDesc functionDesc) {
+<span class="nc" id="L559">        List&lt;TblColRef&gt; allColumns = functionDesc.getParameter().getColRefs();</span>
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        if (!functionDesc.getParameter().isColumnType()) {</span>
+<span class="nc" id="L561">            return allColumns;</span>
+        }
+<span class="nc" id="L563">        return allColumns.subList(1, allColumns.size());</span>
+    }
+
+    private boolean isTopN(FunctionDesc functionDesc) {
+<span class="nc" id="L567">        return FUNC_TOP_N.equalsIgnoreCase(functionDesc.getExpression());</span>
+    }
+
+    /**
+     * Get the encoding name and version for the given col from Measure FunctionDesc
+     * @param functionDesc
+     * @param tblColRef
+     * @return a pair of the encoding name and encoding version
+     */
+    public static final Pair&lt;String, String&gt; getEncoding(FunctionDesc functionDesc, TblColRef tblColRef) {
+<span class="nc" id="L577">        String encoding = functionDesc.getConfiguration().get(CONFIG_ENCODING_PREFIX + tblColRef.getIdentity());</span>
+<span class="nc" id="L578">        String encodingVersion = functionDesc.getConfiguration()</span>
+<span class="nc" id="L579">                .get(CONFIG_ENCODING_VERSION_PREFIX + tblColRef.getIdentity());</span>
+<span class="nc bnc" id="L580" title="All 2 branches missed.">        if (StringUtils.isEmpty(encoding)) {</span>
+            // for backward compatibility
+<span class="nc" id="L582">            encoding = functionDesc.getConfiguration().get(CONFIG_ENCODING_PREFIX + tblColRef.getName());</span>
+<span class="nc" id="L583">            encodingVersion = functionDesc.getConfiguration().get(CONFIG_ENCODING_VERSION_PREFIX + tblColRef.getName());</span>
+        }
+
+<span class="nc" id="L586">        return new Pair&lt;&gt;(encoding, encodingVersion);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

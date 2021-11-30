@@ -1,0 +1,606 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTCubeStorageQueryBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">GTCubeStorageQueryBase.java</span></div><h1>GTCubeStorageQueryBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.QueryContextFacade;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.RawQueryLastHacker;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMapping;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMappingExt;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.CubeDesc.DeriveInfo;
+import org.apache.kylin.cube.model.RowKeyColDesc;
+import org.apache.kylin.gridtable.StorageLimitLevel;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.bitmap.BitmapMeasureType;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.CaseTupleFilter;
+import org.apache.kylin.metadata.filter.ColumnTupleFilter;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.LogicalTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter.FilterOperatorEnum;
+import org.apache.kylin.metadata.model.DynamicFunctionDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.PartitionDesc;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.Segments;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.ITupleIterator;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.apache.kylin.storage.IStorageQuery;
+import org.apache.kylin.storage.StorageContext;
+import org.apache.kylin.storage.translate.DerivedFilterTranslator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public abstract class GTCubeStorageQueryBase implements IStorageQuery {
+
+<span class="nc" id="L73">    private static final Logger logger = LoggerFactory.getLogger(GTCubeStorageQueryBase.class);</span>
+
+    protected CubeInstance cubeInstance;
+    protected CubeDesc cubeDesc;
+
+<span class="nc" id="L78">    public GTCubeStorageQueryBase(CubeInstance cube) {</span>
+<span class="nc" id="L79">        this.cubeInstance = cube;</span>
+<span class="nc" id="L80">        this.cubeDesc = cube.getDescriptor();</span>
+<span class="nc" id="L81">    }</span>
+
+    @Override
+    public ITupleIterator search(StorageContext context, SQLDigest sqlDigest, TupleInfo returnTupleInfo) {
+<span class="nc" id="L85">        throw new UnsupportedOperationException(&quot;Removed in Kylin 4.0 .&quot;);</span>
+    }
+
+    public GTCubeStorageQueryRequest getStorageQueryRequest(StorageContext context, SQLDigest sqlDigest,
+            TupleInfo returnTupleInfo) {
+<span class="nc" id="L90">        context.setStorageQuery(this);</span>
+
+        //cope with queries with no aggregations
+<span class="nc" id="L93">        RawQueryLastHacker.hackNoAggregations(sqlDigest, cubeDesc, returnTupleInfo);</span>
+
+        // Customized measure taking effect: e.g. allow custom measures to help raw queries
+<span class="nc" id="L96">        notifyBeforeStorageQuery(sqlDigest);</span>
+
+<span class="nc" id="L98">        Collection&lt;TblColRef&gt; groups = sqlDigest.groupbyColumns;</span>
+<span class="nc" id="L99">        TupleFilter filter = sqlDigest.filter;</span>
+
+        // build dimension &amp; metrics
+<span class="nc" id="L102">        Set&lt;TblColRef&gt; dimensions = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L103">        Set&lt;FunctionDesc&gt; metrics = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L104">        buildDimensionsAndMetrics(sqlDigest, dimensions, metrics);</span>
+
+        // all dimensions = groups + other(like filter) dimensions
+<span class="nc" id="L107">        Set&lt;TblColRef&gt; otherDims = Sets.newHashSet(dimensions);</span>
+<span class="nc" id="L108">        otherDims.removeAll(groups);</span>
+
+        // expand derived (xxxD means contains host columns only, derived columns were translated)
+<span class="nc" id="L111">        Set&lt;TblColRef&gt; derivedPostAggregation = Sets.newHashSet();</span>
+<span class="nc" id="L112">        Set&lt;TblColRef&gt; groupsD = expandDerived(groups, derivedPostAggregation);</span>
+<span class="nc" id="L113">        Set&lt;TblColRef&gt; otherDimsD = expandDerived(otherDims, derivedPostAggregation);</span>
+<span class="nc" id="L114">        otherDimsD.removeAll(groupsD);</span>
+
+        // identify cuboid
+<span class="nc" id="L117">        Set&lt;TblColRef&gt; dimensionsD = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L118">        dimensionsD.addAll(groupsD);</span>
+<span class="nc" id="L119">        dimensionsD.addAll(otherDimsD);</span>
+<span class="nc" id="L120">        Cuboid cuboid = findCuboid(cubeInstance, dimensionsD, metrics);</span>
+<span class="nc" id="L121">        context.setCuboid(cuboid);</span>
+
+        // set cuboid to GridTable mapping
+        boolean noDynamicCols;
+        // dynamic dimensions
+<span class="nc" id="L126">        List&lt;TblColRef&gt; dynGroups = Lists.newArrayList(sqlDigest.dynGroupbyColumns.keySet());</span>
+<span class="nc" id="L127">        noDynamicCols = dynGroups.isEmpty();</span>
+<span class="nc" id="L128">        List&lt;TupleExpression&gt; dynGroupExprs = Lists.newArrayListWithExpectedSize(sqlDigest.dynGroupbyColumns.size());</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        for (TblColRef dynGroupCol : dynGroups) {</span>
+<span class="nc" id="L130">            dynGroupExprs.add(sqlDigest.dynGroupbyColumns.get(dynGroupCol));</span>
+<span class="nc" id="L131">        }</span>
+        // dynamic measures
+<span class="nc" id="L133">        List&lt;DynamicFunctionDesc&gt; dynFuncs = sqlDigest.dynAggregations;</span>
+<span class="nc bnc" id="L134" title="All 4 branches missed.">        noDynamicCols = noDynamicCols &amp;&amp; dynFuncs.isEmpty();</span>
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        CuboidToGridTableMapping mapping = noDynamicCols ? new CuboidToGridTableMapping(cuboid)</span>
+                : new CuboidToGridTableMappingExt(cuboid, dynGroups, dynFuncs);
+<span class="nc" id="L138">        context.setMapping(mapping);</span>
+
+        // set whether to aggr at storage
+<span class="nc" id="L141">        Set&lt;TblColRef&gt; singleValuesD = findSingleValueColumns(filter);</span>
+<span class="nc" id="L142">        context.setNeedStorageAggregation(isNeedStorageAggregation(cuboid, groupsD, singleValuesD));</span>
+
+        // exactAggregation mean: needn't aggregation at storage and query engine both.
+<span class="nc" id="L145">        boolean exactAggregation = isExactAggregation(context, cuboid, groups, otherDimsD, singleValuesD,</span>
+                derivedPostAggregation, sqlDigest.aggregations, sqlDigest.aggrSqlCalls, sqlDigest.groupByExpression);
+<span class="nc" id="L147">        context.setExactAggregation(exactAggregation);</span>
+
+        // replace derived columns in filter with host columns; columns on loosened condition must be added to group by
+<span class="nc" id="L150">        Set&lt;TblColRef&gt; loosenedColumnD = Sets.newHashSet();</span>
+<span class="nc" id="L151">        Set&lt;TblColRef&gt; filterColumnD = Sets.newHashSet();</span>
+<span class="nc" id="L152">        TupleFilter filterD = translateDerived(filter, loosenedColumnD);</span>
+<span class="nc" id="L153">        groupsD.addAll(loosenedColumnD);</span>
+<span class="nc" id="L154">        TupleFilter.collectColumns(filterD, filterColumnD);</span>
+<span class="nc" id="L155">        context.setFilterMask(getQueryFilterMask(filterColumnD));</span>
+
+        // set limit push down
+<span class="nc" id="L158">        enableStorageLimitIfPossible(cuboid, groups, dynGroups, derivedPostAggregation, groupsD, filterD,</span>
+                loosenedColumnD, sqlDigest, context);
+        // set whether to aggregate results from multiple partitions
+<span class="nc" id="L161">        enableStreamAggregateIfBeneficial(cuboid, groupsD, context);</span>
+        // check query deadline
+<span class="nc" id="L163">        QueryContextFacade.current().checkMillisBeforeDeadline();</span>
+
+        // push down having clause filter if possible
+<span class="nc" id="L166">        TupleFilter havingFilter = checkHavingCanPushDown(sqlDigest.havingFilter, groupsD, sqlDigest.aggregations,</span>
+                metrics);
+
+<span class="nc" id="L169">        logger.info(</span>
+                &quot;Cuboid identified: cube={}, cuboidId={}, groupsD={}, filterD={}, limitPushdown={}, limitLevel={}, storageAggr={}&quot;,
+<span class="nc" id="L171">                cubeInstance.getName(), cuboid.getId(), groupsD, filterColumnD, context.getFinalPushDownLimit(),</span>
+<span class="nc" id="L172">                context.getStorageLimitLevel(), context.isNeedStorageAggregation());</span>
+
+<span class="nc" id="L174">        return new GTCubeStorageQueryRequest(cuboid, dimensionsD, groupsD, dynGroups, dynGroupExprs, filterColumnD,</span>
+                metrics, dynFuncs, filterD, havingFilter, context);
+    }
+
+    protected abstract String getGTStorage();
+
+    protected Cuboid findCuboid(CubeInstance cubeInstance, Set&lt;TblColRef&gt; dimensionsD, Set&lt;FunctionDesc&gt; metrics) {
+<span class="nc" id="L181">        return Cuboid.findCuboid(cubeInstance.getCuboidScheduler(), dimensionsD, metrics);</span>
+    }
+
+    protected ITupleConverter newCubeTupleConverter(CubeSegment cubeSeg, Cuboid cuboid,
+            Set&lt;TblColRef&gt; selectedDimensions, Set&lt;FunctionDesc&gt; selectedMetrics, int[] gtColIdx, TupleInfo tupleInfo) {
+<span class="nc" id="L186">        return new CubeTupleConverter(cubeSeg, cuboid, selectedDimensions, selectedMetrics, gtColIdx, tupleInfo);</span>
+    }
+
+    protected void buildDimensionsAndMetrics(SQLDigest sqlDigest, Collection&lt;TblColRef&gt; dimensions,
+            Collection&lt;FunctionDesc&gt; metrics) {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        for (FunctionDesc func : sqlDigest.aggregations) {</span>
+<span class="nc bnc" id="L192" title="All 4 branches missed.">            if (!func.isDimensionAsMetric() &amp;&amp; !FunctionDesc.FUNC_GROUPING.equalsIgnoreCase(func.getExpression())) {</span>
+                // use the FunctionDesc from cube desc as much as possible, that has more info such as HLLC precision
+<span class="nc" id="L194">                metrics.add(findAggrFuncFromCubeDesc(func));</span>
+            }
+<span class="nc" id="L196">        }</span>
+
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        for (TblColRef column : sqlDigest.allColumns) {</span>
+            // skip measure columns
+<span class="nc bnc" id="L200" title="All 4 branches missed.">            if ((sqlDigest.metricColumns.contains(column) || sqlDigest.rtMetricColumns.contains(column))</span>
+<span class="nc bnc" id="L201" title="All 4 branches missed.">                    &amp;&amp; !(sqlDigest.groupbyColumns.contains(column) || sqlDigest.filterColumns.contains(column)</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">                            || sqlDigest.rtDimensionColumns.contains(column))) {</span>
+<span class="nc" id="L203">                continue;</span>
+            }
+
+<span class="nc" id="L206">            dimensions.add(column);</span>
+<span class="nc" id="L207">        }</span>
+<span class="nc" id="L208">    }</span>
+
+    private FunctionDesc findAggrFuncFromCubeDesc(FunctionDesc aggrFunc) {
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        for (MeasureDesc measure : cubeDesc.getMeasures()) {</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (measure.getFunction().equals(aggrFunc))</span>
+<span class="nc" id="L213">                return measure.getFunction();</span>
+<span class="nc" id="L214">        }</span>
+<span class="nc" id="L215">        return aggrFunc;</span>
+    }
+
+    protected Set&lt;TblColRef&gt; expandDerived(Collection&lt;TblColRef&gt; cols, Set&lt;TblColRef&gt; derivedPostAggregation) {
+<span class="nc" id="L219">        Set&lt;TblColRef&gt; expanded = Sets.newHashSet();</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        for (TblColRef col : cols) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            if (cubeDesc.hasHostColumn(col)) {</span>
+<span class="nc" id="L222">                DeriveInfo hostInfo = cubeDesc.getHostInfo(col);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                for (TblColRef hostCol : hostInfo.columns) {</span>
+<span class="nc" id="L224">                    expanded.add(hostCol);</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                    if (!hostInfo.isOneToOne)</span>
+<span class="nc" id="L226">                        derivedPostAggregation.add(hostCol);</span>
+                }
+<span class="nc" id="L228">            } else {</span>
+<span class="nc" id="L229">                expanded.add(col);</span>
+            }
+<span class="nc" id="L231">        }</span>
+<span class="nc" id="L232">        return expanded;</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected Set&lt;TblColRef&gt; findSingleValueColumns(TupleFilter filter) {
+<span class="nc" id="L237">        Set&lt;CompareTupleFilter&gt; compareTupleFilterSet = findSingleValuesCompFilters(filter);</span>
+
+        // expand derived
+<span class="nc" id="L240">        Set&lt;TblColRef&gt; resultD = Sets.newHashSet();</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        for (CompareTupleFilter compFilter : compareTupleFilterSet) {</span>
+<span class="nc" id="L242">            TblColRef tblColRef = compFilter.getColumn();</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">            if (cubeDesc.isExtendedColumn(tblColRef)) {</span>
+<span class="nc" id="L244">                throw new CubeDesc.CannotFilterExtendedColumnException(tblColRef);</span>
+            }
+<span class="nc bnc" id="L246" title="All 2 branches missed.">            if (cubeDesc.isDerived(compFilter.getColumn())) {</span>
+<span class="nc" id="L247">                DeriveInfo hostInfo = cubeDesc.getHostInfo(tblColRef);</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">                if (hostInfo.isOneToOne) {</span>
+<span class="nc" id="L249">                    resultD.addAll(Arrays.asList(hostInfo.columns));</span>
+                }
+                //if not one2one, it will be pruned
+<span class="nc" id="L252">            } else {</span>
+<span class="nc" id="L253">                resultD.add(compFilter.getColumn());</span>
+            }
+<span class="nc" id="L255">        }</span>
+<span class="nc" id="L256">        return resultD;</span>
+    }
+
+    // FIXME should go into nested AND expression
+    protected Set&lt;CompareTupleFilter&gt; findSingleValuesCompFilters(TupleFilter filter) {
+        Collection&lt;? extends TupleFilter&gt; toCheck;
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (filter instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L263">            toCheck = Collections.singleton(filter);</span>
+<span class="nc bnc" id="L264" title="All 4 branches missed.">        } else if (filter instanceof LogicalTupleFilter &amp;&amp; filter.getOperator() == FilterOperatorEnum.AND) {</span>
+<span class="nc" id="L265">            toCheck = filter.getChildren();</span>
+        } else {
+<span class="nc" id="L267">            return Collections.emptySet();</span>
+        }
+
+<span class="nc" id="L270">        Set&lt;CompareTupleFilter&gt; result = Sets.newHashSet();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">        for (TupleFilter f : toCheck) {</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            if (f instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L273">                CompareTupleFilter compFilter = (CompareTupleFilter) f;</span>
+                // is COL=const ?
+<span class="nc bnc" id="L275" title="All 4 branches missed.">                if (compFilter.getOperator() == FilterOperatorEnum.EQ &amp;&amp; compFilter.getValues().size() == 1</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">                        &amp;&amp; compFilter.getColumn() != null) {</span>
+<span class="nc" id="L277">                    result.add(compFilter);</span>
+                }
+            }
+<span class="nc" id="L280">        }</span>
+<span class="nc" id="L281">        return result;</span>
+    }
+
+    private long getQueryFilterMask(Set&lt;TblColRef&gt; filterColumnD) {
+<span class="nc" id="L285">        long filterMask = 0;</span>
+
+<span class="nc" id="L287">        logger.info(&quot;Filter column set for query: {}&quot;, filterColumnD);</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (filterColumnD.isEmpty() == false) {</span>
+<span class="nc" id="L289">            RowKeyColDesc[] allColumns = cubeDesc.getRowkey().getRowKeyColumns();</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">            for (int i = 0; i &lt; allColumns.length; i++) {</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">                if (filterColumnD.contains(allColumns[i].getColRef())) {</span>
+<span class="nc" id="L292">                    filterMask |= 1L &lt;&lt; allColumns[i].getBitIndex();</span>
+                }
+            }
+        }
+<span class="nc" id="L296">        logger.info(&quot;Filter mask is: {}&quot;, filterMask);</span>
+<span class="nc" id="L297">        return filterMask;</span>
+    }
+
+    public boolean isNeedStorageAggregation(Cuboid cuboid, Collection&lt;TblColRef&gt; groupD,
+            Collection&lt;TblColRef&gt; singleValueD) {
+<span class="nc" id="L302">        HashSet&lt;TblColRef&gt; temp = Sets.newHashSet();</span>
+<span class="nc" id="L303">        temp.addAll(groupD);</span>
+<span class="nc" id="L304">        temp.addAll(singleValueD);</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        if (cuboid.getColumns().size() == temp.size()) {</span>
+<span class="nc" id="L306">            logger.debug(&quot;Does not need storage aggregation&quot;);</span>
+<span class="nc" id="L307">            return false;</span>
+        } else {
+<span class="nc" id="L309">            logger.debug(&quot;Need storage aggregation&quot;);</span>
+<span class="nc" id="L310">            return true;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected TupleFilter translateDerived(TupleFilter filter, Set&lt;TblColRef&gt; collector) {
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (filter == null)</span>
+<span class="nc" id="L317">            return filter;</span>
+
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (filter instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L320">            return translateDerivedInCompare((CompareTupleFilter) filter, collector);</span>
+        }
+
+<span class="nc" id="L323">        List&lt;TupleFilter&gt; children = (List&lt;TupleFilter&gt;) filter.getChildren();</span>
+<span class="nc" id="L324">        List&lt;TupleFilter&gt; newChildren = Lists.newArrayListWithCapacity(children.size());</span>
+<span class="nc" id="L325">        boolean modified = false;</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">        for (TupleFilter child : children) {</span>
+<span class="nc" id="L327">            TupleFilter translated = translateDerived(child, collector);</span>
+<span class="nc" id="L328">            newChildren.add(translated);</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            if (child != translated)</span>
+<span class="nc" id="L330">                modified = true;</span>
+<span class="nc" id="L331">        }</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        if (modified) {</span>
+<span class="nc" id="L333">            filter = replaceChildren(filter, newChildren);</span>
+        }
+<span class="nc" id="L335">        return filter;</span>
+    }
+
+    private TupleFilter replaceChildren(TupleFilter filter, List&lt;TupleFilter&gt; newChildren) {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (filter instanceof LogicalTupleFilter) {</span>
+<span class="nc" id="L340">            LogicalTupleFilter r = new LogicalTupleFilter(filter.getOperator());</span>
+<span class="nc" id="L341">            r.addChildren(newChildren);</span>
+<span class="nc" id="L342">            return r;</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">        } else if (filter instanceof CaseTupleFilter) {</span>
+<span class="nc" id="L344">            CaseTupleFilter r = new CaseTupleFilter();</span>
+<span class="nc" id="L345">            r.addChildren(newChildren);</span>
+<span class="nc" id="L346">            return r;</span>
+        } else {
+<span class="nc" id="L348">            throw new IllegalStateException(&quot;Cannot replaceChildren on &quot; + filter);</span>
+        }
+    }
+
+    private TupleFilter translateDerivedInCompare(CompareTupleFilter compf, Set&lt;TblColRef&gt; collector) {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">        if (compf.getColumn() == null)</span>
+<span class="nc" id="L354">            return compf;</span>
+
+<span class="nc" id="L356">        TblColRef derived = compf.getColumn();</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if (cubeDesc.isExtendedColumn(derived)) {</span>
+<span class="nc" id="L358">            throw new CubeDesc.CannotFilterExtendedColumnException(derived);</span>
+        }
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if (!cubeDesc.isDerived(derived))</span>
+<span class="nc" id="L361">            return compf;</span>
+
+<span class="nc" id="L363">        DeriveInfo hostInfo = cubeDesc.getHostInfo(derived);</span>
+//        ILookupTable lookup = cubeDesc.getHostInfo(derived).type == CubeDesc.DeriveType.PK_FK ? null
+//                : getLookupStringTableForDerived(derived, hostInfo);
+<span class="nc" id="L366">        Pair&lt;TupleFilter, Boolean&gt; translated = DerivedFilterTranslator.translate(hostInfo, compf);</span>
+//        try {
+//            if (lookup != null) {
+//                lookup.close();
+//            }
+//        } catch (IOException e) {
+//            logger.error(&quot;error when close lookup table.&quot;, e);
+//        }
+<span class="nc" id="L374">        TupleFilter translatedFilter = translated.getFirst();</span>
+<span class="nc" id="L375">        boolean loosened = translated.getSecond();</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">        if (loosened) {</span>
+<span class="nc" id="L377">            collectColumnsRecursively(translatedFilter, collector);</span>
+        }
+<span class="nc" id="L379">        return translatedFilter;</span>
+    }
+
+//    @SuppressWarnings(&quot;unchecked&quot;)
+//    protected ILookupTable getLookupStringTableForDerived(TblColRef derived, DeriveInfo hostInfo) {
+//        CubeManager cubeMgr = CubeManager.getInstance(this.cubeInstance.getConfig());
+//        CubeSegment seg = cubeInstance.getLatestReadySegment();
+//        return cubeMgr.getLookupTable(seg, hostInfo.join);
+//    }
+
+    private void collectColumnsRecursively(TupleFilter filter, Set&lt;TblColRef&gt; collector) {
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        if (filter == null)</span>
+<span class="nc" id="L391">            return;</span>
+
+<span class="nc bnc" id="L393" title="All 2 branches missed.">        if (filter instanceof ColumnTupleFilter) {</span>
+<span class="nc" id="L394">            collector.add(((ColumnTupleFilter) filter).getColumn());</span>
+        }
+<span class="nc bnc" id="L396" title="All 2 branches missed.">        for (TupleFilter child : filter.getChildren()) {</span>
+<span class="nc" id="L397">            collectColumnsRecursively(child, collector);</span>
+<span class="nc" id="L398">        }</span>
+<span class="nc" id="L399">    }</span>
+
+    private void enableStorageLimitIfPossible(Cuboid cuboid, Collection&lt;TblColRef&gt; groups, List&lt;TblColRef&gt; dynGroups,
+            Set&lt;TblColRef&gt; derivedPostAggregation, Collection&lt;TblColRef&gt; groupsD, TupleFilter filter,
+            Set&lt;TblColRef&gt; loosenedColumnD, SQLDigest sqlDigest, StorageContext context) {
+<span class="nc" id="L404">        Collection&lt;FunctionDesc&gt; functionDescs = sqlDigest.aggregations;</span>
+
+<span class="nc" id="L406">        StorageLimitLevel storageLimitLevel = StorageLimitLevel.LIMIT_ON_SCAN;</span>
+
+        //if groupsD is clustered at &quot;head&quot; of the rowkey, then limit push down is possible
+<span class="nc" id="L409">        int size = groupsD.size();</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">        if (!groupsD.containsAll(cuboid.getColumns().subList(0, size))) {</span>
+<span class="nc" id="L411">            storageLimitLevel = StorageLimitLevel.LIMIT_ON_RETURN_SIZE;</span>
+<span class="nc" id="L412">            logger.debug(</span>
+                    &quot;storageLimitLevel set to LIMIT_ON_RETURN_SIZE because groupD is not clustered at head, groupsD: {} with cuboid columns: {}&quot;,
+<span class="nc" id="L414">                    groupsD, cuboid.getColumns());</span>
+        }
+
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (!dynGroups.isEmpty()) {</span>
+<span class="nc" id="L418">            storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L419">            logger.debug(&quot;Storage limit push down is impossible because the query has dynamic groupby {}&quot;, dynGroups);</span>
+        }
+
+        // derived aggregation is bad, unless expanded columns are already in group by
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        if (!groups.containsAll(derivedPostAggregation)) {</span>
+<span class="nc" id="L424">            storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L425">            logger.debug(&quot;storageLimitLevel set to NO_LIMIT because derived column require post aggregation: {}&quot;,</span>
+                    derivedPostAggregation);
+        }
+
+<span class="nc bnc" id="L429" title="All 2 branches missed.">        if (!TupleFilter.isEvaluableRecursively(filter)) {</span>
+<span class="nc" id="L430">            storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L431">            logger.debug(&quot;storageLimitLevel set to NO_LIMIT because the filter isn't evaluable&quot;);</span>
+        }
+
+<span class="nc bnc" id="L434" title="All 2 branches missed.">        if (!loosenedColumnD.isEmpty()) { // KYLIN-2173</span>
+<span class="nc" id="L435">            storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L436">            logger.debug(&quot;storageLimitLevel set to NO_LIMIT because filter is loosened: {}&quot;, loosenedColumnD);</span>
+        }
+
+<span class="nc bnc" id="L439" title="All 2 branches missed.">        if (context.hasSort()) {</span>
+<span class="nc" id="L440">            storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L441">            logger.debug(&quot;storageLimitLevel set to NO_LIMIT because the query has order by&quot;);</span>
+        }
+
+        //if exists measures like max(cal_dt), then it's not a perfect cuboid match, cannot apply limit
+<span class="nc bnc" id="L445" title="All 2 branches missed.">        for (FunctionDesc functionDesc : functionDescs) {</span>
+<span class="nc bnc" id="L446" title="All 2 branches missed.">            if (functionDesc.isDimensionAsMetric()) {</span>
+<span class="nc" id="L447">                storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L448">                logger.debug(&quot;storageLimitLevel set to NO_LIMIT because {} isDimensionAsMetric &quot;, functionDesc);</span>
+            }
+<span class="nc" id="L450">        }</span>
+
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        if (sqlDigest.groupByExpression) {</span>
+<span class="nc" id="L453">            storageLimitLevel = StorageLimitLevel.NO_LIMIT;</span>
+<span class="nc" id="L454">            logger.debug(&quot;storageLimitLevel set to NO_LIMIT because group by clause is an expression&quot;);</span>
+        }
+
+<span class="nc" id="L457">        context.applyLimitPushDown(cubeInstance, storageLimitLevel);</span>
+<span class="nc" id="L458">    }</span>
+
+    private void enableStreamAggregateIfBeneficial(Cuboid cuboid, Set&lt;TblColRef&gt; groupsD, StorageContext context) {
+<span class="nc" id="L461">        CubeDesc cubeDesc = cuboid.getCubeDesc();</span>
+<span class="nc" id="L462">        boolean enabled = cubeDesc.getConfig().isStreamAggregateEnabled();</span>
+
+<span class="nc" id="L464">        Set&lt;TblColRef&gt; shardByInGroups = Sets.newHashSet();</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">        for (TblColRef col : cubeDesc.getShardByColumns()) {</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">            if (groupsD.contains(col)) {</span>
+<span class="nc" id="L467">                shardByInGroups.add(col);</span>
+            }
+<span class="nc" id="L469">        }</span>
+<span class="nc bnc" id="L470" title="All 2 branches missed.">        if (!shardByInGroups.isEmpty()) {</span>
+<span class="nc" id="L471">            enabled = false;</span>
+<span class="nc" id="L472">            logger.debug(&quot;Aggregate partition results is not beneficial because shard by columns in groupD: {}&quot;,</span>
+                    shardByInGroups);
+        }
+
+<span class="nc bnc" id="L476" title="All 2 branches missed.">        if (!context.isNeedStorageAggregation()) {</span>
+<span class="nc" id="L477">            enabled = false;</span>
+<span class="nc" id="L478">            logger.debug(&quot;Aggregate partition results is not beneficial because no storage aggregation&quot;);</span>
+        }
+
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        if (enabled) {</span>
+<span class="nc" id="L482">            context.enableStreamAggregate();</span>
+        }
+<span class="nc" id="L484">    }</span>
+
+    protected void notifyBeforeStorageQuery(SQLDigest sqlDigest) {
+<span class="nc" id="L487">        Map&lt;String, List&lt;MeasureDesc&gt;&gt; map = Maps.newHashMap();</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">        for (MeasureDesc measure : cubeDesc.getMeasures()) {</span>
+<span class="nc" id="L489">            MeasureType&lt;?&gt; measureType = measure.getFunction().getMeasureType();</span>
+
+<span class="nc" id="L491">            String key = measureType.getClass().getCanonicalName();</span>
+<span class="nc" id="L492">            List&lt;MeasureDesc&gt; temp = null;</span>
+<span class="nc bnc" id="L493" title="All 2 branches missed.">            if ((temp = map.get(key)) != null) {</span>
+<span class="nc" id="L494">                temp.add(measure);</span>
+            } else {
+<span class="nc" id="L496">                map.put(key, Lists.&lt;MeasureDesc&gt; newArrayList(measure));</span>
+            }
+<span class="nc" id="L498">        }</span>
+
+<span class="nc bnc" id="L500" title="All 2 branches missed.">        for (List&lt;MeasureDesc&gt; sublist : map.values()) {</span>
+<span class="nc" id="L501">            sublist.get(0).getFunction().getMeasureType().adjustSqlDigest(sublist, sqlDigest);</span>
+<span class="nc" id="L502">        }</span>
+<span class="nc" id="L503">    }</span>
+
+    private TupleFilter checkHavingCanPushDown(TupleFilter havingFilter, Set&lt;TblColRef&gt; groupsD,
+            List&lt;FunctionDesc&gt; aggregations, Set&lt;FunctionDesc&gt; metrics) {
+        // must have only one segment
+<span class="nc" id="L508">        Segments&lt;CubeSegment&gt; readySegs = cubeInstance.getSegments(SegmentStatusEnum.READY);</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">        if (readySegs.size() != 1) {</span>
+<span class="nc" id="L510">            logger.info(&quot;Can not push down having filter, must have only one segment&quot;);</span>
+<span class="nc" id="L511">            return null;</span>
+        }
+        // sharded-by column must on group by
+<span class="nc" id="L514">        CubeDesc desc = cubeInstance.getDescriptor();</span>
+<span class="nc" id="L515">        Set&lt;TblColRef&gt; shardBy = desc.getShardByColumns();</span>
+<span class="nc bnc" id="L516" title="All 6 branches missed.">        if (groupsD == null || shardBy.isEmpty() || !groupsD.containsAll(shardBy))</span>
+<span class="nc" id="L517">            return null;</span>
+
+        // OK, push down
+<span class="nc" id="L520">        logger.info(&quot;Push down having filter {}&quot;, havingFilter);</span>
+
+        // convert columns in the filter
+<span class="nc" id="L523">        Set&lt;TblColRef&gt; aggrOutCols = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L524">        TupleFilter.collectColumns(havingFilter, aggrOutCols);</span>
+
+<span class="nc bnc" id="L526" title="All 2 branches missed.">        for (TblColRef aggrOutCol : aggrOutCols) {</span>
+<span class="nc" id="L527">            int aggrIdxOnSql = aggrOutCol.getColumnDesc().getZeroBasedIndex(); // aggr index marked in OLAPAggregateRel</span>
+<span class="nc" id="L528">            FunctionDesc aggrFunc = aggregations.get(aggrIdxOnSql);</span>
+
+            // calculate the index of this aggr among all the metrics that is sending to storage
+<span class="nc" id="L531">            int aggrIdxAmongMetrics = 0;</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">            for (MeasureDesc m : cubeDesc.getMeasures()) {</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">                if (aggrFunc.equals(m.getFunction()))</span>
+<span class="nc" id="L534">                    break;</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">                if (metrics.contains(m.getFunction()))</span>
+<span class="nc" id="L536">                    aggrIdxAmongMetrics++;</span>
+<span class="nc" id="L537">            }</span>
+<span class="nc" id="L538">            aggrOutCol.getColumnDesc().setId(&quot;&quot; + (aggrIdxAmongMetrics + 1));</span>
+<span class="nc" id="L539">        }</span>
+<span class="nc" id="L540">        return havingFilter;</span>
+    }
+
+    private boolean isExactAggregation(StorageContext context, Cuboid cuboid, Collection&lt;TblColRef&gt; groups,
+            Set&lt;TblColRef&gt; othersD, Set&lt;TblColRef&gt; singleValuesD, Set&lt;TblColRef&gt; derivedPostAggregation,
+            Collection&lt;FunctionDesc&gt; functionDescs, List&lt;SQLDigest.SQLCall&gt; aggrSQLCalls, boolean groupByExpression) {
+<span class="nc bnc" id="L546" title="All 2 branches missed.">        if (context.isNeedStorageAggregation()) {</span>
+<span class="nc" id="L547">            logger.info(&quot;exactAggregation is false because need storage aggregation&quot;);</span>
+<span class="nc" id="L548">            return false;</span>
+        }
+
+<span class="nc bnc" id="L551" title="All 2 branches missed.">        if (cuboid.requirePostAggregation()) {</span>
+<span class="nc" id="L552">            logger.info(&quot;exactAggregation is false because cuboid {}=&gt;{}&quot;, cuboid.getInputID(), cuboid.getId());</span>
+<span class="nc" id="L553">            return false;</span>
+        }
+
+        // derived aggregation is bad, unless expanded columns are already in group by
+<span class="nc bnc" id="L557" title="All 2 branches missed.">        if (!groups.containsAll(derivedPostAggregation)) {</span>
+<span class="nc" id="L558">            logger.info(&quot;exactAggregation is false because derived column require post aggregation: {}&quot;,</span>
+                    derivedPostAggregation);
+<span class="nc" id="L560">            return false;</span>
+        }
+
+        // other columns (from filter) is bad, unless they are ensured to have single value
+<span class="nc bnc" id="L564" title="All 2 branches missed.">        if (!singleValuesD.containsAll(othersD)) {</span>
+<span class="nc" id="L565">            logger.info(&quot;exactAggregation is false because some column not on group by: {} (single value column: {})&quot;,</span>
+                    othersD, singleValuesD);
+<span class="nc" id="L567">            return false;</span>
+        }
+
+        //for DimensionAsMetric like max(cal_dt), the dimension column maybe not in real group by
+<span class="nc bnc" id="L571" title="All 2 branches missed.">        for (FunctionDesc functionDesc : functionDescs) {</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">            if (functionDesc.isDimensionAsMetric()) {</span>
+<span class="nc" id="L573">                logger.info(&quot;exactAggregation is false because has DimensionAsMetric&quot;);</span>
+<span class="nc" id="L574">                return false;</span>
+            }
+<span class="nc" id="L576">        }</span>
+<span class="nc bnc" id="L577" title="All 2 branches missed.">        for (SQLDigest.SQLCall aggrSQLCall : aggrSQLCalls) {</span>
+<span class="nc bnc" id="L578" title="All 2 branches missed.">            if (aggrSQLCall.function.equals(BitmapMeasureType.FUNC_INTERSECT_COUNT_DISTINCT)</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">            || aggrSQLCall.function.equals(BitmapMeasureType.FUNC_INTERSECT_VALUE)) {</span>
+<span class="nc" id="L580">                logger.info(&quot;exactAggregation is false because has INTERSECT_COUNT OR INTERSECT_VALUE&quot;);</span>
+<span class="nc" id="L581">                return false;</span>
+            }
+<span class="nc" id="L583">        }</span>
+
+        // for partitioned cube, the partition column must belong to group by or has single value
+<span class="nc" id="L586">        PartitionDesc partDesc = cuboid.getCubeDesc().getModel().getPartitionDesc();</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">        if (partDesc.isPartitioned()) {</span>
+<span class="nc" id="L588">            TblColRef col = partDesc.getPartitionDateColumnRef();</span>
+<span class="nc bnc" id="L589" title="All 4 branches missed.">            if (!groups.contains(col) &amp;&amp; !singleValuesD.contains(col)) {</span>
+<span class="nc" id="L590">                logger.info(&quot;exactAggregation is false because cube is partitioned and {} is not on group by&quot;, col);</span>
+<span class="nc" id="L591">                return false;</span>
+            }
+        }
+
+        // for group by expression like: group by seller_id/100. seller_id_1(200) get 2, seller_id_2(201) also get 2, so can't aggregate exactly
+<span class="nc bnc" id="L596" title="All 2 branches missed.">        if (groupByExpression) {</span>
+<span class="nc" id="L597">            logger.info(&quot;exactAggregation is false because group by expression&quot;);</span>
+<span class="nc" id="L598">            return false;</span>
+        }
+
+<span class="nc" id="L601">        logger.info(&quot;exactAggregation is true, cuboid id is {}&quot;, cuboid.getId());</span>
+<span class="nc" id="L602">        return true;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

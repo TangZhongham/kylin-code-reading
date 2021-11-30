@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerMode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ServerMode.java</span></div><h1>ServerMode.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.util.List;
+import java.util.Locale;
+
+import org.apache.kylin.common.KylinConfig;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class ServerMode {
+    public final static String SERVER_MODE_QUERY = &quot;query&quot;;
+    public final static String SERVER_MODE_JOB = &quot;job&quot;;
+    public final static String SERVER_MODE_STREAM_COORDINATOR = &quot;stream_coordinator&quot;;
+    public final static String SERVER_MODE_ALL = &quot;all&quot;;
+
+    private List&lt;String&gt; serverModes;
+
+<span class="nc" id="L36">    public ServerMode(List&lt;String&gt; serverModes) {</span>
+<span class="nc" id="L37">        this.serverModes = serverModes;</span>
+<span class="nc" id="L38">    }</span>
+
+    public boolean canServeQuery() {
+<span class="nc bnc" id="L41" title="All 4 branches missed.">        return serverModes.contains(SERVER_MODE_ALL) || serverModes.contains(SERVER_MODE_QUERY);</span>
+    }
+
+    public boolean canServeJobBuild() {
+<span class="nc bnc" id="L45" title="All 4 branches missed.">        return serverModes.contains(SERVER_MODE_ALL) || serverModes.contains(SERVER_MODE_JOB);</span>
+    }
+
+    public boolean canServeStreamingCoordinator() {
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        return serverModes.contains(SERVER_MODE_ALL)</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">                || serverModes.contains(SERVER_MODE_STREAM_COORDINATOR);</span>
+    }
+
+    public boolean canServeAll() {
+<span class="nc" id="L54">        return serverModes.contains(SERVER_MODE_ALL);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L59">        return serverModes.toString();</span>
+    }
+
+<span class="nc" id="L62">    public static ServerMode SERVER_MODE = getServerMode();</span>
+
+    private static ServerMode getServerMode() {
+<span class="nc" id="L65">        return getServerMode(KylinConfig.getInstanceFromEnv());</span>
+    }
+
+    public static ServerMode getServerMode(KylinConfig kylinConfig) {
+<span class="nc" id="L69">        String serverModeStr = kylinConfig.getServerMode();</span>
+<span class="nc" id="L70">        List&lt;String&gt; serverModes = Lists.newArrayList();</span>
+<span class="nc" id="L71">        String[] serverModeArray = serverModeStr.split(&quot;\\s*,\\s*&quot;);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        for (String serverMode : serverModeArray) {</span>
+<span class="nc" id="L73">            serverModes.add(serverMode.toLowerCase(Locale.ROOT));</span>
+        }
+<span class="nc" id="L75">        return new ServerMode(serverModes);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

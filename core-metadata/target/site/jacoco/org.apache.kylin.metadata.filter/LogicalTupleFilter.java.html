@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogicalTupleFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter</a> &gt; <span class="el_source">LogicalTupleFilter.java</span></div><h1>LogicalTupleFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.filter;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+
+import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class LogicalTupleFilter extends TupleFilter implements IOptimizeableTupleFilter {
+
+    public LogicalTupleFilter(FilterOperatorEnum op) {
+<span class="fc" id="L35">        super(new ArrayList&lt;TupleFilter&gt;(2), op);</span>
+
+<span class="pc bpc" id="L37" title="1 of 6 branches missed.">        boolean opGood = (op == FilterOperatorEnum.AND || op == FilterOperatorEnum.OR || op == FilterOperatorEnum.NOT);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if (opGood == false)</span>
+<span class="nc" id="L39">            throw new IllegalArgumentException(&quot;Unsupported operator &quot; + op);</span>
+<span class="fc" id="L40">    }</span>
+
+    //private
+    private LogicalTupleFilter(List&lt;TupleFilter&gt; filters, FilterOperatorEnum op) {
+<span class="fc" id="L44">        super(filters, op);</span>
+<span class="fc" id="L45">    }</span>
+
+    private void reinitWithChildren(List&lt;TupleFilter&gt; newTupleFilter) {
+<span class="fc" id="L48">        this.children.clear();</span>
+<span class="fc" id="L49">        this.addChildren(newTupleFilter);</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    public TupleFilter copy() {
+<span class="fc" id="L54">        List&lt;TupleFilter&gt; cloneChildren = new LinkedList&lt;TupleFilter&gt;(children);</span>
+<span class="fc" id="L55">        TupleFilter cloneTuple = new LogicalTupleFilter(cloneChildren, operator);</span>
+<span class="fc" id="L56">        return cloneTuple;</span>
+    }
+
+    @Override
+    public TupleFilter reverse() {
+<span class="pc bpc" id="L61" title="2 of 3 branches missed.">        switch (operator) {</span>
+        case NOT:
+<span class="nc" id="L63">            throw new IllegalStateException(&quot;NOT will be replaced in org.apache.kylin.query.relnode.OLAPFilterRel.TupleFilterVisitor&quot;);</span>
+        case AND:
+        case OR:
+<span class="fc" id="L66">            LogicalTupleFilter reverse = new LogicalTupleFilter(REVERSE_OP_MAP.get(operator));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            for (TupleFilter child : children) {</span>
+<span class="fc" id="L68">                reverse.addChild(child.reverse());</span>
+<span class="fc" id="L69">            }</span>
+<span class="fc" id="L70">            return reverse;</span>
+        default:
+<span class="nc" id="L72">            throw new IllegalStateException();</span>
+        }
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L78">        return operator + &quot; &quot; + children;</span>
+    }
+
+    @Override
+    public boolean evaluate(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        switch (this.operator) {</span>
+        case AND:
+<span class="nc" id="L85">            return evalAnd(tuple, cs);</span>
+        case OR:
+<span class="nc" id="L87">            return evalOr(tuple, cs);</span>
+        case NOT:
+<span class="nc" id="L89">            return evalNot(tuple, cs);</span>
+        default:
+<span class="nc" id="L91">            return false;</span>
+        }
+    }
+
+    private boolean evalAnd(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (TupleFilter filter : this.children) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (!filter.evaluate(tuple, cs)) {</span>
+<span class="nc" id="L98">                return false;</span>
+            }
+<span class="nc" id="L100">        }</span>
+<span class="nc" id="L101">        return true;</span>
+    }
+
+    private boolean evalOr(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (TupleFilter filter : this.children) {</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (filter.evaluate(tuple, cs)) {</span>
+<span class="nc" id="L107">                return true;</span>
+            }
+<span class="nc" id="L109">        }</span>
+<span class="nc" id="L110">        return false;</span>
+    }
+
+    private boolean evalNot(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        return !this.children.get(0).evaluate(tuple, cs);</span>
+    }
+
+    @Override
+    public Collection&lt;?&gt; getValues() {
+<span class="nc" id="L119">        return Collections.emptyList();</span>
+    }
+
+    @Override
+    public boolean isEvaluable() {
+<span class="nc bnc" id="L124" title="All 3 branches missed.">        switch (operator) {</span>
+        case NOT:
+            // Un-evaluatable branch will be pruned and be replaced with TRUE.
+            // And this must happen at the top NOT, otherwise NOT (TRUE) becomes false.
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            for (TupleFilter child : children) {</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                if (TupleFilter.isEvaluableRecursively(child) == false)</span>
+<span class="nc" id="L130">                    return false;</span>
+<span class="nc" id="L131">            }</span>
+<span class="nc" id="L132">            return true;</span>
+        case OR:
+            // (anything OR un-evaluable) will become (anything or TRUE) which is effectively TRUE.
+            // The &quot;anything&quot; is not evaluated, kinda disabled, by the un-evaluable part.
+            // If it's partially un-evaluable, then &quot;anything&quot; is partially disabled, and the OR is still not fully evaluatable.
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            for (TupleFilter child : children) {</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                if (TupleFilter.isEvaluableRecursively(child) == false)</span>
+<span class="nc" id="L139">                    return false;</span>
+<span class="nc" id="L140">            }</span>
+<span class="nc" id="L141">            return true;</span>
+        default:
+<span class="nc" id="L143">            return true;</span>
+        }
+    }
+
+    @Override
+    public void serialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+        //do nothing
+<span class="nc" id="L150">    }</span>
+
+    @Override
+    public void deserialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+
+<span class="nc" id="L155">    }</span>
+
+    @Override
+    public TupleFilter acceptOptimizeTransformer(FilterOptimizeTransformer transformer) {
+<span class="fc" id="L159">        List&lt;TupleFilter&gt; newChildren = Lists.newArrayList();</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (TupleFilter child : this.getChildren()) {</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (child instanceof IOptimizeableTupleFilter) {</span>
+<span class="fc" id="L162">                newChildren.add(((IOptimizeableTupleFilter) child).acceptOptimizeTransformer(transformer));</span>
+            } else {
+<span class="fc" id="L164">                newChildren.add(child);</span>
+            }
+<span class="fc" id="L166">        }</span>
+
+<span class="fc" id="L168">        this.reinitWithChildren(newChildren);</span>
+
+<span class="fc" id="L170">        return transformer.visit(this);</span>
+    }
+
+    @Override
+    public boolean equals(Object other) {
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if (other == this) {</span>
+<span class="nc" id="L176">            return true;</span>
+        }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (!(other instanceof LogicalTupleFilter)) {</span>
+<span class="nc" id="L179">            return false;</span>
+        }
+<span class="fc" id="L181">        final LogicalTupleFilter otherFilter = (LogicalTupleFilter) other;</span>
+<span class="pc bpc" id="L182" title="2 of 4 branches missed.">        if (otherFilter.operator != this.operator || otherFilter.children.size() != this.children.size()) {</span>
+<span class="nc" id="L183">            return false;</span>
+        }
+
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        for (int i = 0; i &lt; otherFilter.children.size(); i++) {</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            if (!otherFilter.children.get(i).equals(this.children.get(i))) {</span>
+<span class="nc" id="L188">                return false;</span>
+            }
+        }
+
+<span class="fc" id="L192">        return true;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        return (operator == null ? 0 : operator.hashCode()) + 31 * this.children.hashCode();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

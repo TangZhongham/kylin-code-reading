@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PercentileSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.percentile</a> &gt; <span class="el_source">PercentileSerializer.java</span></div><h1>PercentileSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.percentile;
+
+import java.nio.ByteBuffer;
+
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
+public class PercentileSerializer extends DataTypeSerializer&lt;PercentileCounter&gt; {
+    // be thread-safe and avoid repeated obj creation
+<span class="fc" id="L28">    private transient ThreadLocal&lt;PercentileCounter&gt; current = null;</span>
+
+    private double compression;
+
+<span class="fc" id="L32">    public PercentileSerializer(DataType type) {</span>
+<span class="fc" id="L33">        this.compression = type.getPrecision();</span>
+<span class="fc" id="L34">    }</span>
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="nc" id="L38">        return current().peekLength(in);</span>
+    }
+
+    @Override
+    public int maxLength() {
+<span class="nc" id="L43">        return current().maxLength();</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+<span class="fc" id="L48">        return current().getBytesEstimate();</span>
+    }
+
+    @Override
+    protected double getStorageBytesEstimate(double count) {
+<span class="nc" id="L53">        return current().getBytesEstimate(count);</span>
+    }
+
+    private PercentileCounter current() {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (current == null) {</span>
+<span class="fc" id="L58">            current = new ThreadLocal&lt;&gt;();</span>
+        }
+
+<span class="fc" id="L61">        PercentileCounter counter = current.get();</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (counter == null) {</span>
+<span class="fc" id="L63">            counter = new PercentileCounter(compression);</span>
+<span class="fc" id="L64">            current.set(counter);</span>
+        }
+<span class="fc" id="L66">        return counter;</span>
+    }
+
+    @Override
+    public void serialize(PercentileCounter value, ByteBuffer out) {
+<span class="fc" id="L71">        value.writeRegisters(out);</span>
+<span class="fc" id="L72">    }</span>
+
+    @Override
+    public PercentileCounter deserialize(ByteBuffer in) {
+<span class="fc" id="L76">        PercentileCounter counter = new PercentileCounter(compression);</span>
+<span class="fc" id="L77">        counter.readRegisters(in);</span>
+<span class="fc" id="L78">        return counter;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

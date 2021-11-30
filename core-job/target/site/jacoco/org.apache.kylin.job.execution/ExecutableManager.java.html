@@ -1,0 +1,933 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecutableManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.execution</a> &gt; <span class="el_source">ExecutableManager.java</span></div><h1>ExecutableManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.job.execution;
+
+import static org.apache.kylin.job.constant.ExecutableConstants.MR_JOB_ID;
+import static org.apache.kylin.job.constant.ExecutableConstants.YARN_APP_ID;
+import static org.apache.kylin.job.constant.ExecutableConstants.YARN_APP_URL;
+import static org.apache.kylin.job.constant.ExecutableConstants.FLINK_JOB_ID;
+
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.IllegalFormatException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Deque;
+import java.util.ArrayDeque;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.JobProcessContext;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.JsonUtil;
+import org.apache.kylin.job.constant.ExecutableConstants;
+import org.apache.kylin.job.dao.ExecutableDao;
+import org.apache.kylin.job.dao.ExecutableOutputPO;
+import org.apache.kylin.job.dao.ExecutablePO;
+import org.apache.kylin.job.exception.IllegalStateTranferException;
+import org.apache.kylin.job.exception.PersistentException;
+import org.apache.kylin.metadata.MetadataConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ */
+public class ExecutableManager {
+
+<span class="fc" id="L72">    private static final Logger logger = LoggerFactory.getLogger(ExecutableManager.class);</span>
+
+    private static final int CMD_EXEC_TIMEOUT_SEC = 60;
+    private static final String KILL_PROCESS_TREE = &quot;kill-process-tree.sh&quot;;
+
+    public static ExecutableManager getInstance(KylinConfig config) {
+<span class="fc" id="L78">        return config.getManager(ExecutableManager.class);</span>
+    }
+
+    // called by reflection
+    static ExecutableManager newInstance(KylinConfig config) throws IOException {
+<span class="fc" id="L83">        return new ExecutableManager(config);</span>
+    }
+
+    // ============================================================================
+
+    private final KylinConfig config;
+    private final ExecutableDao executableDao;
+
+<span class="fc" id="L91">    private ExecutableManager(KylinConfig config) {</span>
+<span class="fc" id="L92">        logger.info(&quot;Using metadata url: &quot; + config);</span>
+<span class="fc" id="L93">        this.config = config;</span>
+<span class="fc" id="L94">        this.executableDao = ExecutableDao.getInstance(config);</span>
+<span class="fc" id="L95">    }</span>
+
+    private static ExecutablePO parse(AbstractExecutable executable) {
+<span class="fc" id="L98">        ExecutablePO result = new ExecutablePO();</span>
+<span class="fc" id="L99">        result.setName(executable.getName());</span>
+<span class="fc" id="L100">        result.setUuid(executable.getId());</span>
+<span class="fc" id="L101">        result.setType(executable.getClass().getName());</span>
+<span class="fc" id="L102">        result.setParams(executable.getParams());</span>
+<span class="fc" id="L103">        result.setPriority(executable.getPriority());</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (executable instanceof ChainedExecutable) {</span>
+<span class="fc" id="L105">            List&lt;ExecutablePO&gt; tasks = Lists.newArrayList();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (AbstractExecutable task : ((ChainedExecutable) executable).getTasks()) {</span>
+<span class="fc" id="L107">                tasks.add(parse(task));</span>
+<span class="fc" id="L108">            }</span>
+<span class="fc" id="L109">            result.setTasks(tasks);</span>
+        }
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (executable instanceof CheckpointExecutable) {</span>
+<span class="nc" id="L112">            List&lt;ExecutablePO&gt; tasksForCheck = Lists.newArrayList();</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">            for (AbstractExecutable taskForCheck : ((CheckpointExecutable) executable).getSubTasksForCheck()) {</span>
+<span class="nc" id="L114">                tasksForCheck.add(parse(taskForCheck));</span>
+<span class="nc" id="L115">            }</span>
+<span class="nc" id="L116">            result.setTasksForCheck(tasksForCheck);</span>
+        }
+<span class="fc" id="L118">        return result;</span>
+    }
+
+    public void addJob(AbstractExecutable executable) {
+        try {
+<span class="fc" id="L123">            executable.initConfig(config);</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            if (executableDao.getJob(executable.getId()) != null) {</span>
+<span class="nc" id="L125">                throw new IllegalArgumentException(&quot;job id:&quot; + executable.getId() + &quot; already exists&quot;);</span>
+            }
+<span class="fc" id="L127">            addJobOutput(executable);</span>
+<span class="fc" id="L128">            executableDao.addJob(parse(executable));</span>
+<span class="nc" id="L129">        } catch (PersistentException e) {</span>
+<span class="nc" id="L130">            logger.error(&quot;fail to submit job:&quot; + executable.getId(), e);</span>
+<span class="nc" id="L131">            throw new RuntimeException(e);</span>
+<span class="fc" id="L132">        }</span>
+<span class="fc" id="L133">    }</span>
+
+    private void addJobOutput(AbstractExecutable executable) throws PersistentException {
+<span class="fc" id="L136">        ExecutableOutputPO executableOutputPO = new ExecutableOutputPO();</span>
+<span class="fc" id="L137">        executableOutputPO.setUuid(executable.getId());</span>
+<span class="fc" id="L138">        executableDao.addJobOutput(executableOutputPO);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (executable instanceof DefaultChainedExecutable) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            for (AbstractExecutable subTask : ((DefaultChainedExecutable) executable).getTasks()) {</span>
+<span class="fc" id="L141">                addJobOutput(subTask);</span>
+<span class="fc" id="L142">            }</span>
+        }
+<span class="fc" id="L144">    }</span>
+
+    public void updateCheckpointJob(String jobId, List&lt;AbstractExecutable&gt; subTasksForCheck) {
+        try {
+<span class="nc" id="L148">            jobId = jobId.replaceAll(&quot;[./]&quot;, &quot;&quot;);</span>
+<span class="nc" id="L149">            final ExecutablePO job = executableDao.getJob(jobId);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            Preconditions.checkArgument(job != null, &quot;there is no related job for job id:&quot; + jobId);</span>
+
+<span class="nc" id="L152">            List&lt;ExecutablePO&gt; tasksForCheck = Lists.newArrayListWithExpectedSize(subTasksForCheck.size());</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            for (AbstractExecutable taskForCheck : subTasksForCheck) {</span>
+<span class="nc" id="L154">                tasksForCheck.add(parse(taskForCheck));</span>
+<span class="nc" id="L155">            }</span>
+<span class="nc" id="L156">            job.setTasksForCheck(tasksForCheck);</span>
+<span class="nc" id="L157">            executableDao.updateJob(job);</span>
+<span class="nc" id="L158">        } catch (PersistentException e) {</span>
+<span class="nc" id="L159">            logger.error(&quot;fail to update checkpoint job:&quot; + jobId, e);</span>
+<span class="nc" id="L160">            throw new RuntimeException(e);</span>
+<span class="nc" id="L161">        }</span>
+<span class="nc" id="L162">    }</span>
+
+    //for ut
+    public void deleteJob(String jobId) {
+        try {
+<span class="nc" id="L167">            jobId = jobId.replaceAll(&quot;[./]&quot;, &quot;&quot;);</span>
+<span class="nc" id="L168">            executableDao.deleteJob(jobId);</span>
+<span class="nc" id="L169">        } catch (PersistentException e) {</span>
+<span class="nc" id="L170">            logger.error(&quot;fail to delete job:&quot; + jobId, e);</span>
+<span class="nc" id="L171">            throw new RuntimeException(e);</span>
+<span class="nc" id="L172">        }</span>
+<span class="nc" id="L173">    }</span>
+
+    public AbstractExecutable getJob(String uuid) {
+        try {
+<span class="fc" id="L177">            uuid = uuid.replaceAll(&quot;[./]&quot;, &quot;&quot;);</span>
+<span class="fc" id="L178">            return parseTo(executableDao.getJob(uuid));</span>
+<span class="nc" id="L179">        } catch (PersistentException e) {</span>
+<span class="nc" id="L180">            logger.error(&quot;fail to get job:&quot; + uuid, e);</span>
+<span class="nc" id="L181">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public AbstractExecutable getJobDigest(String uuid) {
+<span class="nc" id="L186">        return parseTo(executableDao.getJobDigest(uuid));</span>
+    }
+
+    public void syncDigestsOfJob(String uuid) throws PersistentException {
+<span class="nc" id="L190">        executableDao.syncDigestsOfJob(uuid);</span>
+<span class="nc" id="L191">    }</span>
+
+    public Output getOutput(String uuid) {
+        try {
+<span class="fc" id="L195">            uuid = uuid.replaceAll(&quot;[./]&quot;, &quot;&quot;);</span>
+<span class="fc" id="L196">            final ExecutableOutputPO jobOutput = executableDao.getJobOutput(uuid);</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">            Preconditions.checkArgument(jobOutput != null, &quot;there is no related output for job id:&quot; + uuid);</span>
+<span class="fc" id="L198">            return parseOutput(jobOutput);</span>
+<span class="nc" id="L199">        } catch (PersistentException e) {</span>
+<span class="nc" id="L200">            logger.error(&quot;fail to get job output:&quot; + uuid, e);</span>
+<span class="nc" id="L201">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public Output getOutputDigest(String uuid) {
+<span class="fc" id="L206">        final ExecutableOutputPO jobOutput = executableDao.getJobOutputDigest(uuid);</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        Preconditions.checkArgument(jobOutput != null, &quot;there is no related output for job id:&quot; + uuid);</span>
+<span class="fc" id="L208">        return parseOutput(jobOutput);</span>
+    }
+
+    private DefaultOutput parseOutput(ExecutableOutputPO jobOutput) {
+<span class="fc" id="L212">        final DefaultOutput result = new DefaultOutput();</span>
+<span class="fc" id="L213">        result.setExtra(jobOutput.getInfo());</span>
+<span class="fc" id="L214">        result.setState(ExecutableState.valueOf(jobOutput.getStatus()));</span>
+<span class="fc" id="L215">        result.setVerboseMsg(jobOutput.getContent());</span>
+<span class="fc" id="L216">        result.setLastModified(jobOutput.getLastModified());</span>
+<span class="fc" id="L217">        return result;</span>
+    }
+
+    public Map&lt;String, Output&gt; getAllOutputs() {
+        try {
+<span class="nc" id="L222">            final List&lt;ExecutableOutputPO&gt; jobOutputs = executableDao.getJobOutputs();</span>
+<span class="nc" id="L223">            HashMap&lt;String, Output&gt; result = Maps.newHashMap();</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            for (ExecutableOutputPO jobOutput : jobOutputs) {</span>
+<span class="nc" id="L225">                result.put(jobOutput.getId(), parseOutput(jobOutput));</span>
+<span class="nc" id="L226">            }</span>
+<span class="nc" id="L227">            return result;</span>
+<span class="nc" id="L228">        } catch (PersistentException e) {</span>
+<span class="nc" id="L229">            logger.error(&quot;fail to get all job output:&quot;, e);</span>
+<span class="nc" id="L230">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public Map&lt;String, Output&gt; getAllOutputs(long timeStartInMillis, long timeEndInMillis) {
+        try {
+<span class="nc" id="L236">            final List&lt;ExecutableOutputPO&gt; jobOutputs = executableDao.getJobOutputs(timeStartInMillis, timeEndInMillis);</span>
+<span class="nc" id="L237">            HashMap&lt;String, Output&gt; result = Maps.newHashMap();</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            for (ExecutableOutputPO jobOutput : jobOutputs) {</span>
+<span class="nc" id="L239">                result.put(jobOutput.getId(), parseOutput(jobOutput));</span>
+<span class="nc" id="L240">            }</span>
+<span class="nc" id="L241">            return result;</span>
+<span class="nc" id="L242">        } catch (PersistentException e) {</span>
+<span class="nc" id="L243">            logger.error(&quot;fail to get all job output:&quot;, e);</span>
+<span class="nc" id="L244">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public Map&lt;String, ExecutableOutputPO&gt; getAllOutputDigests(long timeStartInMillis, long timeEndInMillis) {
+<span class="nc" id="L249">        final List&lt;ExecutableOutputPO&gt; jobOutputs = executableDao.getJobOutputDigests(timeStartInMillis,</span>
+                timeEndInMillis);
+<span class="nc" id="L251">        HashMap&lt;String, ExecutableOutputPO&gt; result = Maps.newHashMap();</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        for (ExecutableOutputPO jobOutput : jobOutputs) {</span>
+<span class="nc" id="L253">            result.put(jobOutput.getId(), jobOutput);</span>
+<span class="nc" id="L254">        }</span>
+<span class="nc" id="L255">        return result;</span>
+    }
+
+    public Output getOutputFromHDFSByJobId(String jobId, String stepId) {
+<span class="nc" id="L259">        return getOutputFromHDFSByJobId(jobId, stepId, 100);</span>
+    }
+
+    /**
+     * get job output from hdfs json file;
+     * if json file contains logPath,
+     * the logPath is spark driver log hdfs path(*.json.log), read sample data from log file.
+     *
+     * @param jobId
+     * @return
+     */
+    public Output getOutputFromHDFSByJobId(String jobId, String stepId, int nLines) {
+<span class="nc" id="L271">        AbstractExecutable jobInstance = getJob(jobId);</span>
+<span class="nc" id="L272">        String outputStorePath = KylinConfig.getInstanceFromEnv().getJobOutputStorePath(jobInstance.getParam(MetadataConstants.P_PROJECT_NAME), stepId);</span>
+<span class="nc" id="L273">        ExecutableOutputPO jobOutput = getJobOutputFromHDFS(outputStorePath);</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (jobOutput == null) {</span>
+<span class="nc" id="L275">            return null;</span>
+        }
+<span class="nc" id="L277">        assertOutputNotNull(jobOutput, outputStorePath);</span>
+
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (Objects.nonNull(jobOutput.getLogPath())) {</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">            if (isHdfsPathExists(jobOutput.getLogPath())) {</span>
+<span class="nc" id="L281">                jobOutput.setContent(getSampleDataFromHDFS(jobOutput.getLogPath(), nLines));</span>
+<span class="nc bnc" id="L282" title="All 4 branches missed.">            } else if (StringUtils.isEmpty(jobOutput.getContent()) &amp;&amp; Objects.nonNull(getJob(jobId))</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">                    &amp;&amp; getJob(jobId).getStatus() == ExecutableState.RUNNING) {</span>
+<span class="nc" id="L284">                jobOutput.setContent(&quot;Wait a moment ... &quot;);</span>
+            }
+        }
+
+<span class="nc" id="L288">        return parseOutput(jobOutput);</span>
+    }
+
+    public ExecutableOutputPO getJobOutputFromHDFS(String resPath) {
+<span class="nc" id="L292">        DataInputStream din = null;</span>
+        try {
+<span class="nc" id="L294">            Path path = new Path(resPath);</span>
+<span class="nc" id="L295">            FileSystem fs = HadoopUtil.getWorkingFileSystem();</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">            if (!fs.exists(path)) {</span>
+<span class="nc" id="L297">                return null;</span>
+            }
+
+<span class="nc" id="L300">            din = fs.open(path);</span>
+<span class="nc" id="L301">            return JsonUtil.readValue(din, ExecutableOutputPO.class);</span>
+<span class="nc" id="L302">        } catch (Exception e) {</span>
+            // If the output file on hdfs is corrupt, give an empty output
+<span class="nc" id="L304">            logger.error(&quot;get job output [{}] from HDFS failed.&quot;, resPath, e);</span>
+<span class="nc" id="L305">            ExecutableOutputPO executableOutputPO = new ExecutableOutputPO();</span>
+<span class="nc" id="L306">            executableOutputPO.setContent(&quot;job output broken, please check kylin.log&quot;);</span>
+<span class="nc" id="L307">            return executableOutputPO;</span>
+        } finally {
+<span class="nc" id="L309">            IOUtils.closeQuietly(din);</span>
+        }
+    }
+
+    private void assertOutputNotNull(ExecutableOutputPO output, String idOrPath) {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        com.google.common.base.Preconditions.checkArgument(output != null, &quot;there is no related output for job :&quot; + idOrPath);</span>
+<span class="nc" id="L315">    }</span>
+
+    /**
+     * check the hdfs path exists.
+     *
+     * @param hdfsPath
+     * @return
+     */
+    public boolean isHdfsPathExists(String hdfsPath) {
+<span class="nc bnc" id="L324" title="All 2 branches missed.">        if (StringUtils.isBlank(hdfsPath)) {</span>
+<span class="nc" id="L325">            return false;</span>
+        }
+
+<span class="nc" id="L328">        Path path = new Path(hdfsPath);</span>
+<span class="nc" id="L329">        FileSystem fs = HadoopUtil.getWorkingFileSystem();</span>
+        try {
+<span class="nc" id="L331">            return fs.exists(path);</span>
+<span class="nc" id="L332">        } catch (IOException e) {</span>
+<span class="nc" id="L333">            logger.error(&quot;check the hdfs path [{}] exists failed, &quot;, hdfsPath, e);</span>
+        }
+
+<span class="nc" id="L336">        return false;</span>
+    }
+
+    /**
+     * get sample data from hdfs log file.
+     * specified the lines, will get the first num lines and last num lines.
+     *
+     * @param resPath
+     * @return
+     */
+    public String getSampleDataFromHDFS(String resPath, final int nLines) {
+        try {
+<span class="nc" id="L348">            Path path = new Path(resPath);</span>
+<span class="nc" id="L349">            FileSystem fs = HadoopUtil.getWorkingFileSystem();</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">            if (!fs.exists(path)) {</span>
+<span class="nc" id="L351">                return null;</span>
+            }
+
+<span class="nc" id="L354">            FileStatus fileStatus = fs.getFileStatus(path);</span>
+<span class="nc" id="L355">            try (FSDataInputStream din = fs.open(path);</span>
+<span class="nc" id="L356">                 BufferedReader reader = new BufferedReader(new InputStreamReader(din, &quot;UTF-8&quot;))) {</span>
+
+                String line;
+<span class="nc" id="L359">                StringBuilder sampleData = new StringBuilder();</span>
+<span class="nc bnc" id="L360" title="All 4 branches missed.">                for (int i = 0; i &lt; nLines &amp;&amp; (line = reader.readLine()) != null; i++) {</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">                    if (sampleData.length() &gt; 0) {</span>
+<span class="nc" id="L362">                        sampleData.append('\n');</span>
+                    }
+<span class="nc" id="L364">                    sampleData.append(line);</span>
+                }
+
+<span class="nc" id="L367">                int offset = sampleData.toString().getBytes(&quot;UTF-8&quot;).length + 1;</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">                if (offset &lt; fileStatus.getLen()) {</span>
+<span class="nc" id="L369">                    sampleData.append(&quot;\n================================================================\n&quot;);</span>
+<span class="nc" id="L370">                    sampleData.append(tailHdfsFileInputStream(din, offset, fileStatus.getLen(), nLines));</span>
+                }
+<span class="nc" id="L372">                return sampleData.toString();</span>
+            }
+<span class="nc" id="L374">        } catch (IOException e) {</span>
+<span class="nc" id="L375">            logger.error(&quot;get sample data from hdfs log file [{}] failed!&quot;, resPath, e);</span>
+<span class="nc" id="L376">            return null;</span>
+        }
+    }
+
+    /**
+     * get the last N_LINES lines from the end of hdfs file input stream;
+     *
+     * @param hdfsDin
+     * @param startPos
+     * @param endPos
+     * @param nLines
+     * @return
+     * @throws IOException
+     */
+    private String tailHdfsFileInputStream(FSDataInputStream hdfsDin, final long startPos, final long endPos,
+                                           final int nLines) throws IOException {
+<span class="nc" id="L392">        com.google.common.base.Preconditions.checkNotNull(hdfsDin);</span>
+<span class="nc bnc" id="L393" title="All 4 branches missed.">        com.google.common.base.Preconditions.checkArgument(startPos &lt; endPos &amp;&amp; startPos &gt;= 0);</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        com.google.common.base.Preconditions.checkArgument(nLines &gt;= 0);</span>
+
+<span class="nc" id="L396">        Deque&lt;String&gt; deque = new ArrayDeque&lt;&gt;();</span>
+<span class="nc" id="L397">        int buffSize = 8192;</span>
+<span class="nc" id="L398">        byte[] byteBuf = new byte[buffSize];</span>
+
+<span class="nc" id="L400">        long pos = endPos;</span>
+
+        // cause by log last char is \n
+<span class="nc" id="L403">        hdfsDin.seek(pos - 1);</span>
+<span class="nc" id="L404">        int lastChar = hdfsDin.read();</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">        if ('\n' == lastChar) {</span>
+<span class="nc" id="L406">            pos--;</span>
+        }
+
+<span class="nc" id="L409">        int bytesRead = (int) ((pos - startPos) % buffSize);</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">        if (bytesRead == 0) {</span>
+<span class="nc" id="L411">            bytesRead = buffSize;</span>
+        }
+
+<span class="nc" id="L414">        pos -= bytesRead;</span>
+<span class="nc" id="L415">        int lines = nLines;</span>
+<span class="nc bnc" id="L416" title="All 4 branches missed.">        while (lines &gt; 0 &amp;&amp; pos &gt;= startPos) {</span>
+<span class="nc" id="L417">            bytesRead = hdfsDin.read(pos, byteBuf, 0, bytesRead);</span>
+
+<span class="nc" id="L419">            int last = bytesRead;</span>
+<span class="nc bnc" id="L420" title="All 4 branches missed.">            for (int i = bytesRead - 1; i &gt;= 0 &amp;&amp; lines &gt; 0; i--) {</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">                if (byteBuf[i] == '\n') {</span>
+<span class="nc" id="L422">                    deque.push(new String(byteBuf, i, last - i, StandardCharsets.UTF_8));</span>
+<span class="nc" id="L423">                    lines--;</span>
+<span class="nc" id="L424">                    last = i;</span>
+                }
+            }
+
+<span class="nc bnc" id="L428" title="All 4 branches missed.">            if (lines &gt; 0 &amp;&amp; last &gt; 0) {</span>
+<span class="nc" id="L429">                deque.push(new String(byteBuf, 0, last, StandardCharsets.UTF_8));</span>
+            }
+
+<span class="nc" id="L432">            bytesRead = buffSize;</span>
+<span class="nc" id="L433">            pos -= bytesRead;</span>
+<span class="nc" id="L434">        }</span>
+
+<span class="nc" id="L436">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        while (!deque.isEmpty()) {</span>
+<span class="nc" id="L438">            sb.append(deque.pop());</span>
+        }
+
+<span class="nc bnc" id="L441" title="All 4 branches missed.">        return sb.length() &gt; 0 &amp;&amp; sb.charAt(0) == '\n' ? sb.substring(1) : sb.toString();</span>
+    }
+
+
+    public List&lt;AbstractExecutable&gt; getAllExecutables() {
+        try {
+<span class="fc" id="L447">            List&lt;AbstractExecutable&gt; ret = Lists.newArrayList();</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">            for (ExecutablePO po : executableDao.getJobs()) {</span>
+                try {
+<span class="fc" id="L450">                    AbstractExecutable ae = parseTo(po);</span>
+<span class="fc" id="L451">                    ret.add(ae);</span>
+<span class="nc" id="L452">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L453">                    logger.error(&quot;error parsing one executabePO: &quot;, e);</span>
+<span class="fc" id="L454">                }</span>
+<span class="fc" id="L455">            }</span>
+<span class="fc" id="L456">            return ret;</span>
+<span class="nc" id="L457">        } catch (PersistentException e) {</span>
+<span class="nc" id="L458">            logger.error(&quot;error get All Jobs&quot;, e);</span>
+<span class="nc" id="L459">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public List&lt;AbstractExecutable&gt; getAllExecutables(long timeStartInMillis, long timeEndInMillis) {
+        try {
+<span class="nc" id="L465">            List&lt;AbstractExecutable&gt; ret = Lists.newArrayList();</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">            for (ExecutablePO po : executableDao.getJobs(timeStartInMillis, timeEndInMillis)) {</span>
+                try {
+<span class="nc" id="L468">                    AbstractExecutable ae = parseTo(po);</span>
+<span class="nc" id="L469">                    ret.add(ae);</span>
+<span class="nc" id="L470">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L471">                    logger.error(&quot;error parsing one executabePO: &quot;, e);</span>
+<span class="nc" id="L472">                }</span>
+<span class="nc" id="L473">            }</span>
+<span class="nc" id="L474">            return ret;</span>
+<span class="nc" id="L475">        } catch (PersistentException e) {</span>
+<span class="nc" id="L476">            logger.error(&quot;error get All Jobs&quot;, e);</span>
+<span class="nc" id="L477">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public List&lt;AbstractExecutable&gt; getAllExecutableDigests(long timeStartInMillis, long timeEndInMillis) {
+<span class="nc" id="L482">        List&lt;AbstractExecutable&gt; ret = Lists.newArrayList();</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        for (ExecutablePO po : executableDao.getJobDigests(timeStartInMillis, timeEndInMillis)) {</span>
+            try {
+<span class="nc" id="L485">                AbstractExecutable ae = parseTo(po);</span>
+<span class="nc" id="L486">                ret.add(ae);</span>
+<span class="nc" id="L487">            } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L488">                logger.error(&quot;error parsing one executabePO: &quot;, e);</span>
+<span class="nc" id="L489">            }</span>
+<span class="nc" id="L490">        }</span>
+<span class="nc" id="L491">        return ret;</span>
+    }
+
+    public List&lt;String&gt; getAllJobIds() {
+        try {
+<span class="nc" id="L496">            return executableDao.getJobIds();</span>
+<span class="nc" id="L497">        } catch (PersistentException e) {</span>
+<span class="nc" id="L498">            logger.error(&quot;error get All Job Ids&quot;, e);</span>
+<span class="nc" id="L499">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public void updateAllRunningJobsToError() {
+        try {
+<span class="nc" id="L505">            final List&lt;ExecutableOutputPO&gt; jobOutputs = executableDao.getJobOutputs();</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">            for (ExecutableOutputPO executableOutputPO : jobOutputs) {</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">                if (executableOutputPO.getStatus().equalsIgnoreCase(ExecutableState.RUNNING.toString())) {</span>
+<span class="nc" id="L508">                    executableOutputPO.setStatus(ExecutableState.ERROR.toString());</span>
+<span class="nc" id="L509">                    executableDao.updateJobOutput(executableOutputPO);</span>
+                }
+<span class="nc" id="L511">            }</span>
+<span class="nc" id="L512">        } catch (PersistentException e) {</span>
+<span class="nc" id="L513">            logger.error(&quot;error reset job status from RUNNING to ERROR&quot;, e);</span>
+<span class="nc" id="L514">            throw new RuntimeException(e);</span>
+<span class="nc" id="L515">        }</span>
+<span class="nc" id="L516">    }</span>
+
+    public List&lt;String&gt; getAllJobIdsInCache() {
+<span class="fc" id="L519">        return executableDao.getJobIdsInCache();</span>
+    }
+
+    public void resumeAllRunningJobs() {
+        try {
+<span class="fc" id="L524">            final List&lt;ExecutableOutputPO&gt; jobOutputs = executableDao.getJobOutputs();</span>
+<span class="fc bfc" id="L525" title="All 2 branches covered.">            for (ExecutableOutputPO executableOutputPO : jobOutputs) {</span>
+<span class="pc bpc" id="L526" title="1 of 2 branches missed.">                if (executableOutputPO.getStatus().equalsIgnoreCase(ExecutableState.RUNNING.toString())) {</span>
+<span class="fc" id="L527">                    executableOutputPO.setStatus(ExecutableState.READY.toString());</span>
+<span class="fc" id="L528">                    executableDao.updateJobOutput(executableOutputPO);</span>
+                }
+<span class="fc" id="L530">            }</span>
+<span class="nc" id="L531">        } catch (PersistentException e) {</span>
+<span class="nc" id="L532">            logger.error(&quot;error reset job status from RUNNING to READY&quot;, e);</span>
+<span class="nc" id="L533">            throw new RuntimeException(e);</span>
+<span class="fc" id="L534">        }</span>
+<span class="fc" id="L535">    }</span>
+
+    public void resumeRunningJobForce(String jobId) {
+<span class="nc" id="L538">        AbstractExecutable job = getJob(jobId);</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L540">            return;</span>
+        }
+
+<span class="nc bnc" id="L543" title="All 2 branches missed.">        if (job instanceof DefaultChainedExecutable) {</span>
+<span class="nc" id="L544">            List&lt;AbstractExecutable&gt; tasks = ((DefaultChainedExecutable) job).getTasks();</span>
+<span class="nc bnc" id="L545" title="All 2 branches missed.">            for (AbstractExecutable task : tasks) {</span>
+<span class="nc bnc" id="L546" title="All 2 branches missed.">                if (task.getStatus() == ExecutableState.RUNNING) {</span>
+<span class="nc" id="L547">                    updateJobOutput(task.getParam(MetadataConstants.P_PROJECT_NAME), task.getId(), ExecutableState.READY, null, null, task.getLogPath());</span>
+<span class="nc" id="L548">                    break;</span>
+                }
+<span class="nc" id="L550">            }</span>
+        }
+<span class="nc" id="L552">        updateJobOutput(job.getParam(MetadataConstants.P_PROJECT_NAME), jobId, ExecutableState.READY, null, null, job.getLogPath());</span>
+<span class="nc" id="L553">    }</span>
+
+    public void resumeJob(String jobId) {
+<span class="nc" id="L556">        AbstractExecutable job = getJob(jobId);</span>
+<span class="nc bnc" id="L557" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L558">            return;</span>
+        }
+<span class="nc" id="L560">        Map&lt;String, String&gt; info = null;</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">        if (job instanceof DefaultChainedExecutable) {</span>
+<span class="nc" id="L562">            List&lt;AbstractExecutable&gt; tasks = ((DefaultChainedExecutable) job).getTasks();</span>
+<span class="nc bnc" id="L563" title="All 2 branches missed.">            for (AbstractExecutable task : tasks) {</span>
+<span class="nc bnc" id="L564" title="All 4 branches missed.">                if (task.getStatus() == ExecutableState.ERROR || task.getStatus() == ExecutableState.STOPPED) {</span>
+<span class="nc" id="L565">                    updateJobOutput(task.getParam(MetadataConstants.P_PROJECT_NAME), task.getId(), ExecutableState.READY, null, &quot;no output&quot;, task.getLogPath());</span>
+<span class="nc" id="L566">                    break;</span>
+                }
+<span class="nc" id="L568">            }</span>
+<span class="nc" id="L569">            final long endTime = job.getEndTime();</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">            if (endTime != 0) {</span>
+<span class="nc" id="L571">                long interruptTime = System.currentTimeMillis() - endTime + job.getInterruptTime();</span>
+<span class="nc" id="L572">                info = Maps.newHashMap(getJobOutput(jobId).getInfo());</span>
+<span class="nc" id="L573">                info.put(AbstractExecutable.INTERRUPT_TIME, Long.toString(interruptTime));</span>
+<span class="nc" id="L574">                info.remove(AbstractExecutable.END_TIME);</span>
+            }
+        }
+<span class="nc" id="L577">        updateJobOutput(job.getParam(MetadataConstants.P_PROJECT_NAME), jobId, ExecutableState.READY, info, null, job.getLogPath());</span>
+<span class="nc" id="L578">    }</span>
+
+    public void discardJob(String jobId) {
+<span class="fc" id="L581">        AbstractExecutable job = getJob(jobId);</span>
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L583">            return;</span>
+        }
+<span class="pc bpc" id="L585" title="1 of 2 branches missed.">        if (job.getStatus().isFinalState()) {</span>
+<span class="nc bnc" id="L586" title="All 2 branches missed.">            if (job.getStatus() != ExecutableState.DISCARDED) {</span>
+<span class="nc" id="L587">                logger.warn(&quot;The status of job &quot; + jobId + &quot; is &quot; + job.getStatus().toString()</span>
+                        + &quot;. It's final state and cannot be transfer to be discarded!!!&quot;);
+            } else {
+<span class="nc" id="L590">                logger.warn(&quot;The job &quot; + jobId + &quot; has been discarded.&quot;);</span>
+            }
+<span class="nc" id="L592">            throw new IllegalStateException(</span>
+<span class="nc" id="L593">                    &quot;The job &quot; + job.getId() + &quot; has already been finished and cannot be discarded.&quot;);</span>
+        }
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">        if (job instanceof DefaultChainedExecutable) {</span>
+<span class="fc" id="L596">            List&lt;AbstractExecutable&gt; tasks = ((DefaultChainedExecutable) job).getTasks();</span>
+<span class="fc bfc" id="L597" title="All 2 branches covered.">            for (AbstractExecutable task : tasks) {</span>
+<span class="pc bpc" id="L598" title="1 of 2 branches missed.">                if (!task.getStatus().isFinalState()) {</span>
+<span class="fc" id="L599">                    updateJobOutput(task.getParam(MetadataConstants.P_PROJECT_NAME), task.getId(), ExecutableState.DISCARDED, null, null, task.getLogPath());</span>
+                }
+<span class="fc" id="L601">            }</span>
+        }
+<span class="fc" id="L603">        updateJobOutput(job.getParam(MetadataConstants.P_PROJECT_NAME), jobId, ExecutableState.DISCARDED, null, null, job.getLogPath());</span>
+<span class="fc" id="L604">    }</span>
+
+    public void rollbackJob(String jobId, String stepId) {
+<span class="nc" id="L607">        AbstractExecutable job = getJob(jobId);</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L609">            return;</span>
+        }
+
+<span class="nc bnc" id="L612" title="All 2 branches missed.">        if (job instanceof DefaultChainedExecutable) {</span>
+<span class="nc" id="L613">            List&lt;AbstractExecutable&gt; tasks = ((DefaultChainedExecutable) job).getTasks();</span>
+<span class="nc bnc" id="L614" title="All 2 branches missed.">            for (AbstractExecutable task : tasks) {</span>
+<span class="nc bnc" id="L615" title="All 2 branches missed.">                if (task.getId().compareTo(stepId) &gt;= 0) {</span>
+<span class="nc" id="L616">                    logger.debug(&quot;rollback task : &quot; + task);</span>
+<span class="nc" id="L617">                    updateJobOutput(task.getParam(MetadataConstants.P_PROJECT_NAME), task.getId(), ExecutableState.READY, Maps.&lt;String, String&gt;newHashMap(), &quot;&quot;, task.getLogPath());</span>
+                }
+<span class="nc" id="L619">            }</span>
+        }
+
+<span class="nc bnc" id="L622" title="All 2 branches missed.">        if (job.getStatus() == ExecutableState.SUCCEED) {</span>
+<span class="nc" id="L623">            updateJobOutput(job.getParam(MetadataConstants.P_PROJECT_NAME), job.getId(), ExecutableState.READY, null, null, job.getLogPath());</span>
+        }
+<span class="nc" id="L625">    }</span>
+
+    public void pauseJob(String jobId) {
+<span class="nc" id="L628">        AbstractExecutable job = getJob(jobId);</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L630">            return;</span>
+        }
+
+<span class="nc bnc" id="L633" title="All 2 branches missed.">        if (!(job.getStatus() == ExecutableState.READY</span>
+<span class="nc bnc" id="L634" title="All 2 branches missed.">                || job.getStatus() == ExecutableState.RUNNING)) {</span>
+<span class="nc" id="L635">            logger.warn(&quot;The status of job &quot; + jobId + &quot; is &quot; + job.getStatus().toString()</span>
+                    + &quot;. It's final state and cannot be transfer to be stopped!!!&quot;);
+<span class="nc" id="L637">            throw new IllegalStateException(</span>
+<span class="nc" id="L638">                    &quot;The job &quot; + job.getId() + &quot; has already been finished and cannot be stopped.&quot;);</span>
+        }
+<span class="nc bnc" id="L640" title="All 2 branches missed.">        if (job instanceof DefaultChainedExecutable) {</span>
+<span class="nc" id="L641">            List&lt;AbstractExecutable&gt; tasks = ((DefaultChainedExecutable) job).getTasks();</span>
+<span class="nc bnc" id="L642" title="All 2 branches missed.">            for (AbstractExecutable task : tasks) {</span>
+<span class="nc bnc" id="L643" title="All 2 branches missed.">                if (!task.getStatus().isFinalState()) {</span>
+<span class="nc" id="L644">                    updateJobOutput(task.getParam(MetadataConstants.P_PROJECT_NAME), task.getId(), ExecutableState.STOPPED, null, null, task.getLogPath());</span>
+<span class="nc" id="L645">                    break;</span>
+                }
+<span class="nc" id="L647">            }</span>
+        }
+<span class="nc" id="L649">        updateJobOutput(job.getParam(MetadataConstants.P_PROJECT_NAME), jobId, ExecutableState.STOPPED, null, null, job.getLogPath());</span>
+<span class="nc" id="L650">    }</span>
+
+    public ExecutableOutputPO getJobOutput(String jobId) {
+        try {
+<span class="nc" id="L654">            return executableDao.getJobOutput(jobId);</span>
+<span class="nc" id="L655">        } catch (PersistentException e) {</span>
+<span class="nc" id="L656">            logger.error(&quot;Can't get output of Job &quot; + jobId);</span>
+<span class="nc" id="L657">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public void updateJobOutput(String project, String jobId, ExecutableState newStatus, Map&lt;String, String&gt; info, String output, String logPath) {
+<span class="pc bpc" id="L662" title="1 of 2 branches missed.">        if (Thread.currentThread().isInterrupted()) {</span>
+<span class="nc" id="L663">            throw new RuntimeException(&quot;Current thread is interruptted, aborting&quot;);</span>
+        }
+
+        try {
+<span class="fc" id="L667">            final ExecutableOutputPO jobOutput = executableDao.getJobOutput(jobId);</span>
+<span class="pc bpc" id="L668" title="1 of 2 branches missed.">            Preconditions.checkArgument(jobOutput != null, &quot;there is no related output for job id:&quot; + jobId);</span>
+<span class="fc" id="L669">            ExecutableState oldStatus = ExecutableState.valueOf(jobOutput.getStatus());</span>
+<span class="pc bpc" id="L670" title="2 of 4 branches missed.">            if (newStatus != null &amp;&amp; oldStatus != newStatus) {</span>
+<span class="fc bfc" id="L671" title="All 2 branches covered.">                if (!ExecutableState.isValidStateTransfer(oldStatus, newStatus)) {</span>
+<span class="fc" id="L672">                    throw new IllegalStateTranferException(&quot;there is no valid state transfer from:&quot; + oldStatus + &quot; to:&quot;</span>
+                            + newStatus + &quot;, job id: &quot; + jobId);
+                }
+<span class="fc" id="L675">                jobOutput.setStatus(newStatus.toString());</span>
+<span class="fc" id="L676">                logger.info(&quot;job id:&quot; + jobId + &quot; from &quot; + oldStatus + &quot; to &quot; + newStatus);</span>
+            }
+<span class="fc bfc" id="L678" title="All 2 branches covered.">            if (info != null) {</span>
+<span class="pc bpc" id="L679" title="1 of 2 branches missed.">                if (null != jobOutput.getInfo()) {</span>
+<span class="fc" id="L680">                    jobOutput.getInfo().putAll(info);</span>
+                } else {
+<span class="nc" id="L682">                    jobOutput.setInfo(info);</span>
+                }
+            }
+<span class="pc bpc" id="L685" title="1 of 4 branches missed.">            if ((ExecutableState.ERROR.equals(oldStatus) || ExecutableState.STOPPED.equals(oldStatus))</span>
+<span class="pc bpc" id="L686" title="1 of 2 branches missed.">                    &amp;&amp; ExecutableState.READY.equals(newStatus)) {</span>
+<span class="fc" id="L687">                jobOutput.getInfo().remove(AbstractExecutable.END_TIME);</span>
+            }
+<span class="fc bfc" id="L689" title="All 2 branches covered.">            if (output != null) {</span>
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">                if (output.length() &gt; config.getJobOutputMaxSize()) {</span>
+<span class="nc" id="L691">                    output = output.substring(0, config.getJobOutputMaxSize());</span>
+                }
+<span class="fc" id="L693">                jobOutput.setContent(output);</span>
+            }
+<span class="fc" id="L695">            executableDao.updateJobOutput(jobOutput);</span>
+
+<span class="fc bfc" id="L697" title="All 2 branches covered.">            if (needDestroyProcess(oldStatus, newStatus)) {</span>
+<span class="fc" id="L698">                logger.debug(&quot;need kill {}, from {} to {}&quot;, jobId, oldStatus, newStatus);</span>
+                // kill spark-submit process
+<span class="fc" id="L700">                destroyProcess(jobId);</span>
+            }
+<span class="nc" id="L702">        } catch (PersistentException e) {</span>
+<span class="nc" id="L703">            logger.error(&quot;error change job:&quot; + jobId + &quot; to &quot; + newStatus);</span>
+<span class="nc" id="L704">            throw new RuntimeException(e);</span>
+<span class="fc" id="L705">        }</span>
+
+<span class="pc bpc" id="L707" title="3 of 4 branches missed.">        if (project != null &amp;&amp; logPath != null) {</span>
+<span class="nc" id="L708">            updateJobOutputToHDFS(project, jobId, output, logPath);</span>
+        }
+<span class="fc" id="L710">    }</span>
+
+    public void updateJobOutputToHDFS(String project, String jobId, String output, String logPath) {
+<span class="nc" id="L713">        ExecutableOutputPO jobOutput = getJobOutput(jobId);</span>
+<span class="nc bnc" id="L714" title="All 2 branches missed.">        if (null != output) {</span>
+<span class="nc" id="L715">            jobOutput.setContent(output);</span>
+        }
+<span class="nc bnc" id="L717" title="All 2 branches missed.">        if (null != logPath) {</span>
+<span class="nc" id="L718">            jobOutput.setLogPath(logPath);</span>
+        }
+<span class="nc" id="L720">        String outputHDFSPath = KylinConfig.getInstanceFromEnv().getJobOutputStorePath(project, jobId);</span>
+<span class="nc bnc" id="L721" title="All 2 branches missed.">        logger.debug(&quot;Update JobOutput To HDFS for {} to {} [{}]&quot;, jobId, outputHDFSPath, jobOutput.getContent() != null ? jobOutput.getContent().length() : -1);</span>
+<span class="nc" id="L722">        updateJobOutputToHDFS(outputHDFSPath, jobOutput);</span>
+<span class="nc" id="L723">    }</span>
+
+    public void updateJobOutputToHDFS(String resPath, ExecutableOutputPO obj) {
+<span class="nc" id="L726">        DataOutputStream dout = null;</span>
+        try {
+<span class="nc" id="L728">            Path path = new Path(resPath);</span>
+<span class="nc" id="L729">            FileSystem fs = HadoopUtil.getWorkingFileSystem();</span>
+<span class="nc" id="L730">            dout = fs.create(path, true);</span>
+<span class="nc" id="L731">            JsonUtil.writeValue(dout, obj);</span>
+<span class="nc" id="L732">        } catch (Exception e) {</span>
+            // the operation to update output to hdfs failed, next task should not be interrupted.
+<span class="nc" id="L734">            logger.error(&quot;update job output [{}] to HDFS failed.&quot;, resPath, e);</span>
+        } finally {
+<span class="nc" id="L736">            IOUtils.closeQuietly(dout);</span>
+        }
+<span class="nc" id="L738">    }</span>
+
+    private boolean needDestroyProcess(ExecutableState from, ExecutableState to) {
+<span class="pc bpc" id="L741" title="1 of 4 branches missed.">        if (from != ExecutableState.RUNNING || to == null) {</span>
+<span class="fc" id="L742">            return false;</span>
+        }
+<span class="pc bpc" id="L744" title="1 of 8 branches missed.">        return to == ExecutableState.STOPPED || to == ExecutableState.READY || to == ExecutableState.DISCARDED</span>
+                || to == ExecutableState.ERROR;
+    }
+
+    public void destroyProcess(String jobId) {
+<span class="fc" id="L749">        Process originProc = JobProcessContext.getProcess(jobId);</span>
+<span class="pc bpc" id="L750" title="3 of 4 branches missed.">        if (Objects.nonNull(originProc) &amp;&amp; originProc.isAlive()) {</span>
+            try {
+<span class="nc" id="L752">                final int ppid = JobProcessContext.getPid(originProc);</span>
+<span class="nc" id="L753">                logger.info(&quot;start to destroy process {} of job {}&quot;, ppid, jobId);</span>
+                //build cmd template
+<span class="nc" id="L755">                StringBuilder cmdBuilder = new StringBuilder(&quot;bash &quot;);</span>
+<span class="nc" id="L756">                cmdBuilder.append(Paths.get(KylinConfig.getKylinHome(), &quot;bin&quot;, KILL_PROCESS_TREE));</span>
+<span class="nc" id="L757">                cmdBuilder.append(&quot; &quot;);</span>
+<span class="nc" id="L758">                cmdBuilder.append(ppid);</span>
+<span class="nc" id="L759">                final String killCmd = cmdBuilder.toString();</span>
+<span class="nc" id="L760">                Process killProc = Runtime.getRuntime().exec(killCmd);</span>
+<span class="nc bnc" id="L761" title="All 2 branches missed.">                if (killProc.waitFor(CMD_EXEC_TIMEOUT_SEC, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L762">                    logger.info(&quot;try to destroy process {} of job {}, exec cmd '{}', exitValue : {}&quot;, ppid, jobId,</span>
+<span class="nc" id="L763">                            killCmd, killProc.exitValue());</span>
+<span class="nc bnc" id="L764" title="All 2 branches missed.">                    if (!originProc.isAlive()) {</span>
+<span class="nc" id="L765">                        logger.info(&quot;destroy process {} of job {} SUCCEED.&quot;, ppid, jobId);</span>
+<span class="nc" id="L766">                        return;</span>
+                    }
+<span class="nc" id="L768">                    logger.info(&quot;destroy process {} of job {} FAILED.&quot;, ppid, jobId);</span>
+                }
+
+                //generally, code executing wouldn't reach here
+<span class="nc" id="L772">                logger.warn(&quot;destroy process {} of job {} TIMEOUT exceed {}s.&quot;, ppid, jobId, CMD_EXEC_TIMEOUT_SEC);</span>
+<span class="nc" id="L773">            } catch (Exception e) {</span>
+<span class="nc" id="L774">                logger.error(&quot;destroy process of job {} FAILED.&quot;, jobId, e);</span>
+<span class="nc" id="L775">            }</span>
+        }
+<span class="fc" id="L777">    }</span>
+
+    public void reloadAll() throws IOException {
+<span class="nc" id="L780">        executableDao.reloadAll();</span>
+<span class="nc" id="L781">    }</span>
+
+    public void forceKillJob(String jobId) {
+        try {
+<span class="nc" id="L785">            final ExecutableOutputPO jobOutput = executableDao.getJobOutput(jobId);</span>
+<span class="nc" id="L786">            List&lt;ExecutablePO&gt; tasks = executableDao.getJob(jobId).getTasks();</span>
+
+<span class="nc bnc" id="L788" title="All 2 branches missed.">            for (ExecutablePO task : tasks) {</span>
+<span class="nc bnc" id="L789" title="All 2 branches missed.">                if (executableDao.getJobOutput(task.getId()).getStatus().equals(&quot;SUCCEED&quot;)) {</span>
+<span class="nc" id="L790">                    continue;</span>
+<span class="nc bnc" id="L791" title="All 2 branches missed.">                } else if (executableDao.getJobOutput(task.getId()).getStatus().equals(&quot;RUNNING&quot;)) {</span>
+<span class="nc" id="L792">                    updateJobOutput(null, task.getId(), ExecutableState.READY, Maps.&lt;String, String&gt;newHashMap(), &quot;&quot;, null);</span>
+                }
+                break;
+            }
+
+<span class="nc bnc" id="L797" title="All 2 branches missed.">            if (!jobOutput.getStatus().equals(ExecutableState.ERROR.toString())) {</span>
+<span class="nc" id="L798">                jobOutput.setStatus(ExecutableState.ERROR.toString());</span>
+<span class="nc" id="L799">                executableDao.updateJobOutput(jobOutput);</span>
+            }
+<span class="nc" id="L801">        } catch (PersistentException e) {</span>
+<span class="nc" id="L802">            throw new RuntimeException(e);</span>
+<span class="nc" id="L803">        }</span>
+<span class="nc" id="L804">    }</span>
+
+    public void forceKillJobWithRetry(String jobId) {
+<span class="nc" id="L807">        boolean done = false;</span>
+
+<span class="nc bnc" id="L809" title="All 2 branches missed.">        while (!done) {</span>
+            try {
+<span class="nc" id="L811">                forceKillJob(jobId);</span>
+<span class="nc" id="L812">                done = true;</span>
+<span class="nc" id="L813">            } catch (RuntimeException e) {</span>
+<span class="nc bnc" id="L814" title="All 2 branches missed.">                if (!(e.getCause() instanceof PersistentException)) {</span>
+<span class="nc" id="L815">                    done = true;</span>
+                }
+<span class="nc" id="L817">            }</span>
+        }
+<span class="nc" id="L819">    }</span>
+
+    //for migration only
+    //TODO delete when migration finished
+    public void resetJobOutput(String jobId, ExecutableState state, String output) {
+        try {
+<span class="nc" id="L825">            final ExecutableOutputPO jobOutput = executableDao.getJobOutput(jobId);</span>
+<span class="nc" id="L826">            jobOutput.setStatus(state.toString());</span>
+<span class="nc bnc" id="L827" title="All 2 branches missed.">            if (output != null) {</span>
+<span class="nc" id="L828">                jobOutput.setContent(output);</span>
+            }
+<span class="nc" id="L830">            executableDao.updateJobOutput(jobOutput);</span>
+<span class="nc" id="L831">        } catch (PersistentException e) {</span>
+<span class="nc" id="L832">            throw new RuntimeException(e);</span>
+<span class="nc" id="L833">        }</span>
+<span class="nc" id="L834">    }</span>
+
+    public void addJobInfo(String id, Map&lt;String, String&gt; info) {
+<span class="fc bfc" id="L837" title="All 2 branches covered.">        if (Thread.currentThread().isInterrupted()) {</span>
+<span class="fc" id="L838">            throw new RuntimeException(&quot;Current thread is interrupted, aborting&quot;);</span>
+        }
+
+<span class="pc bpc" id="L841" title="1 of 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L842">            return;</span>
+        }
+
+        // post process
+<span class="pc bpc" id="L846" title="3 of 4 branches missed.">        if (info.containsKey(MR_JOB_ID) &amp;&amp; !info.containsKey(ExecutableConstants.YARN_APP_ID)) {</span>
+<span class="nc" id="L847">            String jobId = info.get(MR_JOB_ID);</span>
+<span class="nc bnc" id="L848" title="All 2 branches missed.">            if (jobId.startsWith(&quot;job_&quot;)) {</span>
+<span class="nc" id="L849">                info.put(YARN_APP_ID, jobId.replace(&quot;job_&quot;, &quot;application_&quot;));</span>
+            }
+        }
+
+<span class="pc bpc" id="L853" title="4 of 6 branches missed.">        if ((info.containsKey(YARN_APP_ID) || info.containsKey(FLINK_JOB_ID)) &amp;&amp; !StringUtils.isEmpty(config.getJobTrackingURLPattern())) {</span>
+<span class="nc" id="L854">            String pattern = config.getJobTrackingURLPattern();</span>
+<span class="nc bnc" id="L855" title="All 2 branches missed.">            String jobId = info.containsKey(YARN_APP_ID) ? info.get(YARN_APP_ID) : info.get(FLINK_JOB_ID);</span>
+            try {
+<span class="nc" id="L857">                String newTrackingURL = String.format(Locale.ROOT, pattern, jobId);</span>
+<span class="nc" id="L858">                info.put(YARN_APP_URL, newTrackingURL);</span>
+<span class="nc" id="L859">            } catch (IllegalFormatException ife) {</span>
+<span class="nc" id="L860">                logger.error(&quot;Illegal tracking url pattern: &quot; + config.getJobTrackingURLPattern());</span>
+<span class="nc" id="L861">            }</span>
+        }
+
+        try {
+<span class="fc" id="L865">            ExecutableOutputPO output = executableDao.getJobOutput(id);</span>
+<span class="pc bpc" id="L866" title="1 of 2 branches missed.">            Preconditions.checkArgument(output != null, &quot;there is no related output for job id:&quot; + id);</span>
+<span class="fc" id="L867">            output.getInfo().putAll(info);</span>
+<span class="fc" id="L868">            executableDao.updateJobOutput(output);</span>
+<span class="nc" id="L869">        } catch (PersistentException e) {</span>
+<span class="nc" id="L870">            logger.error(&quot;error update job info, id:&quot; + id + &quot;  info:&quot; + info.toString());</span>
+<span class="nc" id="L871">            throw new RuntimeException(e);</span>
+<span class="fc" id="L872">        }</span>
+<span class="fc" id="L873">    }</span>
+
+    public void addJobInfo(String id, String key, String value) {
+<span class="fc" id="L876">        Map&lt;String, String&gt; info = Maps.newHashMap();</span>
+<span class="fc" id="L877">        info.put(key, value);</span>
+<span class="fc" id="L878">        addJobInfo(id, info);</span>
+<span class="fc" id="L879">    }</span>
+
+    private AbstractExecutable parseTo(ExecutablePO executablePO) {
+<span class="pc bpc" id="L882" title="1 of 2 branches missed.">        if (executablePO == null) {</span>
+<span class="nc" id="L883">            logger.warn(&quot;executablePO is null&quot;);</span>
+<span class="nc" id="L884">            return null;</span>
+        }
+<span class="fc" id="L886">        String type = executablePO.getType();</span>
+<span class="fc" id="L887">        AbstractExecutable result = newExecutable(type);</span>
+<span class="fc" id="L888">        result.initConfig(config);</span>
+<span class="fc" id="L889">        result.setId(executablePO.getUuid());</span>
+<span class="fc" id="L890">        result.setName(executablePO.getName());</span>
+<span class="fc" id="L891">        result.setParams(executablePO.getParams());</span>
+<span class="fc" id="L892">        result.setPriority(executablePO.getPriority());</span>
+
+<span class="fc bfc" id="L894" title="All 2 branches covered.">        if (!(result instanceof BrokenExecutable)) {</span>
+<span class="fc" id="L895">            List&lt;ExecutablePO&gt; tasks = executablePO.getTasks();</span>
+<span class="pc bpc" id="L896" title="1 of 4 branches missed.">            if (tasks != null &amp;&amp; !tasks.isEmpty()) {</span>
+<span class="fc" id="L897">                Preconditions.checkArgument(result instanceof ChainedExecutable);</span>
+<span class="fc bfc" id="L898" title="All 2 branches covered.">                for (ExecutablePO subTask : tasks) {</span>
+<span class="fc" id="L899">                    AbstractExecutable subTaskExecutable = parseTo(subTask);</span>
+<span class="pc bpc" id="L900" title="1 of 2 branches missed.">                    if (subTaskExecutable != null) {</span>
+<span class="fc" id="L901">                        subTaskExecutable.setParentExecutable(result);</span>
+                    }
+<span class="fc" id="L903">                    ((ChainedExecutable) result).addTask(parseTo(subTask));</span>
+<span class="fc" id="L904">                }</span>
+            }
+<span class="fc" id="L906">            List&lt;ExecutablePO&gt; tasksForCheck = executablePO.getTasksForCheck();</span>
+<span class="pc bpc" id="L907" title="3 of 4 branches missed.">            if (tasksForCheck != null &amp;&amp; !tasksForCheck.isEmpty()) {</span>
+<span class="nc" id="L908">                Preconditions.checkArgument(result instanceof CheckpointExecutable);</span>
+<span class="nc bnc" id="L909" title="All 2 branches missed.">                for (ExecutablePO subTaskForCheck : tasksForCheck) {</span>
+<span class="nc" id="L910">                    ((CheckpointExecutable) result).addTaskForCheck(parseTo(subTaskForCheck));</span>
+<span class="nc" id="L911">                }</span>
+            }
+        }
+
+<span class="fc" id="L915">        return result;</span>
+    }
+
+    private AbstractExecutable newExecutable(String type) {
+        Class&lt;? extends AbstractExecutable&gt; clazz;
+        try {
+<span class="fc" id="L921">            clazz = ClassUtil.forName(type, AbstractExecutable.class);</span>
+<span class="fc" id="L922">        } catch (ClassNotFoundException ex) {</span>
+<span class="fc" id="L923">            clazz = BrokenExecutable.class;</span>
+<span class="fc" id="L924">            logger.error(&quot;Unknown executable type '&quot; + type + &quot;', using BrokenExecutable&quot;);</span>
+<span class="fc" id="L925">        }</span>
+        try {
+<span class="fc" id="L927">            return clazz.getConstructor().newInstance();</span>
+<span class="nc" id="L928">        } catch (Exception e) {</span>
+<span class="nc" id="L929">            throw new RuntimeException(&quot;Failed to instantiate &quot; + clazz, e);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/calcite/KylinRelDataTypeSystem.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPWindowRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPProjectRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPValuesRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPToEnumerableConverterRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/AggregateProjectReduceRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/AggregateMultipleExpandRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPUnionRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPSortRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPFilterRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPLimitRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPAggregateRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/optrule/OLAPJoinRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/pushdown/PushdownRunnerSDKImpl.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/QueryCli.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/TempStatementUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/DefaultQueryTransformer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/QueryUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/KeywordDefaultDirtyHack.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/QueryInfoCollector.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/PushDownUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/PushDownExecutor.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/util/RexUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/security/TableLevelACL.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/security/QueryACLTestUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/security/AccessDeniedException.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/security/QueryInterceptorUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/security/QueryInterceptor.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/QueryConnection.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/schema/OLAPSchemaFactory.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/schema/OLAPSchema.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/schema/OLAPTable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/adhoc/PushDownRunnerJdbcImpl.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/adhoc/JdbcPushDownConnectionManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/exec/QueryEngineFactory.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/exec/QueryEngine.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/exec/SparderMethod.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/exec/SparkExec.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/ColumnRowType.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/KylinEnumerableUnion.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPNonEquiJoinRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPWindowRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPAuthentication.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPContext.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPValuesRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPJoinRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPUnionRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/visitor/TupleExpressionVisitor.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/visitor/TupleFilterVisitor.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/KylinAggregateCall.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPSortRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPProjectRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPTableScan.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPToEnumerableConverter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPFilterRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPAggregateRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/relnode/OLAPLimitRel.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/udf/ConcatUDF.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/udf/MassInUDF.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/udf/VersionUDF.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/RoutingRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/RealizationChooser.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/QueryRouter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/rules/RemoveUncapableRealizationsRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/rules/RealizationSortRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/rules/RemoveBlackoutRealizationsRule.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/Candidate.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/routing/RealizationCheck.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/enumerator/OLAPQuery.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/enumerator/HiveEnumerator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/enumerator/OLAPEnumerator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/enumerator/LookupTableEnumerator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/main/java/org/apache/kylin/query/enumerator/DictionaryEnumerator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/calcite/KylinRelDataTypeSystemTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/KeywordDefaultDirtyHackTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/PushDownUtilTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/DefaultQueryTransformerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/QueryUtilTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/util/TempStatementUtilTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/aggregate/DimCountDistinctAggFuncTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/schema/OLAPTableTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/QueryConnectionTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/relnode/visitor/TupleFilterVisitorTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/udf/VersionUDFTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/java/org/apache/kylin/query/routing/RealizationCheckTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/query/src/test/resources/log4j.properties">
+</file>
+</checkstyle>

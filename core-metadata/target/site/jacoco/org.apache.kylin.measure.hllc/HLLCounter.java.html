@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HLLCounter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.hllc</a> &gt; <span class="el_source">HLLCounter.java</span></div><h1>HLLCounter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.hllc;
+
+import org.apache.kylin.shaded.com.google.common.hash.HashFunction;
+import org.apache.kylin.shaded.com.google.common.hash.Hashing;
+import org.apache.kylin.common.util.BytesUtil;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.util.Collection;
+import java.util.Map;
+
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">@SuppressWarnings(&quot;serial&quot;)</span>
+public class HLLCounter implements Serializable, Comparable&lt;HLLCounter&gt; {
+
+    static double[] harmonicMean;
+
+    static {
+<span class="fc" id="L38">        harmonicMean = new double[256];</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (int i = 1; i &lt; 256; i++)</span>
+<span class="fc" id="L40">            harmonicMean[i] = 1.0 / (1L &lt;&lt; i);</span>
+    }
+
+    // not final for test purpose
+<span class="fc" id="L44">    static double OVERFLOW_FACTOR = 0.01;</span>
+
+    private int p;
+
+    private int m;
+
+<span class="fc" id="L50">    private HashFunction hashFunc = Hashing.murmur3_128();</span>
+
+    private Register register;
+
+    public HLLCounter() {
+<span class="fc" id="L55">        this(14, RegisterType.SINGLE_VALUE, Hashing.murmur3_128());</span>
+<span class="fc" id="L56">    }</span>
+
+    public HLLCounter(int p) {
+<span class="fc" id="L59">        this(p, RegisterType.SINGLE_VALUE, Hashing.murmur3_128());</span>
+<span class="fc" id="L60">    }</span>
+
+    public HLLCounter(int p, HashFunction hashFunc) {
+<span class="nc" id="L63">        this(p, RegisterType.SINGLE_VALUE, hashFunc);</span>
+<span class="nc" id="L64">    }</span>
+
+    public HLLCounter(HLLCounter another) {
+<span class="fc" id="L67">        this(another.p, another.getRegisterType(), another.hashFunc);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if(another.getRegisterType() == RegisterType.DENSE){</span>
+<span class="fc" id="L69">            ((DenseRegister)register).copyFrom((DenseRegister)another.register);</span>
+        }else {
+<span class="fc" id="L71">            merge(another);</span>
+        }
+<span class="fc" id="L73">    }</span>
+
+    public HLLCounter(int p, RegisterType type) {
+<span class="fc" id="L76">        this(p, type, Hashing.murmur3_128());</span>
+<span class="fc" id="L77">    }</span>
+
+<span class="fc" id="L79">    HLLCounter(int p, RegisterType type, HashFunction hashFunc) {</span>
+<span class="fc" id="L80">        this.p = p;</span>
+<span class="fc" id="L81">        this.m = 1 &lt;&lt; p;//(int) Math.pow(2, p);</span>
+<span class="fc" id="L82">        this.hashFunc = hashFunc;</span>
+
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (type == RegisterType.SINGLE_VALUE) {</span>
+<span class="fc" id="L85">            this.register = new SingleValueRegister();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        } else if (type == RegisterType.SPARSE) {</span>
+<span class="nc" id="L87">            this.register = new SparseRegister();</span>
+        } else {
+<span class="fc" id="L89">            this.register = new DenseRegister(p);</span>
+        }
+<span class="fc" id="L91">    }</span>
+
+    public boolean isDense(int size) {
+<span class="fc" id="L94">        double over = OVERFLOW_FACTOR * m;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        return size &gt; (int) over;</span>
+    }
+
+    public void add(int value) {
+<span class="fc" id="L99">        add(hashFunc.hashInt(value).asLong());</span>
+<span class="fc" id="L100">    }</span>
+
+    public void add(String value) {
+<span class="fc" id="L103">        add(hashFunc.hashString(value, Charset.defaultCharset()).asLong());</span>
+<span class="fc" id="L104">    }</span>
+
+    public void add(byte[] value) {
+<span class="fc" id="L107">        add(hashFunc.hashBytes(value).asLong());</span>
+<span class="fc" id="L108">    }</span>
+
+    public void add(byte[] value, int offset, int length) {
+<span class="fc" id="L111">        add(hashFunc.hashBytes(value, offset, length).asLong());</span>
+<span class="fc" id="L112">    }</span>
+
+    public void addHashDirectly(long hash){
+<span class="nc" id="L115">        add(hash);</span>
+<span class="nc" id="L116">    }</span>
+
+    protected void add(long hash) {
+<span class="fc" id="L119">        int bucketMask = m - 1;</span>
+<span class="fc" id="L120">        int bucket = (int) (hash &amp; bucketMask);</span>
+<span class="fc" id="L121">        int firstOnePos = Long.numberOfLeadingZeros(hash | bucketMask) + 1;</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (register.getRegisterType() == RegisterType.SINGLE_VALUE) {</span>
+<span class="fc" id="L123">            SingleValueRegister sr = (SingleValueRegister) register;</span>
+<span class="fc" id="L124">            int pos = sr.getSingleValuePos();</span>
+<span class="pc bpc" id="L125" title="1 of 4 branches missed.">            if (pos &lt; 0 || pos == bucket) { //one or zero value</span>
+<span class="fc" id="L126">                setIfBigger(register, bucket, (byte) firstOnePos);</span>
+            } else { //two value
+<span class="fc" id="L128">                this.register = sr.toSparse();</span>
+<span class="fc" id="L129">                setIfBigger(register, bucket, (byte) firstOnePos);</span>
+            }
+<span class="fc" id="L131">        } else {</span>
+<span class="fc" id="L132">            setIfBigger(register, bucket, (byte) firstOnePos);</span>
+<span class="fc" id="L133">            toDenseIfNeeded();</span>
+        }
+<span class="fc" id="L135">    }</span>
+
+    private void setIfBigger(Register register, int pos, byte value) {
+<span class="fc" id="L138">        byte b = register.get(pos);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (value &gt; b) {</span>
+<span class="fc" id="L140">            register.set(pos, value);</span>
+        }
+<span class="fc" id="L142">    }</span>
+
+    private void toDenseIfNeeded() {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (register.getRegisterType() == RegisterType.SPARSE) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (isDense(register.getSize())) {</span>
+<span class="fc" id="L147">                register = ((SparseRegister) register).toDense(p);</span>
+            }
+        }
+<span class="fc" id="L150">    }</span>
+
+    public void merge(HLLCounter another) {
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">        assert this.p == another.p;</span>
+<span class="pc bpc" id="L154" title="2 of 4 branches missed.">        assert this.hashFunc.equals(another.hashFunc);</span>
+<span class="fc bfc" id="L155" title="All 3 branches covered.">        switch (register.getRegisterType()) {</span>
+            case SINGLE_VALUE:
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">                switch (another.getRegisterType()) {</span>
+                    case SINGLE_VALUE:
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">                        if (register.getSize() &gt; 0 &amp;&amp; another.register.getSize() &gt; 0) {</span>
+<span class="fc" id="L160">                            register = ((SingleValueRegister) register).toSparse();</span>
+                        } else {
+<span class="fc" id="L162">                            SingleValueRegister sr = (SingleValueRegister) another.register;</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                            if (sr.getSize() &gt; 0)</span>
+<span class="fc" id="L164">                                register.set(sr.getSingleValuePos(), sr.getValue());</span>
+<span class="fc" id="L165">                            return;</span>
+                        }
+                        break;
+                    case SPARSE:
+<span class="fc" id="L169">                        register = ((SingleValueRegister) register).toSparse();</span>
+<span class="fc" id="L170">                        break;</span>
+                    case DENSE:
+<span class="fc" id="L172">                        register = ((SingleValueRegister) register).toDense(this.p);</span>
+<span class="fc" id="L173">                        break;</span>
+                    default:
+<span class="nc" id="L175">                        break;</span>
+                }
+
+                break;
+            case SPARSE:
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                if (another.getRegisterType() == RegisterType.DENSE) {</span>
+<span class="nc" id="L181">                    register = ((SparseRegister) register).toDense(p);</span>
+                }
+                break;
+            default:
+                break;
+        }
+<span class="fc" id="L187">        register.merge(another.register);</span>
+<span class="fc" id="L188">        toDenseIfNeeded();</span>
+<span class="fc" id="L189">    }</span>
+
+    public long getCountEstimate() {
+<span class="fc" id="L192">        return new HLLCSnapshot(this).getCountEstimate();</span>
+    }
+
+    public int getPrecision() {
+<span class="nc" id="L196">        return this.p;</span>
+    }
+
+    public double getErrorRate() {
+<span class="fc" id="L200">        return 1.04 / Math.sqrt(m);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L205">        return &quot;&quot; + getCountEstimate();</span>
+    }
+
+    // ============================================================================
+
+    // a memory efficient snapshot of HLL registers which can yield count estimate later
+    public static class HLLCSnapshot {
+        byte p;
+        double registerSum;
+        int zeroBuckets;
+
+<span class="fc" id="L216">        public HLLCSnapshot(HLLCounter hllc) {</span>
+<span class="fc" id="L217">            int[] registerNums = new int[256];</span>
+
+<span class="fc" id="L219">            p = (byte) hllc.p;</span>
+<span class="fc" id="L220">            registerSum = 0;</span>
+<span class="fc" id="L221">            zeroBuckets = 0;</span>
+<span class="fc" id="L222">            Register register = hllc.getRegister();</span>
+            DenseRegister dr;
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (register.getRegisterType() == RegisterType.SINGLE_VALUE) {</span>
+<span class="fc" id="L225">                dr = ((SingleValueRegister) register).toDense(p);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            } else if (register.getRegisterType() == RegisterType.SPARSE) {</span>
+<span class="fc" id="L227">                dr = ((SparseRegister) register).toDense(p);</span>
+            } else {
+<span class="fc" id="L229">                dr = (DenseRegister) register;</span>
+            }
+<span class="fc" id="L231">            byte[] registers = dr.getRawRegister();</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">            for (int i = 0; i &lt; hllc.m; i ++) {</span>
+<span class="fc" id="L233">                registerNums[registers[i]] ++;</span>
+            }
+<span class="fc" id="L235">            zeroBuckets = registerNums[0];</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            for (int i= 1; i &lt; 256; i ++)</span>
+<span class="fc" id="L237">                registerSum += registerNums[i] * harmonicMean[i];</span>
+
+<span class="fc" id="L239">            registerSum += zeroBuckets;</span>
+<span class="fc" id="L240">        }</span>
+
+        public long getCountEstimate() {
+<span class="fc" id="L243">            int m = 1 &lt;&lt; p;</span>
+<span class="fc" id="L244">            double alpha = 0.7213 / (1 + 1.079 / m);</span>
+<span class="fc" id="L245">            double estimate = alpha * m * m / registerSum;</span>
+
+            // small cardinality adjustment
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (zeroBuckets &gt;= m * 0.07) { // (reference presto's HLL impl)</span>
+<span class="fc" id="L249">                estimate = m * Math.log(m * 1.0 / zeroBuckets);</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">            } else if (HyperLogLogPlusTable.isBiasCorrection(m, estimate)) {</span>
+<span class="fc" id="L251">                estimate = HyperLogLogPlusTable.biasCorrection(p, estimate);</span>
+            }
+
+<span class="fc" id="L254">            return Math.round(estimate);</span>
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+<span class="nc" id="L259">        dumpErrorRates();</span>
+<span class="nc" id="L260">    }</span>
+
+    static void dumpErrorRates() {
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        for (int p = 10; p &lt;= 18; p++) {</span>
+<span class="nc" id="L264">            double rate = new HLLCounter(p, RegisterType.SPARSE).getErrorRate();</span>
+<span class="nc" id="L265">            double er = Math.round(rate * 10000) / 100D;</span>
+<span class="nc" id="L266">            double er2 = Math.round(rate * 2 * 10000) / 100D;</span>
+<span class="nc" id="L267">            double er3 = Math.round(rate * 3 * 10000) / 100D;</span>
+<span class="nc" id="L268">            long size = Math.round(Math.pow(2, p));</span>
+<span class="nc" id="L269">            System.out.println(&quot;HLLC&quot; + p + &quot;,\t&quot; + size + &quot; bytes,\t68% err&lt;&quot; + er + &quot;%&quot; + &quot;,\t95% err&lt;&quot; + er2 + &quot;%&quot; + &quot;,\t99.7% err&lt;&quot; + er3 + &quot;%&quot;);</span>
+        }
+<span class="nc" id="L271">    }</span>
+
+    public Register getRegister() {
+<span class="fc" id="L274">        return register;</span>
+    }
+
+    public void clear() {
+<span class="fc" id="L278">        register.clear();</span>
+<span class="fc" id="L279">    }</span>
+
+    // ============================================================================
+
+    public void writeRegisters(final ByteBuffer out) throws IOException {
+
+<span class="fc" id="L285">        final int indexLen = getRegisterIndexSize();</span>
+<span class="fc" id="L286">        int size = register.getSize();</span>
+
+        // decide output scheme -- map (3*size bytes) or array (2^p bytes)
+        byte scheme;
+<span class="fc bfc" id="L290" title="All 6 branches covered.">        if (register instanceof SingleValueRegister || register instanceof SparseRegister //</span>
+                || 5 + (indexLen + 1) * size &lt; m) {
+<span class="fc" id="L292">            scheme = 0; // map</span>
+        } else {
+<span class="fc" id="L294">            scheme = 1; // array</span>
+        }
+<span class="fc" id="L296">        out.put(scheme);</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (scheme == 0) { // map scheme</span>
+<span class="fc" id="L298">            BytesUtil.writeVInt(size, out);</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">            if (register.getRegisterType() == RegisterType.SINGLE_VALUE) { //single value register</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">                if (size &gt; 0) {</span>
+<span class="fc" id="L301">                    SingleValueRegister sr = (SingleValueRegister) register;</span>
+<span class="fc" id="L302">                    writeUnsigned(sr.getSingleValuePos(), indexLen, out);</span>
+<span class="fc" id="L303">                    out.put(sr.getValue());</span>
+<span class="fc" id="L304">                }</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            } else if (register.getRegisterType() == RegisterType.SPARSE) { //sparse register</span>
+<span class="fc" id="L306">                Collection&lt;Map.Entry&lt;Integer, Byte&gt;&gt; allValue = ((SparseRegister) register).getAllValue();</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                for (Map.Entry&lt;Integer, Byte&gt; entry : allValue) {</span>
+<span class="fc" id="L308">                    writeUnsigned(entry.getKey(), indexLen, out);</span>
+<span class="fc" id="L309">                    out.put(entry.getValue());</span>
+<span class="fc" id="L310">                }</span>
+<span class="fc" id="L311">            } else { //dense register</span>
+<span class="fc" id="L312">                byte[] registers = ((DenseRegister) register).getRawRegister();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                for (int i = 0; i &lt; m; i++) {</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                    if (registers[i] &gt; 0) {</span>
+<span class="fc" id="L315">                        writeUnsigned(i, indexLen, out);</span>
+<span class="fc" id="L316">                        out.put(registers[i]);</span>
+                    }
+                }
+<span class="fc" id="L319">            }</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">        } else if (scheme == 1) { // array scheme</span>
+<span class="fc" id="L321">            out.put(((DenseRegister) register).getRawRegister());</span>
+        } else
+<span class="nc" id="L323">            throw new IllegalStateException();</span>
+<span class="fc" id="L324">    }</span>
+
+    public void readRegisters(ByteBuffer in) throws IOException {
+<span class="fc" id="L327">        byte scheme = in.get();</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        if (scheme == 0) { // map scheme</span>
+<span class="fc" id="L329">            clear();</span>
+<span class="fc" id="L330">            int size = BytesUtil.readVInt(in);</span>
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">            if (size &gt; m)</span>
+<span class="nc" id="L332">                throw new IllegalArgumentException(&quot;register size (&quot; + size + &quot;) cannot be larger than m (&quot; + m + &quot;)&quot;);</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">            if (isDense(size)) {</span>
+<span class="fc" id="L334">                register = new DenseRegister(p);</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">            } else if (size &lt;= 1) {</span>
+<span class="fc" id="L336">                register = new SingleValueRegister();</span>
+            } else {
+<span class="fc" id="L338">                register = new SparseRegister();</span>
+            }
+<span class="fc" id="L340">            int indexLen = getRegisterIndexSize();</span>
+<span class="fc" id="L341">            int key = 0;</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">            for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L343">                key = readUnsigned(in, indexLen);</span>
+<span class="fc" id="L344">                register.set(key, in.get());</span>
+            }
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        } else if (scheme == 1) { // array scheme</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            if (register.getRegisterType() != RegisterType.DENSE) {</span>
+<span class="fc" id="L348">                register = new DenseRegister(p);</span>
+            }
+<span class="fc" id="L350">            in.get(((DenseRegister) register).getRawRegister());</span>
+        } else
+<span class="nc" id="L352">            throw new IllegalStateException();</span>
+<span class="fc" id="L353">    }</span>
+
+    public int peekLength(ByteBuffer in) {
+<span class="fc" id="L356">        int mark = in.position();</span>
+        int len;
+<span class="fc" id="L358">        byte scheme = in.get();</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        if (scheme == 0) { // map scheme</span>
+<span class="fc" id="L360">            int size = BytesUtil.readVInt(in);</span>
+<span class="fc" id="L361">            int indexLen = getRegisterIndexSize();</span>
+<span class="fc" id="L362">            len = in.position() - mark + (indexLen + 1) * size;</span>
+<span class="fc" id="L363">        } else {</span>
+<span class="fc" id="L364">            len = in.position() - mark + m;</span>
+        }
+
+<span class="fc" id="L367">        in.position(mark);</span>
+<span class="fc" id="L368">        return len;</span>
+    }
+
+    public int maxLength() {
+<span class="nc" id="L372">        return 1 + m;</span>
+    }
+
+    public int getRegisterIndexSize() {
+<span class="fc" id="L376">        return (p - 1) / 8 + 1; // 2 when p=16, 3 when p=17</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L381">        final int prime = 31;</span>
+<span class="nc" id="L382">        int result = 1;</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        result = prime * result + ((hashFunc == null) ? 0 : hashFunc.hashCode());</span>
+<span class="nc" id="L384">        result = prime * result + p;</span>
+<span class="nc" id="L385">        result = prime * result + register.hashCode();</span>
+<span class="nc" id="L386">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L392">            return true;</span>
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L394">            return false;</span>
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L396">            return false;</span>
+<span class="fc" id="L397">        HLLCounter other = (HLLCounter) obj;</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">        if (!hashFunc.equals(other.hashFunc))</span>
+<span class="nc" id="L399">            return false;</span>
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">        if (p != other.p)</span>
+<span class="nc" id="L401">            return false;</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">        if (!register.equals(other.register))</span>
+<span class="nc" id="L403">            return false;</span>
+<span class="fc" id="L404">        return true;</span>
+    }
+
+    @Override
+    public int compareTo(HLLCounter o) {
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        if (o == null)</span>
+<span class="nc" id="L410">            return 1;</span>
+
+<span class="nc" id="L412">        long e1 = this.getCountEstimate();</span>
+<span class="nc" id="L413">        long e2 = o.getCountEstimate();</span>
+
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        if (e1 == e2)</span>
+<span class="nc" id="L416">            return 0;</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        else if (e1 &gt; e2)</span>
+<span class="nc" id="L418">            return 1;</span>
+        else
+<span class="nc" id="L420">            return -1;</span>
+    }
+
+    public static void writeUnsigned(int num, int size, ByteBuffer out) {
+<span class="fc bfc" id="L424" title="All 2 branches covered.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L425">            out.put((byte) num);</span>
+<span class="fc" id="L426">            num &gt;&gt;&gt;= 8;</span>
+        }
+<span class="fc" id="L428">    }</span>
+
+    public static int readUnsigned(ByteBuffer in, int size) {
+<span class="fc" id="L431">        int integer = 0;</span>
+<span class="fc" id="L432">        int mask = 0xff;</span>
+<span class="fc" id="L433">        int shift = 0;</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L435">            integer |= (in.get() &lt;&lt; shift) &amp; mask;</span>
+<span class="fc" id="L436">            mask = mask &lt;&lt; 8;</span>
+<span class="fc" id="L437">            shift += 8;</span>
+        }
+<span class="fc" id="L439">        return integer;</span>
+    }
+
+    public RegisterType getRegisterType() {
+<span class="fc" id="L443">        return register.getRegisterType();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

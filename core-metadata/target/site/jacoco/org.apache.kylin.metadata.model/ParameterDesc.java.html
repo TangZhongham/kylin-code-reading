@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParameterDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">ParameterDesc.java</span></div><h1>ParameterDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L41">public class ParameterDesc implements Serializable {</span>
+
+    public static ParameterDesc newInstance(Object... objs) {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (objs.length == 0)</span>
+<span class="nc" id="L45">            throw new IllegalArgumentException();</span>
+
+<span class="fc" id="L47">        ParameterDesc r = new ParameterDesc();</span>
+
+<span class="fc" id="L49">        Object obj = objs[0];</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (obj instanceof TblColRef) {</span>
+<span class="fc" id="L51">            TblColRef col = (TblColRef) obj;</span>
+<span class="fc" id="L52">            r.type = FunctionDesc.PARAMETER_TYPE_COLUMN;</span>
+<span class="fc" id="L53">            r.value = col.getIdentity();</span>
+<span class="fc" id="L54">            r.colRef = col;</span>
+<span class="fc" id="L55">        } else {</span>
+<span class="fc" id="L56">            r.type = FunctionDesc.PARAMETER_TYPE_CONSTANT;</span>
+<span class="fc" id="L57">            r.value = (String) obj;</span>
+        }
+
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (objs.length &gt;= 2) {</span>
+<span class="nc" id="L61">            r.nextParameter = newInstance(Arrays.copyOfRange(objs, 1, objs.length));</span>
+        }
+<span class="fc" id="L63">        return r;</span>
+    }
+
+    @JsonProperty(&quot;type&quot;)
+    private String type;
+    @JsonProperty(&quot;value&quot;)
+    private String value;
+
+    @JsonProperty(&quot;next_parameter&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private ParameterDesc nextParameter;
+
+<span class="fc" id="L75">    private TblColRef colRef = null;</span>
+<span class="fc" id="L76">    private List&lt;TblColRef&gt; allColRefsIncludingNexts = null;</span>
+<span class="fc" id="L77">    private Set&lt;PlainParameter&gt; plainParameters = null;</span>
+
+    // Lazy evaluation
+    public Set&lt;PlainParameter&gt; getPlainParameters() {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        if (plainParameters == null) {</span>
+<span class="nc" id="L82">            plainParameters = PlainParameter.createFromParameterDesc(this);</span>
+        }
+<span class="nc" id="L84">        return plainParameters;</span>
+    }
+
+    public String getType() {
+<span class="nc" id="L88">        return type;</span>
+    }
+
+    public void setType(String type) {
+<span class="nc" id="L92">        this.type = type;</span>
+<span class="nc" id="L93">    }</span>
+
+    public byte[] getBytes() throws UnsupportedEncodingException {
+<span class="nc" id="L96">        return value.getBytes(&quot;UTF-8&quot;);</span>
+    }
+
+    public String getValue() {
+<span class="nc" id="L100">        return value;</span>
+    }
+
+    public void setValue(String value) {
+<span class="nc" id="L104">        this.value = value;</span>
+<span class="nc" id="L105">    }</span>
+
+    public TblColRef getColRef() {
+<span class="fc" id="L108">        return colRef;</span>
+    }
+
+    void setColRef(TblColRef colRef) {
+<span class="nc" id="L112">        this.colRef = colRef;</span>
+<span class="nc" id="L113">    }</span>
+
+    public List&lt;TblColRef&gt; getColRefs() {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (allColRefsIncludingNexts == null) {</span>
+<span class="fc" id="L117">            List&lt;TblColRef&gt; all = new ArrayList&lt;&gt;(2);</span>
+<span class="fc" id="L118">            ParameterDesc p = this;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            while (p != null) {</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">                if (p.isColumnType())</span>
+<span class="fc" id="L121">                    all.add(p.getColRef());</span>
+
+<span class="fc" id="L123">                p = p.nextParameter;</span>
+            }
+<span class="fc" id="L125">            allColRefsIncludingNexts = all;</span>
+        }
+<span class="fc" id="L127">        return allColRefsIncludingNexts;</span>
+    }
+
+    public ParameterDesc getNextParameter() {
+<span class="nc" id="L131">        return nextParameter;</span>
+    }
+
+    public boolean isColumnType() {
+<span class="fc" id="L135">        return FunctionDesc.PARAMETER_TYPE_COLUMN.equals(type.toLowerCase(Locale.ROOT));</span>
+    }
+
+    public boolean isConstant() {
+<span class="nc" id="L139">        return FunctionDesc.PARAMETER_TYPE_CONSTANT.equals(type.toLowerCase(Locale.ROOT));</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L145">            return true;</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L147">            return false;</span>
+
+<span class="nc" id="L149">        ParameterDesc that = (ParameterDesc) o;</span>
+
+<span class="nc bnc" id="L151" title="All 6 branches missed.">        if (type != null ? !type.equals(that.type) : that.type != null)</span>
+<span class="nc" id="L152">            return false;</span>
+
+<span class="nc" id="L154">        ParameterDesc p = this, q = that;</span>
+<span class="nc bnc" id="L155" title="All 4 branches missed.">        for (; p != null &amp;&amp; q != null; p = p.nextParameter, q = q.nextParameter) {</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">            if (p.isColumnType()) {</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                if (q.isColumnType() == false)</span>
+<span class="nc" id="L158">                    return false;</span>
+<span class="nc bnc" id="L159" title="All 4 branches missed.">                if (q.getColRef() != null &amp;&amp; q.getColRef().equals(p.getColRef()) == false)</span>
+<span class="nc" id="L160">                    return false;</span>
+<span class="nc bnc" id="L161" title="All 4 branches missed.">                if (!(q.getType().equals(p.getType()) &amp;&amp; q.getValue().equals(q.getValue()))) {</span>
+<span class="nc" id="L162">                    return false;</span>
+                }
+            } else {
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                if (q.isColumnType() == true)</span>
+<span class="nc" id="L166">                    return false;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                if (p.value.equals(q.value) == false)</span>
+<span class="nc" id="L168">                    return false;</span>
+            }
+        }
+
+<span class="nc bnc" id="L172" title="All 4 branches missed.">        return p == null &amp;&amp; q == null;</span>
+    }
+
+    public boolean equalInArbitraryOrder(Object o) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L177">            return true;</span>
+<span class="nc bnc" id="L178" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L179">            return false;</span>
+
+<span class="nc" id="L181">        ParameterDesc that = (ParameterDesc) o;</span>
+
+<span class="nc" id="L183">        Set&lt;PlainParameter&gt; thisPlainParams = this.getPlainParameters();</span>
+<span class="nc" id="L184">        Set&lt;PlainParameter&gt; thatPlainParams = that.getPlainParameters();</span>
+
+<span class="nc bnc" id="L186" title="All 4 branches missed.">        return thisPlainParams.containsAll(thatPlainParams) &amp;&amp; thatPlainParams.containsAll(thisPlainParams);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        int result = type != null ? type.hashCode() : 0;</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        result = 31 * result + (colRef != null ? colRef.hashCode() : 0);</span>
+<span class="nc" id="L193">        return result;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L198">        String tmp = null;</span>
+<span class="nc bnc" id="L199" title="All 4 branches missed.">        if (isColumnType() &amp;&amp; colRef != null) {</span>
+<span class="nc" id="L200">            tmp = colRef.toString();</span>
+        } else {
+<span class="nc" id="L202">            tmp = value;</span>
+        }
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        return nextParameter == null ? tmp : tmp + &quot;,&quot; + nextParameter.toString();</span>
+    }
+
+    /**
+     * PlainParameter is created to present ParameterDesc in List style.
+     * Compared to ParameterDesc its advantage is:
+     * 1. easy to compare without considering order
+     * 2. easy to compare one by one
+     */
+    private static class PlainParameter {
+        private String type;
+        private String value;
+<span class="nc" id="L216">        private TblColRef colRef = null;</span>
+
+<span class="nc" id="L218">        private PlainParameter() {</span>
+<span class="nc" id="L219">        }</span>
+
+        public boolean isColumnType() {
+<span class="nc" id="L222">            return FunctionDesc.PARAMETER_TYPE_COLUMN.equals(type);</span>
+        }
+
+        static Set&lt;PlainParameter&gt; createFromParameterDesc(ParameterDesc parameterDesc) {
+<span class="nc" id="L226">            Set&lt;PlainParameter&gt; result = Sets.newHashSet();</span>
+<span class="nc" id="L227">            ParameterDesc local = parameterDesc;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            while (local != null) {</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">                if (local.isColumnType()) {</span>
+<span class="nc" id="L230">                    result.add(createSingleColumnParameter(local));</span>
+                } else {
+<span class="nc" id="L232">                    result.add(createSingleValueParameter(local));</span>
+                }
+<span class="nc" id="L234">                local = local.nextParameter;</span>
+            }
+<span class="nc" id="L236">            return result;</span>
+        }
+
+        static PlainParameter createSingleValueParameter(ParameterDesc parameterDesc) {
+<span class="nc" id="L240">            PlainParameter single = new PlainParameter();</span>
+<span class="nc" id="L241">            single.type = parameterDesc.type;</span>
+<span class="nc" id="L242">            single.value = parameterDesc.value;</span>
+<span class="nc" id="L243">            return single;</span>
+        }
+
+        static PlainParameter createSingleColumnParameter(ParameterDesc parameterDesc) {
+<span class="nc" id="L247">            PlainParameter single = new PlainParameter();</span>
+<span class="nc" id="L248">            single.type = parameterDesc.type;</span>
+<span class="nc" id="L249">            single.value = parameterDesc.value;</span>
+<span class="nc" id="L250">            single.colRef = parameterDesc.colRef;</span>
+<span class="nc" id="L251">            return single;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            int result = type != null ? type.hashCode() : 0;</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">            result = 31 * result + (colRef != null ? colRef.hashCode() : 0);</span>
+<span class="nc" id="L258">            return result;</span>
+        }
+
+        @Override
+        public boolean equals(Object o) {
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            if (this == o)</span>
+<span class="nc" id="L264">                return true;</span>
+<span class="nc bnc" id="L265" title="All 4 branches missed.">            if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L266">                return false;</span>
+
+<span class="nc" id="L268">            PlainParameter that = (PlainParameter) o;</span>
+
+<span class="nc bnc" id="L270" title="All 2 branches missed.">            if (!Objects.equals(type, that.type))</span>
+<span class="nc" id="L271">                return false;</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">            if (this.isColumnType()) {</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">                if (!that.isColumnType())</span>
+<span class="nc" id="L275">                    return false;</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">                if (!Objects.equals(colRef, that.colRef)) {</span>
+<span class="nc" id="L277">                    return false;</span>
+                }
+            } else {
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                if (that.isColumnType())</span>
+<span class="nc" id="L281">                    return false;</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">                if (!Objects.equals(value, that.value))</span>
+<span class="nc" id="L283">                    return false;</span>
+            }
+
+<span class="nc" id="L286">            return true;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

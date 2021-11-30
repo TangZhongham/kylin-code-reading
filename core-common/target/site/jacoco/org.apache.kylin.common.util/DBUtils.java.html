@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DBUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">DBUtils.java</span></div><h1>DBUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.util;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="nc" id="L28">public class DBUtils {</span>
+
+<span class="nc" id="L30">    private static final Logger logger = LoggerFactory.getLogger(DBUtils.class);</span>
+    
+    /**
+     * Closes an &lt;code&gt;ResultSet&lt;/code&gt; unconditionally.
+     * &lt;p&gt;
+     * Equivalent to {@link ResultSet#close()}, except any exceptions will be ignored.
+     * This is typically used in finally blocks.
+     * &lt;p&gt;
+     *
+     * @param output the ResultSet to close, may be null or already closed
+     */
+    public static void closeQuietly(final ResultSet rs) {
+<span class="nc" id="L42">        closeQuietly((AutoCloseable) rs);</span>
+<span class="nc" id="L43">    }</span>
+
+    /**
+     * Closes an &lt;code&gt;Statement&lt;/code&gt; unconditionally.
+     * &lt;p&gt;
+     * Equivalent to {@link Statement#close()}, except any exceptions will be ignored.
+     * This is typically used in finally blocks.
+     * &lt;p&gt;
+     *
+     * @param output the ResultSet to close, may be null or already closed
+     */
+    public static void closeQuietly(final Statement stmt) {
+<span class="nc" id="L55">        closeQuietly((AutoCloseable) stmt);</span>
+<span class="nc" id="L56">    }</span>
+
+    /**
+     * Closes an &lt;code&gt;Connection&lt;/code&gt; unconditionally.
+     * &lt;p&gt;
+     * Equivalent to {@link Connection#close()}, except any exceptions will be ignored.
+     * This is typically used in finally blocks.
+     * &lt;p&gt;
+     *
+     * @param output the ResultSet to close, may be null or already closed
+     */
+    public static void closeQuietly(final Connection conn) {
+<span class="nc" id="L68">        closeQuietly((AutoCloseable) conn);</span>
+<span class="nc" id="L69">    }</span>
+
+    /**
+     * Closes a &lt;code&gt;AutoCloseable&lt;/code&gt; unconditionally.
+     * &lt;p&gt;
+     * Equivalent to {@link AutoCloseable#close()}, except any exceptions will be ignored. This is typically used in
+     * finally blocks.
+     * &lt;p&gt;
+     *
+     * @param closeable the objects to close, may be null or already closed
+     */
+    public static void closeQuietly(final AutoCloseable closeable) {
+        try {
+<span class="nc bnc" id="L82" title="All 2 branches missed.">            if (closeable != null) {</span>
+<span class="nc" id="L83">                closeable.close();</span>
+            }
+<span class="nc" id="L85">        } catch (final Exception ioe) {</span>
+<span class="nc" id="L86">            logger.debug(&quot;&quot;, ioe);</span>
+<span class="nc" id="L87">        }</span>
+<span class="nc" id="L88">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

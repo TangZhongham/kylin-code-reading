@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MailTemplateProvider.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">MailTemplateProvider.java</span></div><h1>MailTemplateProvider.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.StringWriter;
+import java.io.Writer;
+import java.util.Map;
+
+import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import freemarker.template.Configuration;
+import freemarker.template.Template;
+
+/**
+ * Use a key to find a template for email.
+ *
+ * The template file is [KEY].ftl file under /mail_templates directory with classloader.
+ */
+public class MailTemplateProvider {
+
+<span class="nc" id="L39">    private static final Logger logger = LoggerFactory.getLogger(MailTemplateProvider.class);</span>
+
+<span class="nc" id="L41">    private static MailTemplateProvider DEFAULT_INSTANCE = new MailTemplateProvider();</span>
+
+    public static MailTemplateProvider getInstance() {
+<span class="nc" id="L44">        return DEFAULT_INSTANCE;</span>
+    }
+
+    private final Configuration configuration;
+
+<span class="nc" id="L49">    private MailTemplateProvider() {</span>
+<span class="nc" id="L50">        configuration = new Configuration(Configuration.getVersion());</span>
+<span class="nc" id="L51">        configuration.setClassForTemplateLoading(MailTemplateProvider.class, &quot;/mail_templates&quot;);</span>
+<span class="nc" id="L52">        configuration.setDefaultEncoding(&quot;UTF-8&quot;);</span>
+<span class="nc" id="L53">    }</span>
+
+    public String buildMailContent(String tplKey, Map&lt;String, Object&gt; data) {
+        try {
+<span class="nc" id="L57">            Template template = getTemplate(tplKey);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">            if (template == null) {</span>
+<span class="nc" id="L59">                return &quot;Cannot find email template for &quot; + tplKey;</span>
+            }
+
+<span class="nc" id="L62">            try (Writer out = new StringWriter()) {</span>
+<span class="nc" id="L63">                template.process(data, out);</span>
+<span class="nc" id="L64">                return out.toString();</span>
+            }
+<span class="nc" id="L66">        } catch (Throwable e) {</span>
+<span class="nc" id="L67">            return e.getLocalizedMessage();</span>
+        }
+    }
+
+    private Template getTemplate(String tplKey) throws Throwable {
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (StringUtils.isEmpty(tplKey)) {</span>
+<span class="nc" id="L73">            return null;</span>
+        }
+<span class="nc" id="L75">        return configuration.getTemplate(tplKey + &quot;.ftl&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

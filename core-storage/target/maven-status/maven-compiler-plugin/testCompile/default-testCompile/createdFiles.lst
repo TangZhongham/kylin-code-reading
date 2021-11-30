@@ -1,0 +1,17 @@
+org/apache/kylin/storage/gtrecord/SortedIteratorMergerWithLimitTest$1.class
+org/apache/kylin/storage/gtrecord/SortedIteratorMergerWithLimitTest$CloneableInteger.class
+org/apache/kylin/storage/gtrecord/SortedIteratorMergerTest.class
+org/apache/kylin/storage/StorageFactoryTest$MockupStorageEngine.class
+org/apache/kylin/storage/gtrecord/SortedIteratorMergerWithLimitTest.class
+org/apache/kylin/storage/StorageFactoryTest$2.class
+org/apache/kylin/storage/StorageContextTest.class
+org/apache/kylin/storage/translate/FuzzyValueCombinationTest.class
+org/apache/kylin/storage/hybrid/HybridInstanceTest.class
+org/apache/kylin/storage/StorageFactoryTest.class
+org/apache/kylin/storage/StorageFactoryTest$1.class
+org/apache/kylin/storage/gtrecord/SortedIteratorMergerTest$1.class
+org/apache/kylin/storage/gtrecord/DictGridTableTest.class
+org/apache/kylin/storage/cache/EhcacheTest.class
+org/apache/kylin/storage/StorageMockUtils.class
+org/apache/kylin/storage/StorageFactoryTest$MockupStorageAware.class
+org/apache/kylin/storage/hybrid/HybridManagerTest.class

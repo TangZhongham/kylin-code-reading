@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TableLevelACL.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.security</a> &gt; <span class="el_source">TableLevelACL.java</span></div><h1>TableLevelACL.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.security;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.query.relnode.OLAPContext;
+
+<span class="nc" id="L30">public class TableLevelACL {</span>
+    public static void tableFilter(List&lt;OLAPContext&gt; contexts, List&lt;String&gt; tableBlackList) {
+<span class="nc" id="L32">        Set&lt;String&gt; tableWithSchema = getTableWithSchema(contexts);</span>
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        for (String tbl : tableBlackList) {</span>
+<span class="nc bnc" id="L34" title="All 2 branches missed.">            if (tableWithSchema.contains(tbl.toUpperCase(Locale.ROOT))) {</span>
+                //                throw new kylin.AccessDeniedException(&quot;table:&quot; + tbl);
+<span class="nc" id="L36">                System.out.println(&quot;Access table:&quot; + tbl + &quot; denied&quot;);</span>
+            }
+<span class="nc" id="L38">        }</span>
+<span class="nc" id="L39">    }</span>
+
+    public static void columnFilter(List&lt;OLAPContext&gt; contexts, List&lt;String&gt; columnBlackList) {
+<span class="nc" id="L42">        List&lt;String&gt; allColWithTblAndSchema = getAllColWithTblAndSchema(contexts);</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        for (String tbl : columnBlackList) {</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">            if (allColWithTblAndSchema.contains(tbl.toUpperCase(Locale.ROOT))) {</span>
+                //                throw new kylin.AccessDeniedException(&quot;table:&quot; + tbl);
+<span class="nc" id="L46">                System.out.println(&quot;Access table:&quot; + tbl + &quot; denied&quot;);</span>
+            }
+<span class="nc" id="L48">        }</span>
+<span class="nc" id="L49">    }</span>
+
+    public static List&lt;String&gt; getAllColWithTblAndSchema(List&lt;OLAPContext&gt; contexts) {
+        // all columns with table and DB. Like DB.TABLE.COLUMN
+<span class="nc" id="L53">        List&lt;String&gt; allColWithTblAndSchema = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        for (OLAPContext context : contexts) {</span>
+<span class="nc" id="L55">            Set&lt;TblColRef&gt; allColumns = context.allColumns;</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">            for (TblColRef tblColRef : allColumns) {</span>
+<span class="nc" id="L57">                allColWithTblAndSchema.add(tblColRef.getColumWithTableAndSchema());</span>
+<span class="nc" id="L58">            }</span>
+<span class="nc" id="L59">        }</span>
+<span class="nc" id="L60">        return allColWithTblAndSchema;</span>
+    }
+
+    public static Set&lt;String&gt; getTableWithSchema(List&lt;OLAPContext&gt; contexts) {
+        // all tables with DB, Like DB.TABLE
+<span class="nc" id="L65">        Set&lt;String&gt; tableWithSchema = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        for (OLAPContext context : contexts) {</span>
+<span class="nc" id="L67">            Set&lt;TblColRef&gt; allColumns = context.allColumns;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            for (TblColRef tblColRef : allColumns) {</span>
+<span class="nc" id="L69">                tableWithSchema.add(tblColRef.getTableWithSchema());</span>
+<span class="nc" id="L70">            }</span>
+<span class="nc" id="L71">        }</span>
+<span class="nc" id="L72">        return tableWithSchema;</span>
+    }
+
+    public static List&lt;String&gt; mockTableBlackList() {
+<span class="nc" id="L76">        List&lt;String&gt; blackList = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L77">        blackList.add(&quot;DEFAULT.KYLIN_SALES&quot;);</span>
+<span class="nc" id="L78">        return blackList;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

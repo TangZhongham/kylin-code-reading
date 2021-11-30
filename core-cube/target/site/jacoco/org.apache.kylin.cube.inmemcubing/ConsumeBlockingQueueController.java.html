@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConsumeBlockingQueueController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.inmemcubing</a> &gt; <span class="el_source">ConsumeBlockingQueueController.java</span></div><h1>ConsumeBlockingQueueController.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.inmemcubing;
+
+import java.util.Iterator;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class ConsumeBlockingQueueController&lt;T&gt; implements Iterator&lt;T&gt; {
+    public final static int DEFAULT_BATCH_SIZE = 1000;
+
+<span class="fc" id="L31">    private volatile boolean hasException = false;</span>
+    private final BlockingQueue&lt;T&gt; input;
+    private final int batchSize;
+    private final List&lt;T&gt; batchBuffer;
+    private Iterator&lt;T&gt; internalIT;
+
+<span class="fc" id="L37">    private AtomicInteger outputRowCount = new AtomicInteger();</span>
+
+<span class="fc" id="L39">    public ConsumeBlockingQueueController(BlockingQueue&lt;T&gt; input, int batchSize) {</span>
+<span class="fc" id="L40">        this.input = input;</span>
+<span class="fc" id="L41">        this.batchSize = batchSize;</span>
+<span class="fc" id="L42">        this.batchBuffer = Lists.newArrayListWithExpectedSize(batchSize);</span>
+<span class="fc" id="L43">        this.internalIT = batchBuffer.iterator();</span>
+<span class="fc" id="L44">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (hasException) {</span>
+<span class="nc" id="L49">            return false;</span>
+        }
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (internalIT.hasNext()) {</span>
+<span class="fc" id="L52">            return true;</span>
+        } else {
+<span class="fc" id="L54">            batchBuffer.clear();</span>
+            try {
+<span class="fc" id="L56">                batchBuffer.add(input.take());</span>
+<span class="fc" id="L57">                outputRowCount.incrementAndGet();</span>
+<span class="nc" id="L58">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L59">                throw new RuntimeException(e);</span>
+<span class="fc" id="L60">            }</span>
+<span class="fc" id="L61">            outputRowCount.addAndGet(input.drainTo(batchBuffer, batchSize - 1));</span>
+<span class="fc" id="L62">            internalIT = batchBuffer.iterator();</span>
+        }
+<span class="fc" id="L64">        return true;</span>
+    }
+
+    @Override
+    public T next() {
+<span class="fc" id="L69">        return internalIT.next();</span>
+    }
+
+    @Override
+    public void remove() {
+<span class="nc" id="L74">        throw new UnsupportedOperationException();</span>
+    }
+
+    public void findException() {
+<span class="nc" id="L78">        hasException = true;</span>
+<span class="nc" id="L79">    }</span>
+
+    public int getOutputRowCount() {
+<span class="nc" id="L82">        return outputRowCount.get();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

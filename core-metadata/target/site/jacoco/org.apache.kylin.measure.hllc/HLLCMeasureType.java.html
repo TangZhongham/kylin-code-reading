@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HLLCMeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.hllc</a> &gt; <span class="el_source">HLLCMeasureType.java</span></div><h1>HLLCMeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.hllc;
+
+import java.util.Map;
+
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+
+public class HLLCMeasureType extends MeasureType&lt;HLLCounter&gt; {
+    private static final long serialVersionUID = 1L;
+
+    public static final String FUNC_COUNT_DISTINCT = FunctionDesc.FUNC_COUNT_DISTINCT;
+    public static final String DATATYPE_HLLC = &quot;hllc&quot;;
+
+<span class="fc" id="L42">    public static class Factory extends MeasureTypeFactory&lt;HLLCounter&gt; {</span>
+
+        @Override
+        public MeasureType&lt;HLLCounter&gt; createMeasureType(String funcName, DataType dataType) {
+<span class="fc" id="L46">            return new HLLCMeasureType(dataType);</span>
+        }
+
+        @Override
+        public String getAggrFunctionName() {
+<span class="fc" id="L51">            return FUNC_COUNT_DISTINCT;</span>
+        }
+
+        @Override
+        public String getAggrDataTypeName() {
+<span class="fc" id="L56">            return DATATYPE_HLLC;</span>
+        }
+
+        @Override
+        public Class&lt;? extends DataTypeSerializer&lt;HLLCounter&gt;&gt; getAggrDataTypeSerializer() {
+<span class="fc" id="L61">            return HLLCSerializer.class;</span>
+        }
+    }
+
+    // ============================================================================
+
+    private final DataType dataType;
+
+<span class="fc" id="L69">    public HLLCMeasureType(DataType dataType) {</span>
+        // note at query parsing phase, the data type may be null, because only function and parameters are known
+<span class="fc" id="L71">        this.dataType = dataType;</span>
+<span class="fc" id="L72">    }</span>
+
+    public void validate(FunctionDesc functionDesc) throws IllegalArgumentException {
+<span class="nc" id="L75">        validate(functionDesc.getExpression(), functionDesc.getReturnDataType(), true);</span>
+<span class="nc" id="L76">    }</span>
+
+    private void validate(String funcName, DataType dataType, boolean checkDataType) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (FUNC_COUNT_DISTINCT.equals(funcName) == false)</span>
+<span class="nc" id="L80">            throw new IllegalArgumentException();</span>
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (DATATYPE_HLLC.equals(dataType.getName()) == false)</span>
+<span class="nc" id="L83">            throw new IllegalArgumentException();</span>
+
+<span class="nc bnc" id="L85" title="All 4 branches missed.">        if (dataType.getPrecision() &lt; 1 || dataType.getPrecision() &gt; 5000)</span>
+<span class="nc" id="L86">            throw new IllegalArgumentException();</span>
+<span class="nc" id="L87">    }</span>
+
+    @Override
+    public boolean isMemoryHungry() {
+<span class="nc" id="L91">        return true;</span>
+    }
+
+    @Override
+    public MeasureIngester&lt;HLLCounter&gt; newIngester() {
+<span class="fc" id="L96">        return new MeasureIngester&lt;HLLCounter&gt;() {</span>
+            private static final long serialVersionUID = 1L;
+            
+<span class="fc" id="L99">            HLLCounter current = new HLLCounter(dataType.getPrecision());</span>
+
+            @Override
+            public HLLCounter valueOf(String[] values, MeasureDesc measureDesc, Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {
+<span class="fc" id="L103">                HLLCounter hllc = current;</span>
+<span class="fc" id="L104">                hllc.clear();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                if (values.length == 1) {</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                    if (values[0] != null)</span>
+<span class="fc" id="L107">                        hllc.add(values[0]);</span>
+                } else {
+<span class="fc" id="L109">                    boolean allNull = true;</span>
+<span class="fc" id="L110">                    StringBuilder buf = new StringBuilder();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                    for (String v : values) {</span>
+<span class="fc bfc" id="L112" title="All 4 branches covered.">                        allNull = (allNull &amp;&amp; v == null);</span>
+<span class="fc" id="L113">                        buf.append(v);</span>
+                    }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                    if (!allNull)</span>
+<span class="fc" id="L116">                        hllc.add(buf.toString());</span>
+                }
+<span class="fc" id="L118">                return hllc;</span>
+            }
+
+            @Override
+            public void reset() {
+<span class="nc" id="L123">                current = new HLLCounter(dataType.getPrecision());</span>
+<span class="nc" id="L124">            }</span>
+        };
+    }
+
+    @Override
+    public MeasureAggregator&lt;HLLCounter&gt; newAggregator() {
+<span class="nc" id="L130">        return new HLLCAggregator(dataType.getPrecision());</span>
+    }
+
+    @Override
+    public boolean needRewrite() {
+<span class="fc" id="L135">        return true;</span>
+    }
+
+<span class="fc" id="L138">    static final Map&lt;String, Class&lt;?&gt;&gt; UDAF_MAP = ImmutableMap.&lt;String, Class&lt;?&gt;&gt; of(FUNC_COUNT_DISTINCT, HLLDistinctCountAggFunc.class);</span>
+    
+    @Override
+    public Map&lt;String, Class&lt;?&gt;&gt; getRewriteCalciteAggrFunctions() {
+<span class="fc" id="L142">        return UDAF_MAP;</span>
+    }
+
+    public static boolean isCountDistinct(FunctionDesc func) {
+<span class="nc" id="L146">        return FUNC_COUNT_DISTINCT.equalsIgnoreCase(func.getExpression());</span>
+    }
+    
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

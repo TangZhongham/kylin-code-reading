@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DimensionRangeInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">DimensionRangeInfo.java</span></div><h1>DimensionRangeInfo.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube;
+
+import java.io.Serializable;
+import java.util.Map;
+
+import org.apache.kylin.metadata.datatype.DataTypeOrder;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+public class DimensionRangeInfo implements Serializable {
+
+<span class="fc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(DimensionRangeInfo.class);</span>
+
+    public static Map&lt;String, DimensionRangeInfo&gt; mergeRangeMap(DataModelDesc model, Map&lt;String, DimensionRangeInfo&gt; m1,
+            Map&lt;String, DimensionRangeInfo&gt; m2) {
+
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (!m1.keySet().equals(m2.keySet())) {</span>
+<span class="fc" id="L43">            logger.warn(&quot;Merging incompatible maps of DimensionRangeInfo, keys in m1 &quot; + m1.keySet() + &quot;, keys in m2 &quot;</span>
+<span class="fc" id="L44">                    + m2.keySet());</span>
+        }
+
+<span class="fc" id="L47">        Map&lt;String, DimensionRangeInfo&gt; result = Maps.newHashMap();</span>
+        
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (String colId : m1.keySet()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (!m2.containsKey(colId))</span>
+<span class="fc" id="L51">                continue;</span>
+
+<span class="fc" id="L53">            DimensionRangeInfo r1 = m1.get(colId);</span>
+<span class="fc" id="L54">            DimensionRangeInfo r2 = m2.get(colId);</span>
+            
+            DimensionRangeInfo newR;
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">            if (r1.getMin() == null &amp;&amp; r1.getMax() == null) {</span>
+<span class="fc" id="L58">                newR = r2; // when r1 is all null or has 0 records</span>
+<span class="pc bpc" id="L59" title="3 of 4 branches missed.">            } else if (r2.getMin() == null &amp;&amp; r2.getMax() == null) {</span>
+<span class="nc" id="L60">                newR = r1; // when r2 is all null or has 0 records</span>
+            } else {
+<span class="fc" id="L62">                DataTypeOrder order = model.findColumn(colId).getType().getOrder();</span>
+<span class="fc" id="L63">                String newMin = order.min(r1.getMin(), r2.getMin());</span>
+<span class="fc" id="L64">                String newMax = order.max(r1.getMax(), r2.getMax());</span>
+<span class="fc" id="L65">                newR = new DimensionRangeInfo(newMin, newMax);</span>
+            }
+            
+<span class="fc" id="L68">            result.put(colId, newR);</span>
+<span class="fc" id="L69">        }</span>
+        
+<span class="fc" id="L71">        return result;</span>
+    }
+    
+    // ============================================================================
+
+    @JsonProperty(&quot;min&quot;)
+    private String min;
+
+    @JsonProperty(&quot;max&quot;)
+    private String max;
+
+<span class="fc" id="L82">    public DimensionRangeInfo() {}</span>
+
+<span class="fc" id="L84">    public DimensionRangeInfo(String min, String max) {</span>
+<span class="pc bpc" id="L85" title="2 of 8 branches missed.">        if (min == null &amp;&amp; max != null || min != null &amp;&amp; max == null)</span>
+<span class="nc" id="L86">            throw new IllegalStateException();</span>
+        
+<span class="fc" id="L88">        this.min = min;</span>
+<span class="fc" id="L89">        this.max = max;</span>
+<span class="fc" id="L90">    }</span>
+
+    public String getMin() {
+<span class="fc" id="L93">        return min;</span>
+    }
+
+    public void setMin(String min) {
+<span class="nc" id="L97">        this.min = min;</span>
+<span class="nc" id="L98">    }</span>
+
+    public String getMax() {
+<span class="fc" id="L101">        return max;</span>
+    }
+
+    public void setMax(String max) {
+<span class="nc" id="L105">        this.max = max;</span>
+<span class="nc" id="L106">    }</span>
+    
+    @Override
+    public String toString() {
+<span class="nc" id="L110">        return &quot;[&quot; + min + &quot;, &quot; + max + &quot;]&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

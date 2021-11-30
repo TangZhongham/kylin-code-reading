@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SumDynamicFunctionDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">SumDynamicFunctionDesc.java</span></div><h1>SumDynamicFunctionDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.model;
+
+import java.util.Set;
+
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.expression.TupleExpression;
+
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class SumDynamicFunctionDesc extends DynamicFunctionDesc {
+
+<span class="nc" id="L30">    public static final TblColRef mockCntCol = TblColRef.newInnerColumn(FunctionDesc.FUNC_COUNT,</span>
+            TblColRef.InnerDataTypeEnum.DERIVED);
+
+    private Set&lt;TblColRef&gt; measureColumnSet;
+
+    public SumDynamicFunctionDesc(ParameterDesc parameter, TupleExpression tupleExpression) {
+<span class="nc" id="L36">        super(parameter, tupleExpression);</span>
+<span class="nc" id="L37">        setExpression(FUNC_SUM);</span>
+<span class="nc" id="L38">        setReturnType(&quot;decimal&quot;);</span>
+<span class="nc" id="L39">    }</span>
+
+    @Override
+    public String getRewriteFieldName() {
+<span class="nc" id="L43">        return &quot;_KY_&quot; + FUNC_SUM + &quot;_&quot; + tupleExpression.toString();</span>
+    }
+
+    @Override
+    public DataType getRewriteFieldType() {
+<span class="nc" id="L48">        return getReturnDataType();</span>
+    }
+
+    @Override
+    public Set&lt;TblColRef&gt; getMeasureColumnSet() {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        if (measureColumnSet == null) {</span>
+<span class="nc" id="L54">            measureColumnSet = Sets.newHashSet(super.getMeasureColumnSet());</span>
+<span class="nc" id="L55">            measureColumnSet.remove(mockCntCol);</span>
+        }
+<span class="nc" id="L57">        return measureColumnSet;</span>
+    }
+
+    @Override
+    protected FunctionDesc constructRuntimeFunction(TblColRef column) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        return column == mockCntCol ? constructCountFunction() : constructSumFunction(column);</span>
+    }
+
+    private FunctionDesc constructCountFunction() {
+<span class="nc" id="L66">        return FunctionDesc.newInstance(FunctionDesc.FUNC_COUNT, null, null);</span>
+    }
+
+    private FunctionDesc constructSumFunction(TblColRef column) {
+<span class="nc" id="L70">        FunctionDesc function = new FunctionDesc();</span>
+<span class="nc" id="L71">        function.setParameter(ParameterDesc.newInstance(column));</span>
+<span class="nc" id="L72">        function.setExpression(FUNC_SUM);</span>
+<span class="nc" id="L73">        function.setReturnType(&quot;decimal&quot;);</span>
+
+<span class="nc" id="L75">        return function;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

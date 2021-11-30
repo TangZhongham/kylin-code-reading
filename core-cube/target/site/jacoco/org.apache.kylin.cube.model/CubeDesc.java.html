@@ -1,0 +1,1657 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">CubeDesc.java</span></div><h1>CubeDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model;
+
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkArgument;
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkState;
+
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.IntStream;
+
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.validator.routines.EmailValidator;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.KylinConfigExt;
+import org.apache.kylin.common.KylinVersion;
+import org.apache.kylin.common.persistence.JsonSerializer;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.Array;
+import org.apache.kylin.common.util.JsonUtil;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.extendedcolumn.ExtendedColumnMeasureType;
+import org.apache.kylin.metadata.MetadataConstants;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.DataModelManager;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.IEngineAware;
+import org.apache.kylin.metadata.model.IStorageAware;
+import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.realization.RealizationType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import org.apache.kylin.shaded.com.google.common.base.Joiner;
+import org.apache.kylin.shaded.com.google.common.collect.Iterables;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L98">public class CubeDesc extends RootPersistentEntity implements IEngineAware {</span>
+<span class="fc" id="L99">    private static final Logger logger = LoggerFactory.getLogger(CubeDesc.class);</span>
+
+    // Use with care! Normally you should go to CubeDescManager and don't need this.
+    public static JsonSerializer&lt;CubeDesc&gt; newSerializerForLowLevelAccess() {
+<span class="nc" id="L103">        return new JsonSerializer&lt;&gt;(CubeDesc.class);</span>
+    }
+
+    public static class CannotFilterExtendedColumnException extends RuntimeException {
+        public CannotFilterExtendedColumnException(TblColRef tblColRef) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            super(tblColRef == null ? &quot;null&quot; : tblColRef.getCanonicalName());</span>
+<span class="nc" id="L109">        }</span>
+    }
+
+    public static final int MAX_ROWKEY_SIZE = 64;
+
+<span class="fc" id="L114">    public enum DeriveType implements java.io.Serializable {</span>
+<span class="fc" id="L115">        LOOKUP, PK_FK, EXTENDED_COLUMN</span>
+    }
+
+    public static class DeriveInfo implements java.io.Serializable {
+        public DeriveType type;
+        public JoinDesc join;
+        public TblColRef[] columns;
+        public boolean isOneToOne; // only used when ref from derived to host
+
+<span class="fc" id="L124">        DeriveInfo(DeriveType type, JoinDesc join, TblColRef[] columns, boolean isOneToOne) {</span>
+<span class="fc" id="L125">            this.type = type;</span>
+<span class="fc" id="L126">            this.join = join;</span>
+<span class="fc" id="L127">            this.columns = columns;</span>
+<span class="fc" id="L128">            this.isOneToOne = isOneToOne;</span>
+<span class="fc" id="L129">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L133">            return &quot;DeriveInfo [type=&quot; + type + &quot;, join=&quot; + join + &quot;, columns=&quot; + Arrays.toString(columns)</span>
+                    + &quot;, isOneToOne=&quot; + isOneToOne + &quot;]&quot;;
+        }
+
+    }
+
+    // ============================================================================
+
+    private KylinConfigExt config;
+    private DataModelDesc model;
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;is_draft&quot;)
+    private boolean isDraft;
+    @JsonProperty(&quot;model_name&quot;)
+    private String modelName;
+    @JsonProperty(&quot;description&quot;)
+    private String description;
+    @JsonProperty(&quot;null_string&quot;)
+    private String[] nullStrings;
+    @JsonProperty(&quot;dimensions&quot;)
+    private List&lt;DimensionDesc&gt; dimensions;
+    @JsonProperty(&quot;measures&quot;)
+    private List&lt;MeasureDesc&gt; measures;
+    @JsonProperty(&quot;dictionaries&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List&lt;DictionaryDesc&gt; dictionaries;
+    @JsonProperty(&quot;rowkey&quot;)
+    private RowKeyDesc rowkey;
+    @JsonProperty(&quot;hbase_mapping&quot;)
+    private HBaseMappingDesc hbaseMapping;
+    @JsonProperty(&quot;aggregation_groups&quot;)
+    private List&lt;AggregationGroup&gt; aggregationGroups;
+    @JsonProperty(&quot;signature&quot;)
+    private String signature;
+    @JsonProperty(&quot;notify_list&quot;)
+    private List&lt;String&gt; notifyList;
+<span class="fc" id="L171">    @JsonProperty(&quot;status_need_notify&quot;)</span>
+<span class="fc" id="L172">    private List&lt;String&gt; statusNeedNotify = Collections.emptyList();</span>
+
+<span class="fc" id="L174">    @JsonProperty(&quot;partition_date_start&quot;)</span>
+    private long partitionDateStart = 0L;
+<span class="fc" id="L176">    @JsonProperty(&quot;partition_date_end&quot;)</span>
+    private long partitionDateEnd = 3153600000000L;
+    @JsonProperty(&quot;auto_merge_time_ranges&quot;)
+    private long[] autoMergeTimeRanges;
+<span class="fc" id="L180">    @JsonProperty(&quot;volatile_range&quot;)</span>
+    private long volatileRange = 0;
+<span class="fc" id="L182">    @JsonProperty(&quot;retention_range&quot;)</span>
+    private long retentionRange = 0;
+<span class="fc" id="L184">    @JsonProperty(&quot;engine_type&quot;)</span>
+    private int engineType = IEngineAware.ID_SPARK_II;
+<span class="fc" id="L186">    @JsonProperty(&quot;storage_type&quot;)</span>
+    private int storageType = IStorageAware.ID_PARQUET;
+<span class="fc" id="L188">    @JsonProperty(&quot;override_kylin_properties&quot;)</span>
+    private LinkedHashMap&lt;String, String&gt; overrideKylinProps = new LinkedHashMap&lt;String, String&gt;();
+
+<span class="fc" id="L191">    @JsonProperty(&quot;partition_offset_start&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+<span class="fc" id="L193">    private Map&lt;Integer, Long&gt; partitionOffsetStart = Maps.newHashMap();</span>
+
+<span class="fc" id="L195">    @JsonProperty(&quot;cuboid_black_list&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+<span class="fc" id="L197">    private Set&lt;Long&gt; cuboidBlackSet = Sets.newHashSet();</span>
+
+<span class="fc" id="L199">    @JsonProperty(&quot;parent_forward&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private int parentForward = 3;
+
+<span class="fc" id="L203">    @JsonProperty(&quot;mandatory_dimension_set_list&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+<span class="fc" id="L205">    private List&lt;Set&lt;String&gt;&gt; mandatoryDimensionSetList = Collections.emptyList();</span>
+
+    // Error messages during resolving json metadata
+<span class="fc" id="L208">    private List&lt;String&gt; errors = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc" id="L210">    @JsonProperty(&quot;snapshot_table_desc_list&quot;)</span>
+<span class="fc" id="L211">    private List&lt;SnapshotTableDesc&gt; snapshotTableDescList = Collections.emptyList();</span>
+
+<span class="fc" id="L213">    private LinkedHashSet&lt;TblColRef&gt; allColumns = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L214">    private LinkedHashSet&lt;ColumnDesc&gt; allColumnDescs = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L215">    private LinkedHashSet&lt;TblColRef&gt; dimensionColumns = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L216">    private Set&lt;Long&gt; mandatoryCuboids = new HashSet&lt;&gt;();</span>
+
+<span class="fc" id="L218">    private Map&lt;TblColRef, DeriveInfo&gt; derivedToHostMap = Maps.newHashMap();</span>
+<span class="fc" id="L219">    private Map&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt; hostToDerivedMap = Maps.newHashMap();</span>
+
+<span class="fc" id="L221">    private Map&lt;TblColRef, DeriveInfo&gt; extendedColumnToHosts = Maps.newHashMap();</span>
+
+<span class="fc" id="L223">    transient volatile private CuboidScheduler cuboidScheduler = null;</span>
+
+    @Override
+    public String resourceName() {
+<span class="fc" id="L227">        return name;</span>
+    }
+
+    public boolean isEnableSharding() {
+        //in the future may extend to other storage that is shard-able
+<span class="nc bnc" id="L232" title="All 4 branches missed.">        return storageType != IStorageAware.ID_HBASE &amp;&amp; storageType != IStorageAware.ID_HYBRID;</span>
+    }
+
+    public Set&lt;TblColRef&gt; getShardByColumns() {
+<span class="nc" id="L236">        return getRowkey().getShardByColumns();</span>
+    }
+
+    /**
+     * @return all columns this cube can support, including derived
+     */
+    public Set&lt;TblColRef&gt; listAllColumns() {
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        return allColumns == null ? null : Collections.unmodifiableSet(allColumns);</span>
+    }
+
+    public Set&lt;ColumnDesc&gt; listAllColumnDescs() {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        return allColumnDescs == null ? null : Collections.unmodifiableSet(allColumnDescs);</span>
+    }
+
+    /**
+     * @return dimension columns including derived, BUT NOT measures
+     */
+    public Set&lt;TblColRef&gt; listDimensionColumnsIncludingDerived() {
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        return dimensionColumns == null ? null : Collections.unmodifiableSet(dimensionColumns);</span>
+    }
+
+    /**
+     * @return derived dimension columns
+     */
+    public List&lt;TblColRef&gt; listDerivedDimensionColumns() {
+<span class="nc" id="L261">        List&lt;TblColRef&gt; result = new ArrayList&lt;TblColRef&gt;();</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (TblColRef col : dimensionColumns) {</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            if (isDerived(col)) {</span>
+<span class="nc" id="L264">                result.add(col);</span>
+            }
+<span class="nc" id="L266">        }</span>
+<span class="nc" id="L267">        return result;</span>
+    }
+
+    /**
+     * @return dimension columns excluding derived
+     */
+    public List&lt;TblColRef&gt; listDimensionColumnsExcludingDerived(boolean alsoExcludeExtendedCol) {
+<span class="fc" id="L274">        List&lt;TblColRef&gt; result = new ArrayList&lt;TblColRef&gt;();</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        for (TblColRef col : dimensionColumns) {</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            if (isDerived(col)) {</span>
+<span class="fc" id="L277">                continue;</span>
+            }
+
+<span class="pc bpc" id="L280" title="2 of 4 branches missed.">            if (alsoExcludeExtendedCol &amp;&amp; isExtendedColumn(col)) {</span>
+<span class="nc" id="L281">                continue;</span>
+            }
+
+<span class="fc" id="L284">            result.add(col);</span>
+<span class="fc" id="L285">        }</span>
+<span class="fc" id="L286">        return result;</span>
+    }
+
+    /**
+     * @return all functions from each measure.
+     */
+    public List&lt;FunctionDesc&gt; listAllFunctions() {
+<span class="nc" id="L293">        List&lt;FunctionDesc&gt; functions = new ArrayList&lt;FunctionDesc&gt;();</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        for (MeasureDesc m : measures) {</span>
+<span class="nc" id="L295">            functions.add(m.getFunction());</span>
+<span class="nc" id="L296">        }</span>
+<span class="nc" id="L297">        return functions;</span>
+    }
+
+    public TblColRef findColumnRef(String table, String column) {
+<span class="fc" id="L301">        return model.findColumn(table, column);</span>
+    }
+
+    public DimensionDesc findDimensionByTable(String lookupTableName) {
+<span class="nc" id="L305">        lookupTableName = lookupTableName.toUpperCase(Locale.ROOT);</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">        for (DimensionDesc dim : dimensions)</span>
+<span class="nc bnc" id="L307" title="All 4 branches missed.">            if (dim.getTableRef() != null &amp;&amp; dim.getTableRef().getTableIdentity().equals(lookupTableName))</span>
+<span class="nc" id="L308">                return dim;</span>
+<span class="nc" id="L309">        return null;</span>
+    }
+
+    public boolean hasHostColumn(TblColRef col) {
+<span class="nc bnc" id="L313" title="All 4 branches missed.">        return isDerived(col) || isExtendedColumn(col);</span>
+    }
+
+    public boolean isDerived(TblColRef col) {
+<span class="fc" id="L317">        return derivedToHostMap.containsKey(col);</span>
+    }
+
+    public boolean isExtendedColumn(TblColRef col) {
+<span class="fc" id="L321">        return extendedColumnToHosts.containsKey(col);</span>
+    }
+
+    public DeriveInfo getHostInfo(TblColRef derived) {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (isDerived(derived)) {</span>
+<span class="nc" id="L326">            return derivedToHostMap.get(derived);</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        } else if (isExtendedColumn(derived)) {</span>
+<span class="nc" id="L328">            return extendedColumnToHosts.get(derived);</span>
+        }
+<span class="nc" id="L330">        throw new RuntimeException(&quot;Cannot get host info for &quot; + derived);</span>
+    }
+
+    public Map&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt; getHostToDerivedInfo(List&lt;TblColRef&gt; rowCols,
+            Collection&lt;TblColRef&gt; wantedCols) {
+<span class="fc" id="L335">        Map&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt; result = new HashMap&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt;();</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        for (Entry&lt;Array&lt;TblColRef&gt;, List&lt;DeriveInfo&gt;&gt; entry : hostToDerivedMap.entrySet()) {</span>
+<span class="fc" id="L337">            Array&lt;TblColRef&gt; hostCols = entry.getKey();</span>
+<span class="fc" id="L338">            boolean hostOnRow = rowCols.containsAll(Arrays.asList(hostCols.data));</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">            if (!hostOnRow)</span>
+<span class="fc" id="L340">                continue;</span>
+
+<span class="fc" id="L342">            List&lt;DeriveInfo&gt; wantedInfo = new ArrayList&lt;DeriveInfo&gt;();</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">            for (DeriveInfo info : entry.getValue()) {</span>
+<span class="pc bpc" id="L344" title="3 of 4 branches missed.">                if (wantedCols == null || Collections.disjoint(wantedCols, Arrays.asList(info.columns)) == false) // has any wanted columns?</span>
+<span class="fc" id="L345">                    wantedInfo.add(info);</span>
+<span class="fc" id="L346">            }</span>
+
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">            if (wantedInfo.size() &gt; 0)</span>
+<span class="fc" id="L349">                result.put(hostCols, wantedInfo);</span>
+<span class="fc" id="L350">        }</span>
+<span class="fc" id="L351">        return result;</span>
+    }
+
+    public String getResourcePath() {
+<span class="nc" id="L355">        return concatResourcePath(resourceName());</span>
+    }
+
+    public static String concatResourcePath(String descName) {
+<span class="nc" id="L359">        return ResourceStore.CUBE_DESC_RESOURCE_ROOT + &quot;/&quot; + descName + MetadataConstants.FILE_SURFIX;</span>
+    }
+
+    // ============================================================================
+
+    public KylinConfig getConfig() {
+<span class="fc" id="L365">        return config;</span>
+    }
+
+    private void setConfig(KylinConfigExt config) {
+<span class="fc" id="L369">        this.config = config;</span>
+<span class="fc" id="L370">    }</span>
+
+    public String getName() {
+<span class="fc" id="L373">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="fc" id="L377">        this.name = name;</span>
+<span class="fc" id="L378">    }</span>
+
+    public boolean isDraft() {
+<span class="fc" id="L381">        return isDraft;</span>
+    }
+
+    public void setDraft(boolean isDraft) {
+<span class="fc" id="L385">        this.isDraft = isDraft;</span>
+<span class="fc" id="L386">    }</span>
+
+    public String getModelName() {
+<span class="fc" id="L389">        return modelName;</span>
+    }
+
+    public void setModelName(String modelName) {
+<span class="fc" id="L393">        this.modelName = modelName;</span>
+<span class="fc" id="L394">    }</span>
+
+    public DataModelDesc getModel() {
+<span class="fc" id="L397">        return model;</span>
+    }
+
+    public void setModel(DataModelDesc model) {
+<span class="nc" id="L401">        this.model = model;</span>
+<span class="nc" id="L402">    }</span>
+
+    public String getDescription() {
+<span class="fc" id="L405">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L409">        this.description = description;</span>
+<span class="fc" id="L410">    }</span>
+
+    public String[] getNullStrings() {
+<span class="fc" id="L413">        return nullStrings;</span>
+    }
+
+    public List&lt;DimensionDesc&gt; getDimensions() {
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">        return dimensions == null ? null : Collections.unmodifiableList(dimensions);</span>
+    }
+
+    public void setDimensions(List&lt;DimensionDesc&gt; dimensions) {
+<span class="fc" id="L421">        this.dimensions = dimensions;</span>
+<span class="fc" id="L422">    }</span>
+
+    public List&lt;MeasureDesc&gt; getMeasures() {
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">        return measures == null ? null : Collections.unmodifiableList(measures);</span>
+    }
+
+    public void setMeasures(List&lt;MeasureDesc&gt; measures) {
+<span class="fc" id="L429">        this.measures = measures;</span>
+<span class="fc" id="L430">    }</span>
+
+    public List&lt;DictionaryDesc&gt; getDictionaries() {
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">        return dictionaries == null ? null : Collections.unmodifiableList(dictionaries);</span>
+    }
+
+    public void setDictionaries(List&lt;DictionaryDesc&gt; dictionaries) {
+<span class="fc" id="L437">        this.dictionaries = dictionaries;</span>
+<span class="fc" id="L438">    }</span>
+
+    public RowKeyDesc getRowkey() {
+<span class="fc" id="L441">        return rowkey;</span>
+    }
+
+    public void setRowkey(RowKeyDesc rowkey) {
+<span class="fc" id="L445">        this.rowkey = rowkey;</span>
+<span class="fc" id="L446">    }</span>
+
+    public List&lt;AggregationGroup&gt; getAggregationGroups() {
+<span class="pc bpc" id="L449" title="1 of 2 branches missed.">        return aggregationGroups == null ? null : Collections.unmodifiableList(aggregationGroups);</span>
+    }
+
+    public void setAggregationGroups(List&lt;AggregationGroup&gt; aggregationGroups) {
+<span class="fc" id="L453">        this.aggregationGroups = aggregationGroups;</span>
+<span class="fc" id="L454">    }</span>
+
+    public String getSignature() {
+<span class="fc" id="L457">        return signature;</span>
+    }
+
+    public void setSignature(String signature) {
+<span class="fc" id="L461">        this.signature = signature;</span>
+<span class="fc" id="L462">    }</span>
+
+    public List&lt;String&gt; getNotifyList() {
+<span class="fc bfc" id="L465" title="All 2 branches covered.">        return notifyList == null ? null : Collections.unmodifiableList(notifyList);</span>
+    }
+
+    public void setNotifyList(List&lt;String&gt; notifyList) {
+<span class="fc" id="L469">        this.notifyList = notifyList;</span>
+<span class="fc" id="L470">    }</span>
+
+    public List&lt;String&gt; getStatusNeedNotify() {
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">        return statusNeedNotify == null ? null : Collections.unmodifiableList(statusNeedNotify);</span>
+    }
+
+    public void setStatusNeedNotify(List&lt;String&gt; statusNeedNotify) {
+<span class="fc" id="L477">        this.statusNeedNotify = statusNeedNotify;</span>
+<span class="fc" id="L478">    }</span>
+
+    public LinkedHashMap&lt;String, String&gt; getOverrideKylinProps() {
+<span class="fc" id="L481">        return overrideKylinProps;</span>
+    }
+
+    private void setOverrideKylinProps(LinkedHashMap&lt;String, String&gt; overrideKylinProps) {
+<span class="fc" id="L485">        this.overrideKylinProps = overrideKylinProps;</span>
+<span class="fc" id="L486">    }</span>
+
+    public List&lt;Set&lt;String&gt;&gt; getMandatoryDimensionSetList() {
+<span class="fc" id="L489">        return mandatoryDimensionSetList;</span>
+    }
+
+    public void setMandatoryDimensionSetList(List&lt;Set&lt;String&gt;&gt; mandatoryDimensionSetList) {
+<span class="fc" id="L493">        this.mandatoryDimensionSetList = mandatoryDimensionSetList;</span>
+<span class="fc" id="L494">    }</span>
+
+    public Set&lt;Long&gt; getMandatoryCuboids() {
+<span class="nc" id="L497">        return mandatoryCuboids;</span>
+    }
+
+    public boolean equalsRaw(Object o) {
+<span class="nc bnc" id="L501" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L502">            return true;</span>
+<span class="nc bnc" id="L503" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L504">            return false;</span>
+
+<span class="nc" id="L506">        CubeDesc that = (CubeDesc) o;</span>
+
+<span class="nc bnc" id="L508" title="All 2 branches missed.">        if (!Objects.equals(name, that.name))</span>
+<span class="nc" id="L509">            return false;</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">        if (!Objects.equals(modelName, that.modelName))</span>
+<span class="nc" id="L511">            return false;</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">        if (!Objects.equals(description, that.description))</span>
+<span class="nc" id="L513">            return false;</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">        if (!Objects.equals(dimensions, that.dimensions))</span>
+<span class="nc" id="L515">            return false;</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">        if (!Objects.equals(measures, that.measures))</span>
+<span class="nc" id="L517">            return false;</span>
+<span class="nc bnc" id="L518" title="All 2 branches missed.">        if (!Objects.equals(dictionaries, that.dictionaries))</span>
+<span class="nc" id="L519">            return false;</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">        if (!Arrays.equals(rowkey.getRowKeyColumns(), that.rowkey.getRowKeyColumns()))</span>
+<span class="nc" id="L521">            return false;</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">        if (!Objects.equals(nullStrings, that.nullStrings))</span>
+<span class="nc" id="L523">            return false;</span>
+<span class="nc bnc" id="L524" title="All 2 branches missed.">        if (!Arrays.equals(hbaseMapping.getColumnFamily(), that.hbaseMapping.getColumnFamily()))</span>
+<span class="nc" id="L525">            return false;</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">        if (aggregationGroups != that.aggregationGroups) {</span>
+<span class="nc bnc" id="L527" title="All 4 branches missed.">            if (aggregationGroups == null || that.aggregationGroups == null) {</span>
+<span class="nc" id="L528">                return false;</span>
+<span class="nc" id="L529">            } else if (!IntStream.range(0, aggregationGroups.size())</span>
+<span class="nc bnc" id="L530" title="All 4 branches missed.">                    .allMatch(i -&gt; Arrays.equals(aggregationGroups.get(i).getIncludes(),</span>
+<span class="nc" id="L531">                            that.aggregationGroups.get(i).getIncludes())</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">                            &amp;&amp; Objects.equals(aggregationGroups.get(i).getSelectRule(),</span>
+<span class="nc" id="L533">                                    that.aggregationGroups.get(i).getSelectRule()))) {</span>
+<span class="nc" id="L534">                return false;</span>
+            }
+        }
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (!Objects.equals(notifyList, that.notifyList))</span>
+<span class="nc" id="L538">            return false;</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">        if (!Objects.equals(statusNeedNotify, that.statusNeedNotify))</span>
+<span class="nc" id="L540">            return false;</span>
+<span class="nc bnc" id="L541" title="All 2 branches missed.">        if (!Arrays.equals(autoMergeTimeRanges, that.autoMergeTimeRanges))</span>
+<span class="nc" id="L542">            return false;</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">        if (!Objects.equals(retentionRange, that.retentionRange))</span>
+<span class="nc" id="L544">            return false;</span>
+<span class="nc bnc" id="L545" title="All 2 branches missed.">        if (!Objects.equals(engineType, that.engineType))</span>
+<span class="nc" id="L546">            return false;</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">        if (!Objects.equals(storageType, that.storageType))</span>
+<span class="nc" id="L548">            return false;</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">        if (!Objects.equals(overrideKylinProps, that.overrideKylinProps))</span>
+<span class="nc" id="L550">            return false;</span>
+<span class="nc bnc" id="L551" title="All 2 branches missed.">        if (!Objects.equals(snapshotTableDescList, that.snapshotTableDescList))</span>
+<span class="nc" id="L552">            return false;</span>
+<span class="nc bnc" id="L553" title="All 2 branches missed.">        if (!Objects.equals(partitionDateStart, that.partitionDateStart))</span>
+<span class="nc" id="L554">            return false;</span>
+<span class="nc bnc" id="L555" title="All 2 branches missed.">        if (!Objects.equals(partitionDateEnd, that.partitionDateEnd))</span>
+<span class="nc" id="L556">            return false;</span>
+<span class="nc bnc" id="L557" title="All 2 branches missed.">        if (!Objects.equals(parentForward, that.parentForward))</span>
+<span class="nc" id="L558">            return false;</span>
+<span class="nc bnc" id="L559" title="All 2 branches missed.">        if (!Objects.equals(mandatoryDimensionSetList, that.mandatoryDimensionSetList))</span>
+<span class="nc" id="L560">            return false;</span>
+<span class="nc" id="L561">        return Objects.equals(cuboidBlackSet, that.cuboidBlackSet);</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L566" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L567">            return true;</span>
+<span class="nc bnc" id="L568" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L569">            return false;</span>
+
+<span class="nc" id="L571">        CubeDesc cubeDesc = (CubeDesc) o;</span>
+
+<span class="nc bnc" id="L573" title="All 2 branches missed.">        if (!name.equals(cubeDesc.name))</span>
+<span class="nc" id="L574">            return false;</span>
+
+<span class="nc" id="L576">        return modelName.equals(cubeDesc.modelName);</span>
+
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L582">        int result = 0;</span>
+<span class="nc" id="L583">        result = 31 * result + name.hashCode();</span>
+<span class="nc" id="L584">        result = 31 * result + model.getRootFactTable().hashCode();</span>
+<span class="nc" id="L585">        return result;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L590">        return &quot;CubeDesc [name=&quot; + name + &quot;]&quot;;</span>
+    }
+
+    /**
+     * this method is to prevent malicious metadata change by checking the saved signature
+     * with the calculated signature.
+     * &lt;p&gt;
+     * if you're comparing two cube descs, prefer to use consistentWith()
+     *
+     * @return
+     */
+    public boolean checkSignature() {
+<span class="nc bnc" id="L602" title="All 2 branches missed.">        if (this.getConfig().isIgnoreCubeSignatureInconsistency()) {</span>
+<span class="nc" id="L603">            logger.info(&quot;Skip checking cube signature&quot;);</span>
+<span class="nc" id="L604">            return true;</span>
+        }
+
+<span class="nc" id="L607">        KylinVersion cubeVersion = new KylinVersion(getVersion());</span>
+<span class="nc" id="L608">        KylinVersion kylinVersion = KylinVersion.getCurrentVersion();</span>
+<span class="nc bnc" id="L609" title="All 2 branches missed.">        if (!kylinVersion.isCompatibleWith(cubeVersion)) {</span>
+<span class="nc" id="L610">            logger.info(&quot;checkSignature on {} is skipped as the its version {} is different from kylin version {}&quot;,</span>
+<span class="nc" id="L611">                    getName(), cubeVersion, kylinVersion);</span>
+<span class="nc" id="L612">            return true;</span>
+        }
+
+<span class="nc bnc" id="L615" title="All 4 branches missed.">        if (kylinVersion.isCompatibleWith(cubeVersion) &amp;&amp; !kylinVersion.isSignatureCompatibleWith(cubeVersion)) {</span>
+<span class="nc" id="L616">            logger.info(</span>
+                    &quot;checkSignature on {} is skipped as the its version is {} (not signature compatible but compatible) &quot;,
+<span class="nc" id="L618">                    getName(), cubeVersion);</span>
+<span class="nc" id="L619">            return true;</span>
+        }
+
+<span class="nc bnc" id="L622" title="All 2 branches missed.">        if (StringUtils.isBlank(getSignature())) {</span>
+<span class="nc" id="L623">            return true;</span>
+        }
+
+<span class="nc" id="L626">        String calculated = calculateSignature();</span>
+<span class="nc" id="L627">        String saved = getSignature();</span>
+<span class="nc" id="L628">        return calculated.equals(saved);</span>
+    }
+
+    public boolean consistentWith(CubeDesc another) {
+<span class="nc bnc" id="L632" title="All 2 branches missed.">        if (another == null)</span>
+<span class="nc" id="L633">            return false;</span>
+<span class="nc" id="L634">        return this.calculateSignature().equals(another.calculateSignature());</span>
+    }
+
+    public String calculateSignature() {
+        MessageDigest md;
+        try {
+<span class="fc" id="L640">            md = MessageDigest.getInstance(&quot;MD5&quot;);</span>
+<span class="fc" id="L641">            StringBuilder sigString = new StringBuilder();</span>
+<span class="fc" id="L642">            sigString.append(this.name).append(&quot;|&quot;)//</span>
+<span class="fc" id="L643">                    .append(JsonUtil.writeValueAsString(this.modelName)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L644">                    .append(JsonUtil.writeValueAsString(this.nullStrings)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L645">                    .append(JsonUtil.writeValueAsString(this.dimensions)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L646">                    .append(JsonUtil.writeValueAsString(this.measures)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L647">                    .append(JsonUtil.writeValueAsString(this.rowkey)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L648">                    .append(JsonUtil.writeValueAsString(this.aggregationGroups)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L649">                    .append(JsonUtil.writeValueAsString(this.hbaseMapping)).append(&quot;|&quot;)//</span>
+<span class="fc" id="L650">                    .append(JsonUtil.writeValueAsString(this.storageType)).append(&quot;|&quot;);</span>
+
+<span class="pc bpc" id="L652" title="2 of 4 branches missed.">            if (mandatoryDimensionSetList != null &amp;&amp; !mandatoryDimensionSetList.isEmpty()) {</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">                for (Set&lt;String&gt; mandatoryDimensionSet : mandatoryDimensionSetList) {</span>
+<span class="nc" id="L654">                    TreeSet&lt;String&gt; sortedSet = Sets.newTreeSet(mandatoryDimensionSet);</span>
+<span class="nc" id="L655">                    sigString.append(JsonUtil.writeValueAsString(sortedSet)).append(&quot;|&quot;);</span>
+<span class="nc" id="L656">                }</span>
+            }
+
+<span class="fc" id="L659">            String signatureInput = sigString.toString().replaceAll(&quot;\\s+&quot;, &quot;&quot;).toLowerCase(Locale.ROOT);</span>
+
+<span class="fc" id="L661">            byte[] signature = md.digest(signatureInput.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L662">            String ret = new String(Base64.encodeBase64(signature), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L663">            return ret;</span>
+<span class="nc" id="L664">        } catch (NoSuchAlgorithmException | JsonProcessingException e) {</span>
+<span class="nc" id="L665">            throw new RuntimeException(&quot;Failed to calculate signature&quot;);</span>
+        }
+    }
+
+    public void deInit() {
+<span class="nc" id="L670">        config = null;</span>
+<span class="nc" id="L671">        model = null;</span>
+<span class="nc" id="L672">        allColumns = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L673">        allColumnDescs = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L674">        dimensionColumns = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L675">        derivedToHostMap = Maps.newHashMap();</span>
+<span class="nc" id="L676">        hostToDerivedMap = Maps.newHashMap();</span>
+<span class="nc" id="L677">        extendedColumnToHosts = Maps.newHashMap();</span>
+<span class="nc" id="L678">        cuboidBlackSet = Sets.newHashSet();</span>
+<span class="nc" id="L679">        cuboidScheduler = null;</span>
+<span class="nc" id="L680">    }</span>
+
+    public void init(KylinConfig config) {
+<span class="fc" id="L683">        this.errors.clear();</span>
+
+<span class="fc" id="L685">        checkArgument(StringUtils.isNotBlank(name), &quot;CubeDesc name is blank&quot;);</span>
+<span class="fc" id="L686">        checkArgument(StringUtils.isNotBlank(modelName), &quot;CubeDesc (%s) has blank model name&quot;, name);</span>
+
+        // note CubeDesc.name == CubeInstance.name
+<span class="fc" id="L689">        List&lt;ProjectInstance&gt; ownerPrj = ProjectManager.getInstance(config).findProjects(RealizationType.CUBE, name);</span>
+
+        // cube inherit the project override props
+<span class="fc" id="L692">        LinkedHashMap&lt;String, String&gt; allOverrideProps = Maps.newLinkedHashMap(overrideKylinProps);</span>
+
+<span class="fc bfc" id="L694" title="All 2 branches covered.">        if (ownerPrj.size() == 1) {</span>
+<span class="fc" id="L695">            Map&lt;String, String&gt; prjOverrideProps = ownerPrj.get(0).getOverrideKylinProps();</span>
+<span class="fc bfc" id="L696" title="All 2 branches covered.">            for (Entry&lt;String, String&gt; entry : prjOverrideProps.entrySet()) {</span>
+<span class="pc bpc" id="L697" title="1 of 2 branches missed.">                if (!overrideKylinProps.containsKey(entry.getKey())) {</span>
+<span class="fc" id="L698">                    allOverrideProps.put(entry.getKey(), entry.getValue());</span>
+                }
+<span class="fc" id="L700">            }</span>
+        }
+
+<span class="fc" id="L703">        this.config = KylinConfigExt.createInstance(config, allOverrideProps);</span>
+
+<span class="fc bfc" id="L705" title="All 2 branches covered.">        checkArgument(this.rowkey.getRowKeyColumns().length &lt;= this.config.getCubeRowkeyMaxSize(),</span>
+                &quot;Too many rowkeys (%s) in CubeDesc, please try to reduce dimension number or adopt derived dimensions&quot;,
+<span class="fc" id="L707">                this.rowkey.getRowKeyColumns().length);</span>
+
+<span class="fc" id="L709">        this.model = DataModelManager.getInstance(config).getDataModelDesc(modelName);</span>
+<span class="fc" id="L710">        checkNotNull(this.model, &quot;DateModelDesc(%s) not found&quot;, modelName);</span>
+
+<span class="fc bfc" id="L712" title="All 2 branches covered.">        for (DimensionDesc dim : dimensions) {</span>
+<span class="fc" id="L713">            dim.init(this);</span>
+<span class="fc" id="L714">        }</span>
+
+<span class="fc" id="L716">        initDimensionColumns();</span>
+<span class="fc" id="L717">        initMeasureColumns();</span>
+
+<span class="fc" id="L719">        rowkey.init(this);</span>
+
+<span class="fc bfc" id="L721" title="All 2 branches covered.">        for (AggregationGroup agg : this.aggregationGroups) {</span>
+<span class="fc" id="L722">            agg.init(this, rowkey);</span>
+<span class="fc" id="L723">        }</span>
+<span class="fc" id="L724">        validateAggregationGroups(); // check if aggregation group is valid</span>
+<span class="fc" id="L725">        validateAggregationGroupsCombination();</span>
+
+<span class="fc" id="L727">        String hbaseMappingAdapterName = config.getHBaseMappingAdapter();</span>
+
+<span class="pc bpc" id="L729" title="1 of 2 branches missed.">        if (hbaseMappingAdapterName != null) {</span>
+            try {
+<span class="nc" id="L731">                Class&lt;?&gt; hbaseMappingAdapterClass = Class.forName(hbaseMappingAdapterName);</span>
+<span class="nc" id="L732">                Method initMethod = hbaseMappingAdapterClass.getMethod(&quot;initHBaseMapping&quot;, CubeDesc.class);</span>
+<span class="nc" id="L733">                initMethod.invoke(null, this);</span>
+<span class="nc" id="L734">                Method initMeasureReferenceToColumnFamilyMethod = hbaseMappingAdapterClass</span>
+<span class="nc" id="L735">                        .getMethod(&quot;initMeasureReferenceToColumnFamilyWithChecking&quot;, CubeDesc.class);</span>
+<span class="nc" id="L736">                initMeasureReferenceToColumnFamilyMethod.invoke(null, this);</span>
+<span class="nc" id="L737">            } catch (Exception e) {</span>
+<span class="nc" id="L738">                throw new RuntimeException(&quot;Error during adapting hbase mapping&quot;, e);</span>
+<span class="nc" id="L739">            }</span>
+        } else {
+            // to be removed in Kylin 4.0
+<span class="pc bpc" id="L742" title="1 of 2 branches missed.">            if (hbaseMapping != null) {</span>
+<span class="fc" id="L743">                hbaseMapping.init(this);</span>
+<span class="fc" id="L744">                initMeasureReferenceToColumnFamily();</span>
+            }
+        }
+
+        // check all dimension columns are presented on rowkey
+<span class="fc" id="L749">        List&lt;TblColRef&gt; dimCols = listDimensionColumnsExcludingDerived(true);</span>
+<span class="pc bpc" id="L750" title="1 of 2 branches missed.">        checkState(rowkey.getRowKeyColumns().length == dimCols.size(),</span>
+                &quot;RowKey columns count (%s) doesn't match dimensions columns count (%s)&quot;,
+<span class="fc" id="L752">                rowkey.getRowKeyColumns().length, dimCols.size());</span>
+
+<span class="fc" id="L754">        initDictionaryDesc();</span>
+<span class="fc" id="L755">        amendAllColumns();</span>
+
+        // initialize mandatory cuboids based on mandatoryDimensionSetList
+<span class="fc" id="L758">        initMandatoryCuboids();</span>
+<span class="fc" id="L759">    }</span>
+
+    private void initMandatoryCuboids() {
+<span class="fc" id="L762">        this.mandatoryCuboids.clear();</span>
+<span class="fc" id="L763">        this.mandatoryCuboids.addAll(generateMandatoryCuboids(this.mandatoryDimensionSetList));</span>
+<span class="fc" id="L764">    }</span>
+
+    public Set&lt;Long&gt; generateMandatoryCuboids(List&lt;Set&lt;String&gt;&gt; mandatoryDimensionSetList) {
+<span class="fc" id="L767">        Map&lt;String, RowKeyColDesc&gt; rowKeyColDescMap = Maps.newHashMap();</span>
+<span class="fc bfc" id="L768" title="All 2 branches covered.">        for (RowKeyColDesc entry : getRowkey().getRowKeyColumns()) {</span>
+<span class="fc" id="L769">            rowKeyColDescMap.put(entry.getColumn(), entry);</span>
+        }
+
+<span class="fc" id="L772">        Set&lt;Long&gt; mandatoryCuboids = Sets.newHashSetWithExpectedSize(mandatoryDimensionSetList.size());</span>
+<span class="fc bfc" id="L773" title="All 2 branches covered.">        for (Set&lt;String&gt; mandatoryDimensionSet : mandatoryDimensionSetList) {</span>
+<span class="fc" id="L774">            long cuboid = 0L;</span>
+<span class="fc bfc" id="L775" title="All 2 branches covered.">            for (String columnName : mandatoryDimensionSet) {</span>
+<span class="fc" id="L776">                TblColRef tblColRef = model.findColumn(columnName);</span>
+<span class="fc" id="L777">                RowKeyColDesc rowKeyColDesc = rowKeyColDescMap.get(tblColRef.getIdentity());</span>
+                // check if mandatory dimension set list is valid
+<span class="pc bpc" id="L779" title="1 of 2 branches missed.">                if (rowKeyColDesc == null) {</span>
+<span class="nc" id="L780">                    logger.warn(&quot;Column &quot; + columnName + &quot; in &quot; + mandatoryDimensionSet + &quot; does not exist&quot;);</span>
+<span class="nc" id="L781">                    throw new IllegalStateException(</span>
+                            &quot;Column &quot; + columnName + &quot; in &quot; + mandatoryDimensionSet + &quot; does not exist&quot;);
+                }
+<span class="fc" id="L784">                cuboid |= 1L &lt;&lt; rowKeyColDesc.getBitIndex();</span>
+<span class="fc" id="L785">            }</span>
+<span class="fc" id="L786">            mandatoryCuboids.add(cuboid);</span>
+<span class="fc" id="L787">        }</span>
+<span class="fc" id="L788">        return mandatoryCuboids;</span>
+    }
+
+    public CuboidScheduler getInitialCuboidScheduler() {
+<span class="fc bfc" id="L792" title="All 2 branches covered.">        if (cuboidScheduler != null)</span>
+<span class="fc" id="L793">            return cuboidScheduler;</span>
+
+<span class="fc" id="L795">        synchronized (this) {</span>
+<span class="pc bpc" id="L796" title="1 of 2 branches missed.">            if (cuboidScheduler == null) {</span>
+<span class="fc" id="L797">                cuboidScheduler = CuboidScheduler.getInstance(this);</span>
+            }
+<span class="fc" id="L799">            return cuboidScheduler;</span>
+        }
+    }
+
+    public boolean isBlackedCuboid(long cuboidID) {
+<span class="fc" id="L804">        return cuboidBlackSet.contains(cuboidID);</span>
+    }
+
+    public void validateAggregationGroupsCombination() {
+<span class="fc" id="L808">        int index = 1;</span>
+
+<span class="fc bfc" id="L810" title="All 2 branches covered.">        for (AggregationGroup agg : getAggregationGroups()) {</span>
+            try {
+<span class="fc" id="L812">                long combination = agg.calculateCuboidCombination();</span>
+
+<span class="fc bfc" id="L814" title="All 2 branches covered.">                if (combination &gt; config.getCubeAggrGroupMaxCombination()) {</span>
+<span class="fc" id="L815">                    String msg = &quot;Aggregation group &quot; + index + &quot; of Cube Desc &quot; + this.name</span>
+                            + &quot; has too many combinations: &quot; + combination
+                            + &quot;. Use 'mandatory'/'hierarchy'/'joint' to optimize; or update 'kylin.cube.aggrgroup.max-combination' to a bigger value.&quot;;
+<span class="fc" id="L818">                    throw new TooManyCuboidException(msg);</span>
+                }
+<span class="fc" id="L820">            } catch (TooManyCuboidException e) {</span>
+<span class="fc" id="L821">                throw e;</span>
+<span class="fc" id="L822">            } catch (Exception e) {</span>
+<span class="fc" id="L823">                throw new IllegalStateException(&quot;Unknown error while calculating cuboid number for &quot; + //</span>
+                        &quot;Aggregation group &quot; + index + &quot; of Cube Desc &quot; + this.name, e);
+<span class="fc" id="L825">            }</span>
+
+<span class="fc" id="L827">            index++;</span>
+<span class="fc" id="L828">        }</span>
+
+<span class="fc" id="L830">    }</span>
+
+    public void validateAggregationGroups() {
+<span class="fc" id="L833">        int index = 1;</span>
+
+<span class="fc bfc" id="L835" title="All 2 branches covered.">        for (AggregationGroup agg : getAggregationGroups()) {</span>
+<span class="pc bpc" id="L836" title="1 of 2 branches missed.">            if (agg.getIncludes() == null) {</span>
+<span class="nc" id="L837">                logger.error(&quot;Aggregation group &quot; + index + &quot; 'includes' field not set&quot;);</span>
+<span class="nc" id="L838">                throw new IllegalStateException(&quot;Aggregation group &quot; + index + &quot; includes field not set&quot;);</span>
+            }
+
+<span class="pc bpc" id="L841" title="1 of 2 branches missed.">            if (agg.getSelectRule() == null) {</span>
+<span class="nc" id="L842">                logger.error(&quot;Aggregation group &quot; + index + &quot; 'select_rule' field not set&quot;);</span>
+<span class="nc" id="L843">                throw new IllegalStateException(&quot;Aggregation group &quot; + index + &quot; select rule field not set&quot;);</span>
+            }
+
+<span class="fc" id="L846">            Set&lt;String&gt; includeDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L847">            getDims(includeDims, agg.getIncludes());</span>
+
+<span class="fc" id="L849">            Set&lt;String&gt; mandatoryDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L850">            getDims(mandatoryDims, agg.getSelectRule().mandatoryDims);</span>
+
+<span class="fc" id="L852">            ArrayList&lt;Set&lt;String&gt;&gt; hierarchyDimsList = Lists.newArrayList();</span>
+<span class="fc" id="L853">            Set&lt;String&gt; hierarchyDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L854">            getDims(hierarchyDimsList, hierarchyDims, agg.getSelectRule().hierarchyDims);</span>
+
+<span class="fc" id="L856">            ArrayList&lt;Set&lt;String&gt;&gt; jointDimsList = Lists.newArrayList();</span>
+<span class="fc" id="L857">            Set&lt;String&gt; jointDims = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L858">            getDims(jointDimsList, jointDims, agg.getSelectRule().jointDims);</span>
+
+<span class="pc bpc" id="L860" title="1 of 4 branches missed.">            if (!includeDims.containsAll(mandatoryDims) || !includeDims.containsAll(hierarchyDims)</span>
+<span class="pc bpc" id="L861" title="1 of 2 branches missed.">                    || !includeDims.containsAll(jointDims)) {</span>
+<span class="fc" id="L862">                List&lt;String&gt; notIncluded = Lists.newArrayList();</span>
+<span class="fc" id="L863">                final Iterable&lt;String&gt; all = Iterables</span>
+<span class="fc" id="L864">                        .unmodifiableIterable(Iterables.concat(mandatoryDims, hierarchyDims, jointDims));</span>
+<span class="fc bfc" id="L865" title="All 2 branches covered.">                for (String dim : all) {</span>
+<span class="fc bfc" id="L866" title="All 2 branches covered.">                    if (includeDims.contains(dim) == false) {</span>
+<span class="fc" id="L867">                        notIncluded.add(dim);</span>
+                    }
+<span class="fc" id="L869">                }</span>
+<span class="fc" id="L870">                Collections.sort(notIncluded);</span>
+<span class="fc" id="L871">                logger.error(</span>
+                        &quot;Aggregation group &quot; + index + &quot; Include dimensions not containing all the used dimensions&quot;);
+<span class="fc" id="L873">                throw new IllegalStateException(&quot;Aggregation group &quot; + index</span>
+<span class="fc" id="L874">                        + &quot; 'includes' dimensions not include all the dimensions:&quot; + notIncluded.toString());</span>
+            }
+
+<span class="fc bfc" id="L877" title="All 2 branches covered.">            if (CollectionUtils.containsAny(mandatoryDims, hierarchyDims)) {</span>
+<span class="fc" id="L878">                logger.warn(&quot;Aggregation group &quot; + index + &quot; mandatory dimensions overlap with hierarchy dimensions: &quot;</span>
+<span class="fc" id="L879">                        + ensureOrder(CollectionUtils.intersection(mandatoryDims, hierarchyDims)));</span>
+            }
+<span class="fc bfc" id="L881" title="All 2 branches covered.">            if (CollectionUtils.containsAny(mandatoryDims, jointDims)) {</span>
+<span class="fc" id="L882">                logger.warn(&quot;Aggregation group &quot; + index + &quot; mandatory dimensions overlap with joint dimensions: &quot;</span>
+<span class="fc" id="L883">                        + ensureOrder(CollectionUtils.intersection(mandatoryDims, jointDims)));</span>
+            }
+
+<span class="fc bfc" id="L886" title="All 2 branches covered.">            if (CollectionUtils.containsAny(hierarchyDims, jointDims)) {</span>
+<span class="fc" id="L887">                logger.error(&quot;Aggregation group &quot; + index + &quot; hierarchy dimensions overlap with joint dimensions&quot;);</span>
+<span class="fc" id="L888">                throw new IllegalStateException(</span>
+                        &quot;Aggregation group &quot; + index + &quot; hierarchy dimensions overlap with joint dimensions: &quot;
+<span class="fc" id="L890">                                + ensureOrder(CollectionUtils.intersection(hierarchyDims, jointDims)));</span>
+            }
+
+<span class="fc bfc" id="L893" title="All 2 branches covered.">            if (hasSingleOrNone(hierarchyDimsList)) {</span>
+<span class="fc" id="L894">                logger.error(&quot;Aggregation group &quot; + index + &quot; require at least 2 dimensions in a hierarchy&quot;);</span>
+<span class="fc" id="L895">                throw new IllegalStateException(</span>
+                        &quot;Aggregation group &quot; + index + &quot; require at least 2 dimensions in a hierarchy.&quot;);
+            }
+<span class="fc bfc" id="L898" title="All 2 branches covered.">            if (hasSingleOrNone(jointDimsList)) {</span>
+<span class="fc" id="L899">                logger.error(&quot;Aggregation group &quot; + index + &quot; require at least 2 dimensions in a joint&quot;);</span>
+<span class="fc" id="L900">                throw new IllegalStateException(</span>
+                        &quot;Aggregation group &quot; + index + &quot; require at least 2 dimensions in a joint&quot;);
+            }
+
+<span class="fc" id="L904">            Pair&lt;Boolean, Set&lt;String&gt;&gt; overlap = hasOverlap(hierarchyDimsList, hierarchyDims);</span>
+<span class="fc bfc" id="L905" title="All 2 branches covered.">            if (overlap.getFirst() == true) {</span>
+<span class="fc" id="L906">                logger.error(&quot;Aggregation group &quot; + index + &quot; a dimension exist in more than one hierarchy: &quot;</span>
+<span class="fc" id="L907">                        + ensureOrder(overlap.getSecond()));</span>
+<span class="fc" id="L908">                throw new IllegalStateException(&quot;Aggregation group &quot; + index</span>
+<span class="fc" id="L909">                        + &quot; a dimension exist in more than one hierarchy: &quot; + ensureOrder(overlap.getSecond()));</span>
+            }
+
+<span class="fc" id="L912">            overlap = hasOverlap(jointDimsList, jointDims);</span>
+<span class="fc bfc" id="L913" title="All 2 branches covered.">            if (overlap.getFirst() == true) {</span>
+<span class="fc" id="L914">                logger.error(&quot;Aggregation group &quot; + index + &quot; a dimension exist in more than one joint: &quot;</span>
+<span class="fc" id="L915">                        + ensureOrder(overlap.getSecond()));</span>
+<span class="fc" id="L916">                throw new IllegalStateException(&quot;Aggregation group &quot; + index</span>
+<span class="fc" id="L917">                        + &quot; a dimension exist in more than one joint: &quot; + ensureOrder(overlap.getSecond()));</span>
+            }
+
+<span class="fc" id="L920">            index++;</span>
+<span class="fc" id="L921">        }</span>
+<span class="fc" id="L922">    }</span>
+
+    public void validateNotifyList() {
+<span class="fc" id="L925">        List&lt;String&gt; notifyList = getNotifyList();</span>
+<span class="pc bpc" id="L926" title="2 of 4 branches missed.">        if (notifyList != null &amp;&amp; !notifyList.isEmpty()) {</span>
+<span class="fc" id="L927">            EmailValidator emailValidator = EmailValidator.getInstance();</span>
+<span class="pc bpc" id="L928" title="1 of 2 branches missed.">            for (String email : notifyList) {</span>
+<span class="pc bpc" id="L929" title="1 of 2 branches missed.">                if (!emailValidator.isValid(email)) {</span>
+<span class="fc" id="L930">                    throw new IllegalArgumentException(&quot;Email [&quot; + email + &quot;] is not validation.&quot;);</span>
+                }
+<span class="nc" id="L932">            }</span>
+        }
+<span class="nc" id="L934">    }</span>
+
+    private void getDims(Set&lt;String&gt; dims, String[] stringSet) {
+<span class="pc bpc" id="L937" title="1 of 2 branches missed.">        if (stringSet != null) {</span>
+<span class="fc bfc" id="L938" title="All 2 branches covered.">            for (String str : stringSet) {</span>
+<span class="fc" id="L939">                dims.add(str);</span>
+            }
+        }
+<span class="fc" id="L942">    }</span>
+
+    private void getDims(ArrayList&lt;Set&lt;String&gt;&gt; dimsList, Set&lt;String&gt; dims, String[][] stringSets) {
+<span class="pc bpc" id="L945" title="1 of 2 branches missed.">        if (stringSets != null) {</span>
+<span class="fc bfc" id="L946" title="All 2 branches covered.">            for (String[] ss : stringSets) {</span>
+<span class="fc" id="L947">                Set&lt;String&gt; temp = new TreeSet&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc bfc" id="L948" title="All 2 branches covered.">                for (String s : ss) {</span>
+<span class="fc" id="L949">                    temp.add(s);</span>
+<span class="fc" id="L950">                    dims.add(s);</span>
+                }
+<span class="fc" id="L952">                dimsList.add(temp);</span>
+            }
+        }
+<span class="fc" id="L955">    }</span>
+
+    private boolean hasSingleOrNone(ArrayList&lt;Set&lt;String&gt;&gt; dimsList) {
+<span class="fc" id="L958">        boolean hasSingleOrNone = false;</span>
+<span class="fc bfc" id="L959" title="All 2 branches covered.">        for (Set&lt;String&gt; dims : dimsList) {</span>
+<span class="fc bfc" id="L960" title="All 2 branches covered.">            if (dims.size() &lt;= 1) {</span>
+<span class="fc" id="L961">                hasSingleOrNone = true;</span>
+<span class="fc" id="L962">                break;</span>
+            }
+<span class="fc" id="L964">        }</span>
+<span class="fc" id="L965">        return hasSingleOrNone;</span>
+    }
+
+    private Pair&lt;Boolean, Set&lt;String&gt;&gt; hasOverlap(ArrayList&lt;Set&lt;String&gt;&gt; dimsList, Set&lt;String&gt; Dims) {
+<span class="fc" id="L969">        Set&lt;String&gt; existing = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L970">        Set&lt;String&gt; overlap = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L971" title="All 2 branches covered.">        for (Set&lt;String&gt; dims : dimsList) {</span>
+<span class="fc bfc" id="L972" title="All 2 branches covered.">            if (CollectionUtils.containsAny(existing, dims)) {</span>
+<span class="fc" id="L973">                overlap.addAll(ensureOrder(CollectionUtils.intersection(existing, dims)));</span>
+            }
+<span class="fc" id="L975">            existing.addAll(dims);</span>
+<span class="fc" id="L976">        }</span>
+<span class="fc bfc" id="L977" title="All 2 branches covered.">        return new Pair&lt;&gt;(overlap.size() &gt; 0, overlap);</span>
+    }
+
+    private void initDimensionColumns() {
+<span class="fc bfc" id="L981" title="All 2 branches covered.">        for (DimensionDesc dim : dimensions) {</span>
+<span class="fc" id="L982">            JoinDesc join = dim.getJoin();</span>
+
+            // init dimension columns
+<span class="fc" id="L985">            ArrayList&lt;TblColRef&gt; dimCols = Lists.newArrayList();</span>
+<span class="fc" id="L986">            String colStr = dim.getColumn();</span>
+
+<span class="pc bpc" id="L988" title="1 of 6 branches missed.">            if ((colStr == null &amp;&amp; dim.isDerived()) || (&quot;{FK}&quot;.equalsIgnoreCase(colStr))) {</span>
+                // when column is omitted, special case
+<span class="fc bfc" id="L990" title="All 2 branches covered.">                for (TblColRef col : join.getForeignKeyColumns()) {</span>
+<span class="fc" id="L991">                    dimCols.add(initDimensionColRef(col));</span>
+                }
+            } else {
+                // normal case
+<span class="pc bpc" id="L995" title="1 of 2 branches missed.">                checkState(!StringUtils.isEmpty(colStr), &quot;Dimension column must not be blank: %s&quot;, dim);</span>
+<span class="fc" id="L996">                dimCols.add(initDimensionColRef(dim, colStr));</span>
+            }
+
+<span class="fc" id="L999">            TblColRef[] dimColArray = dimCols.toArray(new TblColRef[dimCols.size()]);</span>
+<span class="fc" id="L1000">            dim.setColumnRefs(dimColArray);</span>
+
+            // init derived columns
+<span class="fc bfc" id="L1003" title="All 2 branches covered.">            if (dim.isDerived()) {</span>
+<span class="fc" id="L1004">                String[] derived = dim.getDerived();</span>
+<span class="fc" id="L1005">                String[][] split = splitDerivedColumnAndExtra(derived);</span>
+<span class="fc" id="L1006">                String[] derivedNames = split[0];</span>
+<span class="fc" id="L1007">                String[] derivedExtra = split[1];</span>
+<span class="fc" id="L1008">                TblColRef[] derivedCols = new TblColRef[derivedNames.length];</span>
+<span class="fc bfc" id="L1009" title="All 2 branches covered.">                for (int i = 0; i &lt; derivedNames.length; i++) {</span>
+<span class="fc" id="L1010">                    derivedCols[i] = initDimensionColRef(dim, derivedNames[i]);</span>
+                }
+<span class="fc" id="L1012">                initDerivedMap(dimColArray, DeriveType.LOOKUP, join, derivedCols, derivedExtra);</span>
+            }
+
+<span class="fc bfc" id="L1015" title="All 2 branches covered.">            if (join != null) {</span>
+<span class="fc" id="L1016">                allColumns.addAll(Arrays.asList(join.getForeignKeyColumns()));</span>
+<span class="fc" id="L1017">                allColumns.addAll(Arrays.asList(join.getPrimaryKeyColumns()));</span>
+            }
+<span class="fc" id="L1019">        }</span>
+
+        // PK-FK derive the other side
+<span class="fc" id="L1022">        Set&lt;TblColRef&gt; realDimensions = new HashSet&lt;&gt;(listDimensionColumnsExcludingDerived(true));</span>
+<span class="fc bfc" id="L1023" title="All 2 branches covered.">        for (JoinTableDesc joinTable : model.getJoinTables()) {</span>
+<span class="fc" id="L1024">            JoinDesc join = joinTable.getJoin();</span>
+<span class="fc" id="L1025">            int n = join.getForeignKeyColumns().length;</span>
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L1027">                TblColRef pk = join.getPrimaryKeyColumns()[i];</span>
+<span class="fc" id="L1028">                TblColRef fk = join.getForeignKeyColumns()[i];</span>
+<span class="pc bpc" id="L1029" title="1 of 4 branches missed.">                if (realDimensions.contains(pk) &amp;&amp; !realDimensions.contains(fk)) {</span>
+<span class="fc" id="L1030">                    initDimensionColRef(fk);</span>
+<span class="fc" id="L1031">                    initDerivedMap(new TblColRef[] { pk }, DeriveType.PK_FK, join, new TblColRef[] { fk }, null);</span>
+<span class="pc bpc" id="L1032" title="1 of 4 branches missed.">                } else if (realDimensions.contains(fk) &amp;&amp; !realDimensions.contains(pk)) {</span>
+<span class="fc" id="L1033">                    initDimensionColRef(pk);</span>
+<span class="fc" id="L1034">                    initDerivedMap(new TblColRef[] { fk }, DeriveType.PK_FK, join, new TblColRef[] { pk }, null);</span>
+                }
+            }
+        }
+<span class="fc" id="L1038">    }</span>
+
+    private String[][] splitDerivedColumnAndExtra(String[] derived) {
+<span class="fc" id="L1041">        String[] cols = new String[derived.length];</span>
+<span class="fc" id="L1042">        String[] extra = new String[derived.length];</span>
+<span class="fc bfc" id="L1043" title="All 2 branches covered.">        for (int i = 0; i &lt; derived.length; i++) {</span>
+<span class="fc" id="L1044">            String str = derived[i];</span>
+<span class="fc" id="L1045">            int cut = str.indexOf(&quot;:&quot;);</span>
+<span class="pc bpc" id="L1046" title="1 of 2 branches missed.">            if (cut &gt;= 0) {</span>
+<span class="nc" id="L1047">                cols[i] = str.substring(0, cut);</span>
+<span class="nc" id="L1048">                extra[i] = str.substring(cut + 1).trim();</span>
+            } else {
+<span class="fc" id="L1050">                cols[i] = str;</span>
+<span class="fc" id="L1051">                extra[i] = &quot;&quot;;</span>
+            }
+        }
+<span class="fc" id="L1054">        return new String[][] { cols, extra };</span>
+    }
+
+    private void initDerivedMap(TblColRef[] hostCols, DeriveType type, JoinDesc join, TblColRef[] derivedCols,
+            String[] extra) {
+<span class="pc bpc" id="L1059" title="2 of 4 branches missed.">        if (hostCols.length == 0 || derivedCols.length == 0)</span>
+<span class="nc" id="L1060">            throw new IllegalStateException(&quot;host/derived columns must not be empty&quot;);</span>
+
+        // Although FK derives PK automatically, user unaware of this can declare PK as derived dimension explicitly.
+        // In that case, derivedCols[] will contain a FK which is transformed from the PK by initDimensionColRef().
+        // Must drop FK from derivedCols[] before continue.
+<span class="fc bfc" id="L1065" title="All 2 branches covered.">        for (int i = 0; i &lt; derivedCols.length; i++) {</span>
+<span class="pc bpc" id="L1066" title="1 of 2 branches missed.">            if (ArrayUtils.contains(hostCols, derivedCols[i])) {</span>
+<span class="nc" id="L1067">                derivedCols = (TblColRef[]) ArrayUtils.remove(derivedCols, i);</span>
+<span class="nc bnc" id="L1068" title="All 2 branches missed.">                if (extra != null)</span>
+<span class="nc" id="L1069">                    extra = (String[]) ArrayUtils.remove(extra, i);</span>
+<span class="nc" id="L1070">                i--;</span>
+            }
+        }
+
+<span class="pc bpc" id="L1074" title="1 of 2 branches missed.">        if (derivedCols.length == 0)</span>
+<span class="nc" id="L1075">            return;</span>
+
+<span class="fc bfc" id="L1077" title="All 2 branches covered.">        for (int i = 0; i &lt; derivedCols.length; i++) {</span>
+<span class="fc" id="L1078">            TblColRef derivedCol = derivedCols[i];</span>
+<span class="pc bpc" id="L1079" title="2 of 6 branches missed.">            boolean isOneToOne = type == DeriveType.PK_FK || ArrayUtils.contains(hostCols, derivedCol)</span>
+<span class="pc bpc" id="L1080" title="1 of 2 branches missed.">                    || (extra != null &amp;&amp; extra[i].contains(&quot;1-1&quot;));</span>
+<span class="fc" id="L1081">            derivedToHostMap.put(derivedCol, new DeriveInfo(type, join, hostCols, isOneToOne));</span>
+        }
+
+<span class="fc" id="L1084">        Array&lt;TblColRef&gt; hostColArray = new Array&lt;TblColRef&gt;(hostCols);</span>
+<span class="fc" id="L1085">        List&lt;DeriveInfo&gt; infoList = hostToDerivedMap.get(hostColArray);</span>
+<span class="fc bfc" id="L1086" title="All 2 branches covered.">        if (infoList == null) {</span>
+<span class="fc" id="L1087">            infoList = new ArrayList&lt;DeriveInfo&gt;();</span>
+<span class="fc" id="L1088">            hostToDerivedMap.put(hostColArray, infoList);</span>
+        }
+
+        // Merged duplicated derived column
+<span class="fc" id="L1092">        List&lt;TblColRef&gt; whatsLeft = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L1093" title="All 2 branches covered.">        for (TblColRef derCol : derivedCols) {</span>
+<span class="fc" id="L1094">            boolean merged = false;</span>
+<span class="fc bfc" id="L1095" title="All 2 branches covered.">            for (DeriveInfo existing : infoList) {</span>
+<span class="fc bfc" id="L1096" title="All 4 branches covered.">                if (existing.type == type &amp;&amp; existing.join.getPKSide().equals(join.getPKSide())) {</span>
+<span class="fc bfc" id="L1097" title="All 2 branches covered.">                    if (ArrayUtils.contains(existing.columns, derCol)) {</span>
+<span class="fc" id="L1098">                        merged = true;</span>
+<span class="fc" id="L1099">                        break;</span>
+                    }
+<span class="pc bpc" id="L1101" title="1 of 2 branches missed.">                    if (type == DeriveType.LOOKUP) {</span>
+<span class="fc" id="L1102">                        existing.columns = (TblColRef[]) ArrayUtils.add(existing.columns, derCol);</span>
+<span class="fc" id="L1103">                        merged = true;</span>
+<span class="fc" id="L1104">                        break;</span>
+                    }
+                }
+<span class="fc" id="L1107">            }</span>
+<span class="fc bfc" id="L1108" title="All 2 branches covered.">            if (!merged)</span>
+<span class="fc" id="L1109">                whatsLeft.add(derCol);</span>
+        }
+<span class="fc bfc" id="L1111" title="All 2 branches covered.">        if (whatsLeft.size() &gt; 0) {</span>
+<span class="fc" id="L1112">            infoList.add(new DeriveInfo(type, join, whatsLeft.toArray(new TblColRef[whatsLeft.size()]),</span>
+                    false));
+        }
+<span class="fc" id="L1115">    }</span>
+
+    private TblColRef initDimensionColRef(DimensionDesc dim, String colName) {
+<span class="fc" id="L1118">        TblColRef col = model.findColumn(dim.getTable(), colName);</span>
+
+        // for backward compatibility
+<span class="pc bpc" id="L1121" title="1 of 2 branches missed.">        if (KylinVersion.isBefore200(getVersion())) {</span>
+            // always use FK instead PK, FK could be shared by more than one lookup tables
+<span class="nc" id="L1123">            JoinDesc join = dim.getJoin();</span>
+<span class="nc bnc" id="L1124" title="All 2 branches missed.">            if (join != null) {</span>
+<span class="nc" id="L1125">                int idx = ArrayUtils.indexOf(join.getPrimaryKeyColumns(), col);</span>
+<span class="nc bnc" id="L1126" title="All 2 branches missed.">                if (idx &gt;= 0) {</span>
+<span class="nc" id="L1127">                    col = join.getForeignKeyColumns()[idx];</span>
+                }
+            }
+        }
+
+<span class="fc" id="L1132">        return initDimensionColRef(col);</span>
+    }
+
+    private TblColRef initDimensionColRef(TblColRef col) {
+<span class="fc" id="L1136">        allColumns.add(col);</span>
+<span class="fc" id="L1137">        dimensionColumns.add(col);</span>
+<span class="fc" id="L1138">        return col;</span>
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    private void initMeasureColumns() {
+<span class="pc bpc" id="L1143" title="1 of 4 branches missed.">        if (measures == null || measures.isEmpty()) {</span>
+<span class="fc" id="L1144">            return;</span>
+        }
+
+<span class="fc bfc" id="L1147" title="All 2 branches covered.">        for (MeasureDesc m : measures) {</span>
+<span class="fc" id="L1148">            m.setName(m.getName().toUpperCase(Locale.ROOT));</span>
+
+<span class="pc bpc" id="L1150" title="1 of 2 branches missed.">            if (m.getDependentMeasureRef() != null) {</span>
+<span class="nc" id="L1151">                m.setDependentMeasureRef(m.getDependentMeasureRef().toUpperCase(Locale.ROOT));</span>
+            }
+
+<span class="fc" id="L1154">            FunctionDesc func = m.getFunction();</span>
+<span class="fc" id="L1155">            func.init(model);</span>
+<span class="fc" id="L1156">            allColumns.addAll(func.getParameter().getColRefs());</span>
+
+<span class="fc bfc" id="L1158" title="All 2 branches covered.">            if (ExtendedColumnMeasureType.FUNC_EXTENDED_COLUMN.equalsIgnoreCase(m.getFunction().getExpression())) {</span>
+<span class="fc" id="L1159">                FunctionDesc functionDesc = m.getFunction();</span>
+
+<span class="fc" id="L1161">                List&lt;TblColRef&gt; hosts = ExtendedColumnMeasureType.getExtendedColumnHosts(functionDesc);</span>
+<span class="fc" id="L1162">                TblColRef extendedColumn = ExtendedColumnMeasureType.getExtendedColumn(functionDesc);</span>
+<span class="fc" id="L1163">                initExtendedColumnMap(hosts.toArray(new TblColRef[hosts.size()]), extendedColumn);</span>
+            }
+<span class="fc" id="L1165">        }</span>
+<span class="fc" id="L1166">    }</span>
+
+    private void initExtendedColumnMap(TblColRef[] hostCols, TblColRef extendedColumn) {
+<span class="fc" id="L1169">        extendedColumnToHosts.put(extendedColumn, new DeriveInfo(DeriveType.EXTENDED_COLUMN, null, hostCols, false));</span>
+<span class="fc" id="L1170">    }</span>
+
+    public void initMeasureReferenceToColumnFamily() {
+<span class="pc bpc" id="L1173" title="1 of 4 branches missed.">        if (measures == null || measures.size() == 0)</span>
+<span class="fc" id="L1174">            return;</span>
+
+<span class="fc" id="L1176">        Map&lt;String, MeasureDesc&gt; measureLookup = new HashMap&lt;String, MeasureDesc&gt;();</span>
+<span class="fc bfc" id="L1177" title="All 2 branches covered.">        for (MeasureDesc m : measures)</span>
+<span class="fc" id="L1178">            measureLookup.put(m.getName(), m);</span>
+<span class="fc" id="L1179">        Map&lt;String, Integer&gt; measureIndexLookup = new HashMap&lt;String, Integer&gt;();</span>
+<span class="fc bfc" id="L1180" title="All 2 branches covered.">        for (int i = 0; i &lt; measures.size(); i++)</span>
+<span class="fc" id="L1181">            measureIndexLookup.put(measures.get(i).getName(), i);</span>
+
+<span class="fc" id="L1183">        BitSet checkEachMeasureExist = new BitSet();</span>
+<span class="fc" id="L1184">        Set&lt;String&gt; measureSet = Sets.newHashSet();</span>
+<span class="fc bfc" id="L1185" title="All 2 branches covered.">        for (HBaseColumnFamilyDesc cf : getHbaseMapping().getColumnFamily()) {</span>
+<span class="fc bfc" id="L1186" title="All 2 branches covered.">            for (HBaseColumnDesc c : cf.getColumns()) {</span>
+<span class="fc" id="L1187">                String[] colMeasureRefs = c.getMeasureRefs();</span>
+<span class="fc" id="L1188">                MeasureDesc[] measureDescs = new MeasureDesc[colMeasureRefs.length];</span>
+<span class="fc" id="L1189">                int[] measureIndex = new int[colMeasureRefs.length];</span>
+<span class="fc" id="L1190">                int lastMeasureIndex = -1;</span>
+<span class="fc bfc" id="L1191" title="All 2 branches covered.">                for (int i = 0; i &lt; colMeasureRefs.length; i++) {</span>
+<span class="fc" id="L1192">                    measureDescs[i] = measureLookup.get(colMeasureRefs[i]);</span>
+<span class="pc bpc" id="L1193" title="1 of 2 branches missed.">                    checkState(measureDescs[i] != null, &quot;measure desc at (%s) is null&quot;, i);</span>
+<span class="fc" id="L1194">                    measureIndex[i] = measureIndexLookup.get(colMeasureRefs[i]);</span>
+<span class="pc bpc" id="L1195" title="1 of 2 branches missed.">                    checkState(measureIndex[i] &gt;= 0, &quot;measure index at (%s) not positive&quot;, i);</span>
+
+<span class="fc bfc" id="L1197" title="All 2 branches covered.">                    checkState(!measureSet.contains(colMeasureRefs[i]), &quot;measure (%s) duplicates&quot;, colMeasureRefs[i]);</span>
+<span class="fc" id="L1198">                    measureSet.add(colMeasureRefs[i]);</span>
+<span class="fc" id="L1199">                    checkEachMeasureExist.set(measureIndex[i]);</span>
+                }
+<span class="fc" id="L1201">                c.setMeasures(measureDescs);</span>
+<span class="fc" id="L1202">                c.setMeasureIndex(measureIndex);</span>
+<span class="fc" id="L1203">                c.setColumnFamilyName(cf.getName());</span>
+            }
+        }
+
+<span class="fc bfc" id="L1207" title="All 2 branches covered.">        for (int i = 0; i &lt; measures.size(); i++) {</span>
+<span class="fc" id="L1208">            checkState(checkEachMeasureExist.get(i),</span>
+<span class="fc" id="L1209">                    &quot;measure (%s) does not exist in column family, or measure duplicates&quot;, measures.get(i));</span>
+        }
+
+<span class="fc" id="L1212">    }</span>
+
+    private void initDictionaryDesc() {
+<span class="fc bfc" id="L1215" title="All 2 branches covered.">        if (dictionaries != null) {</span>
+<span class="fc bfc" id="L1216" title="All 2 branches covered.">            for (DictionaryDesc dictDesc : dictionaries) {</span>
+<span class="fc" id="L1217">                dictDesc.init(this);</span>
+<span class="fc" id="L1218">                allColumns.add(dictDesc.getColumnRef());</span>
+<span class="pc bpc" id="L1219" title="1 of 2 branches missed.">                if (dictDesc.getResuseColumnRef() != null) {</span>
+<span class="nc" id="L1220">                    allColumns.add(dictDesc.getResuseColumnRef());</span>
+                }
+<span class="fc" id="L1222">            }</span>
+        }
+<span class="fc" id="L1224">    }</span>
+
+    public TblColRef getColumnByBitIndex(int bitIndex) {
+<span class="nc" id="L1227">        RowKeyColDesc[] rowKeyColumns = this.getRowkey().getRowKeyColumns();</span>
+<span class="nc" id="L1228">        return rowKeyColumns[rowKeyColumns.length - 1 - bitIndex].getColRef();</span>
+    }
+
+    public boolean hasMemoryHungryMeasures() {
+<span class="nc bnc" id="L1232" title="All 2 branches missed.">        for (MeasureDesc measure : measures) {</span>
+<span class="nc bnc" id="L1233" title="All 2 branches missed.">            if (measure.getFunction().getMeasureType().isMemoryHungry()) {</span>
+<span class="nc" id="L1234">                return true;</span>
+            }
+<span class="nc" id="L1236">        }</span>
+<span class="nc" id="L1237">        return false;</span>
+    }
+
+    private void amendAllColumns() {
+        // make sure all PF/FK are included, thus become exposed to calcite later
+<span class="fc" id="L1242">        Set&lt;TableRef&gt; tables = collectTablesOnJoinChain(allColumns);</span>
+<span class="fc bfc" id="L1243" title="All 2 branches covered.">        for (TableRef t : tables) {</span>
+<span class="fc" id="L1244">            JoinDesc join = model.getJoinByPKSide(t);</span>
+<span class="fc bfc" id="L1245" title="All 2 branches covered.">            if (join != null) {</span>
+<span class="fc" id="L1246">                allColumns.addAll(Arrays.asList(join.getForeignKeyColumns()));</span>
+<span class="fc" id="L1247">                allColumns.addAll(Arrays.asList(join.getPrimaryKeyColumns()));</span>
+            }
+<span class="fc" id="L1249">        }</span>
+
+<span class="fc bfc" id="L1251" title="All 2 branches covered.">        for (TblColRef col : allColumns) {</span>
+<span class="fc" id="L1252">            allColumnDescs.add(col.getColumnDesc());</span>
+<span class="fc" id="L1253">        }</span>
+<span class="fc" id="L1254">    }</span>
+
+    private Set&lt;TableRef&gt; collectTablesOnJoinChain(Set&lt;TblColRef&gt; columns) {
+<span class="fc" id="L1257">        Set&lt;TableRef&gt; result = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L1258" title="All 2 branches covered.">        for (TblColRef col : columns) {</span>
+<span class="fc" id="L1259">            TableRef t = col.getTableRef();</span>
+<span class="fc bfc" id="L1260" title="All 2 branches covered.">            while (t != null) {</span>
+<span class="fc" id="L1261">                result.add(t);</span>
+<span class="fc" id="L1262">                JoinDesc join = model.getJoinByPKSide(t);</span>
+<span class="fc bfc" id="L1263" title="All 2 branches covered.">                t = join == null ? null : join.getFKSide();</span>
+<span class="fc" id="L1264">            }</span>
+<span class="fc" id="L1265">        }</span>
+<span class="fc" id="L1266">        return result;</span>
+    }
+
+    public long getVolatileRange() {
+<span class="fc" id="L1270">        return volatileRange;</span>
+    }
+
+    public void setVolatileRange(long volatileRange) {
+<span class="fc" id="L1274">        this.volatileRange = volatileRange;</span>
+<span class="fc" id="L1275">    }</span>
+
+    public long getRetentionRange() {
+<span class="fc" id="L1278">        return retentionRange;</span>
+    }
+
+    public void setRetentionRange(long retentionRange) {
+<span class="fc" id="L1282">        this.retentionRange = retentionRange;</span>
+<span class="fc" id="L1283">    }</span>
+
+    public long[] getAutoMergeTimeRanges() {
+<span class="fc" id="L1286">        return autoMergeTimeRanges;</span>
+    }
+
+    public void setAutoMergeTimeRanges(long[] autoMergeTimeRanges) {
+<span class="fc" id="L1290">        this.autoMergeTimeRanges = autoMergeTimeRanges;</span>
+<span class="fc" id="L1291">    }</span>
+
+    public boolean isBroken() {
+<span class="pc bpc" id="L1294" title="1 of 2 branches missed.">        return !errors.isEmpty();</span>
+    }
+
+    public void addError(String message) {
+<span class="fc" id="L1298">        this.errors.add(message);</span>
+<span class="fc" id="L1299">    }</span>
+
+    public String getErrorsAsString() {
+<span class="nc" id="L1302">        return Joiner.on(&quot;; &quot;).join(errors);</span>
+    }
+
+    public HBaseMappingDesc getHbaseMapping() {
+<span class="fc" id="L1306">        return hbaseMapping;</span>
+    }
+
+    public void setHbaseMapping(HBaseMappingDesc hbaseMapping) {
+<span class="fc" id="L1310">        this.hbaseMapping = hbaseMapping;</span>
+<span class="fc" id="L1311">    }</span>
+
+    public void setNullStrings(String[] nullStrings) {
+<span class="fc" id="L1314">        this.nullStrings = nullStrings;</span>
+<span class="fc" id="L1315">    }</span>
+
+    public boolean supportsLimitPushDown() {
+<span class="nc bnc" id="L1318" title="All 4 branches missed.">        return getStorageType() != IStorageAware.ID_HBASE &amp;&amp; getStorageType() != IStorageAware.ID_HYBRID;</span>
+    }
+
+    public int getStorageType() {
+<span class="fc" id="L1322">        return storageType;</span>
+    }
+
+    public void setStorageType(int storageType) {
+<span class="fc" id="L1326">        this.storageType = storageType;</span>
+<span class="fc" id="L1327">    }</span>
+
+    @Override
+    public int getEngineType() {
+<span class="fc" id="L1331">        return engineType;</span>
+    }
+
+    public void setEngineType(int engineType) {
+<span class="fc" id="L1335">        this.engineType = engineType;</span>
+<span class="fc" id="L1336">    }</span>
+
+    public long getPartitionDateStart() {
+<span class="fc" id="L1339">        return partitionDateStart;</span>
+    }
+
+    public void setPartitionDateStart(long partitionDateStart) {
+<span class="fc" id="L1343">        this.partitionDateStart = partitionDateStart;</span>
+<span class="fc" id="L1344">    }</span>
+
+    public long getPartitionDateEnd() {
+<span class="fc" id="L1347">        return partitionDateEnd;</span>
+    }
+
+    public void setPartitionDateEnd(long partitionDateEnd) {
+<span class="fc" id="L1351">        this.partitionDateEnd = partitionDateEnd;</span>
+<span class="fc" id="L1352">    }</span>
+
+    public Map&lt;Integer, Long&gt; getPartitionOffsetStart() {
+<span class="fc" id="L1355">        return partitionOffsetStart;</span>
+    }
+
+    public void setPartitionOffsetStart(Map&lt;Integer, Long&gt; partitionOffsetStart) {
+<span class="fc" id="L1359">        this.partitionOffsetStart = partitionOffsetStart;</span>
+<span class="fc" id="L1360">    }</span>
+
+    public Set&lt;Long&gt; getAllCuboids() {
+<span class="fc" id="L1363">        return getInitialCuboidScheduler().getAllCuboidIds();</span>
+    }
+
+    public int getParentForward() {
+<span class="fc" id="L1367">        return parentForward;</span>
+    }
+
+    public void setParentForward(int parentForward) {
+<span class="fc" id="L1371">        this.parentForward = parentForward;</span>
+<span class="fc" id="L1372">    }</span>
+
+    /**
+     * Get dimensions that have dictionary
+     */
+    public Set&lt;TblColRef&gt; getAllDimsHaveDictionary() {
+<span class="nc" id="L1378">        Set&lt;TblColRef&gt; result = Sets.newHashSet();</span>
+
+<span class="nc bnc" id="L1380" title="All 2 branches missed.">        for (RowKeyColDesc rowKeyColDesc : rowkey.getRowKeyColumns()) {</span>
+<span class="nc" id="L1381">            TblColRef colRef = rowKeyColDesc.getColRef();</span>
+<span class="nc bnc" id="L1382" title="All 2 branches missed.">            if (rowkey.isUseDictionary(colRef)) {</span>
+<span class="nc" id="L1383">                result.add(colRef);</span>
+            }
+        }
+<span class="nc" id="L1386">        return result;</span>
+    }
+
+    /**
+     * Get columns that have dictionary
+     */
+    public Set&lt;TblColRef&gt; getAllColumnsHaveDictionary() {
+<span class="nc" id="L1393">        Set&lt;TblColRef&gt; result = Sets.newLinkedHashSet();</span>
+
+        // dictionaries in dimensions
+<span class="nc" id="L1396">        result.addAll(getAllDimsHaveDictionary());</span>
+
+        // dictionaries in measures
+<span class="nc bnc" id="L1399" title="All 2 branches missed.">        for (MeasureDesc measure : measures) {</span>
+<span class="nc" id="L1400">            MeasureType&lt;?&gt; aggrType = measure.getFunction().getMeasureType();</span>
+<span class="nc" id="L1401">            result.addAll(aggrType.getColumnsNeedDictionary(measure.getFunction()));</span>
+<span class="nc" id="L1402">        }</span>
+
+        // any additional dictionaries
+<span class="nc bnc" id="L1405" title="All 2 branches missed.">        if (dictionaries != null) {</span>
+<span class="nc bnc" id="L1406" title="All 2 branches missed.">            for (DictionaryDesc dictDesc : dictionaries) {</span>
+<span class="nc" id="L1407">                TblColRef col = dictDesc.getColumnRef();</span>
+<span class="nc" id="L1408">                result.add(col);</span>
+<span class="nc" id="L1409">            }</span>
+        }
+
+        //mr - hive global dict
+<span class="nc bnc" id="L1413" title="All 2 branches missed.">        if (overrideKylinProps.containsKey(&quot;kylin.dictionary.mr-hive.columns&quot;)) {</span>
+<span class="nc" id="L1414">            String mrHiveDictColumns = overrideKylinProps.get(&quot;kylin.dictionary.mr-hive.columns&quot;);</span>
+<span class="nc bnc" id="L1415" title="All 2 branches missed.">            if (StringUtils.isNotEmpty(mrHiveDictColumns)) {</span>
+<span class="nc" id="L1416">                String[] mrHiveDictColumnArr = mrHiveDictColumns.split(&quot;,&quot;);</span>
+<span class="nc bnc" id="L1417" title="All 2 branches missed.">                for (String dictColumn : mrHiveDictColumnArr) {</span>
+<span class="nc" id="L1418">                    Iterator&lt;TblColRef&gt; it = result.iterator();</span>
+<span class="nc bnc" id="L1419" title="All 2 branches missed.">                    while (it.hasNext()) {</span>
+<span class="nc" id="L1420">                        TblColRef colRef = it.next();</span>
+<span class="nc" id="L1421">                        String aliasCol = colRef.getTableAlias() + &quot;_&quot; + colRef.getName();</span>
+<span class="nc bnc" id="L1422" title="All 2 branches missed.">                        if (aliasCol.equalsIgnoreCase(dictColumn)) {</span>
+<span class="nc" id="L1423">                            logger.debug(&quot;Remove column {} because it has been built by MR&quot;, aliasCol);</span>
+<span class="nc" id="L1424">                            it.remove();</span>
+                        }
+<span class="nc" id="L1426">                    }</span>
+                }
+            }
+        }
+
+<span class="nc" id="L1431">        return result;</span>
+    }
+
+    /**
+     * Get columns that need dictionary built on it. Note a column could reuse dictionary of another column.
+     */
+    public Set&lt;TblColRef&gt; getAllColumnsNeedDictionaryBuilt() {
+<span class="nc" id="L1438">        Set&lt;TblColRef&gt; result = getAllColumnsHaveDictionary();</span>
+
+        // remove columns that reuse other's dictionary
+<span class="nc bnc" id="L1441" title="All 2 branches missed.">        if (dictionaries != null) {</span>
+<span class="nc bnc" id="L1442" title="All 2 branches missed.">            for (DictionaryDesc dictDesc : dictionaries) {</span>
+<span class="nc bnc" id="L1443" title="All 2 branches missed.">                if (dictDesc.getResuseColumnRef() != null) {</span>
+<span class="nc" id="L1444">                    result.remove(dictDesc.getColumnRef());</span>
+<span class="nc" id="L1445">                    result.add(dictDesc.getResuseColumnRef());</span>
+                }
+
+                //tiretree global domain dic
+<span class="nc bnc" id="L1449" title="All 4 branches missed.">                if (Objects.isNull(dictDesc.getResuseColumnRef()) &amp;&amp; Objects.nonNull(dictDesc.getReuseColumn())) {</span>
+<span class="nc" id="L1450">                    logger.info(</span>
+                            &quot;tiretree global domain dic : column {} use tiretree global domain dic, reuse column {} &quot;,
+<span class="nc" id="L1452">                            dictDesc.getColumnRef(), dictDesc.getReuseColumn());</span>
+<span class="nc" id="L1453">                    result.remove(dictDesc.getColumnRef());</span>
+                }
+
+<span class="nc" id="L1456">            }</span>
+        }
+
+<span class="nc" id="L1459">        return result;</span>
+    }
+
+    /**
+     * get tiretree global domain dic
+     *
+     * @return
+     */
+    public List&lt;CubeDescTiretreeGlobalDomainDictUtil.GlobalDict&gt; listDomainDict() {
+<span class="nc" id="L1468">        List&lt;CubeDescTiretreeGlobalDomainDictUtil.GlobalDict&gt; dicts = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L1469" title="All 4 branches missed.">        if (dictionaries != null &amp;&amp; dictionaries.size() &gt; 0) {</span>
+<span class="nc bnc" id="L1470" title="All 2 branches missed.">            for (DictionaryDesc dictionaryDesc : dictionaries) {</span>
+<span class="nc bnc" id="L1471" title="All 2 branches missed.">                if (dictionaryDesc.isDomain()) {</span>
+<span class="nc" id="L1472">                    dicts.add(new CubeDescTiretreeGlobalDomainDictUtil.GlobalDict(dictionaryDesc.getColumnRef(),</span>
+<span class="nc" id="L1473">                            dictionaryDesc.getReuseColumn(), dictionaryDesc.getCube(), dictionaryDesc.getModel()));</span>
+                }
+<span class="nc" id="L1475">            }</span>
+        }
+<span class="nc" id="L1477">        return dicts;</span>
+    }
+
+    /**
+     * A column may reuse dictionary of another column, find the dict column, return same col if there's no reuse column
+     */
+    public TblColRef getDictionaryReuseColumn(TblColRef col) {
+<span class="nc bnc" id="L1484" title="All 2 branches missed.">        if (dictionaries == null) {</span>
+<span class="nc" id="L1485">            return col;</span>
+        }
+<span class="nc bnc" id="L1487" title="All 2 branches missed.">        for (DictionaryDesc dictDesc : dictionaries) {</span>
+<span class="nc bnc" id="L1488" title="All 4 branches missed.">            if (dictDesc.getColumnRef().equals(col) &amp;&amp; dictDesc.getResuseColumnRef() != null) {</span>
+<span class="nc" id="L1489">                return dictDesc.getResuseColumnRef();</span>
+            }
+<span class="nc" id="L1491">        }</span>
+<span class="nc" id="L1492">        return col;</span>
+    }
+
+    /**
+     * Get a column which can be used in distributing the source table
+     */
+    public TblColRef getDistributedByColumn() {
+<span class="nc" id="L1499">        Set&lt;TblColRef&gt; shardBy = getShardByColumns();</span>
+<span class="nc bnc" id="L1500" title="All 4 branches missed.">        if (shardBy != null &amp;&amp; shardBy.size() &gt; 0) {</span>
+<span class="nc" id="L1501">            return shardBy.iterator().next();</span>
+        }
+
+<span class="nc" id="L1504">        return null;</span>
+    }
+
+    public List&lt;SnapshotTableDesc&gt; getSnapshotTableDescList() {
+<span class="fc" id="L1508">        return snapshotTableDescList;</span>
+    }
+
+    public void setSnapshotTableDescList(List&lt;SnapshotTableDesc&gt; snapshotTableDescList) {
+<span class="fc" id="L1512">        this.snapshotTableDescList = snapshotTableDescList;</span>
+<span class="fc" id="L1513">    }</span>
+
+    public SnapshotTableDesc getSnapshotTableDesc(String tableName) {
+<span class="nc bnc" id="L1516" title="All 2 branches missed.">        for (SnapshotTableDesc snapshotTableDesc : snapshotTableDescList) {</span>
+<span class="nc bnc" id="L1517" title="All 2 branches missed.">            if (snapshotTableDesc.getTableName().equalsIgnoreCase(tableName)) {</span>
+<span class="nc" id="L1518">                return snapshotTableDesc;</span>
+            }
+<span class="nc" id="L1520">        }</span>
+<span class="nc" id="L1521">        return null;</span>
+    }
+
+    public boolean isGlobalSnapshotTable(String tableName) {
+<span class="nc" id="L1525">        SnapshotTableDesc desc = getSnapshotTableDesc(tableName);</span>
+<span class="nc bnc" id="L1526" title="All 2 branches missed.">        if (desc == null) {</span>
+<span class="nc" id="L1527">            return false;</span>
+        }
+<span class="nc" id="L1529">        return desc.isGlobal();</span>
+    }
+
+    public boolean isStreamingCube() {
+<span class="nc" id="L1533">        return getModel().getRootFactTable().getTableDesc().isStreamingTable();</span>
+    }
+
+    /** Get a column which can be used to cluster the source table.
+     * To reduce memory footprint in base cuboid for global dict */
+    // TODO handle more than one ultra high cardinality columns use global dict in one cube
+    TblColRef getClusteredByColumn() {
+<span class="nc bnc" id="L1540" title="All 2 branches missed.">        if (getDistributedByColumn() != null) {</span>
+<span class="nc" id="L1541">            return null;</span>
+        }
+
+<span class="nc bnc" id="L1544" title="All 2 branches missed.">        if (dictionaries == null) {</span>
+<span class="nc" id="L1545">            return null;</span>
+        }
+
+<span class="nc" id="L1548">        String clusterByColumn = config.getFlatHiveTableClusterByDictColumn();</span>
+<span class="nc bnc" id="L1549" title="All 2 branches missed.">        for (DictionaryDesc dictDesc : dictionaries) {</span>
+<span class="nc bnc" id="L1550" title="All 2 branches missed.">            if (dictDesc.getColumnRef().getName().equalsIgnoreCase(clusterByColumn)) {</span>
+<span class="nc" id="L1551">                return dictDesc.getColumnRef();</span>
+            }
+<span class="nc" id="L1553">        }</span>
+
+<span class="nc" id="L1555">        return null;</span>
+    }
+
+    public String getDictionaryBuilderClass(TblColRef col) {
+<span class="nc bnc" id="L1559" title="All 2 branches missed.">        if (dictionaries == null)</span>
+<span class="nc" id="L1560">            return null;</span>
+
+<span class="nc bnc" id="L1562" title="All 2 branches missed.">        for (DictionaryDesc desc : dictionaries) {</span>
+<span class="nc bnc" id="L1563" title="All 2 branches missed.">            if (desc.getBuilderClass() != null) {</span>
+                // column that reuses other's dict need not be built, thus should not reach here
+<span class="nc bnc" id="L1565" title="All 2 branches missed.">                if (col.equals(desc.getColumnRef())) {</span>
+<span class="nc" id="L1566">                    return desc.getBuilderClass();</span>
+                }
+            }
+<span class="nc" id="L1569">        }</span>
+<span class="nc" id="L1570">        return null;</span>
+    }
+
+//    public List&lt;TblColRef&gt; getAllGlobalDictColumns() {
+//        List&lt;TblColRef&gt; globalDictCols = new ArrayList&lt;TblColRef&gt;();
+//        List&lt;DictionaryDesc&gt; dictionaryDescList = getDictionaries();
+//
+//        if (dictionaryDescList == null) {
+//            return globalDictCols;
+//        }
+//
+//        for (DictionaryDesc dictionaryDesc : dictionaryDescList) {
+//            String cls = dictionaryDesc.getBuilderClass();
+//            if (GlobalDictionaryBuilder.class.getName().equals(cls)
+//                    || SegmentAppendTrieDictBuilder.class.getName().equals(cls))
+//                globalDictCols.add(dictionaryDesc.getColumnRef());
+//        }
+//        return globalDictCols;
+//    }
+
+    // UHC (ultra high cardinality column): contain the ShardByColumns and the GlobalDictionaryColumns
+    public List&lt;TblColRef&gt; getAllUHCColumns() {
+<span class="nc" id="L1592">        List&lt;TblColRef&gt; uhcColumns = new ArrayList&lt;&gt;();</span>
+//        uhcColumns.addAll(getAllGlobalDictColumns());
+<span class="nc" id="L1594">        uhcColumns.addAll(getShardByColumns());</span>
+<span class="nc" id="L1595">        return uhcColumns;</span>
+    }
+
+    public String getProject() {
+<span class="fc" id="L1599">        DataModelDesc modelDesc = getModel();</span>
+<span class="pc bpc" id="L1600" title="1 of 2 branches missed.">        if (modelDesc == null) {</span>
+            // In case the model for cube not exists in metadata
+<span class="nc" id="L1602">            List&lt;ProjectInstance&gt; ownerPrj = ProjectManager.getInstance(config).findProjects(RealizationType.CUBE,</span>
+                    name);
+
+<span class="nc bnc" id="L1605" title="All 2 branches missed.">            if (ownerPrj.size() == 1) {</span>
+<span class="nc" id="L1606">                return ownerPrj.get(0).getName();</span>
+            } else {
+<span class="nc" id="L1608">                throw new IllegalStateException(&quot;No project found for cube &quot; + name);</span>
+            }
+        } else {
+<span class="fc" id="L1611">            return getModel().getProject();</span>
+        }
+    }
+
+    public static CubeDesc getCopyOf(CubeDesc cubeDesc) {
+<span class="fc" id="L1616">        CubeDesc newCubeDesc = new CubeDesc();</span>
+<span class="fc" id="L1617">        newCubeDesc.setName(cubeDesc.getName());</span>
+<span class="fc" id="L1618">        newCubeDesc.setDraft(cubeDesc.isDraft());</span>
+<span class="fc" id="L1619">        newCubeDesc.setModelName(cubeDesc.getModelName());</span>
+<span class="fc" id="L1620">        newCubeDesc.setDescription(cubeDesc.getDescription());</span>
+<span class="fc" id="L1621">        newCubeDesc.setNullStrings(cubeDesc.getNullStrings());</span>
+<span class="fc" id="L1622">        newCubeDesc.setDimensions(cubeDesc.getDimensions());</span>
+<span class="fc" id="L1623">        newCubeDesc.setMeasures(cubeDesc.getMeasures());</span>
+<span class="fc" id="L1624">        newCubeDesc.setDictionaries(cubeDesc.getDictionaries());</span>
+<span class="fc" id="L1625">        newCubeDesc.setRowkey(cubeDesc.getRowkey());</span>
+<span class="fc" id="L1626">        newCubeDesc.setHbaseMapping(cubeDesc.getHbaseMapping());</span>
+<span class="fc" id="L1627">        newCubeDesc.setSignature(cubeDesc.getSignature());</span>
+<span class="fc" id="L1628">        newCubeDesc.setNotifyList(cubeDesc.getNotifyList());</span>
+<span class="fc" id="L1629">        newCubeDesc.setStatusNeedNotify(cubeDesc.getStatusNeedNotify());</span>
+<span class="fc" id="L1630">        newCubeDesc.setAutoMergeTimeRanges(cubeDesc.getAutoMergeTimeRanges());</span>
+<span class="fc" id="L1631">        newCubeDesc.setPartitionDateStart(cubeDesc.getPartitionDateStart());</span>
+<span class="fc" id="L1632">        newCubeDesc.setPartitionDateEnd(cubeDesc.getPartitionDateEnd());</span>
+<span class="fc" id="L1633">        newCubeDesc.setVolatileRange(cubeDesc.getVolatileRange());</span>
+<span class="fc" id="L1634">        newCubeDesc.setRetentionRange(cubeDesc.getRetentionRange());</span>
+<span class="fc" id="L1635">        newCubeDesc.setEngineType(cubeDesc.getEngineType());</span>
+<span class="fc" id="L1636">        newCubeDesc.setStorageType(cubeDesc.getStorageType());</span>
+<span class="fc" id="L1637">        newCubeDesc.setAggregationGroups(cubeDesc.getAggregationGroups());</span>
+<span class="fc" id="L1638">        newCubeDesc.setOverrideKylinProps(cubeDesc.getOverrideKylinProps());</span>
+<span class="fc" id="L1639">        newCubeDesc.setConfig((KylinConfigExt) cubeDesc.getConfig());</span>
+<span class="fc" id="L1640">        newCubeDesc.setPartitionOffsetStart(cubeDesc.getPartitionOffsetStart());</span>
+<span class="fc" id="L1641">        newCubeDesc.setVersion(cubeDesc.getVersion());</span>
+<span class="fc" id="L1642">        newCubeDesc.setParentForward(cubeDesc.getParentForward());</span>
+<span class="fc" id="L1643">        newCubeDesc.setSnapshotTableDescList(cubeDesc.getSnapshotTableDescList());</span>
+<span class="fc" id="L1644">        newCubeDesc.setMandatoryDimensionSetList(cubeDesc.getMandatoryDimensionSetList());</span>
+<span class="fc" id="L1645">        newCubeDesc.updateRandomUuid();</span>
+<span class="fc" id="L1646">        return newCubeDesc;</span>
+    }
+
+    private Collection ensureOrder(Collection c) {
+<span class="fc" id="L1650">        TreeSet set = new TreeSet();</span>
+<span class="fc bfc" id="L1651" title="All 2 branches covered.">        for (Object o : c)</span>
+<span class="fc" id="L1652">            set.add(o.toString());</span>
+        //System.out.println(&quot;set:&quot;+set);
+<span class="fc" id="L1654">        return set;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

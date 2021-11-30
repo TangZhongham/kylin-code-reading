@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryPropertyEnum.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metrics</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.property</a> &gt; <span class="el_source">QueryPropertyEnum.java</span></div><h1>QueryPropertyEnum.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metrics.property;
+
+import java.util.Locale;
+
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+
+/**
+ * Definition of Metrics dimension and measure for Query Basic
+ */
+<span class="fc" id="L28">public enum QueryPropertyEnum {</span>
+
+<span class="fc" id="L30">    ID_CODE(&quot;QUERY_HASH_CODE&quot;),</span>
+<span class="fc" id="L31">    SQL(&quot;QUERY_SQL&quot;),</span>
+<span class="fc" id="L32">    TYPE(&quot;QUERY_TYPE&quot;),</span>
+<span class="fc" id="L33">    USER(&quot;KUSER&quot;),</span>
+<span class="fc" id="L34">    PROJECT(&quot;PROJECT&quot;),</span>
+<span class="fc" id="L35">    REALIZATION(&quot;REALIZATION&quot;),</span>
+<span class="fc" id="L36">    REALIZATION_TYPE(&quot;REALIZATION_TYPE&quot;),</span>
+<span class="fc" id="L37">    EXCEPTION(&quot;EXCEPTION&quot;),</span>
+
+<span class="fc" id="L39">    TIME_COST(&quot;QUERY_TIME_COST&quot;),</span>
+<span class="fc" id="L40">    CALCITE_RETURN_COUNT(&quot;CALCITE_COUNT_RETURN&quot;),</span>
+<span class="fc" id="L41">    STORAGE_RETURN_COUNT(&quot;STORAGE_COUNT_RETURN&quot;),</span>
+<span class="fc" id="L42">    AGGR_FILTER_COUNT(&quot;CALCITE_COUNT_AGGREGATE_FILTER&quot;);</span>
+
+    private final String propertyName;
+
+<span class="fc" id="L46">    QueryPropertyEnum(String name) {</span>
+<span class="fc" id="L47">        this.propertyName = name;</span>
+<span class="fc" id="L48">    }</span>
+
+    public static QueryPropertyEnum getByName(String name) {
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (Strings.isNullOrEmpty(name)) {</span>
+<span class="nc" id="L52">            return null;</span>
+        }
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        for (QueryPropertyEnum property : QueryPropertyEnum.values()) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (property.propertyName.equals(name.toUpperCase(Locale.ROOT))) {</span>
+<span class="fc" id="L56">                return property;</span>
+            }
+        }
+
+<span class="nc" id="L60">        return null;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L65">        return propertyName;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

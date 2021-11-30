@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeDescManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">CubeDescManager.java</span></div><h1>CubeDescManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.JsonSerializer;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.Serializer;
+import org.apache.kylin.common.util.AutoReadWriteLock;
+import org.apache.kylin.common.util.AutoReadWriteLock.AutoLock;
+import org.apache.kylin.cube.cuboid.CuboidManager;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.validation.CubeMetadataValidator;
+import org.apache.kylin.cube.model.validation.ValidateContext;
+import org.apache.kylin.dimension.DictionaryDimEnc;
+import org.apache.kylin.dimension.DimensionEncoding;
+import org.apache.kylin.dimension.DimensionEncodingFactory;
+import org.apache.kylin.measure.topn.TopNMeasureType;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CachedCrudAssist;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Manager class for CubeDesc; extracted from #CubeManager
+ * 
+ * @author shaoshi
+ */
+public class CubeDescManager {
+
+<span class="fc" id="L62">    private static final Logger logger = LoggerFactory.getLogger(CubeDescManager.class);</span>
+
+<span class="fc" id="L64">    public static final Serializer&lt;CubeDesc&gt; CUBE_DESC_SERIALIZER = new JsonSerializer&lt;&gt;(CubeDesc.class);</span>
+    
+    public static CubeDescManager getInstance(KylinConfig config) {
+<span class="fc" id="L67">        return config.getManager(CubeDescManager.class);</span>
+    }
+
+    static final String BROKEN_CUBE_MSG = &quot;Broken cube desc %s&quot;;
+    static final String CUBE_SHOULD_NOT_BE_DRAFT_MSG = &quot;CubeDesc '%s' must not be a draft&quot;;
+
+    // called by reflection
+    static CubeDescManager newInstance(KylinConfig config) throws IOException {
+<span class="fc" id="L75">        return new CubeDescManager(config);</span>
+    }
+    
+    // ============================================================================
+
+    private KylinConfig config;
+    
+    // name ==&gt; CubeDesc
+    private CaseInsensitiveStringCache&lt;CubeDesc&gt; cubeDescMap;
+    private CachedCrudAssist&lt;CubeDesc&gt; crud;
+
+    // protects concurrent operations around the cached map, to avoid for example
+    // writing an entity in the middle of reloading it (dirty read)
+<span class="fc" id="L88">    private AutoReadWriteLock descMapLock = new AutoReadWriteLock();</span>
+
+<span class="fc" id="L90">    private CubeDescManager(KylinConfig cfg) throws IOException {</span>
+<span class="fc" id="L91">        logger.info(&quot;Initializing CubeDescManager with config {}&quot;, cfg);</span>
+<span class="fc" id="L92">        this.config = cfg;</span>
+<span class="fc" id="L93">        this.cubeDescMap = new CaseInsensitiveStringCache&lt;&gt;(config, &quot;cube_desc&quot;);</span>
+<span class="fc" id="L94">        this.crud = new CachedCrudAssist&lt;CubeDesc&gt;(getStore(), ResourceStore.CUBE_DESC_RESOURCE_ROOT, CubeDesc.class,</span>
+<span class="fc" id="L95">                cubeDescMap) {</span>
+            @Override
+            protected CubeDesc initEntityAfterReload(CubeDesc cubeDesc, String resourceName) {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                if (cubeDesc.isDraft())</span>
+<span class="nc" id="L99">                    throw new IllegalArgumentException(String.format(Locale.ROOT, CUBE_SHOULD_NOT_BE_DRAFT_MSG, cubeDesc.getName()));</span>
+
+                try {
+<span class="fc" id="L102">                    cubeDesc.init(config);</span>
+<span class="fc" id="L103">                } catch (Exception e) {</span>
+<span class="fc" id="L104">                    logger.warn(String.format(Locale.ROOT, BROKEN_CUBE_MSG, cubeDesc.resourceName()), e);</span>
+<span class="fc" id="L105">                    cubeDesc.addError(e.toString());</span>
+<span class="fc" id="L106">                }</span>
+<span class="fc" id="L107">                return cubeDesc;</span>
+            }
+        };
+
+        // touch lower level metadata before registering my listener
+<span class="fc" id="L112">        crud.reloadAll();</span>
+<span class="fc" id="L113">        Broadcaster.getInstance(config).registerListener(new CubeDescSyncListener(), &quot;cube_desc&quot;);</span>
+<span class="fc" id="L114">    }</span>
+
+<span class="fc" id="L116">    private class CubeDescSyncListener extends Broadcaster.Listener {</span>
+
+        @Override
+        public void onProjectSchemaChange(Broadcaster broadcaster, String project) throws IOException {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            for (IRealization real : ProjectManager.getInstance(config).listAllRealizations(project)) {</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">                if (real instanceof CubeInstance) {</span>
+<span class="nc" id="L122">                    String descName = ((CubeInstance) real).getDescName();</span>
+<span class="nc" id="L123">                    reloadCubeDescQuietly(descName);</span>
+                }
+<span class="nc" id="L125">            }</span>
+<span class="nc" id="L126">        }</span>
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L131">            String cubeDescName = cacheKey;</span>
+<span class="nc" id="L132">            CubeDesc cubeDesc = getCubeDesc(cubeDescName);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            String modelName = cubeDesc == null ? null : cubeDesc.getModelName();</span>
+
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (event == Event.DROP)</span>
+<span class="nc" id="L136">                removeLocalCubeDesc(cubeDescName);</span>
+            else
+<span class="nc" id="L138">                reloadCubeDescQuietly(cubeDescName);</span>
+
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            for (ProjectInstance prj : ProjectManager.getInstance(config).findProjectsByModel(modelName)) {</span>
+<span class="nc" id="L141">                broadcaster.notifyProjectSchemaUpdate(prj.getName());</span>
+<span class="nc" id="L142">            }</span>
+<span class="nc" id="L143">        }</span>
+    }
+
+    public CubeDesc getCubeDesc(String name) {
+<span class="fc" id="L147">        try (AutoLock lock = descMapLock.lockForRead()) {</span>
+<span class="fc" id="L148">            return cubeDescMap.get(name);</span>
+        }
+    }
+
+    public List&lt;CubeDesc&gt; listAllDesc() {
+<span class="nc" id="L153">        try (AutoLock lock = descMapLock.lockForRead()) {</span>
+<span class="nc" id="L154">            return new ArrayList&lt;CubeDesc&gt;(cubeDescMap.values());</span>
+        }
+    }
+    
+    public CubeDesc reloadCubeDescQuietly(String name) {
+<span class="nc" id="L159">        try (AutoLock lock = descMapLock.lockForWrite()) {</span>
+<span class="nc" id="L160">            return reloadCubeDescLocal(name);</span>
+<span class="nc" id="L161">        } catch (Exception e) {</span>
+<span class="nc" id="L162">            logger.error(&quot;Failed to reload CubeDesc &quot; + name, e);</span>
+<span class="nc" id="L163">            return null;</span>
+        }
+    }
+
+    public CubeDesc reloadCubeDescLocal(String name) throws IOException {
+<span class="fc" id="L168">        try (AutoLock lock = descMapLock.lockForWrite()) {</span>
+<span class="fc" id="L169">            CubeDesc ndesc = crud.reload(name);</span>
+<span class="fc" id="L170">            clearCuboidCache(name);</span>
+            
+            // Broken CubeDesc is not allowed to be saved and broadcast.
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (ndesc.isBroken())</span>
+<span class="nc" id="L174">                throw new IllegalStateException(&quot;CubeDesc &quot; + name + &quot; is broken&quot;);</span>
+    
+<span class="fc" id="L176">            return ndesc;</span>
+        }
+    }
+
+    /**
+     * Create a new CubeDesc
+     */
+    public CubeDesc createCubeDesc(CubeDesc cubeDesc) throws IOException {
+<span class="nc" id="L184">        try (AutoLock lock = descMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L185" title="All 4 branches missed.">            if (cubeDesc.getUuid() == null || cubeDesc.getName() == null)</span>
+<span class="nc" id="L186">                throw new IllegalArgumentException();</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (cubeDescMap.containsKey(cubeDesc.getName()))</span>
+<span class="nc" id="L188">                throw new IllegalArgumentException(&quot;CubeDesc '&quot; + cubeDesc.getName() + &quot;' already exists&quot;);</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">            if (cubeDesc.isDraft())</span>
+<span class="nc" id="L190">                throw new IllegalArgumentException(String.format(Locale.ROOT, CUBE_SHOULD_NOT_BE_DRAFT_MSG, cubeDesc.getName()));</span>
+
+            try {
+<span class="nc" id="L193">                cubeDesc.init(config);</span>
+<span class="nc" id="L194">            } catch (Exception e) {</span>
+<span class="nc" id="L195">                logger.warn(&quot;Broken cube desc &quot; + cubeDesc, e);</span>
+<span class="nc" id="L196">                cubeDesc.addError(e.toString());</span>
+<span class="nc" id="L197">            }</span>
+            
+<span class="nc" id="L199">            postProcessCubeDesc(cubeDesc);</span>
+            // Check base validation
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            if (cubeDesc.isBroken()) {</span>
+<span class="nc" id="L202">                return cubeDesc;</span>
+            }
+            // Semantic validation
+<span class="nc" id="L205">            CubeMetadataValidator validator = new CubeMetadataValidator(config);</span>
+<span class="nc" id="L206">            ValidateContext context = validator.validate(cubeDesc);</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (!context.ifPass()) {</span>
+<span class="nc" id="L208">                return cubeDesc;</span>
+            }
+
+<span class="nc" id="L211">            cubeDesc.setSignature(cubeDesc.calculateSignature());</span>
+
+            // save resource
+<span class="nc" id="L214">            crud.save(cubeDesc);</span>
+            
+<span class="nc" id="L216">            return cubeDesc;</span>
+        }
+    }
+
+    /**
+     * Update CubeDesc with the input. Broadcast the event into cluster
+     */
+    public CubeDesc updateCubeDesc(CubeDesc desc) throws IOException {
+<span class="fc" id="L224">        try (AutoLock lock = descMapLock.lockForWrite()) {</span>
+            // Validate CubeDesc
+<span class="pc bpc" id="L226" title="2 of 4 branches missed.">            if (desc.getUuid() == null || desc.getName() == null)</span>
+<span class="nc" id="L227">                throw new IllegalArgumentException();</span>
+<span class="fc" id="L228">            String name = desc.getName();</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">            if (!cubeDescMap.containsKey(name))</span>
+<span class="nc" id="L230">                throw new IllegalArgumentException(&quot;CubeDesc '&quot; + name + &quot;' does not exist.&quot;);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">            if (desc.isDraft())</span>
+<span class="nc" id="L232">                throw new IllegalArgumentException(String.format(Locale.ROOT, CUBE_SHOULD_NOT_BE_DRAFT_MSG, desc.getName()));</span>
+
+            try {
+<span class="fc" id="L235">                desc.init(config);</span>
+<span class="nc" id="L236">            } catch (Exception e) {</span>
+<span class="nc" id="L237">                logger.warn(&quot;Broken cube desc &quot; + desc, e);</span>
+<span class="nc" id="L238">                desc.addError(e.toString());</span>
+<span class="nc" id="L239">                return desc;</span>
+<span class="fc" id="L240">            }</span>
+
+<span class="fc" id="L242">            postProcessCubeDesc(desc);</span>
+            // Semantic validation
+<span class="fc" id="L244">            CubeMetadataValidator validator = new CubeMetadataValidator(config);</span>
+<span class="fc" id="L245">            ValidateContext context = validator.validate(desc);</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">            if (!context.ifPass()) {</span>
+<span class="nc" id="L247">                return desc;</span>
+            }
+
+<span class="fc" id="L250">            desc.setSignature(desc.calculateSignature());</span>
+
+            // save resource
+<span class="fc" id="L253">            crud.save(desc);</span>
+
+<span class="fc" id="L255">            return desc;</span>
+        }
+    }
+
+    /**
+     * if there is some change need be applied after getting a cubeDesc from front-end, do it here
+     * @param cubeDesc
+     */
+    private void postProcessCubeDesc(CubeDesc cubeDesc) {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        for (MeasureDesc measureDesc : cubeDesc.getMeasures()) {</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">            if (TopNMeasureType.FUNC_TOP_N.equalsIgnoreCase(measureDesc.getFunction().getExpression())) {</span>
+                // update return type scale with the estimated key length
+<span class="nc" id="L267">                Map&lt;String, String&gt; configuration = measureDesc.getFunction().getConfiguration();</span>
+<span class="nc" id="L268">                ParameterDesc parameter = measureDesc.getFunction().getParameter();</span>
+<span class="nc" id="L269">                parameter = parameter.getNextParameter();</span>
+<span class="nc" id="L270">                int keyLength = 0;</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">                while (parameter != null) {</span>
+<span class="nc" id="L272">                    String encoding = configuration.get(TopNMeasureType.CONFIG_ENCODING_PREFIX + parameter.getValue());</span>
+<span class="nc" id="L273">                    String encodingVersionStr = configuration</span>
+<span class="nc" id="L274">                            .get(TopNMeasureType.CONFIG_ENCODING_VERSION_PREFIX + parameter.getValue());</span>
+<span class="nc bnc" id="L275" title="All 4 branches missed.">                    if (StringUtils.isEmpty(encoding) || DictionaryDimEnc.ENCODING_NAME.equals(encoding)) {</span>
+<span class="nc" id="L276">                        keyLength += DictionaryDimEnc.MAX_ENCODING_LENGTH; // estimation for dict encoding</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                    } else if (encoding.startsWith(&quot;dict&quot;)) {</span>
+<span class="nc" id="L278">                        throw new IllegalArgumentException(</span>
+                                &quot;TOP_N's Encoding is &quot; + encoding + &quot;, please choose the correct one&quot;);
+                    } else {
+                        // non-dict encoding
+<span class="nc" id="L282">                        int encodingVersion = 1;</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">                        if (!StringUtils.isEmpty(encodingVersionStr)) {</span>
+                            try {
+<span class="nc" id="L285">                                encodingVersion = Integer.parseInt(encodingVersionStr);</span>
+<span class="nc" id="L286">                            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L287">                                throw new RuntimeException(&quot;invalid encoding version: &quot; + encodingVersionStr);</span>
+<span class="nc" id="L288">                            }</span>
+                        }
+<span class="nc" id="L290">                        Object[] encodingConf = DimensionEncoding.parseEncodingConf(encoding);</span>
+<span class="nc" id="L291">                        DimensionEncoding dimensionEncoding = DimensionEncodingFactory.create((String) encodingConf[0],</span>
+                                (String[]) encodingConf[1], encodingVersion);
+<span class="nc" id="L293">                        keyLength += dimensionEncoding.getLengthOfEncoding();</span>
+                    }
+
+<span class="nc" id="L296">                    parameter = parameter.getNextParameter();</span>
+<span class="nc" id="L297">                }</span>
+
+<span class="nc" id="L299">                DataType returnType = DataType.getType(measureDesc.getFunction().getReturnType());</span>
+<span class="nc" id="L300">                DataType newReturnType = new DataType(returnType.getName(), returnType.getPrecision(), keyLength);</span>
+<span class="nc" id="L301">                measureDesc.getFunction().setReturnType(newReturnType.toString());</span>
+            }
+<span class="fc" id="L303">        }</span>
+<span class="fc" id="L304">    }</span>
+
+    // remove cubeDesc
+    public void removeCubeDesc(CubeDesc cubeDesc) throws IOException {
+<span class="fc" id="L308">        try (AutoLock lock = descMapLock.lockForWrite()) {</span>
+<span class="fc" id="L309">            crud.delete(cubeDesc);</span>
+<span class="fc" id="L310">            clearCuboidCache(cubeDesc.getName());</span>
+        }
+<span class="fc" id="L312">    }</span>
+
+    // remove cubeDesc
+    public void removeLocalCubeDesc(String name) throws IOException {
+<span class="nc" id="L316">        try (AutoLock lock = descMapLock.lockForWrite()) {</span>
+<span class="nc" id="L317">            cubeDescMap.removeLocal(name);</span>
+<span class="nc" id="L318">            clearCuboidCache(name);</span>
+        }
+<span class="nc" id="L320">    }</span>
+    
+    private void clearCuboidCache(String descName) {
+        // avoid calling CubeDesc.getInitialCuboidScheduler() for late initializing CuboidScheduler
+<span class="fc" id="L324">        CuboidManager.getInstance(config).clearCache(descName);</span>
+<span class="fc" id="L325">    }</span>
+
+    private ResourceStore getStore() {
+<span class="fc" id="L328">        return ResourceStore.getStore(this.config);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/net/spy/memcached/protocol/TCPMemcachedNodeImpl.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/net/spy/memcached/RefinedKetamaNodeLocator.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/CacheConstants.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/MemcachedCacheManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/RemoteLocalFailOverCacheManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/cachemanager/InstrumentedEhCacheCacheManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/CacheStats.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/KeyHookLookup.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedConnectionFactoryBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedCacheConfig.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedCache.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedChunkingCache.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedConnectionFactory.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/memcached/MemcachedMetrics.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/main/java/org/apache/kylin/cache/ehcache/InstrumentedEhCacheCache.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/test/java/org/apache/kylin/cache/cachemanager/RemoteLocalFailOverCacheManagerTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/test/java/org/apache/kylin/cache/memcached/MemcachedCacheTest.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/cache/src/test/java/org/apache/kylin/cache/memcached/MemcachedChunkingCacheTest.java">
+</file>
+</checkstyle>

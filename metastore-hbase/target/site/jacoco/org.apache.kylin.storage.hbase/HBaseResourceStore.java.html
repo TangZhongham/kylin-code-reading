@@ -1,0 +1,511 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HBaseResourceStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - HBase Metastore</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.hbase</a> &gt; <span class="el_source">HBaseResourceStore.java</span></div><h1>HBaseResourceStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.hbase;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.RetriesExhaustedException;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.filter.CompareFilter;
+import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.persistence.ContentWriter;
+import org.apache.kylin.common.persistence.PushdownResourceStore;
+import org.apache.kylin.common.persistence.RawResource;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.StringEntity;
+import org.apache.kylin.common.persistence.WriteConflictException;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+
+<span class="nc bnc" id="L64" title="All 2 branches missed.">@Deprecated</span>
+public class HBaseResourceStore extends PushdownResourceStore {
+
+<span class="nc" id="L67">    private static Logger logger = LoggerFactory.getLogger(HBaseResourceStore.class);</span>
+
+    private static final String FAMILY = &quot;f&quot;;
+
+<span class="nc" id="L71">    private static final byte[] B_FAMILY = Bytes.toBytes(FAMILY);</span>
+
+    private static final String COLUMN = &quot;c&quot;;
+
+<span class="nc" id="L75">    private static final byte[] B_COLUMN = Bytes.toBytes(COLUMN);</span>
+
+    private static final String COLUMN_TS = &quot;t&quot;;
+
+<span class="nc" id="L79">    private static final byte[] B_COLUMN_TS = Bytes.toBytes(COLUMN_TS);</span>
+
+    final String tableName;
+    final StorageURL metadataUrl;
+    final int kvSizeLimit;
+
+    public HBaseResourceStore(KylinConfig kylinConfig) throws IOException {
+<span class="nc" id="L86">        super(kylinConfig);</span>
+<span class="nc" id="L87">        metadataUrl = buildMetadataUrl(kylinConfig);</span>
+<span class="nc" id="L88">        tableName = metadataUrl.getIdentifier();</span>
+<span class="nc" id="L89">        createHTableIfNeeded(tableName);</span>
+
+<span class="nc" id="L91">        kvSizeLimit = Integer</span>
+<span class="nc" id="L92">                .parseInt(getConnection().getConfiguration().get(&quot;hbase.client.keyvalue.maxsize&quot;, &quot;10485760&quot;));</span>
+<span class="nc" id="L93">    }</span>
+
+    Connection getConnection() throws IOException {
+<span class="nc" id="L96">        return HBaseConnection.get(metadataUrl);</span>
+    }
+
+    private StorageURL buildMetadataUrl(KylinConfig kylinConfig) throws IOException {
+<span class="nc" id="L100">        StorageURL url = kylinConfig.getMetadataUrl();</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        if (!url.getScheme().equals(&quot;hbase&quot;))</span>
+<span class="nc" id="L102">            throw new IOException(&quot;Cannot create HBaseResourceStore. Url not match. Url: &quot; + url);</span>
+
+        // control timeout for prompt error report
+<span class="nc" id="L105">        Map&lt;String, String&gt; newParams = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L106">        newParams.put(&quot;hbase.client.scanner.timeout.period&quot;, kylinConfig.getHbaseClientScannerTimeoutPeriod());</span>
+<span class="nc" id="L107">        newParams.put(&quot;hbase.rpc.timeout&quot;, kylinConfig.getHbaseRpcTimeout());</span>
+<span class="nc" id="L108">        newParams.put(&quot;hbase.client.retries.number&quot;, kylinConfig.getHbaseClientRetriesNumber());</span>
+<span class="nc" id="L109">        newParams.putAll(url.getAllParameters());</span>
+
+<span class="nc" id="L111">        return url.copy(newParams);</span>
+    }
+
+    private void createHTableIfNeeded(String tableName) throws IOException {
+<span class="nc" id="L115">        HBaseConnection.createHTableIfNeeded(getConnection(), tableName, FAMILY);</span>
+<span class="nc" id="L116">    }</span>
+
+    @Override
+    protected boolean existsImpl(String resPath) throws IOException {
+<span class="nc" id="L120">        Result r = getFromHTable(resPath, false, false);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        return r != null;</span>
+    }
+
+    /* override get meta store uuid method for backward compatibility */
+    @Override
+    protected String createMetaStoreUUID() throws IOException {
+<span class="nc" id="L127">        try (final Admin hbaseAdmin = HBaseConnection.get(metadataUrl).getAdmin()) {</span>
+<span class="nc" id="L128">            final String metaStoreName = metadataUrl.getIdentifier();</span>
+<span class="nc" id="L129">            final HTableDescriptor desc = hbaseAdmin.getTableDescriptor(TableName.valueOf(metaStoreName));</span>
+<span class="nc" id="L130">            String uuid = desc.getValue(HBaseConnection.HTABLE_UUID_TAG);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">            if (uuid != null)</span>
+<span class="nc" id="L132">                return uuid;</span>
+<span class="nc" id="L133">            return UUID.randomUUID().toString();</span>
+<span class="nc" id="L134">        } catch (Exception e) {</span>
+<span class="nc" id="L135">            return null;</span>
+        }
+    }
+
+    @Override
+    public String getMetaStoreUUID() throws IOException {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (!exists(ResourceStore.METASTORE_UUID_TAG)) {</span>
+<span class="nc" id="L142">            checkAndPutResource(ResourceStore.METASTORE_UUID_TAG, new StringEntity(createMetaStoreUUID()), 0,</span>
+                    StringEntity.serializer);
+        }
+<span class="nc" id="L145">        StringEntity entity = getResource(ResourceStore.METASTORE_UUID_TAG, StringEntity.serializer);</span>
+<span class="nc" id="L146">        return entity.toString();</span>
+    }
+
+    @Override
+    protected void visitFolderImpl(String folderPath, final boolean recursive, VisitFilter filter,
+                                   final boolean loadContent, final Visitor visitor) throws IOException {
+
+<span class="nc" id="L153">        visitFolder(folderPath, filter, loadContent, new FolderVisitor() {</span>
+            @Override
+            public void visit(String childPath, String fullPath, Result hbaseResult) throws IOException {
+                // is a direct child (not grand child)?
+<span class="nc" id="L157">                boolean isDirectChild = childPath.equals(fullPath);</span>
+
+<span class="nc bnc" id="L159" title="All 4 branches missed.">                if (isDirectChild || recursive) {</span>
+<span class="nc" id="L160">                    RawResource resource = rawResource(fullPath, hbaseResult, loadContent);</span>
+                    try {
+<span class="nc" id="L162">                        visitor.visit(resource);</span>
+                    } finally {
+<span class="nc" id="L164">                        resource.close();</span>
+                    }
+                }
+<span class="nc" id="L167">            }</span>
+        });
+<span class="nc" id="L169">    }</span>
+
+    private void visitFolder(String folderPath, VisitFilter filter, boolean loadContent, FolderVisitor visitor)
+            throws IOException {
+<span class="nc bnc" id="L173" title="All 4 branches missed.">        assert folderPath.startsWith(&quot;/&quot;);</span>
+
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        String folderPrefix = folderPath.endsWith(&quot;/&quot;) ? folderPath : folderPath + &quot;/&quot;;</span>
+<span class="nc" id="L176">        String lookForPrefix = folderPrefix;</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (filter.hasPathPrefixFilter()) {</span>
+<span class="nc" id="L178">            Preconditions.checkArgument(filter.pathPrefix.startsWith(folderPrefix));</span>
+<span class="nc" id="L179">            lookForPrefix = filter.pathPrefix;</span>
+        }
+
+<span class="nc" id="L182">        byte[] startRow = Bytes.toBytes(lookForPrefix);</span>
+<span class="nc" id="L183">        byte[] endRow = Bytes.toBytes(lookForPrefix);</span>
+<span class="nc" id="L184">        endRow[endRow.length - 1]++;</span>
+
+<span class="nc" id="L186">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+<span class="nc" id="L187">        Scan scan = new Scan(startRow, endRow);</span>
+<span class="nc" id="L188">        scan.addColumn(B_FAMILY, B_COLUMN_TS);</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (loadContent) {</span>
+<span class="nc" id="L190">            scan.addColumn(B_FAMILY, B_COLUMN);</span>
+        }
+<span class="nc" id="L192">        FilterList timeFilter = generateTimeFilterList(filter);</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (timeFilter != null) {</span>
+<span class="nc" id="L194">            scan.setFilter(timeFilter);</span>
+        }
+
+<span class="nc" id="L197">        tuneScanParameters(scan);</span>
+
+        try {
+<span class="nc" id="L200">            ResultScanner scanner = table.getScanner(scan);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            for (Result r : scanner) {</span>
+<span class="nc" id="L202">                String path = Bytes.toString(r.getRow());</span>
+<span class="nc bnc" id="L203" title="All 4 branches missed.">                assert path.startsWith(lookForPrefix);</span>
+<span class="nc" id="L204">                int cut = path.indexOf('/', folderPrefix.length());</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                String directChild = cut &lt; 0 ? path : path.substring(0, cut);</span>
+<span class="nc" id="L206">                visitor.visit(directChild, path, r);</span>
+<span class="nc" id="L207">            }</span>
+        } finally {
+<span class="nc" id="L209">            IOUtils.closeQuietly(table);</span>
+        }
+<span class="nc" id="L211">    }</span>
+
+    private void tuneScanParameters(Scan scan) {
+<span class="nc" id="L214">        scan.setCaching(kylinConfig.getHBaseScanCacheRows());</span>
+
+<span class="nc" id="L216">        scan.setMaxResultSize(kylinConfig.getHBaseScanMaxResultSize());</span>
+<span class="nc" id="L217">        scan.setCacheBlocks(true);</span>
+<span class="nc" id="L218">    }</span>
+
+    interface FolderVisitor {
+        void visit(String childPath, String fullPath, Result hbaseResult) throws IOException;
+    }
+
+    private RawResource rawResource(String path, Result hbaseResult, boolean loadContent) {
+<span class="nc" id="L225">        long lastModified = getTimestamp(hbaseResult);</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (loadContent) {</span>
+            try {
+<span class="nc" id="L228">                return new RawResource(path, lastModified, getInputStream(path, hbaseResult));</span>
+<span class="nc" id="L229">            } catch (IOException ex) {</span>
+<span class="nc" id="L230">                return new RawResource(path, lastModified, ex); // let the caller handle broken content</span>
+            }
+        } else {
+<span class="nc" id="L233">            return new RawResource(path, lastModified);</span>
+        }
+    }
+
+    private FilterList generateTimeFilterList(VisitFilter visitFilter) {
+<span class="nc" id="L238">        FilterList filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL);</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (visitFilter.lastModStart &gt;= 0) { // NOTE: Negative value does not work in its binary form</span>
+<span class="nc" id="L240">            SingleColumnValueFilter timeStartFilter = new SingleColumnValueFilter(B_FAMILY, B_COLUMN_TS,</span>
+<span class="nc" id="L241">                    CompareFilter.CompareOp.GREATER_OR_EQUAL, Bytes.toBytes(visitFilter.lastModStart));</span>
+<span class="nc" id="L242">            filterList.addFilter(timeStartFilter);</span>
+        }
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        if (visitFilter.lastModEndExclusive != Long.MAX_VALUE) {</span>
+<span class="nc" id="L245">            SingleColumnValueFilter timeEndFilter = new SingleColumnValueFilter(B_FAMILY, B_COLUMN_TS,</span>
+<span class="nc" id="L246">                    CompareFilter.CompareOp.LESS, Bytes.toBytes(visitFilter.lastModEndExclusive));</span>
+<span class="nc" id="L247">            filterList.addFilter(timeEndFilter);</span>
+        }
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        return filterList.getFilters().isEmpty() ? null : filterList;</span>
+    }
+
+    private InputStream getInputStream(String resPath, Result r) throws IOException {
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (r == null) {</span>
+<span class="nc" id="L254">            return null;</span>
+        }
+<span class="nc" id="L256">        byte[] value = r.getValue(B_FAMILY, B_COLUMN);</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (value.length == 0) {</span>
+<span class="nc" id="L258">            return openPushdown(resPath);</span>
+        } else {
+<span class="nc" id="L260">            return new ByteArrayInputStream(value);</span>
+        }
+    }
+
+    private long getTimestamp(Result r) {
+<span class="nc bnc" id="L265" title="All 4 branches missed.">        if (r == null || r.getValue(B_FAMILY, B_COLUMN_TS) == null) {</span>
+<span class="nc" id="L266">            return 0;</span>
+        } else {
+<span class="nc" id="L268">            return Bytes.toLong(r.getValue(B_FAMILY, B_COLUMN_TS));</span>
+        }
+    }
+
+    @Override
+    protected RawResource getResourceImpl(String resPath) throws IOException {
+<span class="nc" id="L274">        Result r = getFromHTable(resPath, true, true);</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        if (r == null)</span>
+<span class="nc" id="L276">            return null;</span>
+        else {
+<span class="nc" id="L278">            return rawResource(resPath, r, true);</span>
+        }
+    }
+
+    @Override
+    protected long getResourceTimestampImpl(String resPath) throws IOException {
+<span class="nc" id="L284">        return getTimestamp(getFromHTable(resPath, false, true));</span>
+    }
+
+    @Override
+    protected void putSmallResource(String resPath, ContentWriter content, long ts) throws IOException {
+<span class="nc" id="L289">        byte[] row = Bytes.toBytes(resPath);</span>
+<span class="nc" id="L290">        byte[] bytes = content.extractAllBytes();</span>
+
+<span class="nc" id="L292">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+<span class="nc" id="L293">        RollbackablePushdown pushdown = null;</span>
+        try {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (bytes.length &gt; kvSizeLimit) {</span>
+<span class="nc" id="L296">                pushdown = writePushdown(resPath, ContentWriter.create(bytes));</span>
+<span class="nc" id="L297">                bytes = BytesUtil.EMPTY_BYTE_ARRAY;</span>
+            }
+
+<span class="nc" id="L300">            Put put = new Put(row);</span>
+<span class="nc" id="L301">            put.addColumn(B_FAMILY, B_COLUMN, bytes);</span>
+<span class="nc" id="L302">            put.addColumn(B_FAMILY, B_COLUMN_TS, Bytes.toBytes(ts));</span>
+
+<span class="nc" id="L304">            table.put(put);</span>
+
+<span class="nc" id="L306">        } catch (Exception ex) {</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">            if (pushdown != null)</span>
+<span class="nc" id="L308">                pushdown.rollback();</span>
+<span class="nc" id="L309">            throw ex;</span>
+        } finally {
+<span class="nc bnc" id="L311" title="All 2 branches missed.">            if (pushdown != null)</span>
+<span class="nc" id="L312">                pushdown.close();</span>
+<span class="nc" id="L313">            IOUtils.closeQuietly(table);</span>
+        }
+<span class="nc" id="L315">    }</span>
+
+    @Override
+    protected long checkAndPutResourceImpl(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, IllegalStateException {
+<span class="nc" id="L320">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+<span class="nc" id="L321">        RollbackablePushdown pushdown = null;</span>
+        try {
+<span class="nc" id="L323">            byte[] row = Bytes.toBytes(resPath);</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">            byte[] bOldTS = oldTS == 0 ? null : Bytes.toBytes(oldTS);</span>
+
+<span class="nc bnc" id="L326" title="All 2 branches missed.">            if (content.length &gt; kvSizeLimit) {</span>
+<span class="nc" id="L327">                pushdown = writePushdown(resPath, ContentWriter.create(content));</span>
+<span class="nc" id="L328">                content = BytesUtil.EMPTY_BYTE_ARRAY;</span>
+            }
+
+<span class="nc" id="L331">            Put put = new Put(row);</span>
+<span class="nc" id="L332">            put.addColumn(B_FAMILY, B_COLUMN, content);</span>
+<span class="nc" id="L333">            put.addColumn(B_FAMILY, B_COLUMN_TS, Bytes.toBytes(newTS));</span>
+
+<span class="nc" id="L335">            boolean ok = table.checkAndPut(row, B_FAMILY, B_COLUMN_TS, bOldTS, put);</span>
+<span class="nc" id="L336">            logger.trace(&quot;Update row {} from oldTs: {}, to newTs: {}, operation result: {}&quot;, resPath, oldTS, newTS, ok);</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            if (!ok) {</span>
+<span class="nc" id="L338">                long real = getResourceTimestampImpl(resPath);</span>
+<span class="nc" id="L339">                throw new WriteConflictException(</span>
+                        &quot;Overwriting conflict &quot; + resPath +
+                                &quot;, expect old TS &quot; + oldTS +
+                                &quot;, but it is &quot; + real +
+                                &quot;, the expected new TS: &quot; + newTS);
+            }
+
+<span class="nc" id="L346">            return newTS;</span>
+
+<span class="nc" id="L348">        } catch (Exception ex) {</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">            if (pushdown != null)</span>
+<span class="nc" id="L350">                pushdown.rollback();</span>
+<span class="nc" id="L351">            throw ex;</span>
+        } finally {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            if (pushdown != null)</span>
+<span class="nc" id="L354">                pushdown.close();</span>
+<span class="nc" id="L355">            IOUtils.closeQuietly(table);</span>
+        }
+    }
+
+    @Override
+    protected void updateTimestampImpl(String resPath, long timestamp) throws IOException {
+<span class="nc" id="L361">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+        try {
+<span class="nc" id="L363">            boolean hdfsResourceExist = isHdfsResourceExist(table, resPath);</span>
+<span class="nc" id="L364">            long oldTS = getResourceLastModified(table, resPath);</span>
+
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            byte[] bOldTS = oldTS == 0 ? null : Bytes.toBytes(oldTS);</span>
+<span class="nc" id="L367">            byte[] row = Bytes.toBytes(resPath);</span>
+<span class="nc" id="L368">            Put put = new Put(row);</span>
+<span class="nc" id="L369">            put.addColumn(B_FAMILY, B_COLUMN_TS, Bytes.toBytes(timestamp));</span>
+
+<span class="nc" id="L371">            boolean ok = table.checkAndPut(row, B_FAMILY, B_COLUMN_TS, bOldTS, put);</span>
+<span class="nc" id="L372">            logger.trace(&quot;Update row {} from oldTs: {}, to newTs: {}, operation result: {}&quot;, resPath, oldTS, timestamp,</span>
+<span class="nc" id="L373">                    ok);</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            if (!ok) {</span>
+<span class="nc" id="L375">                long real = getResourceTimestampImpl(resPath);</span>
+<span class="nc" id="L376">                throw new WriteConflictException(</span>
+                        &quot;Overwriting conflict &quot; + resPath + &quot;, expect old TS &quot; + oldTS + &quot;, but it is &quot; + real);
+            }
+
+<span class="nc bnc" id="L380" title="All 2 branches missed.">            if (hdfsResourceExist) { // update timestamp in hdfs</span>
+<span class="nc" id="L381">                updateTimestampPushdown(resPath, timestamp);</span>
+            }
+        } finally {
+<span class="nc" id="L384">            IOUtils.closeQuietly(table);</span>
+        }
+<span class="nc" id="L386">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath) throws IOException {
+<span class="nc" id="L390">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+        try {
+<span class="nc" id="L392">            boolean hdfsResourceExist = isHdfsResourceExist(table, resPath);</span>
+
+<span class="nc" id="L394">            Delete del = new Delete(Bytes.toBytes(resPath));</span>
+<span class="nc" id="L395">            table.delete(del);</span>
+
+<span class="nc bnc" id="L397" title="All 2 branches missed.">            if (hdfsResourceExist) { // remove hdfs cell value</span>
+<span class="nc" id="L398">                deletePushdown(resPath);</span>
+            }
+        } finally {
+<span class="nc" id="L401">            IOUtils.closeQuietly(table);</span>
+        }
+<span class="nc" id="L403">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath, long timestamp) throws IOException {
+<span class="nc" id="L407">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+        try {
+<span class="nc" id="L409">            boolean hdfsResourceExist = isHdfsResourceExist(table, resPath);</span>
+<span class="nc" id="L410">            long origLastModified = getResourceLastModified(table, resPath);</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">            if (checkTimeStampBeforeDelete(origLastModified, timestamp)) {</span>
+<span class="nc" id="L412">                Delete del = new Delete(Bytes.toBytes(resPath));</span>
+<span class="nc" id="L413">                table.delete(del);</span>
+
+<span class="nc bnc" id="L415" title="All 2 branches missed.">                if (hdfsResourceExist) { // remove hdfs cell value</span>
+<span class="nc" id="L416">                    deletePushdown(resPath);</span>
+                }
+<span class="nc" id="L418">            } else {</span>
+<span class="nc" id="L419">                throw new IOException(&quot;Resource &quot; + resPath + &quot; timestamp not match, [originLastModified: &quot;</span>
+                        + origLastModified + &quot;, timestampToDelete: &quot; + timestamp + &quot;]&quot;);
+            }
+
+        } finally {
+<span class="nc" id="L424">            IOUtils.closeQuietly(table);</span>
+        }
+<span class="nc" id="L426">    }</span>
+
+    // to avoid get Table twice time to improve delete performance
+    private long getResourceLastModified(Table table, String resPath) throws IOException {
+<span class="nc" id="L430">        return getTimestamp(internalGetFromHTable(table, resPath, false, true));</span>
+    }
+
+    private boolean isHdfsResourceExist(Table table, String resPath) throws IOException {
+<span class="nc" id="L434">        boolean hdfsResourceExist = false;</span>
+<span class="nc" id="L435">        Result result = internalGetFromHTable(table, resPath, true, false);</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">        if (result != null) {</span>
+<span class="nc" id="L437">            byte[] contentVal = result.getValue(B_FAMILY, B_COLUMN);</span>
+<span class="nc bnc" id="L438" title="All 4 branches missed.">            if (contentVal != null &amp;&amp; contentVal.length == 0) {</span>
+<span class="nc" id="L439">                hdfsResourceExist = true;</span>
+            }
+        }
+
+<span class="nc" id="L443">        return hdfsResourceExist;</span>
+    }
+
+    @Override
+    protected String getReadableResourcePathImpl(String resPath) {
+<span class="nc" id="L448">        return tableName + &quot;(key='&quot; + resPath + &quot;')@&quot; + kylinConfig.getMetadataUrl();</span>
+    }
+
+    private Result getFromHTable(String path, boolean fetchContent, boolean fetchTimestamp) throws IOException {
+<span class="nc" id="L452">        Table table = getConnection().getTable(TableName.valueOf(tableName));</span>
+        try {
+<span class="nc" id="L454">            return internalGetFromHTable(table, path, fetchContent, fetchTimestamp);</span>
+        } finally {
+<span class="nc" id="L456">            IOUtils.closeQuietly(table);</span>
+        }
+
+    }
+
+    private Result internalGetFromHTable(Table table, String path, boolean fetchContent, boolean fetchTimestamp)
+            throws IOException {
+<span class="nc" id="L463">        byte[] rowkey = Bytes.toBytes(path);</span>
+
+<span class="nc" id="L465">        Get get = new Get(rowkey);</span>
+
+<span class="nc bnc" id="L467" title="All 4 branches missed.">        if (!fetchContent &amp;&amp; !fetchTimestamp) {</span>
+<span class="nc" id="L468">            get.setCheckExistenceOnly(true);</span>
+        } else {
+<span class="nc bnc" id="L470" title="All 2 branches missed.">            if (fetchContent)</span>
+<span class="nc" id="L471">                get.addColumn(B_FAMILY, B_COLUMN);</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">            if (fetchTimestamp)</span>
+<span class="nc" id="L473">                get.addColumn(B_FAMILY, B_COLUMN_TS);</span>
+        }
+
+<span class="nc" id="L476">        Result result = table.get(get);</span>
+<span class="nc bnc" id="L477" title="All 8 branches missed.">        boolean exists = result != null &amp;&amp; (!result.isEmpty() || (result.getExists() != null &amp;&amp; result.getExists()));</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        return exists ? result : null;</span>
+    }
+
+    @Override
+    protected String pushdownRootPath() {
+<span class="nc" id="L483">        String hdfsWorkingDirectory = this.kylinConfig.getHdfsWorkingDirectory(null);</span>
+<span class="nc bnc" id="L484" title="All 2 branches missed.">        if (hdfsWorkingDirectory.endsWith(&quot;/&quot;))</span>
+<span class="nc" id="L485">            return hdfsWorkingDirectory + &quot;resources&quot;;</span>
+        else
+<span class="nc" id="L487">            return hdfsWorkingDirectory + &quot;/&quot; + &quot;resources&quot;;</span>
+    }
+
+    @Override
+    protected FileSystem pushdownFS() {
+<span class="nc" id="L492">        return HadoopUtil.getFileSystem(new Path(&quot;/&quot;), HBaseConnection.getCurrentHBaseConfiguration());</span>
+    }
+
+    // visible for test
+    Path bigCellHDFSPath(String resPath) {
+<span class="nc" id="L497">        return super.pushdownPath(resPath);</span>
+    }
+
+    @Override
+    protected boolean isUnreachableException(Throwable ex) {
+<span class="nc bnc" id="L502" title="All 8 branches missed.">        return (super.isUnreachableException(ex) || ex instanceof SocketTimeoutException</span>
+                || ex instanceof ConnectException || ex instanceof RetriesExhaustedException);
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L508">        return tableName + &quot;@hbase&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ByteArrayWritable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">ByteArrayWritable.java</span></div><h1>ByteArrayWritable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.engine.mr;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
+import org.apache.kylin.common.util.Bytes;
+
+public class ByteArrayWritable implements WritableComparable&lt;ByteArrayWritable&gt; {
+
+    private byte[] data;
+    private int offset;
+    private int length;
+
+    public ByteArrayWritable() {
+<span class="nc" id="L38">        this(null, 0, 0);</span>
+<span class="nc" id="L39">    }</span>
+
+    public ByteArrayWritable(int capacity) {
+<span class="nc" id="L42">        this(new byte[capacity], 0, capacity);</span>
+<span class="nc" id="L43">    }</span>
+
+    public ByteArrayWritable(byte[] data) {
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        this(data, 0, data == null ? 0 : data.length);</span>
+<span class="nc" id="L47">    }</span>
+
+<span class="nc" id="L49">    public ByteArrayWritable(byte[] data, int offset, int length) {</span>
+<span class="nc" id="L50">        this.data = data;</span>
+<span class="nc" id="L51">        this.offset = offset;</span>
+<span class="nc" id="L52">        this.length = length;</span>
+<span class="nc" id="L53">    }</span>
+
+    public byte[] array() {
+<span class="nc" id="L56">        return data;</span>
+    }
+
+    public int offset() {
+<span class="nc" id="L60">        return offset;</span>
+    }
+
+    public int length() {
+<span class="nc" id="L64">        return length;</span>
+    }
+
+    public void set(byte[] array) {
+<span class="nc" id="L68">        set(array, 0, array.length);</span>
+<span class="nc" id="L69">    }</span>
+
+    public void set(byte[] array, int offset, int length) {
+<span class="nc" id="L72">        this.data = array;</span>
+<span class="nc" id="L73">        this.offset = offset;</span>
+<span class="nc" id="L74">        this.length = length;</span>
+<span class="nc" id="L75">    }</span>
+
+    public ByteBuffer asBuffer() {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (data == null)</span>
+<span class="nc" id="L79">            return null;</span>
+<span class="nc bnc" id="L80" title="All 4 branches missed.">        else if (offset == 0 &amp;&amp; length == data.length)</span>
+<span class="nc" id="L81">            return ByteBuffer.wrap(data);</span>
+        else
+<span class="nc" id="L83">            return ByteBuffer.wrap(data, offset, length).slice();</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (data == null)</span>
+<span class="nc" id="L89">            return 0;</span>
+        else
+<span class="nc" id="L91">            return Bytes.hashCode(data, offset, length);</span>
+    }
+
+    @Override
+    public void write(DataOutput out) throws IOException {
+<span class="nc" id="L96">        out.writeInt(this.length);</span>
+<span class="nc" id="L97">        out.write(this.data, this.offset, this.length);</span>
+<span class="nc" id="L98">    }</span>
+
+    @Override
+    public void readFields(DataInput in) throws IOException {
+<span class="nc" id="L102">        this.length = in.readInt();</span>
+<span class="nc" id="L103">        this.data = new byte[this.length];</span>
+<span class="nc" id="L104">        in.readFully(this.data, 0, this.length);</span>
+<span class="nc" id="L105">        this.offset = 0;</span>
+<span class="nc" id="L106">    }</span>
+
+    // Below methods copied from BytesWritable
+    /**
+     * Define the sort order of the BytesWritable.
+     * @param that The other bytes writable
+     * @return Positive if left is bigger than right, 0 if they are equal, and
+     *         negative if left is smaller than right.
+     */
+    public int compareTo(ByteArrayWritable that) {
+<span class="nc" id="L116">        return WritableComparator.compareBytes(this.data, this.offset, this.length, that.data, that.offset,</span>
+                that.length);
+    }
+
+    /**
+     * Compares the bytes in this object to the specified byte array
+     * @param that
+     * @return Positive if left is bigger than right, 0 if they are equal, and
+     *         negative if left is smaller than right.
+     */
+    public int compareToByteArray(final byte[] that) {
+<span class="nc" id="L127">        return WritableComparator.compareBytes(this.data, this.offset, this.length, that, 0, that.length);</span>
+    }
+
+    /**
+     * @see java.lang.Object#equals(java.lang.Object)
+     */
+    @Override
+    public boolean equals(Object other) {
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (other instanceof byte[]) {</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">            return compareToByteArray((byte[]) other) == 0;</span>
+        }
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (other instanceof ByteArrayWritable) {</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">            return compareTo((ByteArrayWritable) other) == 0;</span>
+        }
+<span class="nc" id="L141">        return false;</span>
+    }
+
+    /**
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L149">        StringBuilder sb = new StringBuilder(3 * this.length);</span>
+<span class="nc" id="L150">        final int endIdx = this.offset + this.length;</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        for (int idx = this.offset; idx &lt; endIdx; idx++) {</span>
+<span class="nc" id="L152">            sb.append(' ');</span>
+<span class="nc" id="L153">            String num = Integer.toHexString(0xff &amp; this.data[idx]);</span>
+            // if it is only one digit, add a leading 0.
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (num.length() &lt; 2) {</span>
+<span class="nc" id="L156">                sb.append('0');</span>
+            }
+<span class="nc" id="L158">            sb.append(num);</span>
+        }
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        return sb.length() &gt; 0 ? sb.substring(1) : &quot;&quot;;</span>
+    }
+
+    /** A Comparator optimized for ByteArrayWritable.
+     */
+    public static class Comparator extends WritableComparator {
+<span class="nc" id="L166">        private BytesWritable.Comparator instance = new BytesWritable.Comparator();</span>
+
+        /** constructor */
+        public Comparator() {
+<span class="nc" id="L170">            super(ByteArrayWritable.class);</span>
+<span class="nc" id="L171">        }</span>
+
+        /**
+         * @see org.apache.hadoop.io.WritableComparator#compare(byte[], int, int, byte[], int, int)
+         */
+        @Override
+        public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
+<span class="nc" id="L178">            return instance.compare(b1, s1, l1, b2, s2, l2);</span>
+        }
+    }
+
+    static { // register this comparator
+<span class="nc" id="L183">        WritableComparator.define(ByteArrayWritable.class, new Comparator());</span>
+<span class="nc" id="L184">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

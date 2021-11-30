@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveColumnCardinalityUpdateJob.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive.cardinality</a> &gt; <span class="el_source">HiveColumnCardinalityUpdateJob.java</span></div><h1>HiveColumnCardinalityUpdateJob.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.hive.cardinality;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.TableExtDesc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * This job will update save the cardinality result into Kylin table metadata store.
+ *
+ * @author shaoshi
+ */
+public class HiveColumnCardinalityUpdateJob extends AbstractHadoopJob {
+<span class="nc" id="L55">    private static final Logger logger = LoggerFactory.getLogger(HiveColumnCardinalityUpdateJob.class);</span>
+
+    public static final String JOB_TITLE = &quot;Kylin Hive Column Cardinality Update Job&quot;;
+
+    @SuppressWarnings(&quot;static-access&quot;)
+<span class="nc" id="L60">    protected static final Option OPTION_TABLE = OptionBuilder.withArgName(&quot;table name&quot;).hasArg().isRequired(true)</span>
+<span class="nc" id="L61">            .withDescription(&quot;The hive table name&quot;).create(&quot;table&quot;);</span>
+
+<span class="nc" id="L63">    public HiveColumnCardinalityUpdateJob() {</span>
+
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    public int run(String[] args) throws Exception {
+
+<span class="nc" id="L70">        Options options = new Options();</span>
+
+        try {
+<span class="nc" id="L73">            options.addOption(OPTION_PROJECT);</span>
+<span class="nc" id="L74">            options.addOption(OPTION_TABLE);</span>
+<span class="nc" id="L75">            options.addOption(OPTION_OUTPUT_PATH);</span>
+
+<span class="nc" id="L77">            parseOptions(options, args);</span>
+
+<span class="nc" id="L79">            String project = getOptionValue(OPTION_PROJECT);</span>
+<span class="nc" id="L80">            String table = getOptionValue(OPTION_TABLE).toUpperCase(Locale.ROOT);</span>
+
+            // start job
+<span class="nc" id="L83">            String jobName = JOB_TITLE + getOptionsAsString();</span>
+<span class="nc" id="L84">            logger.info(&quot;Starting: &quot; + jobName);</span>
+<span class="nc" id="L85">            Configuration conf = getConf();</span>
+<span class="nc" id="L86">            Path output = new Path(getOptionValue(OPTION_OUTPUT_PATH));</span>
+
+<span class="nc" id="L88">            updateKylinTableExd(table.toUpperCase(Locale.ROOT), output.toString(), conf, project);</span>
+<span class="nc" id="L89">            return 0;</span>
+<span class="nc" id="L90">        } catch (Exception e) {</span>
+<span class="nc" id="L91">            printUsage(options);</span>
+<span class="nc" id="L92">            throw e;</span>
+        }
+
+    }
+
+    public void updateKylinTableExd(String tableName, String outPath, Configuration config, String prj)
+            throws IOException {
+<span class="nc" id="L99">        List&lt;String&gt; columns = null;</span>
+        try {
+<span class="nc" id="L101">            columns = readLines(new Path(outPath), config);</span>
+<span class="nc" id="L102">        } catch (Exception e) {</span>
+<span class="nc" id="L103">            e.printStackTrace();</span>
+<span class="nc" id="L104">            logger.info(&quot;Failed to resolve cardinality for &quot; + tableName + &quot; from &quot; + outPath);</span>
+<span class="nc" id="L105">            return;</span>
+<span class="nc" id="L106">        }</span>
+
+<span class="nc" id="L108">        StringBuffer cardi = new StringBuffer();</span>
+<span class="nc" id="L109">        Iterator&lt;String&gt; it = columns.iterator();</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L111">            String string = (String) it.next();</span>
+<span class="nc" id="L112">            String[] ss = StringUtils.split(string, &quot;\t&quot;);</span>
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            if (ss.length != 2) {</span>
+<span class="nc" id="L115">                logger.info(&quot;The hadoop cardinality value is not valid &quot; + string);</span>
+<span class="nc" id="L116">                continue;</span>
+            }
+<span class="nc" id="L118">            cardi.append(ss[1]);</span>
+<span class="nc" id="L119">            cardi.append(&quot;,&quot;);</span>
+<span class="nc" id="L120">        }</span>
+<span class="nc" id="L121">        String scardi = cardi.toString();</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (scardi.length() &gt; 0) {</span>
+<span class="nc" id="L123">            scardi = scardi.substring(0, scardi.length() - 1);</span>
+<span class="nc" id="L124">            TableMetadataManager metaMgr = TableMetadataManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L125">            TableExtDesc tableExt = metaMgr.getTableExt(tableName, prj);</span>
+<span class="nc" id="L126">            tableExt.setCardinality(scardi);</span>
+<span class="nc" id="L127">            metaMgr.saveTableExt(tableExt, prj);</span>
+<span class="nc" id="L128">        } else {</span>
+            // it gets here when ColumnCardinalityReducer output no record, which means empty table
+<span class="nc" id="L130">            TableMetadataManager metaMgr = TableMetadataManager.getInstance(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L131">            TableExtDesc tableExt = metaMgr.getTableExt(tableName, prj);</span>
+<span class="nc" id="L132">            tableExt.resetCardinality();</span>
+<span class="nc" id="L133">            metaMgr.saveTableExt(tableExt, prj);</span>
+        }
+<span class="nc" id="L135">    }</span>
+
+    private static List&lt;String&gt; readLines(Path location, Configuration conf) throws Exception {
+<span class="nc" id="L138">        FileSystem fileSystem = HadoopUtil.getWorkingFileSystem();</span>
+<span class="nc" id="L139">        CompressionCodecFactory factory = new CompressionCodecFactory(conf);</span>
+<span class="nc" id="L140">        FileStatus[] items = fileSystem.listStatus(location);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (items == null)</span>
+<span class="nc" id="L142">            return new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L143">        List&lt;String&gt; results = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        for (FileStatus item : items) {</span>
+
+            // ignoring files like _SUCCESS
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if (item.getPath().getName().startsWith(&quot;_&quot;)) {</span>
+<span class="nc" id="L148">                continue;</span>
+            }
+
+<span class="nc" id="L151">            CompressionCodec codec = factory.getCodec(item.getPath());</span>
+<span class="nc" id="L152">            InputStream stream = null;</span>
+
+            // check if we have a compression codec we need to use
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (codec != null) {</span>
+<span class="nc" id="L156">                stream = codec.createInputStream(fileSystem.open(item.getPath()));</span>
+            } else {
+<span class="nc" id="L158">                stream = fileSystem.open(item.getPath());</span>
+            }
+
+<span class="nc" id="L161">            StringWriter writer = new StringWriter();</span>
+<span class="nc" id="L162">            IOUtils.copy(stream, writer, &quot;UTF-8&quot;);</span>
+<span class="nc" id="L163">            String raw = writer.toString();</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">            for (String str : StringUtil.split(raw, &quot;\n&quot;)) {</span>
+<span class="nc" id="L165">                results.add(str);</span>
+            }
+        }
+<span class="nc" id="L168">        return results;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

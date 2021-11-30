@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SQLDigest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.realization</a> &gt; <span class="el_source">SQLDigest.java</span></div><h1>SQLDigest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.realization;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.DynamicFunctionDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableList;
+
+/**
+ */
+public class SQLDigest {
+
+<span class="nc" id="L39">    public enum OrderEnum {</span>
+<span class="nc" id="L40">        ASCENDING, DESCENDING</span>
+    }
+
+    public static class SQLCall {
+        public final String function;
+        public final List&lt;Object&gt; args;
+
+<span class="nc" id="L47">        public SQLCall(String function, Iterable&lt;Object&gt; args) {</span>
+<span class="nc" id="L48">            this.function = function;</span>
+<span class="nc" id="L49">            this.args = ImmutableList.copyOf(args);</span>
+<span class="nc" id="L50">        }</span>
+    }
+
+    // model
+    public String factTable;
+    public Set&lt;TblColRef&gt; allColumns;
+    public List&lt;JoinDesc&gt; joinDescs;
+
+    // group by
+    public List&lt;TblColRef&gt; groupbyColumns;
+    public Set&lt;TblColRef&gt; subqueryJoinParticipants;
+
+    public Map&lt;TblColRef, TupleExpression&gt; dynGroupbyColumns;
+    public boolean groupByExpression;
+
+    // aggregation
+    public Set&lt;TblColRef&gt; metricColumns;
+    public List&lt;FunctionDesc&gt; aggregations; // storage level measure type, on top of which various sql aggr function may apply
+    public List&lt;SQLCall&gt; aggrSqlCalls; // sql level aggregation function call
+
+    public List&lt;DynamicFunctionDesc&gt; dynAggregations;
+    public Set&lt;TblColRef&gt; rtDimensionColumns; // dynamic col related dimension columns
+    public Set&lt;TblColRef&gt; rtMetricColumns; // dynamic col related metric columns
+
+    // filter
+    public Set&lt;TblColRef&gt; filterColumns;
+    public TupleFilter filter;
+    public TupleFilter havingFilter;
+
+    // sort &amp; limit
+    public List&lt;TblColRef&gt; sortColumns;
+    public List&lt;OrderEnum&gt; sortOrders;
+    public boolean isRawQuery;
+    public boolean isBorrowedContext;
+    public boolean limitPrecedesAggr;
+    public boolean hasLimit;
+
+    public Set&lt;MeasureDesc&gt; involvedMeasure;
+
+    public SQLDigest(String factTable, Set&lt;TblColRef&gt; allColumns, List&lt;JoinDesc&gt; joinDescs, // model
+            List&lt;TblColRef&gt; groupbyColumns, Set&lt;TblColRef&gt; subqueryJoinParticipants,
+            Map&lt;TblColRef, TupleExpression&gt; dynGroupByColumns, boolean groupByExpression, // group by
+            Set&lt;TblColRef&gt; metricColumns, List&lt;FunctionDesc&gt; aggregations, List&lt;SQLCall&gt; aggrSqlCalls, // aggregation
+            List&lt;DynamicFunctionDesc&gt; dynAggregations, //
+            Set&lt;TblColRef&gt; rtDimensionColumns, Set&lt;TblColRef&gt; rtMetricColumns, // dynamic col related columns
+            Set&lt;TblColRef&gt; filterColumns, TupleFilter filter, TupleFilter havingFilter, // filter
+            List&lt;TblColRef&gt; sortColumns, List&lt;OrderEnum&gt; sortOrders, boolean limitPrecedesAggr, boolean hasLimit, boolean isBorrowedContext, // sort &amp; limit
+            Set&lt;MeasureDesc&gt; involvedMeasure
+<span class="nc" id="L98">    ) {</span>
+<span class="nc" id="L99">        this.factTable = factTable;</span>
+<span class="nc" id="L100">        this.allColumns = allColumns;</span>
+<span class="nc" id="L101">        this.joinDescs = joinDescs;</span>
+
+<span class="nc" id="L103">        this.groupbyColumns = groupbyColumns;</span>
+<span class="nc" id="L104">        this.subqueryJoinParticipants = subqueryJoinParticipants;</span>
+
+<span class="nc" id="L106">        this.dynGroupbyColumns = dynGroupByColumns;</span>
+<span class="nc" id="L107">        this.groupByExpression = groupByExpression;</span>
+
+<span class="nc" id="L109">        this.metricColumns = metricColumns;</span>
+<span class="nc" id="L110">        this.aggregations = aggregations;</span>
+<span class="nc" id="L111">        this.aggrSqlCalls = aggrSqlCalls;</span>
+
+<span class="nc" id="L113">        this.dynAggregations = dynAggregations;</span>
+
+<span class="nc" id="L115">        this.rtDimensionColumns = rtDimensionColumns;</span>
+<span class="nc" id="L116">        this.rtMetricColumns = rtMetricColumns;</span>
+
+<span class="nc" id="L118">        this.filterColumns = filterColumns;</span>
+<span class="nc" id="L119">        this.filter = filter;</span>
+<span class="nc" id="L120">        this.havingFilter = havingFilter;</span>
+
+<span class="nc" id="L122">        this.sortColumns = sortColumns;</span>
+<span class="nc" id="L123">        this.sortOrders = sortOrders;</span>
+<span class="nc" id="L124">        this.isRawQuery = isRawQuery();</span>
+<span class="nc" id="L125">        this.isBorrowedContext = isBorrowedContext;</span>
+<span class="nc" id="L126">        this.limitPrecedesAggr = limitPrecedesAggr;</span>
+<span class="nc" id="L127">        this.hasLimit = hasLimit;</span>
+
+<span class="nc" id="L129">        this.involvedMeasure = involvedMeasure;</span>
+
+<span class="nc" id="L131">        this.includeSubqueryJoinParticipants();</span>
+<span class="nc" id="L132">    }</span>
+
+    private boolean isRawQuery() {
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        return this.groupbyColumns.isEmpty() &amp;&amp; // select a group by a -&gt; not raw</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                this.aggregations.isEmpty(); // has aggr -&gt; not raw</span>
+        //the reason to choose aggregations rather than metricColumns is because the former is set earlier at implOLAP
+    }
+
+    public void includeSubqueryJoinParticipants() {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (this.isRawQuery) {</span>
+<span class="nc" id="L142">            this.allColumns.addAll(this.subqueryJoinParticipants);</span>
+        } else {
+<span class="nc" id="L144">            this.groupbyColumns.addAll(this.subqueryJoinParticipants);</span>
+<span class="nc" id="L145">            this.allColumns.addAll(this.subqueryJoinParticipants);</span>
+        }
+<span class="nc" id="L147">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L151">        return &quot;fact table &quot; + this.factTable + &quot;,&quot; + //</span>
+                &quot;group by &quot; + this.groupbyColumns + &quot;,&quot; + //
+                &quot;filter on &quot; + this.filterColumns + &quot;,&quot; + //
+                &quot;with aggregates&quot; + this.aggregations + &quot;.&quot;;
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

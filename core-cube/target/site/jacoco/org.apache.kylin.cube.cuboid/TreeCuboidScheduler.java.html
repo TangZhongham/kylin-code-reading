@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TreeCuboidScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid</a> &gt; <span class="el_source">TreeCuboidScheduler.java</span></div><h1>TreeCuboidScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid;
+
+import java.io.PrintWriter;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.model.AggregationGroup;
+import org.apache.kylin.cube.model.CubeDesc;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class TreeCuboidScheduler extends CuboidScheduler {
+
+    final private CuboidTree cuboidTree;
+
+    public TreeCuboidScheduler(CubeDesc cubeDesc, List&lt;Long&gt; allCuboidIds, Comparator&lt;Long&gt; cuboidComparator) {
+<span class="nc" id="L45">        super(cubeDesc);</span>
+<span class="nc" id="L46">        cuboidTree = CuboidTree.createFromCuboids(allCuboidIds, cuboidComparator);</span>
+<span class="nc" id="L47">    }</span>
+
+    @Override
+    public Set&lt;Long&gt; getAllCuboidIds() {
+<span class="nc" id="L51">        return cuboidTree.getAllCuboidIds();</span>
+    }
+
+    @Override
+    public int getCuboidCount() {
+<span class="nc" id="L56">        return cuboidTree.getCuboidCount(Cuboid.getBaseCuboidId(cubeDesc));</span>
+    }
+
+    @Override
+    public List&lt;Long&gt; getSpanningCuboid(long cuboidId) {
+<span class="nc" id="L61">        return cuboidTree.getSpanningCuboid(cuboidId);</span>
+    }
+
+    @Override
+    public long findBestMatchCuboid(long cuboidId) {
+<span class="nc" id="L66">        return cuboidTree.findBestMatchCuboid(cuboidId);</span>
+    }
+
+    @Override
+    public boolean isValid(long requestCuboid) {
+<span class="nc" id="L71">        return cuboidTree.isValid(requestCuboid);</span>
+    }
+
+    public static class CuboidTree {
+        private int treeLevels;
+
+        private TreeNode root;
+
+        private Comparator&lt;Long&gt; cuboidComparator;
+
+<span class="fc" id="L81">        private Map&lt;Long, TreeNode&gt; index = new HashMap&lt;&gt;();</span>
+
+        @VisibleForTesting
+        static CuboidTree createFromCuboids(List&lt;Long&gt; allCuboidIds) {
+<span class="fc" id="L85">            return createFromCuboids(allCuboidIds, Cuboid.cuboidSelectComparator);</span>
+        }
+
+        public static CuboidTree createFromCuboids(List&lt;Long&gt; allCuboidIds, Comparator&lt;Long&gt; cuboidComparator) {
+            // sort the cuboid ids in descending order, so that don't need to adjust
+            // the cuboid tree when adding cuboid id to the tree.
+<span class="fc" id="L91">            Collections.sort(allCuboidIds, new Comparator&lt;Long&gt;() {</span>
+                @Override
+                public int compare(Long o1, Long o2) {
+<span class="fc" id="L94">                    return Long.compare(o2, o1);</span>
+                }
+            });
+<span class="fc" id="L97">            long basicCuboidId = allCuboidIds.get(0);</span>
+<span class="fc" id="L98">            CuboidTree cuboidTree = new CuboidTree(cuboidComparator);</span>
+<span class="fc" id="L99">            cuboidTree.setRoot(basicCuboidId);</span>
+
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            for (long cuboidId : allCuboidIds) {</span>
+<span class="fc" id="L102">                cuboidTree.addCuboid(cuboidId);</span>
+<span class="fc" id="L103">            }</span>
+<span class="fc" id="L104">            cuboidTree.buildIndex();</span>
+<span class="fc" id="L105">            return cuboidTree;</span>
+        }
+
+<span class="fc" id="L108">        private CuboidTree(Comparator&lt;Long&gt; cuboidComparator) {</span>
+<span class="fc" id="L109">            this.cuboidComparator = cuboidComparator;</span>
+<span class="fc" id="L110">        }</span>
+
+        public Set&lt;Long&gt; getAllCuboidIds() {
+<span class="nc" id="L113">            return index.keySet();</span>
+        }
+
+        public List&lt;Long&gt; getSpanningCuboid(long cuboidId) {
+<span class="fc" id="L117">            TreeNode node = index.get(cuboidId);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if (node == null) {</span>
+<span class="nc" id="L119">                throw new IllegalArgumentException(&quot;the cuboid:&quot; + cuboidId + &quot; is not exist in the tree&quot;);</span>
+            }
+
+<span class="fc" id="L122">            List&lt;Long&gt; result = Lists.newArrayList();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            for (TreeNode child : node.children) {</span>
+<span class="fc" id="L124">                result.add(child.cuboidId);</span>
+<span class="fc" id="L125">            }</span>
+<span class="fc" id="L126">            return result;</span>
+        }
+
+        public long findBestMatchCuboid(long cuboidId) {
+            // exactly match
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (isValid(cuboidId)) {</span>
+<span class="fc" id="L132">                return cuboidId;</span>
+            }
+
+<span class="fc" id="L135">            return findBestParent(cuboidId).cuboidId;</span>
+        }
+
+        public boolean isValid(long cuboidId) {
+<span class="fc" id="L139">            return index.containsKey(cuboidId);</span>
+        }
+
+        private int getCuboidCount(long cuboidId) {
+<span class="nc" id="L143">            int r = 1;</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            for (Long child : getSpanningCuboid(cuboidId)) {</span>
+<span class="nc" id="L145">                r += getCuboidCount(child);</span>
+<span class="nc" id="L146">            }</span>
+<span class="nc" id="L147">            return r;</span>
+        }
+
+        public void print(PrintWriter out) {
+<span class="fc" id="L151">            int dimensionCnt = Long.bitCount(root.cuboidId);</span>
+<span class="fc" id="L152">            doPrint(root, dimensionCnt, 0, out);</span>
+<span class="fc" id="L153">        }</span>
+
+        private void doPrint(TreeNode node, int dimensionCount, int depth, PrintWriter out) {
+<span class="fc" id="L156">            printCuboid(node.cuboidId, dimensionCount, depth, out);</span>
+
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            for (TreeNode child : node.children) {</span>
+<span class="fc" id="L159">                doPrint(child, dimensionCount, depth + 1, out);</span>
+<span class="fc" id="L160">            }</span>
+<span class="fc" id="L161">        }</span>
+
+        private void printCuboid(long cuboidID, int dimensionCount, int depth, PrintWriter out) {
+<span class="fc" id="L164">            StringBuffer sb = new StringBuffer();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            for (int i = 0; i &lt; depth; i++) {</span>
+<span class="fc" id="L166">                sb.append(&quot;    &quot;);</span>
+            }
+<span class="fc" id="L168">            String cuboidName = Cuboid.getDisplayName(cuboidID, dimensionCount);</span>
+<span class="fc" id="L169">            sb.append(&quot;|---- Cuboid &quot;).append(cuboidName).append(&quot;(&quot; + cuboidID + &quot;)&quot;);</span>
+<span class="fc" id="L170">            out.println(sb.toString());</span>
+<span class="fc" id="L171">        }</span>
+
+        private void setRoot(long basicCuboidId) {
+<span class="fc" id="L174">            this.root = new TreeNode(basicCuboidId, 0);</span>
+<span class="fc" id="L175">            this.treeLevels = 0;</span>
+<span class="fc" id="L176">        }</span>
+
+        private void buildIndex() {
+<span class="fc" id="L179">            LinkedList&lt;TreeNode&gt; queue = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L180">            queue.add(root);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            while (!queue.isEmpty()) {</span>
+<span class="fc" id="L182">                TreeNode node = queue.removeFirst();</span>
+<span class="fc" id="L183">                index.put(node.cuboidId, node);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                for (TreeNode child : node.children) {</span>
+<span class="fc" id="L185">                    queue.add(child);</span>
+<span class="fc" id="L186">                }</span>
+<span class="fc" id="L187">            }</span>
+<span class="fc" id="L188">        }</span>
+
+        private void addCuboid(long cuboidId) {
+<span class="fc" id="L191">            TreeNode parent = findBestParent(cuboidId);</span>
+<span class="pc bpc" id="L192" title="1 of 4 branches missed.">            if (parent != null &amp;&amp; parent.cuboidId != cuboidId) {</span>
+<span class="fc" id="L193">                parent.addChild(cuboidId, parent.level);</span>
+<span class="fc" id="L194">                this.treeLevels = Math.max(this.treeLevels, parent.level + 1);</span>
+            }
+<span class="fc" id="L196">        }</span>
+
+        private TreeNode findBestParent(long cuboidId) {
+<span class="fc" id="L199">            TreeNode bestParent = doFindBestParent(cuboidId, root);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">            if (bestParent == null) {</span>
+<span class="nc" id="L201">                throw new IllegalStateException(&quot;Cannot find the parent of the cuboid:&quot; + cuboidId);</span>
+            }
+<span class="fc" id="L203">            return bestParent;</span>
+        }
+
+        private TreeNode doFindBestParent(long cuboidId, TreeNode parentCuboid) {
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            if (!canDerive(cuboidId, parentCuboid.cuboidId)) {</span>
+<span class="fc" id="L208">                return null;</span>
+            }
+
+<span class="fc" id="L211">            List&lt;TreeNode&gt; candidates = Lists.newArrayList();</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            for (TreeNode childCuboid : parentCuboid.children) {</span>
+<span class="fc" id="L213">                TreeNode candidate = doFindBestParent(cuboidId, childCuboid);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                if (candidate != null) {</span>
+<span class="fc" id="L215">                    candidates.add(candidate);</span>
+                }
+<span class="fc" id="L217">            }</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            if (candidates.isEmpty()) {</span>
+<span class="fc" id="L219">                candidates.add(parentCuboid);</span>
+            }
+
+<span class="fc" id="L222">            return Collections.min(candidates, new Comparator&lt;TreeNode&gt;() {</span>
+                @Override
+                public int compare(TreeNode o1, TreeNode o2) {
+<span class="fc" id="L225">                    return cuboidComparator.compare(o1.cuboidId, o2.cuboidId);</span>
+                }
+            });
+        }
+
+        private boolean canDerive(long cuboidId, long parentCuboid) {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            return (cuboidId &amp; ~parentCuboid) == 0;</span>
+        }
+    }
+
+    public static class TreeNode {
+        @JsonProperty(&quot;cuboid_id&quot;)
+        long cuboidId;
+        @JsonIgnore
+        int level;
+<span class="fc" id="L240">        @JsonProperty(&quot;children&quot;)</span>
+<span class="fc" id="L241">        List&lt;TreeNode&gt; children = Lists.newArrayList();</span>
+
+        public long getCuboidId() {
+<span class="nc" id="L244">            return cuboidId;</span>
+        }
+
+        public int getLevel() {
+<span class="nc" id="L248">            return level;</span>
+        }
+
+        public List&lt;TreeNode&gt; getChildren() {
+<span class="nc" id="L252">            return children;</span>
+        }
+
+<span class="fc" id="L255">        TreeNode(long cuboidId, int level) {</span>
+<span class="fc" id="L256">            this.cuboidId = cuboidId;</span>
+<span class="fc" id="L257">            this.level = level;</span>
+<span class="fc" id="L258">        }</span>
+
+        void addChild(long childId, int parentlevel) {
+<span class="fc" id="L261">            this.children.add(new TreeNode(childId, parentlevel + 1));</span>
+<span class="fc" id="L262">        }</span>
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L266">            final int prime = 31;</span>
+<span class="nc" id="L267">            int result = 1;</span>
+<span class="nc" id="L268">            result = prime * result + (int) (cuboidId ^ (cuboidId &gt;&gt;&gt; 32));</span>
+<span class="nc" id="L269">            result = prime * result + level;</span>
+<span class="nc" id="L270">            return result;</span>
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (this == obj)</span>
+<span class="nc" id="L276">                return true;</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            if (obj == null)</span>
+<span class="nc" id="L278">                return false;</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            if (getClass() != obj.getClass())</span>
+<span class="nc" id="L280">                return false;</span>
+<span class="nc" id="L281">            TreeNode other = (TreeNode) obj;</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            if (cuboidId != other.cuboidId)</span>
+<span class="nc" id="L283">                return false;</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">            if (level != other.level)</span>
+<span class="nc" id="L285">                return false;</span>
+<span class="nc" id="L286">            return true;</span>
+        }
+    }
+
+    /**
+     * Compare cuboid according to the cuboid data row count
+     */
+    public static class CuboidCostComparator implements Comparator&lt;Long&gt; {
+        private Map&lt;Long, Long&gt; cuboidStatistics;
+
+<span class="fc" id="L296">        public CuboidCostComparator(Map&lt;Long, Long&gt; cuboidStatistics) {</span>
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">            Preconditions.checkArgument(cuboidStatistics != null,</span>
+                    &quot;the input &quot; + cuboidStatistics + &quot; should not be null!!!&quot;);
+<span class="fc" id="L299">            this.cuboidStatistics = cuboidStatistics;</span>
+<span class="fc" id="L300">        }</span>
+
+        @Override
+        public int compare(Long cuboid1, Long cuboid2) {
+<span class="fc" id="L304">            Long rowCnt1 = cuboidStatistics.get(cuboid1);</span>
+<span class="fc" id="L305">            Long rowCnt2 = cuboidStatistics.get(cuboid2);</span>
+<span class="pc bpc" id="L306" title="2 of 4 branches missed.">            if (rowCnt2 == null || rowCnt1 == null) {</span>
+<span class="nc" id="L307">                return Cuboid.cuboidSelectComparator.compare(cuboid1, cuboid2);</span>
+            }
+<span class="fc" id="L309">            return Long.compare(rowCnt1, rowCnt2);</span>
+        }
+    }
+
+    @Override
+    public String getCuboidCacheKey() {
+<span class="nc" id="L315">        return CubeInstance.class.getSimpleName() + &quot;-&quot; + cubeDesc.getName();</span>
+    }
+
+    @Override
+    public Set&lt;Long&gt; calculateCuboidsForAggGroup(AggregationGroup agg) {
+<span class="nc" id="L320">        throw new UnsupportedOperationException();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPToEnumerableConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPToEnumerableConverter.java</span></div><h1>OLAPToEnumerableConverter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.adapter.enumerable.EnumerableRelImplementor;
+import org.apache.calcite.adapter.enumerable.JavaRowFormat;
+import org.apache.calcite.adapter.enumerable.PhysType;
+import org.apache.calcite.adapter.enumerable.PhysTypeImpl;
+import org.apache.calcite.linq4j.tree.BlockBuilder;
+import org.apache.calcite.linq4j.tree.Expression;
+import org.apache.calcite.linq4j.tree.Expressions;
+import org.apache.calcite.plan.ConventionTraitDef;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.convert.ConverterImpl;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.QueryContextFacade;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.query.exec.SparderMethod;
+import org.apache.kylin.query.routing.RealizationChooser;
+import org.apache.kylin.query.security.QueryInterceptor;
+import org.apache.kylin.query.security.QueryInterceptorUtil;
+import org.apache.kylin.query.util.QueryInfoCollector;
+
+/**
+ * If you're renaming this class, please keep it ending with OLAPToEnumerableConverter
+ * see org.apache.calcite.plan.OLAPRelMdRowCount#shouldIntercept(org.apache.calcite.rel.RelNode)
+ */
+public class OLAPToEnumerableConverter extends ConverterImpl implements EnumerableRel {
+
+<span class="nc" id="L61">    private static final Logger logger = LoggerFactory.getLogger(OLAPToEnumerableConverter.class);</span>
+
+    private static final String SPARDER_CALL_METHOD_NAME = &quot;enumerable&quot;;
+
+    public OLAPToEnumerableConverter(RelOptCluster cluster, RelTraitSet traits, RelNode input) {
+<span class="nc" id="L66">        super(cluster, ConventionTraitDef.INSTANCE, traits, input);</span>
+<span class="nc" id="L67">    }</span>
+
+    @Override
+    public RelNode copy(RelTraitSet traitSet, List&lt;RelNode&gt; inputs) {
+<span class="nc" id="L71">        return new OLAPToEnumerableConverter(getCluster(), traitSet, sole(inputs));</span>
+    }
+
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+        // huge cost to ensure OLAPToEnumerableConverter only appears once in rel tree
+<span class="nc" id="L77">        return super.computeSelfCost(planner, mq).multiplyBy(0.05);</span>
+    }
+
+    @Override
+    public Result implement(EnumerableRelImplementor enumImplementor, Prefer pref) {
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (System.getProperty(&quot;calcite.debug&quot;) != null) {</span>
+<span class="nc" id="L83">            String dumpPlan = RelOptUtil.dumpPlan(&quot;&quot;, this, false, SqlExplainLevel.DIGEST_ATTRIBUTES);</span>
+<span class="nc" id="L84">            logger.debug(&quot;EXECUTION PLAN BEFORE REWRITE&quot;);</span>
+<span class="nc" id="L85">            logger.debug(dumpPlan);</span>
+        }
+
+<span class="nc" id="L88">        QueryContextFacade.current().setWithoutSyntaxError(true);</span>
+        // post-order travel children
+<span class="nc" id="L90">        OLAPRel.OLAPImplementor olapImplementor = new OLAPRel.OLAPImplementor();</span>
+<span class="nc" id="L91">        olapImplementor.visitChild(getInput(), this);</span>
+
+        // identify model &amp; realization
+<span class="nc" id="L94">        List&lt;OLAPContext&gt; contexts = listContextsHavingScan();</span>
+
+        // intercept query
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (contexts.size() &gt; 0) {</span>
+<span class="nc" id="L98">            List&lt;QueryInterceptor&gt; intercepts = QueryInterceptorUtil.getQueryInterceptors();</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            for (QueryInterceptor intercept : intercepts) {</span>
+<span class="nc" id="L100">                intercept.intercept(contexts);</span>
+<span class="nc" id="L101">            }</span>
+        }
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (System.getProperty(&quot;calcite.debug&quot;) != null) {</span>
+<span class="nc" id="L105">            String dumpPlan = RelOptUtil.dumpPlan(&quot;&quot;, this, false, SqlExplainLevel.DIGEST_ATTRIBUTES);</span>
+<span class="nc" id="L106">            logger.debug(&quot;EXECUTION PLAN AFTER OLAPCONTEXT IS SET&quot;);</span>
+<span class="nc" id="L107">            logger.debug(dumpPlan);</span>
+        }
+
+<span class="nc" id="L110">        RealizationChooser.selectRealization(contexts);</span>
+
+<span class="nc" id="L112">        QueryInfoCollector.current().setCubeNames(contexts.stream()</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                .filter(olapContext -&gt; olapContext.realization != null)</span>
+<span class="nc" id="L114">                .map(olapContext -&gt; olapContext.realization.getCanonicalName())</span>
+<span class="nc" id="L115">                .collect(Collectors.toList()));</span>
+
+<span class="nc" id="L117">        doAccessControl(contexts);</span>
+
+        // rewrite query if necessary
+<span class="nc" id="L120">        OLAPRel.RewriteImplementor rewriteImplementor = new OLAPRel.RewriteImplementor();</span>
+<span class="nc" id="L121">        rewriteImplementor.visitChild(this, getInput());</span>
+
+<span class="nc" id="L123">        final PhysType physType = PhysTypeImpl.of(enumImplementor.getTypeFactory(), getRowType(),</span>
+<span class="nc" id="L124">                pref.preferCustom());</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (KylinConfig.getInstanceFromEnv().isSparkEngineEnabled()) {</span>
+<span class="nc" id="L126">            QueryContextFacade.current().setOlapRel(getInput());</span>
+<span class="nc" id="L127">            QueryContextFacade.current().setResultType(getRowType());</span>
+<span class="nc" id="L128">            final BlockBuilder list = new BlockBuilder();</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (physType.getFormat() == JavaRowFormat.SCALAR) {</span>
+<span class="nc" id="L130">                Expression enumerable = list.append(SPARDER_CALL_METHOD_NAME,</span>
+<span class="nc" id="L131">                        Expressions.call(SparderMethod.COLLECT_SCALAR.method, enumImplementor.getRootExpression()));</span>
+<span class="nc" id="L132">                list.add(Expressions.return_(null, enumerable));</span>
+<span class="nc" id="L133">            } else {</span>
+<span class="nc" id="L134">                Expression enumerable = list.append(SPARDER_CALL_METHOD_NAME,</span>
+<span class="nc" id="L135">                        Expressions.call(SparderMethod.COLLECT.method, enumImplementor.getRootExpression()));</span>
+<span class="nc" id="L136">                list.add(Expressions.return_(null, enumerable));</span>
+            }
+<span class="nc" id="L138">            return enumImplementor.result(physType, list.toBlock());</span>
+        } else {
+            // implement as EnumerableRel
+<span class="nc" id="L141">            OLAPRel.JavaImplementor impl = new OLAPRel.JavaImplementor(enumImplementor);</span>
+<span class="nc" id="L142">            EnumerableRel inputAsEnum = impl.createEnumerable((OLAPRel) getInput());</span>
+<span class="nc" id="L143">            this.replaceInput(0, inputAsEnum);</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">            if (System.getProperty(&quot;calcite.debug&quot;) != null) {</span>
+<span class="nc" id="L146">                String dumpPlan = RelOptUtil.dumpPlan(&quot;&quot;, this, false, SqlExplainLevel.DIGEST_ATTRIBUTES);</span>
+<span class="nc" id="L147">                logger.debug(&quot;EXECUTION PLAN AFTER REWRITE&quot;);</span>
+<span class="nc" id="L148">                logger.debug(dumpPlan);</span>
+<span class="nc" id="L149">                QueryContextFacade.current().setCalcitePlan(this.copy(getTraitSet(), getInputs()));</span>
+            }
+
+<span class="nc" id="L152">            return impl.visitChild(this, 0, inputAsEnum, pref);</span>
+        }
+    }
+
+     protected List&lt;OLAPContext&gt; listContextsHavingScan() {
+        // Context has no table scan is created by OLAPJoinRel which looks like
+        //     (sub-query) as A join (sub-query) as B
+        // No realization needed for such context.
+<span class="nc" id="L160">        int size = OLAPContext.getThreadLocalContexts().size();</span>
+<span class="nc" id="L161">        List&lt;OLAPContext&gt; result = Lists.newArrayListWithCapacity(size);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="nc" id="L163">            OLAPContext ctx = OLAPContext.getThreadLocalContextById(i);</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">            if (ctx.firstTableScan != null)</span>
+<span class="nc" id="L165">                result.add(ctx);</span>
+        }
+<span class="nc" id="L167">        return result;</span>
+    }
+
+    protected void doAccessControl(List&lt;OLAPContext&gt; contexts) {
+<span class="nc" id="L171">        KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L172">        String controllerCls = config.getQueryAccessController();</span>
+<span class="nc bnc" id="L173" title="All 4 branches missed.">        if (null != controllerCls &amp;&amp; !controllerCls.isEmpty()) {</span>
+<span class="nc" id="L174">            OLAPContext.IAccessController accessController = (OLAPContext.IAccessController) ClassUtil.newInstance(controllerCls);</span>
+<span class="nc" id="L175">            accessController.check(contexts, config);</span>
+        }
+<span class="nc" id="L177">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

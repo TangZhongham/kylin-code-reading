@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveProducer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Metrics Reporter Hive</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.lib.impl.hive</a> &gt; <span class="el_source">HiveProducer.java</span></div><h1>HiveProducer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metrics.lib.impl.hive;
+
+import org.apache.kylin.shaded.com.google.common.cache.CacheBuilder;
+import org.apache.kylin.shaded.com.google.common.cache.CacheLoader;
+import org.apache.kylin.shaded.com.google.common.cache.LoadingCache;
+import org.apache.kylin.shaded.com.google.common.cache.RemovalListener;
+import org.apache.kylin.shaded.com.google.common.cache.RemovalNotification;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
+import org.apache.hadoop.hive.cli.CliSessionState;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.ql.Driver;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
+import org.apache.hadoop.hive.ql.session.SessionState;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metrics.lib.ActiveReservoirReporter;
+import org.apache.kylin.metrics.lib.Record;
+import org.apache.kylin.metrics.lib.impl.TimePropertyEnum;
+import org.apache.kylin.metrics.lib.impl.hive.HiveProducerRecord.RecordKey;
+import org.apache.kylin.source.hive.HiveMetaStoreClientFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+
+public class HiveProducer {
+
+<span class="nc" id="L59">    private static final Logger logger = LoggerFactory.getLogger(HiveProducer.class);</span>
+    private static final int CACHE_MAX_SIZE = 10;
+    private final HiveConf hiveConf;
+    private FileSystem fs;
+    private final LoadingCache&lt;Pair&lt;String, String&gt;, Pair&lt;String, List&lt;FieldSchema&gt;&gt;&gt; tableFieldSchemaCache;
+    private final String contentFilePrefix;
+    private String metricType;
+    private String prePartitionPath;
+    private Path curPartitionContentPath;
+<span class="nc" id="L68">    private int id = 0;</span>
+    private FSDataOutputStream fout;
+    /**
+     * Some cloud file system, like AWS S3, didn't support append action to exist file.
+     * When append is not supported, will produce new file in a call to write method.
+     */
+    private final boolean supportAppend;
+
+    private final boolean closeFileEveryAppend;
+
+<span class="nc" id="L78">    private final Map&lt;String, String&gt; kylinSpecifiedConfig = new HashMap&lt;&gt;();</span>
+
+    public HiveProducer(String metricType, Properties props) throws Exception {
+<span class="nc" id="L81">        this(metricType, props, new HiveConf());</span>
+<span class="nc" id="L82">    }</span>
+
+<span class="nc" id="L84">    HiveProducer(String metricType, Properties props, HiveConf hiveConfig) throws Exception {</span>
+<span class="nc" id="L85">        this.metricType = metricType;</span>
+<span class="nc" id="L86">        hiveConf = hiveConfig;</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        for (Map.Entry&lt;Object, Object&gt; e : props.entrySet()) {</span>
+<span class="nc" id="L88">            String key = e.getKey().toString();</span>
+<span class="nc" id="L89">            String value = e.getValue().toString();</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">            if (key.startsWith(&quot;kylin.&quot;)) {</span>
+<span class="nc" id="L91">                kylinSpecifiedConfig.put(key, value);</span>
+            } else {
+<span class="nc" id="L93">                hiveConf.set(key, value);</span>
+            }
+<span class="nc" id="L95">        }</span>
+
+<span class="nc" id="L97">        fs = FileSystem.get(hiveConf);</span>
+
+<span class="nc" id="L99">        tableFieldSchemaCache = CacheBuilder.newBuilder()</span>
+<span class="nc" id="L100">                .removalListener(new RemovalListener&lt;Pair&lt;String, String&gt;, Pair&lt;String, List&lt;FieldSchema&gt;&gt;&gt;() {</span>
+                    @Override
+                    public void onRemoval(
+                            RemovalNotification&lt;Pair&lt;String, String&gt;, Pair&lt;String, List&lt;FieldSchema&gt;&gt;&gt; notification) {
+<span class="nc" id="L104">                        logger.info(</span>
+<span class="nc" id="L105">                                &quot;Field schema with table &quot; + ActiveReservoirReporter.getTableName(notification.getKey())</span>
+<span class="nc" id="L106">                                        + &quot; is removed due to &quot; + notification.getCause());</span>
+<span class="nc" id="L107">                    }</span>
+<span class="nc" id="L108">                }).maximumSize(CACHE_MAX_SIZE)</span>
+<span class="nc" id="L109">                .build(new CacheLoader&lt;Pair&lt;String, String&gt;, Pair&lt;String, List&lt;FieldSchema&gt;&gt;&gt;() {</span>
+                    @Override
+                    public Pair&lt;String, List&lt;FieldSchema&gt;&gt; load(Pair&lt;String, String&gt; tableName) throws Exception {
+<span class="nc" id="L112">                        IMetaStoreClient metaStoreClient = HiveMetaStoreClientFactory.getHiveMetaStoreClient(hiveConf);</span>
+<span class="nc" id="L113">                        String tableLocation = metaStoreClient.getTable(tableName.getFirst(), tableName.getSecond())</span>
+<span class="nc" id="L114">                                .getSd().getLocation();</span>
+<span class="nc" id="L115">                        logger.debug(&quot;Find table location for {} at {}&quot;, tableName.getSecond(), tableLocation);</span>
+<span class="nc" id="L116">                        List&lt;FieldSchema&gt; fields = metaStoreClient.getFields(tableName.getFirst(),</span>
+<span class="nc" id="L117">                                tableName.getSecond());</span>
+<span class="nc" id="L118">                        metaStoreClient.close();</span>
+<span class="nc" id="L119">                        return new Pair&lt;&gt;(tableLocation, fields);</span>
+                    }
+                });
+
+        String hostName;
+        try {
+<span class="nc" id="L125">            hostName = InetAddress.getLocalHost().getHostName();</span>
+<span class="nc" id="L126">        } catch (UnknownHostException e) {</span>
+<span class="nc" id="L127">            hostName = &quot;UNKNOWN&quot;;</span>
+<span class="nc" id="L128">        }</span>
+<span class="nc" id="L129">        contentFilePrefix = hostName + &quot;-&quot; + System.currentTimeMillis() + &quot;-part-&quot;;</span>
+<span class="nc" id="L130">        String fsUri = fs.getUri().toString();</span>
+<span class="nc" id="L131">        supportAppend = fsUri.startsWith(&quot;hdfs&quot;) ; // Only HDFS is appendable</span>
+<span class="nc" id="L132">        logger.info(&quot;For {}, supportAppend was set to {}&quot;, fsUri, supportAppend);</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        closeFileEveryAppend = !supportAppend</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">                || Boolean.parseBoolean(kylinSpecifiedConfig.get(&quot;kylin.hive.producer.close-file-every-append&quot;));</span>
+<span class="nc" id="L136">    }</span>
+
+    public void close() {
+<span class="nc" id="L139">        tableFieldSchemaCache.cleanUp();</span>
+<span class="nc" id="L140">        closeFout();</span>
+<span class="nc" id="L141">    }</span>
+
+    public void send(final Record record) throws Exception {
+<span class="nc" id="L144">        HiveProducerRecord hiveRecord = convertTo(record);</span>
+<span class="nc" id="L145">        write(hiveRecord.key(), Lists.newArrayList(hiveRecord));</span>
+<span class="nc" id="L146">    }</span>
+
+    public void send(final List&lt;Record&gt; recordList) throws Exception {
+<span class="nc" id="L149">        Map&lt;RecordKey, List&lt;HiveProducerRecord&gt;&gt; recordMap = Maps.newHashMap();</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        for (Record record : recordList) {</span>
+<span class="nc" id="L151">            HiveProducerRecord hiveRecord = convertTo(record);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            if (recordMap.get(hiveRecord.key()) == null) {</span>
+<span class="nc" id="L153">                recordMap.put(hiveRecord.key(), Lists.&lt;HiveProducerRecord&gt;newLinkedList());</span>
+            }
+<span class="nc" id="L155">            recordMap.get(hiveRecord.key()).add(hiveRecord);</span>
+<span class="nc" id="L156">        }</span>
+
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        for (Map.Entry&lt;RecordKey, List&lt;HiveProducerRecord&gt;&gt; entry : recordMap.entrySet()) {</span>
+<span class="nc" id="L159">            write(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L160">        }</span>
+<span class="nc" id="L161">    }</span>
+
+    private void write(RecordKey recordKey, Iterable&lt;HiveProducerRecord&gt; recordItr) throws Exception {
+
+        // Step 1: determine partitionPath by record 's RecordKey
+<span class="nc" id="L166">        String tableLocation = tableFieldSchemaCache.get(new Pair&lt;&gt;(recordKey.database(), recordKey.table()))</span>
+<span class="nc" id="L167">                .getFirst();</span>
+<span class="nc" id="L168">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L169">        sb.append(tableLocation);</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; e : recordKey.partition().entrySet()) {</span>
+<span class="nc" id="L171">            sb.append(&quot;/&quot;);</span>
+<span class="nc" id="L172">            sb.append(e.getKey().toLowerCase(Locale.ROOT));</span>
+<span class="nc" id="L173">            sb.append(&quot;=&quot;);</span>
+<span class="nc" id="L174">            sb.append(e.getValue());</span>
+<span class="nc" id="L175">        }</span>
+<span class="nc" id="L176">        Path partitionPath = new Path(sb.toString());</span>
+        //for hdfs router-based federation,  authority is different with hive table location path and defaultFs
+<span class="nc bnc" id="L178" title="All 4 branches missed.">        if (partitionPath.toUri().getScheme() != null &amp;&amp; !partitionPath.toUri().toString().startsWith(fs.getUri().toString())) {</span>
+<span class="nc" id="L179">            logger.info(&quot;Change HDFS scheme from {} to {}.&quot;, fs.getUri().toString(),</span>
+<span class="nc" id="L180">                    partitionPath.toUri().toString());</span>
+<span class="nc" id="L181">            fs = partitionPath.getFileSystem(hiveConf);</span>
+        }
+
+        // Step 2: create partition for hive table if not exists
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (!fs.exists(partitionPath)) {</span>
+<span class="nc" id="L186">            StringBuilder hql = new StringBuilder();</span>
+<span class="nc" id="L187">            hql.append(&quot;ALTER TABLE &quot;);</span>
+<span class="nc" id="L188">            hql.append(recordKey.database() + &quot;.&quot; + recordKey.table());</span>
+<span class="nc" id="L189">            hql.append(&quot; ADD IF NOT EXISTS PARTITION (&quot;);</span>
+<span class="nc" id="L190">            boolean ifFirst = true;</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">            for (Map.Entry&lt;String, String&gt; e : recordKey.partition().entrySet()) {</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">                if (ifFirst) {</span>
+<span class="nc" id="L193">                    ifFirst = false;</span>
+                } else {
+<span class="nc" id="L195">                    hql.append(&quot;,&quot;);</span>
+                }
+<span class="nc" id="L197">                hql.append(e.getKey().toLowerCase(Locale.ROOT));</span>
+<span class="nc" id="L198">                hql.append(&quot;='&quot; + e.getValue() + &quot;'&quot;);</span>
+<span class="nc" id="L199">            }</span>
+<span class="nc" id="L200">            hql.append(&quot;)&quot;);</span>
+<span class="nc" id="L201">            logger.debug(&quot;create partition by {}.&quot;, hql);</span>
+<span class="nc" id="L202">            Driver driver = null;</span>
+<span class="nc" id="L203">            CliSessionState session = null;</span>
+            try {
+<span class="nc" id="L205">                driver = new Driver(hiveConf);</span>
+<span class="nc" id="L206">                session = new CliSessionState(hiveConf);</span>
+<span class="nc" id="L207">                SessionState.start(session);</span>
+<span class="nc" id="L208">                CommandProcessorResponse res = driver.run(hql.toString());</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                if (res.getResponseCode() != 0) {</span>
+<span class="nc" id="L210">                    logger.warn(&quot;Fail to add partition. HQL: {}; Cause by: {}&quot;,</span>
+<span class="nc" id="L211">                            hql.toString(),</span>
+<span class="nc" id="L212">                            res.toString());</span>
+                }
+<span class="nc" id="L214">                session.close();</span>
+<span class="nc" id="L215">                driver.close();</span>
+<span class="nc" id="L216">            } catch (Exception ex) {</span>
+                // Do not let hive exception stop HiveProducer from writing file, so catch and report it here
+<span class="nc" id="L218">                logger.error(&quot;create partition failed, please create it manually : &quot; + hql, ex);</span>
+            } finally {
+<span class="nc bnc" id="L220" title="All 2 branches missed.">                if (session != null) {</span>
+<span class="nc" id="L221">                    session.close();</span>
+                }
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                if (driver != null) {</span>
+<span class="nc" id="L224">                    driver.close();</span>
+                }
+            }
+        }
+
+        // Step 3: create path for new partition if it is the first time write metrics message or new partition should be used
+<span class="nc bnc" id="L230" title="All 6 branches missed.">        if (fout == null || prePartitionPath == null || prePartitionPath.compareTo(partitionPath.toString()) != 0) {</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">            if (fout != null) {</span>
+<span class="nc" id="L232">                logger.debug(&quot;Flush output stream of previous partition path {}. Using a new one {}. &quot;, prePartitionPath, partitionPath);</span>
+<span class="nc" id="L233">                closeFout();</span>
+            }
+
+<span class="nc" id="L236">            Path partitionContentPath = new Path(partitionPath, contentFilePrefix + String.format(Locale.ROOT, &quot;%05d&quot;, id));</span>
+
+            // Do not overwrite exist files when supportAppend was set to false
+<span class="nc" id="L239">            int nCheck = 0;</span>
+<span class="nc bnc" id="L240" title="All 4 branches missed.">            while (!supportAppend &amp;&amp; fs.exists(partitionContentPath)) {</span>
+<span class="nc" id="L241">                id++;</span>
+<span class="nc" id="L242">                nCheck++;</span>
+<span class="nc" id="L243">                partitionContentPath = new Path(partitionPath, contentFilePrefix + String.format(Locale.ROOT, &quot;%05d&quot;, id));</span>
+<span class="nc" id="L244">                logger.debug(&quot;{} exists, skip it.&quot;, partitionContentPath);</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                if (nCheck &gt; 100000) {</span>
+<span class="nc" id="L246">                    logger.warn(&quot;Exceed max check times.&quot;);</span>
+<span class="nc" id="L247">                    break;</span>
+                }
+            }
+
+<span class="nc" id="L251">            logger.info(&quot;Try to use new partition content path: {} for metric: {}&quot;, partitionContentPath, metricType);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">            if (!fs.exists(partitionContentPath)) {</span>
+<span class="nc" id="L253">                int nRetry = 0;</span>
+<span class="nc bnc" id="L254" title="All 4 branches missed.">                while (!fs.createNewFile(partitionContentPath) &amp;&amp; nRetry++ &lt; 5) {</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                    if (fs.exists(partitionContentPath)) {</span>
+<span class="nc" id="L256">                        break;</span>
+                    }
+<span class="nc" id="L258">                    Thread.sleep(500L * nRetry);</span>
+                }
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                if (!fs.exists(partitionContentPath)) {</span>
+<span class="nc" id="L261">                    throw new IllegalStateException(</span>
+                            &quot;Fail to create HDFS file: &quot; + partitionContentPath + &quot; after &quot; + nRetry + &quot; retries&quot;);
+                }
+            }
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            if (supportAppend) {</span>
+<span class="nc" id="L266">                fout = fs.append(partitionContentPath);</span>
+            } else {
+<span class="nc" id="L268">                fout = fs.create(partitionContentPath);</span>
+            }
+<span class="nc" id="L270">            prePartitionPath = partitionPath.toString();</span>
+<span class="nc" id="L271">            curPartitionContentPath = partitionContentPath;</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            id = (id + 1) % (supportAppend ? 10 : 100000);</span>
+        }
+
+        // Step 4: append record to DFS
+        try {
+<span class="nc" id="L277">            int count = 0;</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            for (HiveProducerRecord elem : recordItr) {</span>
+<span class="nc" id="L279">                fout.writeBytes(elem.valueToString() + &quot;\n&quot;);</span>
+<span class="nc" id="L280">                count++;</span>
+<span class="nc" id="L281">            }</span>
+<span class="nc" id="L282">            logger.debug(&quot;Success to write {} metrics ({}) to file {}&quot;, count, metricType, curPartitionContentPath);</span>
+<span class="nc" id="L283">        } catch (IOException e) {</span>
+<span class="nc" id="L284">            logger.error(&quot;Fails to write metrics(&quot; + metricType + &quot;) to file &quot; + curPartitionContentPath.toString()</span>
+                    + &quot; due to &quot;, e);
+<span class="nc" id="L286">            closeFout();</span>
+<span class="nc" id="L287">        }</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (closeFileEveryAppend) {</span>
+<span class="nc" id="L289">            closeFout();</span>
+        }
+<span class="nc" id="L291">    }</span>
+
+    private void closeFout() {
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        if (fout != null) {</span>
+            try {
+<span class="nc" id="L296">                logger.debug(&quot;Flush output stream {}.&quot;, curPartitionContentPath);</span>
+<span class="nc" id="L297">                fout.close();</span>
+<span class="nc" id="L298">            } catch (Exception e) {</span>
+<span class="nc" id="L299">                logger.error(&quot;Close the path: &quot; + curPartitionContentPath + &quot; failed&quot;, e);</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">                if (fs instanceof DistributedFileSystem) {</span>
+<span class="nc" id="L301">                    DistributedFileSystem hdfs = (DistributedFileSystem) fs;</span>
+                    try {
+<span class="nc" id="L303">                        boolean recovered = hdfs.recoverLease(curPartitionContentPath);</span>
+<span class="nc" id="L304">                    } catch (Exception e1) {</span>
+<span class="nc" id="L305">                        logger.error(&quot;Recover lease for path: &quot; + curPartitionContentPath + &quot; failed&quot;, e1);</span>
+<span class="nc" id="L306">                    }</span>
+                }
+<span class="nc" id="L308">            }</span>
+        }
+<span class="nc" id="L310">        fout = null;</span>
+<span class="nc" id="L311">    }</span>
+
+    private HiveProducerRecord convertTo(Record record) throws Exception {
+<span class="nc" id="L314">        Map&lt;String, Object&gt; rawValue = record.getValueRaw();</span>
+
+        //Set partition values for hive table
+<span class="nc" id="L317">        Map&lt;String, String&gt; partitionKVs = Maps.newHashMapWithExpectedSize(1);</span>
+<span class="nc" id="L318">        partitionKVs.put(TimePropertyEnum.DAY_DATE.toString(),</span>
+<span class="nc" id="L319">                rawValue.get(TimePropertyEnum.DAY_DATE.toString()).toString());</span>
+
+<span class="nc" id="L321">        return parseToHiveProducerRecord(HiveReservoirReporter.getTableFromSubject(record.getSubject()), partitionKVs,</span>
+                rawValue);
+    }
+
+    public HiveProducerRecord parseToHiveProducerRecord(String tableName, Map&lt;String, String&gt; partitionKVs,
+                                                        Map&lt;String, Object&gt; rawValue) throws Exception {
+<span class="nc" id="L327">        Pair&lt;String, String&gt; tableNameSplits = ActiveReservoirReporter.getTableNameSplits(tableName);</span>
+<span class="nc" id="L328">        List&lt;FieldSchema&gt; fields = tableFieldSchemaCache.get(tableNameSplits).getSecond();</span>
+<span class="nc" id="L329">        List&lt;Object&gt; columnValues = Lists.newArrayListWithExpectedSize(fields.size());</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        for (FieldSchema fieldSchema : fields) {</span>
+<span class="nc" id="L331">            columnValues.add(rawValue.get(fieldSchema.getName().toUpperCase(Locale.ROOT)));</span>
+<span class="nc" id="L332">        }</span>
+
+<span class="nc" id="L334">        return new HiveProducerRecord(tableNameSplits.getFirst(), tableNameSplits.getSecond(), partitionKVs,</span>
+                columnValues);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

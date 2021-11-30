@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataModelManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">DataModelManager.java</span></div><h1>DataModelManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.Serializer;
+import org.apache.kylin.common.persistence.WriteConflictException;
+import org.apache.kylin.common.util.AutoReadWriteLock;
+import org.apache.kylin.common.util.AutoReadWriteLock.AutoLock;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CachedCrudAssist;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ */
+public class DataModelManager {
+
+<span class="fc" id="L50">    private static final Logger logger = LoggerFactory.getLogger(DataModelManager.class);</span>
+
+    public static DataModelManager getInstance(KylinConfig config) {
+<span class="fc" id="L53">        return config.getManager(DataModelManager.class);</span>
+    }
+
+    // called by reflection
+    static DataModelManager newInstance(KylinConfig conf) {
+        try {
+<span class="fc" id="L59">            String cls = StringUtil.noBlank(conf.getDataModelManagerImpl(), DataModelManager.class.getName());</span>
+<span class="fc" id="L60">            Class&lt;? extends DataModelManager&gt; clz = ClassUtil.forName(cls, DataModelManager.class);</span>
+<span class="fc" id="L61">            return clz.getConstructor(KylinConfig.class).newInstance(conf);</span>
+<span class="nc" id="L62">        } catch (Exception e) {</span>
+<span class="nc" id="L63">            throw new RuntimeException(&quot;Failed to init DataModelManager from &quot; + conf, e);</span>
+        }
+    }
+
+    // ============================================================================
+
+    private KylinConfig config;
+
+    // name =&gt; DataModelDesc
+    private CaseInsensitiveStringCache&lt;DataModelDesc&gt; dataModelDescMap;
+    private CachedCrudAssist&lt;DataModelDesc&gt; crud;
+
+    // protects concurrent operations around the cached map, to avoid for example
+    // writing an entity in the middle of reloading it (dirty read)
+<span class="fc" id="L77">    private AutoReadWriteLock modelMapLock = new AutoReadWriteLock();</span>
+
+<span class="fc" id="L79">    public DataModelManager(KylinConfig config) throws IOException {</span>
+<span class="fc" id="L80">        init(config);</span>
+<span class="fc" id="L81">    }</span>
+
+    protected void init(KylinConfig cfg) throws IOException {
+<span class="fc" id="L84">        this.config = cfg;</span>
+<span class="fc" id="L85">        this.dataModelDescMap = new CaseInsensitiveStringCache&lt;&gt;(config, &quot;data_model&quot;);</span>
+<span class="fc" id="L86">        this.crud = new CachedCrudAssist&lt;DataModelDesc&gt;(getStore(), ResourceStore.DATA_MODEL_DESC_RESOURCE_ROOT,</span>
+<span class="fc" id="L87">                getDataModelImplClass(), dataModelDescMap) {</span>
+            @Override
+            protected DataModelDesc initEntityAfterReload(DataModelDesc model, String resourceName) {
+                String prj;
+                try {
+<span class="fc" id="L92">                    prj = ProjectManager.getInstance(config).getProjectOfModel(model.getName()).getName();</span>
+<span class="nc" id="L93">                } catch (IllegalStateException e) {</span>
+<span class="nc" id="L94">                    prj = model.getProjectName();</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">                    if (model.getProjectName() == null) {</span>
+<span class="nc" id="L96">                        throw e;</span>
+                    }
+<span class="fc" id="L98">                }</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                if (!model.isDraft()) {</span>
+<span class="fc" id="L100">                    model.init(config, getAllTablesMap(prj));</span>
+                }
+<span class="fc" id="L102">                return model;</span>
+            }
+        };
+
+        // touch lower level metadata before registering model listener
+<span class="fc" id="L107">        TableMetadataManager.getInstance(config);</span>
+<span class="fc" id="L108">        crud.reloadAll();</span>
+<span class="fc" id="L109">        Broadcaster.getInstance(config).registerListener(new DataModelSyncListener(), &quot;data_model&quot;);</span>
+<span class="fc" id="L110">    }</span>
+
+<span class="fc" id="L112">    private class DataModelSyncListener extends Broadcaster.Listener {</span>
+
+        @Override
+        public void onProjectSchemaChange(Broadcaster broadcaster, String project) throws IOException {
+            //clean up the current project's table desc
+<span class="nc" id="L117">            TableMetadataManager.getInstance(config).resetProjectSpecificTableDesc(project);</span>
+<span class="nc" id="L118">            logger.info(&quot;Update models in project: &quot; + project);</span>
+<span class="nc" id="L119">            try (AutoLock lock = modelMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                for (String model : ProjectManager.getInstance(config).getProject(project).getModels()) {</span>
+<span class="nc" id="L121">                    crud.reloadQuietly(model);</span>
+<span class="nc" id="L122">                }</span>
+            }
+<span class="nc" id="L124">        }</span>
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L129">            try (AutoLock lock = modelMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                if (event == Event.DROP)</span>
+<span class="nc" id="L131">                    dataModelDescMap.removeLocal(cacheKey);</span>
+                else
+<span class="nc" id="L133">                    crud.reloadQuietly(cacheKey);</span>
+            }
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">            for (ProjectInstance prj : ProjectManager.getInstance(config).findProjectsByModel(cacheKey)) {</span>
+<span class="nc" id="L137">                broadcaster.notifyProjectSchemaUpdate(prj.getName());</span>
+<span class="nc" id="L138">            }</span>
+<span class="nc" id="L139">        }</span>
+    }
+
+    public List&lt;String&gt; getErrorModels() {
+<span class="nc" id="L143">        return crud.getLoadFailedEntities();</span>
+    }
+
+    private Class&lt;DataModelDesc&gt; getDataModelImplClass() {
+        try {
+<span class="fc" id="L148">            String cls = StringUtil.noBlank(config.getDataModelImpl(), DataModelDesc.class.getName());</span>
+<span class="fc" id="L149">            Class&lt;? extends DataModelDesc&gt; clz = ClassUtil.forName(cls, DataModelDesc.class);</span>
+<span class="fc" id="L150">            return (Class&lt;DataModelDesc&gt;) clz;</span>
+<span class="nc" id="L151">        } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L152">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public KylinConfig getConfig() {
+<span class="nc" id="L157">        return config;</span>
+    }
+
+    public ResourceStore getStore() {
+<span class="fc" id="L161">        return ResourceStore.getStore(this.config);</span>
+    }
+
+    // for test mostly
+    public Serializer&lt;DataModelDesc&gt; getDataModelSerializer() {
+<span class="nc" id="L166">        return crud.getSerializer();</span>
+    }
+
+    public List&lt;DataModelDesc&gt; listDataModels() {
+<span class="nc" id="L170">        try (AutoLock lock = modelMapLock.lockForRead()) {</span>
+<span class="nc" id="L171">            return Lists.newArrayList(dataModelDescMap.values());</span>
+        }
+    }
+
+    public DataModelDesc getDataModelDesc(String name) {
+<span class="fc" id="L176">        try (AutoLock lock = modelMapLock.lockForRead()) {</span>
+<span class="fc" id="L177">            return dataModelDescMap.get(name);</span>
+        }
+    }
+
+    public List&lt;DataModelDesc&gt; getModels() {
+<span class="nc" id="L182">        try (AutoLock lock = modelMapLock.lockForRead()) {</span>
+<span class="nc" id="L183">            return new ArrayList&lt;&gt;(dataModelDescMap.values());</span>
+        }
+    }
+
+    public List&lt;DataModelDesc&gt; getModels(String projectName) {
+<span class="nc" id="L188">        try (AutoLock lock = modelMapLock.lockForRead()) {</span>
+<span class="nc" id="L189">            ProjectInstance projectInstance = ProjectManager.getInstance(config).getProject(projectName);</span>
+<span class="nc" id="L190">            ArrayList&lt;DataModelDesc&gt; ret = new ArrayList&lt;&gt;();</span>
+
+<span class="nc bnc" id="L192" title="All 4 branches missed.">            if (projectInstance != null &amp;&amp; projectInstance.getModels() != null) {</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                for (String modelName : projectInstance.getModels()) {</span>
+<span class="nc" id="L194">                    DataModelDesc model = getDataModelDesc(modelName);</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                    if (null != model) {</span>
+<span class="nc" id="L196">                        ret.add(model);</span>
+                    } else {
+<span class="nc" id="L198">                        logger.info(&quot;Model &quot; + modelName + &quot; is missing or unloaded yet&quot;);</span>
+                    }
+<span class="nc" id="L200">                }</span>
+            }
+
+<span class="nc" id="L203">            return ret;</span>
+        }
+    }
+
+    // within a project, find models that use the specified table
+    public List&lt;String&gt; getModelsUsingTable(TableDesc table, String project) {
+<span class="nc" id="L209">        try (AutoLock lock = modelMapLock.lockForRead()) {</span>
+<span class="nc" id="L210">            List&lt;String&gt; models = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">            for (DataModelDesc modelDesc : getModels(project)) {</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">                if (modelDesc.containsTable(table))</span>
+<span class="nc" id="L213">                    models.add(modelDesc.getName());</span>
+<span class="nc" id="L214">            }</span>
+<span class="nc" id="L215">            return models;</span>
+        }
+    }
+
+    public boolean isTableInAnyModel(TableDesc table) {
+<span class="nc" id="L220">        try (AutoLock lock = modelMapLock.lockForRead()) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            for (DataModelDesc modelDesc : getModels()) {</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                if (modelDesc.containsTable(table))</span>
+<span class="nc" id="L223">                    return true;</span>
+<span class="nc" id="L224">            }</span>
+<span class="nc" id="L225">            return false;</span>
+        }
+    }
+
+    public DataModelDesc reloadDataModel(String modelName) {
+<span class="nc" id="L230">        try (AutoLock lock = modelMapLock.lockForWrite()) {</span>
+<span class="nc" id="L231">            return crud.reload(modelName);</span>
+        }
+    }
+
+    public DataModelDesc dropModel(DataModelDesc desc) throws IOException {
+<span class="nc" id="L236">        try (AutoLock lock = modelMapLock.lockForWrite()) {</span>
+<span class="nc" id="L237">            crud.delete(desc);</span>
+            // delete model from project
+<span class="nc" id="L239">            ProjectManager.getInstance(config).removeModelFromProjects(desc.getName());</span>
+<span class="nc" id="L240">            return desc;</span>
+        }
+    }
+
+    public DataModelDesc createDataModelDesc(DataModelDesc desc, String projectName, String owner) throws IOException {
+<span class="nc" id="L245">        try (AutoLock lock = modelMapLock.lockForWrite()) {</span>
+<span class="nc" id="L246">            String name = desc.getName();</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">            if (dataModelDescMap.containsKey(name))</span>
+<span class="nc" id="L248">                throw new IllegalArgumentException(&quot;DataModelDesc '&quot; + name + &quot;' already exists&quot;);</span>
+
+<span class="nc" id="L250">            ProjectManager prjMgr = ProjectManager.getInstance(config);</span>
+<span class="nc" id="L251">            ProjectInstance prj = prjMgr.getProject(projectName);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">            if (prj.containsModel(name)) {</span>
+<span class="nc" id="L253">                throw new IllegalStateException(&quot;project &quot; + projectName + &quot; already contains model &quot; + name);</span>
+            }
+<span class="nc" id="L255">            desc.setOwner(owner);</span>
+<span class="nc" id="L256">            logger.info(&quot;Saving Model {} to Project {} with {} as owner&quot;, desc.getName(), projectName, owner);</span>
+<span class="nc" id="L257">            desc = saveDataModelDesc(desc, projectName);</span>
+
+            // now that model is saved, update project formally
+            try {
+<span class="nc" id="L261">                prjMgr.addModelToProject(name, projectName);</span>
+<span class="nc" id="L262">            } catch (WriteConflictException e) {</span>
+<span class="nc" id="L263">                logger.warn(&quot;Add model: {} to project: {} failed for write conflicts, rollback&quot;, name, projectName, e);</span>
+<span class="nc" id="L264">                crud.delete(desc);</span>
+<span class="nc" id="L265">                throw e;</span>
+<span class="nc" id="L266">            }</span>
+
+<span class="nc" id="L268">            return desc;</span>
+        }
+    }
+
+    public DataModelDesc updateDataModelDesc(DataModelDesc desc) throws IOException {
+<span class="fc" id="L273">        try (AutoLock lock = modelMapLock.lockForWrite()) {</span>
+<span class="fc" id="L274">            String name = desc.getName();</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">            if (!dataModelDescMap.containsKey(name)) {</span>
+<span class="nc" id="L276">                throw new IllegalArgumentException(&quot;DataModelDesc '&quot; + name + &quot;' does not exist.&quot;);</span>
+            }
+
+<span class="fc" id="L279">            return saveDataModelDesc(desc, ProjectManager.getInstance(config).getProjectOfModel(desc.getName()).getName());</span>
+        }
+    }
+
+    private DataModelDesc saveDataModelDesc(DataModelDesc dataModelDesc, String projectName) throws IOException {
+
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">        if (!dataModelDesc.isDraft())</span>
+<span class="fc" id="L286">            dataModelDesc.init(config, this.getAllTablesMap(projectName));</span>
+
+<span class="fc" id="L288">        crud.save(dataModelDesc);</span>
+
+<span class="fc" id="L290">        return dataModelDesc;</span>
+    }
+
+    private Map&lt;String, TableDesc&gt; getAllTablesMap(String prj) {
+<span class="fc" id="L294">        return TableMetadataManager.getInstance(config).getAllTablesMap(prj);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

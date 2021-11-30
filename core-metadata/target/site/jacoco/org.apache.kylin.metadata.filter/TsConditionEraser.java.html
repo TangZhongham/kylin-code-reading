@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TsConditionEraser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter</a> &gt; <span class="el_source">TsConditionEraser.java</span></div><h1>TsConditionEraser.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.filter;
+
+import java.util.IdentityHashMap;
+
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ */
+public class TsConditionEraser implements TupleFilterSerializer.Decorator {
+
+    private final TblColRef tsColumn;
+    private final TupleFilter root;
+
+    private IdentityHashMap&lt;TupleFilter, Boolean&gt; isInTopLevelANDs;
+
+<span class="nc" id="L36">    public TsConditionEraser(TblColRef tsColumn, TupleFilter root) {</span>
+<span class="nc" id="L37">        this.tsColumn = tsColumn;</span>
+<span class="nc" id="L38">        this.root = root;</span>
+<span class="nc" id="L39">        this.isInTopLevelANDs = Maps.newIdentityHashMap();</span>
+<span class="nc" id="L40">    }</span>
+
+    /**
+     * replace filter on timestamp column to null, so that two tuple filter trees can
+     * be compared regardless of the filter condition on timestamp column (In top level where conditions concatenated by ANDs)
+     * @param filter
+     * @return
+     */
+    @Override
+    public TupleFilter onSerialize(TupleFilter filter) {
+
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        if (filter == null)</span>
+<span class="nc" id="L52">            return null;</span>
+
+        //we just need reference equal
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (root == filter) {</span>
+<span class="nc" id="L56">            isInTopLevelANDs.put(filter, true);</span>
+        }
+
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        if (isInTopLevelANDs.containsKey(filter)) {</span>
+<span class="nc" id="L60">            classifyChildrenByMarking(filter);</span>
+
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (filter instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L63">                TblColRef c = ((CompareTupleFilter) filter).getColumn();</span>
+<span class="nc bnc" id="L64" title="All 4 branches missed.">                if (c != null &amp;&amp; c.equals(tsColumn)) {</span>
+<span class="nc" id="L65">                    return null;</span>
+                }
+            }
+        }
+
+<span class="nc" id="L70">        return filter;</span>
+    }
+
+    private void classifyChildrenByMarking(TupleFilter filter) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (filter instanceof LogicalTupleFilter) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            if (filter.getOperator() == TupleFilter.FilterOperatorEnum.AND) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                for (TupleFilter child : filter.getChildren()) {</span>
+<span class="nc" id="L77">                    isInTopLevelANDs.put(child, true);</span>
+<span class="nc" id="L78">                }</span>
+            }
+        }
+<span class="nc" id="L81">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

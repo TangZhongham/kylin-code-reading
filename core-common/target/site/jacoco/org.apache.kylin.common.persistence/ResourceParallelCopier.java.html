@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResourceParallelCopier.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">ResourceParallelCopier.java</span></div><h1>ResourceParallelCopier.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.kylin.common.persistence.ResourceStore.VisitFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class ResourceParallelCopier {
+
+<span class="nc" id="L41">    private static final Logger logger = LoggerFactory.getLogger(ResourceParallelCopier.class);</span>
+
+    final private ResourceStore src;
+    final private ResourceStore dst;
+
+<span class="nc" id="L46">    private int threadCount = 5;</span>
+<span class="nc" id="L47">    private int groupSize = 200;</span>
+<span class="nc" id="L48">    private int heartBeatSec = 20;</span>
+<span class="nc" id="L49">    private int retry = 2;</span>
+
+<span class="nc" id="L51">    public ResourceParallelCopier(ResourceStore src, ResourceStore dst) {</span>
+<span class="nc" id="L52">        this.src = src;</span>
+<span class="nc" id="L53">        this.dst = dst;</span>
+<span class="nc" id="L54">    }</span>
+
+    public void setThreadCount(int threadCount) {
+<span class="nc" id="L57">        this.threadCount = threadCount;</span>
+<span class="nc" id="L58">    }</span>
+
+    public void setGroupSize(int groupSize) {
+<span class="nc" id="L61">        this.groupSize = groupSize;</span>
+<span class="nc" id="L62">    }</span>
+
+    public void setHeartBeatSec(int heartBeatSec) {
+<span class="nc" id="L65">        this.heartBeatSec = heartBeatSec;</span>
+<span class="nc" id="L66">    }</span>
+
+    public void setRetry(int retry) {
+<span class="nc" id="L69">        this.retry = retry;</span>
+<span class="nc" id="L70">    }</span>
+
+    public Stats copy(String folder, String[] includes, String[] excludes) throws IOException {
+<span class="nc" id="L73">        return copy(folder, includes, excludes, new Stats());</span>
+    }
+
+    public Stats copy(String folder, String[] includes, String[] excludes, Stats stats) throws IOException {
+<span class="nc" id="L77">        logger.info(&quot;Copy {} from {} to {}&quot;, folder, src, dst);</span>
+
+<span class="nc" id="L79">        TreeMap&lt;String, Integer&gt; groups = calculateGroupsToCopy(folder, includes, excludes);</span>
+<span class="nc bnc" id="L80" title="All 4 branches missed.">        if (groups == null || groups.isEmpty())</span>
+<span class="nc" id="L81">            return stats;</span>
+
+<span class="nc" id="L83">        copyGroups(groups, includes, excludes, stats);</span>
+
+<span class="nc bnc" id="L85" title="All 4 branches missed.">        while (stats.hasError() &amp;&amp; retry &gt; 0) {</span>
+<span class="nc" id="L86">            retry--;</span>
+
+<span class="nc" id="L88">            stats.onRetry(stats.errorResource.get());</span>
+<span class="nc" id="L89">            copyGroups(collectErrorGroups(stats), includes, excludes, stats);</span>
+        }
+
+<span class="nc" id="L92">        logger.info(&quot;Done copy {} from {} to {}&quot;, folder, src, dst);</span>
+<span class="nc" id="L93">        return stats;</span>
+    }
+
+    private void copyGroups(TreeMap&lt;String, Integer&gt; groups, String[] includes, String[] excludes, Stats stats) {
+<span class="nc" id="L97">        stats.onAllStart(groups);</span>
+
+        // parallel copy all groups
+<span class="nc" id="L100">        ExecutorService exec = Executors.newFixedThreadPool(threadCount);</span>
+        try {
+<span class="nc" id="L102">            doCopyParallel(exec, groups, includes, excludes, stats);</span>
+        } finally {
+            // await all parallel copy is done
+<span class="nc" id="L105">            exec.shutdown();</span>
+<span class="nc" id="L106">            stats.heartBeat();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            while (!exec.isTerminated()) {</span>
+                try {
+<span class="nc" id="L109">                    exec.awaitTermination(heartBeatSec, TimeUnit.SECONDS);</span>
+<span class="nc" id="L110">                    stats.heartBeat();</span>
+<span class="nc" id="L111">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L112">                    logger.error(&quot;interruped&quot;, e);</span>
+<span class="nc" id="L113">                }</span>
+            }
+        }
+
+<span class="nc" id="L117">        stats.onAllDone();</span>
+<span class="nc" id="L118">    }</span>
+
+    private TreeMap&lt;String, Integer&gt; calculateGroupsToCopy(String folder, String[] includes, String[] excludes)
+            throws IOException {
+<span class="nc" id="L122">        NavigableSet&lt;String&gt; all = src.listResourcesRecursively(folder);</span>
+<span class="nc bnc" id="L123" title="All 4 branches missed.">        if (all == null || all.isEmpty())</span>
+<span class="nc" id="L124">            return null;</span>
+
+<span class="nc" id="L126">        int sizeBeforeFilter = all.size();</span>
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        for (Iterator&lt;String&gt; it = all.iterator(); it.hasNext(); ) {</span>
+<span class="nc" id="L129">            String path = it.next();</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">            if (!ResourceTool.matchFilter(path, includes, excludes)) {</span>
+<span class="nc" id="L131">                it.remove();</span>
+            }
+<span class="nc" id="L133">        }</span>
+
+<span class="nc" id="L135">        int sizeAfterFilter = all.size();</span>
+<span class="nc" id="L136">        logger.info(&quot;{} resources (out of {}) to copy&quot;, sizeAfterFilter, sizeBeforeFilter);</span>
+
+        // returns a list of prefixes, each represents a group of resources
+<span class="nc" id="L139">        TreeMap&lt;String, Integer&gt; groupCollector = new TreeMap&lt;&gt;();</span>
+<span class="nc" id="L140">        divideGroups(all, &quot;/&quot;, groupCollector);</span>
+<span class="nc" id="L141">        return groupCollector;</span>
+    }
+
+    private TreeMap&lt;String, Integer&gt; collectErrorGroups(Stats stats) {
+<span class="nc" id="L145">        TreeMap&lt;String, Integer&gt; newGroups = new TreeMap&lt;&gt;();</span>
+
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        for (String errGroup : stats.errorGroups) {</span>
+<span class="nc" id="L148">            newGroups.put(errGroup, stats.allGroups.get(errGroup));</span>
+<span class="nc" id="L149">        }</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        for (String errResPath : stats.errorResourcePaths) {</span>
+<span class="nc" id="L151">            newGroups.put(errResPath, 1);</span>
+<span class="nc" id="L152">        }</span>
+
+<span class="nc" id="L154">        return newGroups;</span>
+    }
+
+    void divideGroups(NavigableSet&lt;String&gt; resources, String prefixSoFar, TreeMap&lt;String, Integer&gt; groupCollector) {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (resources.isEmpty())</span>
+<span class="nc" id="L159">            return;</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (resources.size() &lt;= groupSize) {</span>
+<span class="nc" id="L161">            String group = longestCommonPrefix(resources, prefixSoFar);</span>
+<span class="nc" id="L162">            groupCollector.put(group, resources.size());</span>
+<span class="nc" id="L163">            return;</span>
+        }
+
+        // the resources set is too big, divide it
+<span class="nc" id="L167">        TreeSet&lt;String&gt; newSet = new TreeSet&lt;&gt;();</span>
+<span class="nc" id="L168">        String newPrefix = null;</span>
+<span class="nc" id="L169">        int newPrefixLen = prefixSoFar.length() + 1;</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        for (String path : resources) {</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">            String myPrefix = path.length() &lt; newPrefixLen ? path : path.substring(0, newPrefixLen);</span>
+<span class="nc bnc" id="L172" title="All 4 branches missed.">            if (newPrefix != null &amp;&amp; !myPrefix.equals(newPrefix)) {</span>
+                // cut off last group
+<span class="nc" id="L174">                divideGroups(newSet, newPrefix, groupCollector);</span>
+<span class="nc" id="L175">                newSet.clear();</span>
+<span class="nc" id="L176">                newPrefix = null;</span>
+            }
+
+<span class="nc bnc" id="L179" title="All 2 branches missed.">            if (newPrefix == null)</span>
+<span class="nc" id="L180">                newPrefix = myPrefix;</span>
+
+<span class="nc" id="L182">            newSet.add(path);</span>
+<span class="nc" id="L183">        }</span>
+
+        // the last group
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (!newSet.isEmpty()) {</span>
+<span class="nc" id="L187">            divideGroups(newSet, newPrefix, groupCollector);</span>
+        }
+<span class="nc" id="L189">    }</span>
+
+    String longestCommonPrefix(NavigableSet&lt;String&gt; strs, String prefixSoFar) {
+        // find minimal length
+<span class="nc" id="L193">        int minLen = Integer.MAX_VALUE;</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        for (String s : strs) {</span>
+<span class="nc" id="L195">            minLen = Math.min(minLen, s.length());</span>
+<span class="nc" id="L196">        }</span>
+
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        for (int i = prefixSoFar.length(); i &lt; minLen; i++) {</span>
+<span class="nc" id="L199">            char c = strs.first().charAt(i);</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            for (String s : strs) {</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                if (s.charAt(i) != c)</span>
+<span class="nc" id="L202">                    return s.substring(0, i);</span>
+<span class="nc" id="L203">            }</span>
+        }
+
+<span class="nc" id="L206">        return strs.first().substring(0, minLen);</span>
+    }
+
+    private void doCopyParallel(ExecutorService exec, TreeMap&lt;String, Integer&gt; groups, final String[] includes,
+                                final String[] excludes, final Stats stats) {
+
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        for (final Map.Entry&lt;String, Integer&gt; entry : groups.entrySet()) {</span>
+<span class="nc" id="L213">            exec.execute(new Runnable() {</span>
+                @Override
+                public void run() {
+<span class="nc" id="L216">                    String group = entry.getKey();</span>
+<span class="nc" id="L217">                    int expectResources = entry.getValue();</span>
+
+<span class="nc" id="L219">                    stats.onGroupStart(group);</span>
+                    try {
+<span class="nc" id="L221">                        int actualResources = copyGroup(group, includes, excludes, stats);</span>
+<span class="nc" id="L222">                        stats.onGroupSuccess(group, expectResources, actualResources);</span>
+<span class="nc" id="L223">                    } catch (Throwable ex) {</span>
+<span class="nc" id="L224">                        stats.onGroupError(group, expectResources, ex);</span>
+<span class="nc" id="L225">                    }</span>
+<span class="nc" id="L226">                }</span>
+            });
+<span class="nc" id="L228">        }</span>
+<span class="nc" id="L229">    }</span>
+
+    private int copyGroup(String group, final String[] includes, final String[] excludes, final Stats stats)
+            throws IOException {
+
+<span class="nc" id="L234">        int cut = group.lastIndexOf('/');</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        String folder = cut == 0 ? &quot;/&quot; : group.substring(0, cut);</span>
+<span class="nc" id="L236">        final int[] count = new int[1];</span>
+
+<span class="nc" id="L238">        src.visitFolderAndContent(folder, true, new VisitFilter(group), new ResourceStore.Visitor() {</span>
+            @Override
+            public void visit(RawResource resource) {
+<span class="nc" id="L241">                String path = resource.path();</span>
+                try {
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                    if (!ResourceTool.matchFilter(path, includes, excludes))</span>
+<span class="nc" id="L244">                        return;</span>
+
+<span class="nc" id="L246">                    count[0]++;</span>
+<span class="nc" id="L247">                    stats.onResourceStart(path);</span>
+<span class="nc" id="L248">                    long nBytes = dst.putResource(path, resource.content(), resource.lastModified());</span>
+<span class="nc" id="L249">                    stats.onResourceSuccess(path, nBytes);</span>
+<span class="nc" id="L250">                } catch (Exception ex) {</span>
+<span class="nc" id="L251">                    stats.onResourceError(path, ex);</span>
+                } finally {
+<span class="nc" id="L253">                    closeQuietly(resource);</span>
+                }
+<span class="nc" id="L255">            }</span>
+        });
+<span class="nc" id="L257">        return count[0];</span>
+    }
+
+    private void closeQuietly(RawResource raw) {
+        try {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            if (raw != null)</span>
+<span class="nc" id="L263">                raw.close();</span>
+<span class="nc" id="L264">        } catch (Exception e) {</span>
+            // ignore
+<span class="nc" id="L266">        }</span>
+<span class="nc" id="L267">    }</span>
+
+<span class="nc" id="L269">    public static class Stats {</span>
+
+<span class="nc" id="L271">        final public Map&lt;String, Integer&gt; allGroups = Collections.synchronizedMap(new TreeMap&lt;String, Integer&gt;());</span>
+<span class="nc" id="L272">        final public Set&lt;String&gt; startedGroups = Collections.synchronizedSet(new TreeSet&lt;String&gt;());</span>
+<span class="nc" id="L273">        final public Set&lt;String&gt; successGroups = Collections.synchronizedSet(new TreeSet&lt;String&gt;());</span>
+<span class="nc" id="L274">        final public Set&lt;String&gt; errorGroups = Collections.synchronizedSet(new TreeSet&lt;String&gt;());</span>
+
+<span class="nc" id="L276">        final public AtomicLong totalBytes = new AtomicLong();</span>
+<span class="nc" id="L277">        final public AtomicInteger totalResource = new AtomicInteger();</span>
+<span class="nc" id="L278">        final public AtomicInteger successResource = new AtomicInteger();</span>
+<span class="nc" id="L279">        final public AtomicInteger errorResource = new AtomicInteger();</span>
+<span class="nc" id="L280">        final public Set&lt;String&gt; errorResourcePaths = Collections.synchronizedSet(new TreeSet&lt;String&gt;());</span>
+
+<span class="nc" id="L282">        public long createTime = System.nanoTime();</span>
+        public long startTime;
+        public long endTime;
+
+        private void reset() {
+<span class="nc" id="L287">            startTime = endTime = 0;</span>
+<span class="nc" id="L288">            allGroups.clear();</span>
+<span class="nc" id="L289">            startedGroups.clear();</span>
+<span class="nc" id="L290">            successGroups.clear();</span>
+<span class="nc" id="L291">            errorGroups.clear();</span>
+<span class="nc" id="L292">            totalBytes.set(0);</span>
+<span class="nc" id="L293">            totalResource.set(0);</span>
+<span class="nc" id="L294">            successResource.set(0);</span>
+<span class="nc" id="L295">            errorResource.set(0);</span>
+<span class="nc" id="L296">            errorResourcePaths.clear();</span>
+<span class="nc" id="L297">        }</span>
+
+        void onAllStart(TreeMap&lt;String, Integer&gt; groups) {
+            // retry enters here too, reset everything first
+<span class="nc" id="L301">            reset();</span>
+
+<span class="nc" id="L303">            logger.debug(&quot;{} groups to copy in parallel&quot;, groups.size());</span>
+<span class="nc" id="L304">            allGroups.putAll(groups);</span>
+<span class="nc" id="L305">            startTime = System.nanoTime();</span>
+<span class="nc" id="L306">        }</span>
+
+        void onAllDone() {
+<span class="nc" id="L309">            endTime = System.nanoTime();</span>
+<span class="nc" id="L310">        }</span>
+
+        void onGroupStart(String group) {
+<span class="nc" id="L313">            logger.debug(&quot;Copying group {}*&quot;, group);</span>
+<span class="nc" id="L314">            startedGroups.add(group);</span>
+<span class="nc" id="L315">        }</span>
+
+        void onGroupError(String group, int resourcesInGroup, Throwable ex) {
+<span class="nc" id="L318">            logger.error(&quot;Error copying group &quot; + group, ex);</span>
+<span class="nc" id="L319">            errorGroups.add(group);</span>
+<span class="nc" id="L320">            errorResource.addAndGet(resourcesInGroup);</span>
+<span class="nc" id="L321">        }</span>
+
+        void onGroupSuccess(String group, int expectResources, int actualResources) {
+<span class="nc" id="L324">            successGroups.add(group);</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">            if (actualResources != expectResources) {</span>
+<span class="nc" id="L326">                logger.warn(&quot;Group {} expects {} resources but got {}&quot;, group, expectResources, actualResources);</span>
+            }
+<span class="nc" id="L328">        }</span>
+
+        void onResourceStart(String path) {
+<span class="nc" id="L331">            logger.trace(&quot;Copying {}&quot;, path);</span>
+<span class="nc" id="L332">            totalResource.incrementAndGet();</span>
+<span class="nc" id="L333">        }</span>
+
+        void onResourceError(String path, Throwable ex) {
+<span class="nc" id="L336">            logger.error(&quot;Error copying &quot; + path, ex);</span>
+<span class="nc" id="L337">            errorResource.incrementAndGet();</span>
+<span class="nc" id="L338">            errorResourcePaths.add(path);</span>
+<span class="nc" id="L339">        }</span>
+
+        void onResourceSuccess(String path, long nBytes) {
+<span class="nc" id="L342">            successResource.incrementAndGet();</span>
+<span class="nc" id="L343">            totalBytes.addAndGet(nBytes);</span>
+<span class="nc" id="L344">        }</span>
+
+        void onRetry(int errorResourceCnt) {
+            // for progress printing
+<span class="nc" id="L348">        }</span>
+
+        void heartBeat() {
+            // for progress printing
+<span class="nc" id="L352">        }</span>
+
+        public boolean hasError() {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">            return errorResource.get() &gt; 0;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

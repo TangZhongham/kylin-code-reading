@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TblColRef.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">TblColRef.java</span></div><h1>TblColRef.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import static org.apache.kylin.shaded.com.google.common.base.Preconditions.checkArgument;
+
+import java.io.Serializable;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Function;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.expression.TupleExpression;
+
+/**
+ */
+@SuppressWarnings({ &quot;serial&quot; })
+public class TblColRef implements Serializable {
+
+    private static final String INNER_TABLE_NAME = &quot;_kylin_table&quot;;
+<span class="fc" id="L38">    private static final DataModelDesc UNKNOWN_MODEL = new DataModelDesc();</span>
+
+    static {
+<span class="fc" id="L41">        UNKNOWN_MODEL.setName(&quot;UNKNOWN_MODEL&quot;);</span>
+<span class="fc" id="L42">    }</span>
+
+    private TableRef table;
+    private TableRef backupTable;// only used in fixTableRef()
+    private ColumnDesc column;
+    private String identity;
+    private String parserDescription;
+    //used in window function
+    private List&lt;TupleExpression&gt; subTupleExps;
+    /**
+     * Function used to get quoted identitier
+     */
+    private transient Function&lt;TblColRef, String&gt; quotedFunc;
+
+<span class="fc" id="L56">    TblColRef(ColumnDesc column) {</span>
+<span class="fc" id="L57">        this.column = column;</span>
+<span class="fc" id="L58">    }</span>
+
+<span class="fc" id="L60">    TblColRef(TableRef table, ColumnDesc column) {</span>
+<span class="fc" id="L61">        checkArgument(table.getTableDesc().getIdentity().equals(column.getTable().getIdentity()));</span>
+<span class="fc" id="L62">        this.table = table;</span>
+<span class="fc" id="L63">        this.column = column;</span>
+<span class="fc" id="L64">    }</span>
+
+    // ============================================================================
+
+    // used by projection rewrite, see OLAPProjectRel
+    public static TblColRef newInnerColumn(String columnName, InnerDataTypeEnum dataType) {
+<span class="fc" id="L70">        return newInnerColumn(columnName, dataType, null);</span>
+    }
+
+    // used by projection rewrite, see OLAPProjectRel
+    public static TblColRef newInnerColumn(String columnName, InnerDataTypeEnum dataType, String parserDescription) {
+<span class="fc" id="L75">        ColumnDesc column = new ColumnDesc();</span>
+<span class="fc" id="L76">        column.setName(columnName);</span>
+<span class="fc" id="L77">        TableDesc table = new TableDesc();</span>
+<span class="fc" id="L78">        column.setTable(table);</span>
+<span class="fc" id="L79">        TblColRef colRef = new TblColRef(column);</span>
+<span class="fc" id="L80">        colRef.markInnerColumn(dataType);</span>
+<span class="fc" id="L81">        colRef.parserDescription = parserDescription;</span>
+<span class="fc" id="L82">        return colRef;</span>
+    }
+
+    public static TableRef tableForUnknownModel(String tempTableAlias, TableDesc table) {
+<span class="nc" id="L86">        return new TableRef(UNKNOWN_MODEL, tempTableAlias, table, false);</span>
+    }
+
+    public static TblColRef columnForUnknownModel(TableRef table, ColumnDesc colDesc) {
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        checkArgument(table.getModel() == UNKNOWN_MODEL);</span>
+<span class="nc" id="L91">        return new TblColRef(table, colDesc);</span>
+    }
+
+    public static void fixUnknownModel(DataModelDesc model, String alias, TblColRef col) {
+<span class="nc bnc" id="L95" title="All 4 branches missed.">        checkArgument(col.table.getModel() == UNKNOWN_MODEL || col.table.getModel() == model);</span>
+<span class="nc" id="L96">        TableRef tableRef = model.findTable(alias);</span>
+<span class="nc" id="L97">        checkArgument(tableRef.getTableDesc().getIdentity().equals(col.column.getTable().getIdentity()));</span>
+<span class="nc" id="L98">        col.fixTableRef(tableRef);</span>
+<span class="nc" id="L99">    }</span>
+
+    public static void unfixUnknownModel(TblColRef col) {
+<span class="nc" id="L102">        col.unfixTableRef();</span>
+<span class="nc" id="L103">    }</span>
+
+    // for test mainly
+    public static TblColRef mockup(TableDesc table, int oneBasedColumnIndex, String name, String datatype) {
+<span class="fc" id="L107">        return mockup(table, oneBasedColumnIndex, name, datatype, null);</span>
+    }
+
+    // for test mainly
+    public static TblColRef mockup(TableDesc table, int oneBasedColumnIndex, String name, String datatype,
+            String comment) {
+<span class="fc" id="L113">        ColumnDesc desc = new ColumnDesc();</span>
+<span class="fc" id="L114">        String id = &quot;&quot; + oneBasedColumnIndex;</span>
+<span class="fc" id="L115">        desc.setId(id);</span>
+<span class="fc" id="L116">        desc.setName(name);</span>
+<span class="fc" id="L117">        desc.setDatatype(datatype);</span>
+<span class="fc" id="L118">        desc.init(table);</span>
+<span class="fc" id="L119">        desc.setComment(comment);</span>
+<span class="fc" id="L120">        return new TblColRef(desc);</span>
+    }
+
+    public void setQuotedFunc(Function&lt;TblColRef, String&gt; quotedFunc) {
+<span class="fc" id="L124">        this.quotedFunc = quotedFunc;</span>
+<span class="fc" id="L125">    }</span>
+
+    public void fixTableRef(TableRef tableRef) {
+<span class="nc" id="L128">        this.backupTable = this.table;</span>
+<span class="nc" id="L129">        this.table = tableRef;</span>
+<span class="nc" id="L130">        this.identity = null;</span>
+<span class="nc" id="L131">    }</span>
+
+    public ColumnDesc getColumnDesc() {
+<span class="fc" id="L134">        return column;</span>
+    }
+
+    public void unfixTableRef() {
+<span class="nc" id="L138">        this.table = backupTable;</span>
+<span class="nc" id="L139">        this.identity = null;</span>
+<span class="nc" id="L140">    }</span>
+
+    public String getName() {
+<span class="fc" id="L143">        return column.getName();</span>
+    }
+
+    public TableRef getTableRef() {
+<span class="fc" id="L147">        return table;</span>
+    }
+
+    public boolean isQualified() {
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        return table != null;</span>
+    }
+
+    public String getTableAlias() {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        return table != null ? table.getAlias() : &quot;UNKNOWN_ALIAS&quot;;</span>
+    }
+
+    public String getExpressionInSourceDB() {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (!column.isComputedColumn()) {</span>
+<span class="nc" id="L160">            return getIdentity();</span>
+        } else {
+<span class="nc" id="L162">            return column.getComputedColumnExpr();</span>
+        }
+    }
+
+    public String getTable() {
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (column.getTable() == null) {</span>
+<span class="nc" id="L168">            return null;</span>
+        }
+<span class="fc" id="L170">        return column.getTable().getIdentity();</span>
+    }
+
+    public String getCanonicalName() {
+<span class="fc" id="L174">        return getTable() + &quot;.&quot; + getName();</span>
+    }
+
+    public String getDatatype() {
+<span class="fc" id="L178">        return column.getDatatype();</span>
+    }
+
+    public DataType getType() {
+<span class="fc" id="L182">        return column.getType();</span>
+    }
+
+    public List&lt;TupleExpression&gt; getSubTupleExps() {
+<span class="nc" id="L186">        return subTupleExps;</span>
+    }
+
+    public void setSubTupleExps(List&lt;TupleExpression&gt; subTubleExps) {
+<span class="nc" id="L190">        this.subTupleExps = subTubleExps;</span>
+<span class="nc" id="L191">    }</span>
+
+    public String getBackupTableAlias() {
+<span class="nc" id="L194">        return backupTable.getAlias();</span>
+    }
+
+    private void markInnerColumn(InnerDataTypeEnum dataType) {
+<span class="fc" id="L198">        this.column.setDatatype(dataType.getDataType());</span>
+<span class="fc" id="L199">        this.column.getTable().setName(INNER_TABLE_NAME);</span>
+<span class="fc" id="L200">        this.column.getTable().setDatabase(&quot;DEFAULT&quot;);</span>
+<span class="fc" id="L201">    }</span>
+
+    public boolean isInnerColumn() {
+<span class="fc" id="L204">        return InnerDataTypeEnum.contains(getDatatype());</span>
+    }
+
+    public int hashCode() {
+        // NOTE: tableRef MUST NOT participate in hashCode().
+        // Because fixUnknownModel() can change tableRef while TblColRef is held as set/map keys.
+<span class="fc" id="L210">        final int prime = 31;</span>
+<span class="fc" id="L211">        int result = 1;</span>
+
+<span class="fc" id="L213">        result = prime * result + column.getTable().getIdentity().hashCode();</span>
+<span class="fc" id="L214">        result = prime * result + column.getName().hashCode();</span>
+<span class="fc" id="L215">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L221">            return true;</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L223">            return false;</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L225">            return false;</span>
+<span class="fc" id="L226">        TblColRef other = (TblColRef) obj;</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (!StringUtils.equals(column.getTable().getIdentity(), other.column.getTable().getIdentity()))</span>
+<span class="nc" id="L228">            return false;</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">        if (!StringUtils.equals(column.getName(), other.column.getName()))</span>
+<span class="nc" id="L230">            return false;</span>
+<span class="pc bpc" id="L231" title="3 of 6 branches missed.">        if ((table == null ? other.table == null : table.equals(other.table)) == false)</span>
+<span class="nc" id="L232">            return false;</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        if (this.isInnerColumn() != other.isInnerColumn())</span>
+<span class="nc" id="L234">            return false;</span>
+<span class="fc" id="L235">        return true;</span>
+    }
+
+    public String getIdentity() {
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (identity == null)</span>
+<span class="fc" id="L240">            identity = getTableAlias() + &quot;.&quot; + getName();</span>
+<span class="fc" id="L241">        return identity;</span>
+    }
+
+    public String getQuotedIdentity() {
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        if (quotedFunc == null)</span>
+<span class="fc" id="L246">            return getIdentity();</span>
+        else
+<span class="nc" id="L248">            return quotedFunc.apply(this);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L253" title="All 4 branches missed.">        if (isInnerColumn() &amp;&amp; parserDescription != null)</span>
+<span class="nc" id="L254">            return parserDescription;</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        String alias = table == null ? &quot;UNKNOWN_MODEL&quot; : table.getAlias();</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        String tableName = column.getTable() == null ? &quot;NULL&quot; : column.getTable().getName();</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        String tableIdentity = column.getTable() == null ? &quot;NULL&quot; : column.getTable().getIdentity();</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        if (alias.equals(tableName)) {</span>
+<span class="nc" id="L260">            return tableIdentity + &quot;.&quot; + column.getName();</span>
+        } else {
+<span class="nc" id="L262">            return alias + &quot;:&quot; + tableIdentity + &quot;.&quot; + column.getName();</span>
+        }
+    }
+
+    // return DB.TABLE
+    public String getTableWithSchema() {
+<span class="nc bnc" id="L268" title="All 4 branches missed.">        if (isInnerColumn() &amp;&amp; parserDescription != null)</span>
+<span class="nc" id="L269">            return parserDescription;</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (column.getTable() == null) {</span>
+<span class="nc" id="L271">            return &quot;NULL&quot;;</span>
+        } else {
+<span class="nc" id="L273">            return column.getTable().getIdentity().toUpperCase(Locale.ROOT);</span>
+        }
+    }
+
+    // return DB.TABLE.COLUMN
+    public String getColumWithTableAndSchema() {
+<span class="nc" id="L279">        return (getTableWithSchema() + &quot;.&quot; + column.getName()).toUpperCase(Locale.ROOT);</span>
+    }
+
+
+    public String getColumnWithTable() {
+<span class="nc" id="L284">        return (getTable() + &quot;.&quot; + column.getName()).toUpperCase(Locale.ROOT);</span>
+    }
+
+    // used by projection rewrite, see OLAPProjectRel
+<span class="fc" id="L288">    public enum InnerDataTypeEnum {</span>
+
+<span class="fc" id="L290">        LITERAL(&quot;_literal_type&quot;), DERIVED(&quot;_derived_type&quot;);</span>
+
+        private final String dateType;
+
+<span class="fc" id="L294">        private InnerDataTypeEnum(String name) {</span>
+<span class="fc" id="L295">            this.dateType = name;</span>
+<span class="fc" id="L296">        }</span>
+
+        public static boolean contains(String name) {
+<span class="pc bpc" id="L299" title="2 of 4 branches missed.">            return LITERAL.getDataType().equals(name) || DERIVED.getDataType().equals(name);</span>
+        }
+
+        public String getDataType() {
+<span class="fc" id="L303">            return dateType;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

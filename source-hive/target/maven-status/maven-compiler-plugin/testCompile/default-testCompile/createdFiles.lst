@@ -1,0 +1,4 @@
+org/apache/kylin/source/hive/BeelineOptionsProcessorTest.class
+org/apache/kylin/source/hive/HiveMRInputTest.class
+org/apache/kylin/source/hive/cardinality/ColumnCardinalityReducerTest.class
+org/apache/kylin/source/hive/BeelineHIveClientTest.class

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.18">
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/KylinReducer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/SortedColumnDFSFile.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/JobBuilderSupport.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/LookupSnapshotBuildJob.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/ILookupMaterializer.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/MRUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/IMROutput2.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/IMRInput.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/CubingJob.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/KylinMapper.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/ByteArrayWritable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/NDCuboidBuilder.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/DefaultX509TrustManager.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CuboidShardUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/HadoopCmdOutput.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/MapReduceUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/MapReduceExecutable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CubeStatsReader.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CuboidSchedulerUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CubeJobLockUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CubeStatsWriter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/HadoopJobStatusChecker.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/AbstractHadoopJob.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/HadoopShellExecutable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CuboidStatsReaderUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/SerializableConfiguration.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/JobRelatedMetaUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/DefaultSslProtocolSocketFactory.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/JobInfoConverter.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/CuboidRecommenderUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/BatchConstants.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/common/StatisticsDecisionUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/steps/UpdateCubeInfoAfterCheckpointStep.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/steps/CubingExecutableUtil.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/DFSFileTableReader.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/SortedColumnDFSFileReader.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/DFSFileTable.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/IInput.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/IMROutput.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/LookupMaterializeContext.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/exception/SegmentNotFoundException.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/exception/HadoopShellException.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/exception/MapReduceException.java">
+</file>
+<file name="/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/build-engine/src/main/java/org/apache/kylin/engine/mr/BatchOptimizeJobCheckpointBuilder.java">
+</file>
+</checkstyle>

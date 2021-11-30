@@ -1,0 +1,10 @@
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/hybrid/HybridInstanceTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/StorageFactoryTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/translate/FuzzyValueCombinationTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/gtrecord/SortedIteratorMergerTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/gtrecord/SortedIteratorMergerWithLimitTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/hybrid/HybridManagerTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/cache/EhcacheTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/gtrecord/DictGridTableTest.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/StorageMockUtils.java
+/Users/tangmoumou/bigdata_projects/apache-kylin-4.0.0/core-storage/src/test/java/org/apache/kylin/storage/StorageContextTest.java

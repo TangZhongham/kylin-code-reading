@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DictionaryEnumerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.enumerator</a> &gt; <span class="el_source">DictionaryEnumerator.java</span></div><h1>DictionaryEnumerator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.enumerator;
+
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.calcite.linq4j.Enumerator;
+import org.apache.kylin.common.annotation.Clarification;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.query.relnode.OLAPContext;
+import org.apache.kylin.storage.hybrid.HybridInstance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+
+@Clarification(deprecated = true, msg = &quot;Only for HBase storage&quot;)
+public class DictionaryEnumerator implements Enumerator&lt;Object[]&gt; {
+
+<span class="nc" id="L42">    private final static Logger logger = LoggerFactory.getLogger(DictionaryEnumerator.class);</span>
+
+    private List&lt;Dictionary&lt;String&gt;&gt; dictList;
+    private final Object[] current;
+    private final TblColRef dictCol;
+    private final int dictColIdx;
+    private Iterator&lt;String&gt; currentDict;
+    private Iterator&lt;Dictionary&lt;String&gt;&gt; iterator;
+
+<span class="nc" id="L51">    public DictionaryEnumerator(OLAPContext olapContext) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        Preconditions.checkArgument(olapContext.allColumns.size() == 1, &quot;The query should only relate to one column&quot;);</span>
+
+<span class="nc" id="L54">        dictCol = olapContext.allColumns.iterator().next();</span>
+<span class="nc" id="L55">        Preconditions.checkArgument(ifColumnHaveDictionary(dictCol, olapContext.realization, false),</span>
+                &quot;The column &quot; + dictCol + &quot; should be encoded as dictionary for &quot; + olapContext.realization);
+
+<span class="nc" id="L58">        dictList = getAllDictionaries(dictCol, olapContext.realization);</span>
+<span class="nc" id="L59">        current = new Object[olapContext.returnTupleInfo.size()];</span>
+<span class="nc" id="L60">        dictColIdx = olapContext.returnTupleInfo.getColumnIndex(dictCol);</span>
+
+<span class="nc" id="L62">        reset();</span>
+<span class="nc" id="L63">        logger.info(&quot;Will use DictionaryEnumerator to answer query which is only related to column &quot; + dictCol);</span>
+<span class="nc" id="L64">    }</span>
+
+    public static boolean ifDictionaryEnumeratorEligible(OLAPContext olapContext) {
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (olapContext.allColumns.size() != 1) {</span>
+<span class="nc" id="L68">            return false;</span>
+        }
+
+<span class="nc" id="L71">        TblColRef dictCol = olapContext.allColumns.iterator().next();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (!ifColumnHaveDictionary(dictCol, olapContext.realization, true)) {</span>
+<span class="nc" id="L73">            return false;</span>
+        }
+<span class="nc" id="L75">        return true;</span>
+    }
+
+    private static boolean ifColumnHaveDictionary(TblColRef col, IRealization realization, boolean enableCheck) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (realization instanceof CubeInstance) {</span>
+<span class="nc" id="L80">            final CubeInstance cube = (CubeInstance) realization;</span>
+<span class="nc bnc" id="L81" title="All 4 branches missed.">            boolean ifEnabled = !enableCheck || cube.getConfig().isDictionaryEnumeratorEnabled();</span>
+<span class="nc bnc" id="L82" title="All 4 branches missed.">            return ifEnabled &amp;&amp; cube.getDescriptor().getAllDimsHaveDictionary().contains(col);</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        } else if (realization instanceof HybridInstance) {</span>
+<span class="nc" id="L84">            final HybridInstance hybridInstance = (HybridInstance) realization;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            for (IRealization entry : hybridInstance.getRealizations()) {</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                if (!ifColumnHaveDictionary(col, entry, enableCheck)) {</span>
+<span class="nc" id="L87">                    return false;</span>
+                }
+            }
+<span class="nc" id="L90">            return true;</span>
+        }
+<span class="nc" id="L92">        return false;</span>
+    }
+
+    public static List&lt;Dictionary&lt;String&gt;&gt; getAllDictionaries(TblColRef col, IRealization realization) {
+//        Set&lt;Dictionary&lt;String&gt;&gt; result = Sets.newHashSet();
+//        if (realization instanceof CubeInstance) {
+//            final CubeInstance cube = (CubeInstance) realization;
+//            for (CubeSegment segment : cube.getSegments(SegmentStatusEnum.READY)) {
+//                result.add(segment.getDictionary(col));
+//            }
+//        } else if (realization instanceof HybridInstance) {
+//            final HybridInstance hybridInstance = (HybridInstance) realization;
+//            for (IRealization entry : hybridInstance.getRealizations()) {
+//                result.addAll(getAllDictionaries(col, entry));
+//            }
+//        } else {
+//            throw new IllegalStateException(&quot;All leaf realizations should be CubeInstance&quot;);
+//        }
+<span class="nc" id="L110">        return Lists.newArrayList();</span>
+    }
+
+    @Override
+    public boolean moveNext() {
+<span class="nc bnc" id="L115" title="All 4 branches missed.">        while (currentDict == null || !currentDict.hasNext()) {</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (!iterator.hasNext()) {</span>
+<span class="nc" id="L117">                return false;</span>
+            }
+<span class="nc" id="L119">            final Dictionary&lt;String&gt; dict = iterator.next();</span>
+<span class="nc" id="L120">            currentDict = dict.enumeratorValues().iterator();</span>
+<span class="nc" id="L121">        }</span>
+
+<span class="nc" id="L123">        current[dictColIdx] = Tuple.convertOptiqCellValue(currentDict.next(), dictCol.getDatatype());</span>
+<span class="nc" id="L124">        return true;</span>
+    }
+
+    @Override
+    public Object[] current() {
+<span class="nc" id="L129">        return current;</span>
+    }
+
+    @Override
+    public void reset() {
+<span class="nc" id="L134">        iterator = dictList.iterator();</span>
+<span class="nc" id="L135">    }</span>
+
+    @Override
+    public void close() {
+<span class="nc" id="L139">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

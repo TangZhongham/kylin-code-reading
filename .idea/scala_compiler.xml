@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <profile name="Maven 1" modules="kylin,kylin-build-engine,kylin-cache,kylin-core-common,kylin-core-cube,kylin-core-job,kylin-core-metadata,kylin-core-metrics,kylin-core-storage,kylin-jdbc,kylin-metastore-hbase,kylin-metrics-reporter-hive,kylin-metrics-reporter-kafka,kylin-query,kylin-server,kylin-server-base,kylin-source-hive,kylin-spark-classloader,kylin-spark-common,kylin-spark-engine,kylin-spark-metadata,kylin-spark-project,kylin-spark-query,kylin-spark-test,kylin-tool,kylin-tool-assembly,parquet-assembly" />
+  </component>
+</project>

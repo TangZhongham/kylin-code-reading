@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecutableOutputPO.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.dao</a> &gt; <span class="el_source">ExecutableOutputPO.java</span></div><h1>ExecutableOutputPO.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.dao;
+
+import java.util.Map;
+
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE, setterVisibility = JsonAutoDetect.Visibility.NONE)
+<span class="fc" id="L33">public class ExecutableOutputPO extends RootPersistentEntity {</span>
+
+    @JsonProperty(&quot;content&quot;)
+    private String content;
+
+<span class="fc" id="L38">    @JsonProperty(&quot;status&quot;)</span>
+    private String status = &quot;READY&quot;;
+
+    @JsonProperty(&quot;log_path&quot;)
+    private String logPath;
+
+<span class="fc" id="L44">    @JsonProperty(&quot;info&quot;)</span>
+<span class="fc" id="L45">    private Map&lt;String, String&gt; info = Maps.newHashMap();</span>
+
+    public String getContent() {
+<span class="fc" id="L48">        return content;</span>
+    }
+
+    public void setContent(String content) {
+<span class="fc" id="L52">        this.content = content;</span>
+<span class="fc" id="L53">    }</span>
+
+    public String getStatus() {
+<span class="fc" id="L56">        return status;</span>
+    }
+
+    public void setStatus(String status) {
+<span class="fc" id="L60">        this.status = status;</span>
+<span class="fc" id="L61">    }</span>
+
+    public Map&lt;String, String&gt; getInfo() {
+<span class="fc" id="L64">        return info;</span>
+    }
+
+    public void setInfo(Map&lt;String, String&gt; info) {
+<span class="nc" id="L68">        this.info = info;</span>
+<span class="nc" id="L69">    }</span>
+
+    public void setLogPath(String logPath) {
+<span class="nc" id="L72">        this.logPath = logPath;</span>
+<span class="nc" id="L73">    }</span>
+
+    public String getLogPath() {
+<span class="nc" id="L76">        return logPath;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPAggregateRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.optrule</a> &gt; <span class="el_source">OLAPAggregateRule.java</span></div><h1>OLAPAggregateRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.optrule;
+
+import org.apache.calcite.plan.Convention;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.InvalidRelException;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.convert.ConverterRule;
+import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.logical.LogicalAggregate;
+import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.fun.SqlAvgAggFunction;
+import org.apache.kylin.query.relnode.OLAPAggregateRel;
+import org.apache.kylin.query.relnode.OLAPRel;
+
+/**
+ */
+public class OLAPAggregateRule extends ConverterRule {
+
+<span class="nc" id="L37">    public static final ConverterRule INSTANCE = new OLAPAggregateRule();</span>
+
+    public OLAPAggregateRule() {
+<span class="nc" id="L40">        super(LogicalAggregate.class, Convention.NONE, OLAPRel.CONVENTION, &quot;OLAPAggregateRule&quot;);</span>
+<span class="nc" id="L41">    }</span>
+
+    @Override
+    public RelNode convert(RelNode rel) {
+<span class="nc" id="L45">        LogicalAggregate agg = (LogicalAggregate) rel;</span>
+
+        // AVG() will be transformed into SUM()/COUNT() by AggregateReduceFunctionsRule.
+        // Here only let the transformed plan pass.
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        if (containsAvg(agg)) {</span>
+<span class="nc" id="L50">            return null;</span>
+        }
+
+<span class="nc" id="L53">        RelTraitSet traitSet = agg.getTraitSet().replace(OLAPRel.CONVENTION);</span>
+        try {
+<span class="nc" id="L55">            return new OLAPAggregateRel(agg.getCluster(), traitSet, convert(agg.getInput(), OLAPRel.CONVENTION), agg.indicator, agg.getGroupSet(), agg.getGroupSets(), agg.getAggCallList());</span>
+<span class="nc" id="L56">        } catch (InvalidRelException e) {</span>
+<span class="nc" id="L57">            throw new IllegalStateException(&quot;Can't create OLAPAggregateRel!&quot;, e);</span>
+        }
+    }
+
+    private boolean containsAvg(LogicalAggregate agg) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        for (AggregateCall call : agg.getAggCallList()) {</span>
+<span class="nc" id="L63">            SqlAggFunction func = call.getAggregation();</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            if (func instanceof SqlAvgAggFunction)</span>
+<span class="nc" id="L65">                return true;</span>
+<span class="nc" id="L66">        }</span>
+<span class="nc" id="L67">        return false;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

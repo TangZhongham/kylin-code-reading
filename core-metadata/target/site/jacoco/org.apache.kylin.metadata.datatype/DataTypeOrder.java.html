@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataTypeOrder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.datatype</a> &gt; <span class="el_source">DataTypeOrder.java</span></div><h1>DataTypeOrder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.datatype;
+
+import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.Comparator;
+
+import org.apache.kylin.common.util.DateFormat;
+
+/**
+ * Define order for string literals based on its underlying data type.
+ * 
+ * Null is the smallest.
+ */
+<span class="fc" id="L32">abstract public class DataTypeOrder implements Comparator&lt;String&gt; {</span>
+
+<span class="fc" id="L34">    public static final DataTypeOrder INTEGER_ORDER = new IntegerOrder();</span>
+<span class="fc" id="L35">    public static final DataTypeOrder DOUBLE_ORDER = new DoubleOrder();</span>
+<span class="fc" id="L36">    public static final DataTypeOrder DECIMAL_ORDER = new DecimalOrder();</span>
+<span class="fc" id="L37">    public static final DataTypeOrder DATETIME_ORDER = new DateTimeOrder();</span>
+<span class="fc" id="L38">    public static final DataTypeOrder STRING_ORDER = new StringOrder();</span>
+<span class="fc" id="L39">    public static final DataTypeOrder BOOLEAN_ORDER = new BooleanOrder();</span>
+
+    // package private, access via DataType.getOrder()
+    static DataTypeOrder getInstance(DataType type) throws IllegalArgumentException {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (type.isStringFamily())</span>
+<span class="fc" id="L44">            return STRING_ORDER;</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        else if (type.isDateTimeFamily())</span>
+<span class="fc" id="L46">            return DATETIME_ORDER;</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        else if (type.isIntegerFamily())</span>
+<span class="fc" id="L48">            return INTEGER_ORDER;</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">        else if (type.isFloat() || type.isDouble())</span>
+<span class="fc" id="L50">            return DOUBLE_ORDER;</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        else if (type.isDecimal())</span>
+<span class="nc" id="L52">            return DECIMAL_ORDER;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        else if (type.isBoolean())</span>
+<span class="nc" id="L54">            return BOOLEAN_ORDER;</span>
+        else
+<span class="nc" id="L56">            throw new IllegalArgumentException(&quot;Unsupported data type &quot; + type);</span>
+    }
+
+    public String max(Collection&lt;String&gt; values) {
+<span class="fc" id="L60">        String max = null;</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (String v : values) {</span>
+<span class="fc" id="L62">            max = max(max, v);</span>
+<span class="fc" id="L63">        }</span>
+<span class="fc" id="L64">        return max;</span>
+    }
+
+    public String min(Collection&lt;String&gt; values) {
+<span class="fc" id="L68">        String min = null;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (String v : values) {</span>
+<span class="fc" id="L70">            min = min(min, v);</span>
+<span class="fc" id="L71">        }</span>
+<span class="fc" id="L72">        return min;</span>
+    }
+
+    public String min(String v1, String v2) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (v1 == null)</span>
+<span class="fc" id="L77">            return v2;</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        else if (v2 == null)</span>
+<span class="nc" id="L79">            return v1;</span>
+        else
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            return compare(v1, v2) &lt;= 0 ? v1 : v2;</span>
+    }
+
+    public String max(String v1, String v2) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (v1 == null)</span>
+<span class="fc" id="L86">            return v2;</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        else if (v2 == null)</span>
+<span class="nc" id="L88">            return v1;</span>
+        else
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            return compare(v1, v2) &gt;= 0 ? v1 : v2;</span>
+    }
+
+    @Override
+    public int compare(String s1, String s2) {
+<span class="fc" id="L95">        Comparable o1 = toComparable(s1);</span>
+<span class="fc" id="L96">        Comparable o2 = toComparable(s2);</span>
+        
+        // consider null
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (o1 == o2)</span>
+<span class="nc" id="L100">            return 0;</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (o1 == null)</span>
+<span class="nc" id="L102">            return -1;</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (o2 == null)</span>
+<span class="nc" id="L104">            return 1;</span>
+
+<span class="fc" id="L106">        return o1.compareTo(o2);</span>
+    }
+
+    abstract Comparable toComparable(String s);
+
+    private static class StringOrder extends DataTypeOrder {
+        @Override
+        public String toComparable(String s) {
+<span class="fc" id="L114">            return s;</span>
+        }
+    }
+
+    private static class IntegerOrder extends DataTypeOrder {
+        @Override
+        public Long toComparable(String s) {
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">            if (s == null || s.isEmpty())</span>
+<span class="nc" id="L122">                return null;</span>
+            else
+<span class="fc" id="L124">                return Long.parseLong(s);</span>
+        }
+    }
+
+    private static class DoubleOrder extends DataTypeOrder {
+        @Override
+        public Double toComparable(String s) {
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">            if (s == null || s.isEmpty())</span>
+<span class="nc" id="L132">                return null;</span>
+            else
+<span class="fc" id="L134">                return Double.parseDouble(s);</span>
+        }
+    }
+    
+    private static class DecimalOrder extends DataTypeOrder {
+        @Override
+        public BigDecimal toComparable(String s) {
+<span class="nc bnc" id="L141" title="All 4 branches missed.">            if (s == null || s.isEmpty())</span>
+<span class="nc" id="L142">                return null;</span>
+            else
+<span class="nc" id="L144">                return new BigDecimal(s);</span>
+        }
+    }
+    
+    private static class DateTimeOrder extends DataTypeOrder {
+        @Override
+        public Long toComparable(String s) {
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">            if (s == null || s.isEmpty())</span>
+<span class="nc" id="L152">                return null;</span>
+            else
+<span class="fc" id="L154">                return DateFormat.stringToMillis(s);</span>
+        }
+    }
+
+    private static class BooleanOrder extends DataTypeOrder {
+        @Override
+        public String toComparable(String s) {
+<span class="nc" id="L161">            return s;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTRowBlock.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTRowBlock.java</span></div><h1>GTRowBlock.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.ImmutableBitSet;
+
+public class GTRowBlock {
+
+    /** create a row block, allocate memory, get ready for writing */
+    public static GTRowBlock allocate(GTInfo info) {
+<span class="nc" id="L33">        GTRowBlock b = new GTRowBlock(info);</span>
+
+<span class="nc" id="L35">        byte[] array = new byte[info.getMaxColumnLength(info.primaryKey)];</span>
+<span class="nc" id="L36">        b.primaryKey.reset(array, 0, array.length);</span>
+
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        int maxRows = info.isRowBlockEnabled() ? info.rowBlockSize : 1;</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">        for (int i = 0; i &lt; b.cellBlocks.length; i++) {</span>
+<span class="nc" id="L40">            array = new byte[info.getMaxColumnLength(info.colBlocks[i]) * maxRows];</span>
+<span class="nc" id="L41">            b.cellBlocks[i].reset(array, 0, array.length);</span>
+        }
+<span class="nc" id="L43">        return b;</span>
+    }
+
+    final GTInfo info;
+
+    int seqId; // 0, 1, 2...
+    int nRows;
+    ByteArray primaryKey; // the primary key of the first (smallest) row
+    ByteArray[] cellBlocks; // cells for each column block
+
+    /** create a row block that has no underlying space */
+<span class="nc" id="L54">    public GTRowBlock(GTInfo info) {</span>
+<span class="nc" id="L55">        this.info = info;</span>
+<span class="nc" id="L56">        this.primaryKey = new ByteArray();</span>
+<span class="nc" id="L57">        this.cellBlocks = new ByteArray[info.colBlocks.length];</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        for (int i = 0; i &lt; this.cellBlocks.length; i++) {</span>
+<span class="nc" id="L59">            this.cellBlocks[i] = new ByteArray();</span>
+        }
+<span class="nc" id="L61">    }</span>
+
+    public int getSequenceId() {
+<span class="nc" id="L64">        return seqId;</span>
+    }
+
+    public ByteArray getPrimaryKey() {
+<span class="nc" id="L68">        return primaryKey;</span>
+    }
+
+    public ByteArray getCellBlock(int i) {
+<span class="nc" id="L72">        return cellBlocks[i];</span>
+    }
+
+    public Writer getWriter() {
+<span class="nc" id="L76">        return new Writer();</span>
+    }
+
+    public class Writer {
+        ByteBuffer[] cellBlockBuffers;
+
+<span class="nc" id="L82">        Writer() {</span>
+<span class="nc" id="L83">            cellBlockBuffers = new ByteBuffer[info.colBlocks.length];</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            for (int i = 0; i &lt; cellBlockBuffers.length; i++) {</span>
+<span class="nc" id="L85">                cellBlockBuffers[i] = cellBlocks[i].asBuffer();</span>
+            }
+<span class="nc" id="L87">        }</span>
+
+        public void append(GTRecord r) {
+            // add record to block
+<span class="nc bnc" id="L91" title="All 2 branches missed.">            if (isEmpty()) {</span>
+<span class="nc" id="L92">                r.exportColumns(info.primaryKey, primaryKey);</span>
+            }
+<span class="nc bnc" id="L94" title="All 2 branches missed.">            for (int i = 0; i &lt; info.colBlocks.length; i++) {</span>
+<span class="nc" id="L95">                r.exportColumnBlock(i, cellBlockBuffers[i]);</span>
+            }
+<span class="nc" id="L97">            nRows++;</span>
+<span class="nc" id="L98">        }</span>
+
+        public void readyForFlush() {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            for (int i = 0; i &lt; cellBlocks.length; i++) {</span>
+<span class="nc" id="L102">                cellBlocks[i].setLength(cellBlockBuffers[i].position());</span>
+            }
+<span class="nc" id="L104">        }</span>
+
+        public void clearForNext() {
+<span class="nc" id="L107">            seqId++;</span>
+<span class="nc" id="L108">            nRows = 0;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            for (int i = 0; i &lt; cellBlockBuffers.length; i++) {</span>
+<span class="nc" id="L110">                cellBlockBuffers[i].clear();</span>
+            }
+<span class="nc" id="L112">        }</span>
+    }
+
+    public Reader getReader() {
+<span class="nc" id="L116">        return new Reader(info.colBlocksAll);</span>
+    }
+
+    public Reader getReader(ImmutableBitSet selectedColBlocks) {
+<span class="nc" id="L120">        return new Reader(selectedColBlocks);</span>
+    }
+
+    public class Reader {
+        int cur;
+        ByteBuffer primaryKeyBuffer;
+        ByteBuffer[] cellBlockBuffers;
+        ImmutableBitSet selectedColBlocks;
+
+<span class="nc" id="L129">        Reader(ImmutableBitSet selectedColBlocks) {</span>
+<span class="nc" id="L130">            primaryKeyBuffer = primaryKey.asBuffer();</span>
+<span class="nc" id="L131">            cellBlockBuffers = new ByteBuffer[info.colBlocks.length];</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            for (int i = 0; i &lt; cellBlockBuffers.length; i++) {</span>
+<span class="nc" id="L133">                cellBlockBuffers[i] = cellBlocks[i].asBuffer();</span>
+            }
+<span class="nc" id="L135">            this.selectedColBlocks = selectedColBlocks;</span>
+<span class="nc" id="L136">        }</span>
+
+        public boolean hasNext() {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">            return cur &lt; nRows;</span>
+        }
+
+        public void fetchNext(GTRecord result) {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (hasNext() == false)</span>
+<span class="nc" id="L144">                throw new IllegalArgumentException();</span>
+
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            for (int i = 0; i &lt; selectedColBlocks.trueBitCount(); i++) {</span>
+<span class="nc" id="L147">                int c = selectedColBlocks.trueBitAt(i);</span>
+<span class="nc" id="L148">                result.loadCellBlock(c, cellBlockBuffers[c]);</span>
+            }
+<span class="nc" id="L150">            cur++;</span>
+<span class="nc" id="L151">        }</span>
+    }
+
+    public boolean isEmpty() {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        return nRows == 0;</span>
+    }
+
+    public boolean isFull() {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (info.isRowBlockEnabled())</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            return nRows &gt;= info.rowBlockSize;</span>
+        else
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            return nRows &gt; 0;</span>
+    }
+
+    public int getNumberOfRows() {
+<span class="nc" id="L166">        return nRows;</span>
+    }
+
+    public void setNumberOfRows(int nRows) {
+<span class="nc" id="L170">        this.nRows = nRows;</span>
+<span class="nc" id="L171">    }</span>
+
+    // ============================================================================
+
+    public int exportLength() {
+<span class="nc" id="L176">        int len = 4; // seq Id</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (info.isRowBlockEnabled())</span>
+<span class="nc" id="L178">            len += 4; // nRows</span>
+<span class="nc" id="L179">        len += 4 + primaryKey.length(); // PK byte array</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        for (ByteArray array : cellBlocks) {</span>
+<span class="nc" id="L181">            len += 4 + array.length(); // cell block byte array</span>
+        }
+<span class="nc" id="L183">        return len;</span>
+    }
+
+    /** write data to given output stream, like serialize */
+    public void export(DataOutputStream out) throws IOException {
+<span class="nc" id="L188">        out.writeInt(seqId);</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (info.isRowBlockEnabled())</span>
+<span class="nc" id="L190">            out.writeInt(nRows);</span>
+<span class="nc" id="L191">        export(out, primaryKey);</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        for (ByteArray cb : cellBlocks) {</span>
+<span class="nc" id="L193">            export(out, cb);</span>
+        }
+<span class="nc" id="L195">    }</span>
+
+    private void export(DataOutputStream out, ByteArray array) throws IOException {
+<span class="nc" id="L198">        out.writeInt(array.length());</span>
+<span class="nc" id="L199">        out.write(array.array(), array.offset(), array.length());</span>
+<span class="nc" id="L200">    }</span>
+
+    /** write data to given buffer, like serialize */
+    public void export(ByteBuffer buf) {
+<span class="nc" id="L204">        buf.putInt(seqId);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (info.isRowBlockEnabled())</span>
+<span class="nc" id="L206">            buf.putInt(nRows);</span>
+<span class="nc" id="L207">        export(primaryKey, buf);</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        for (ByteArray cb : cellBlocks) {</span>
+<span class="nc" id="L209">            export(cb, buf);</span>
+        }
+<span class="nc" id="L211">    }</span>
+
+    private void export(ByteArray array, ByteBuffer buf) {
+<span class="nc" id="L214">        buf.putInt(array.length());</span>
+<span class="nc" id="L215">        buf.put(array.array(), array.offset(), array.length());</span>
+<span class="nc" id="L216">    }</span>
+
+    /** read data from given input stream, like deserialize */
+    public void importFrom(DataInputStream in) throws IOException {
+<span class="nc" id="L220">        seqId = in.readInt();</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        nRows = info.isRowBlockEnabled() ? in.readInt() : 1;</span>
+<span class="nc" id="L222">        importFrom(in, primaryKey);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        for (int i = 0; i &lt; info.colBlocks.length; i++) {</span>
+<span class="nc" id="L224">            ByteArray cb = cellBlocks[i];</span>
+<span class="nc" id="L225">            importFrom(in, cb);</span>
+        }
+<span class="nc" id="L227">    }</span>
+
+    private void importFrom(DataInputStream in, ByteArray result) throws IOException {
+<span class="nc" id="L230">        byte[] data = result.array();</span>
+<span class="nc" id="L231">        int len = in.readInt();</span>
+<span class="nc" id="L232">        in.read(data, 0, len);</span>
+<span class="nc" id="L233">        result.setLength(len);</span>
+<span class="nc" id="L234">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

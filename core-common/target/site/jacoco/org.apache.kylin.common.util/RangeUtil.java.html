@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RangeUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">RangeUtil.java</span></div><h1>RangeUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NavigableMap;
+import java.util.SortedSet;
+
+import org.apache.kylin.shaded.com.google.common.collect.BoundType;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Range;
+
+/**
+ */
+public class RangeUtil {
+
+<span class="nc" id="L37">    private RangeUtil() {</span>
+<span class="nc" id="L38">        throw new IllegalStateException(&quot;Class RangeUtil is an utility class !&quot;);</span>
+    }
+
+    /**
+     * for NavigableMap sorted by C, given a range of C, return the sub map whose key falls in the range
+     */
+    public static &lt;C extends Comparable&lt;?&gt;, V&gt; NavigableMap&lt;C, V&gt; filter(NavigableMap&lt;C, V&gt; values, Range&lt;C&gt; filterRange) {
+<span class="pc bpc" id="L45" title="2 of 4 branches missed.">        if (filterRange == null || filterRange.isEmpty()) {</span>
+<span class="nc" id="L46">            return Maps.newTreeMap();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        } else if (filterRange.equals(Range.all())) {</span>
+<span class="fc" id="L48">            return values;</span>
+        }
+
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">        if (filterRange.hasUpperBound() &amp;&amp; !filterRange.hasLowerBound()) {</span>
+<span class="fc" id="L52">            return values.headMap(filterRange.upperEndpoint(), upperBoundInclusive(filterRange));</span>
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">        } else if (filterRange.hasLowerBound() &amp;&amp; !filterRange.hasUpperBound()) {</span>
+<span class="fc" id="L54">            return values.tailMap(filterRange.lowerEndpoint(), lowerBoundInclusive(filterRange));</span>
+        } else {
+<span class="nc" id="L56">            return values.subMap(filterRange.lowerEndpoint(), lowerBoundInclusive(filterRange), //</span>
+<span class="nc" id="L57">                    filterRange.upperEndpoint(), upperBoundInclusive(filterRange));</span>
+        }
+    }
+
+    public static &lt;C extends Comparable&lt;?&gt;&gt; boolean lowerBoundInclusive(Range&lt;C&gt; range) {
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (!range.hasLowerBound()) {</span>
+<span class="nc" id="L63">            throw new IllegalArgumentException((&quot;This range does not have lower bound&quot; + range));</span>
+        }
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        return range.lowerBoundType() == BoundType.CLOSED;</span>
+    }
+
+    public static &lt;C extends Comparable&lt;?&gt;&gt; boolean upperBoundInclusive(Range&lt;C&gt; range) {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (!range.hasUpperBound()) {</span>
+<span class="nc" id="L70">            throw new IllegalArgumentException((&quot;This range does not have upper bound&quot; + range));</span>
+        }
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        return range.upperBoundType() == BoundType.CLOSED;</span>
+    }
+
+    public static &lt;C extends Comparable&lt;?&gt;&gt; Range&lt;C&gt; merge(Range&lt;C&gt; a, Range&lt;C&gt; b) {
+<span class="nc bnc" id="L76" title="All 4 branches missed.">        if (a == null &amp;&amp; b == null) {</span>
+<span class="nc" id="L77">            return null;</span>
+<span class="nc bnc" id="L78" title="All 4 branches missed.">        } else if (a == null || b == null) {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">            return a == null ? b : a;</span>
+        } else {
+<span class="nc" id="L81">            return a.span(b);</span>
+        }
+    }
+
+    /**
+     * remove from self the elements that exist in other
+     * @return
+     */
+    public static &lt;C extends Comparable&lt;?&gt;&gt; List&lt;Range&lt;C&gt;&gt; remove(Range&lt;C&gt; self, Range&lt;C&gt; other) {
+
+        // mimic the following logic in guava 18:
+        //        RangeSet&lt;C&gt; rangeSet = TreeRangeSet.create();
+        //        rangeSet.add(self);
+        //        rangeSet.remove(other);
+        //        return Lists.newArrayList(rangeSet.asRanges());
+
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        if (other == null || !self.isConnected(other)) {</span>
+<span class="fc" id="L98">            return Collections.singletonList(self);</span>
+        }
+
+<span class="fc" id="L101">        Range&lt;C&gt; share = self.intersection(other);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (share.isEmpty()) {</span>
+<span class="fc" id="L103">            return Collections.singletonList(self);</span>
+        }
+
+<span class="fc" id="L106">        List&lt;Range&lt;C&gt;&gt; ret = Lists.newArrayList();</span>
+
+        //see left part
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!self.hasLowerBound()) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (share.hasLowerBound()) {</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                if (share.lowerBoundType() == BoundType.CLOSED) {</span>
+<span class="fc" id="L112">                    ret.add(Range.lessThan(share.lowerEndpoint()));</span>
+                } else {
+<span class="nc" id="L114">                    ret.add(Range.atMost(share.lowerEndpoint()));</span>
+                }
+            }
+        } else {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (self.lowerEndpoint() != share.lowerEndpoint()) {</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                if (self.lowerBoundType() == BoundType.CLOSED) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                    if (share.lowerBoundType() == BoundType.CLOSED) {</span>
+<span class="fc" id="L121">                        ret.add(Range.closedOpen(self.lowerEndpoint(), share.lowerEndpoint()));</span>
+                    } else {
+<span class="fc" id="L123">                        ret.add(Range.closed(self.lowerEndpoint(), share.lowerEndpoint()));</span>
+                    }
+                } else {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                    if (share.lowerBoundType() == BoundType.CLOSED) {</span>
+<span class="fc" id="L127">                        ret.add(Range.open(self.lowerEndpoint(), share.lowerEndpoint()));</span>
+                    } else {
+<span class="fc" id="L129">                        ret.add(Range.openClosed(self.lowerEndpoint(), share.lowerEndpoint()));</span>
+                    }
+                }
+            } else {
+<span class="fc bfc" id="L133" title="All 4 branches covered.">                if (self.lowerBoundType() == BoundType.CLOSED &amp;&amp; share.lowerBoundType() == BoundType.OPEN) {</span>
+<span class="fc" id="L134">                    ret.add(Range.closed(self.lowerEndpoint(), share.lowerEndpoint()));</span>
+                }
+            }
+        }
+
+        //see right part 
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!self.hasUpperBound()) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (share.hasUpperBound()) {</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                if (share.upperBoundType() == BoundType.CLOSED) {</span>
+<span class="nc" id="L143">                    ret.add(Range.greaterThan(share.upperEndpoint()));</span>
+                } else {
+<span class="fc" id="L145">                    ret.add(Range.atLeast(share.upperEndpoint()));</span>
+                }
+            }
+        } else {
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (self.upperEndpoint() != share.upperEndpoint()) {</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (self.upperBoundType() == BoundType.CLOSED) {</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                    if (share.upperBoundType() == BoundType.CLOSED) {</span>
+<span class="fc" id="L152">                        ret.add(Range.openClosed(share.upperEndpoint(), self.upperEndpoint()));</span>
+                    } else {
+<span class="fc" id="L154">                        ret.add(Range.closed(share.upperEndpoint(), self.upperEndpoint()));</span>
+                    }
+                } else {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                    if (share.upperBoundType() == BoundType.CLOSED) {</span>
+<span class="fc" id="L158">                        ret.add(Range.open(share.upperEndpoint(), self.upperEndpoint()));</span>
+                    } else {
+<span class="fc" id="L160">                        ret.add(Range.closedOpen(share.upperEndpoint(), self.upperEndpoint()));</span>
+                    }
+                }
+            } else {
+<span class="fc bfc" id="L164" title="All 4 branches covered.">                if (self.upperBoundType() == BoundType.CLOSED &amp;&amp; share.upperBoundType() == BoundType.OPEN) {</span>
+<span class="fc" id="L165">                    ret.add(Range.closed(self.upperEndpoint(), share.upperEndpoint()));</span>
+                }
+            }
+        }
+
+<span class="fc" id="L170">        return ret;</span>
+
+    }
+
+    public static String formatTsRange(Range&lt;Long&gt; tsRange) {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (tsRange == null)</span>
+<span class="nc" id="L176">            return null;</span>
+
+<span class="nc" id="L178">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (tsRange.hasLowerBound()) {</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">            if (tsRange.lowerBoundType() == BoundType.CLOSED) {</span>
+<span class="nc" id="L181">                sb.append(&quot;[&quot;);</span>
+            } else {
+<span class="nc" id="L183">                sb.append(&quot;(&quot;);</span>
+            }
+<span class="nc" id="L185">            sb.append(DateFormat.formatToTimeStr(tsRange.lowerEndpoint()));</span>
+        } else {
+<span class="nc" id="L187">            sb.append(&quot;(-∞&quot;);</span>
+        }
+
+<span class="nc" id="L190">        sb.append(&quot;~&quot;);</span>
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (tsRange.hasUpperBound()) {</span>
+<span class="nc" id="L193">            sb.append(DateFormat.formatToTimeStr(tsRange.upperEndpoint()));</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            if (tsRange.upperBoundType() == BoundType.CLOSED) {</span>
+<span class="nc" id="L195">                sb.append(&quot;]&quot;);</span>
+            } else {
+<span class="nc" id="L197">                sb.append(&quot;)&quot;);</span>
+            }
+        } else {
+<span class="nc" id="L200">            sb.append(&quot;+∞)&quot;);</span>
+        }
+<span class="nc" id="L202">        return sb.toString();</span>
+    }
+
+    public static ArrayList&lt;Range&lt;Integer&gt;&gt; buildRanges(SortedSet&lt;Integer&gt; values) {
+<span class="fc" id="L206">        ArrayList&lt;Range&lt;Integer&gt;&gt; ranges = Lists.newArrayList();</span>
+
+<span class="pc bpc" id="L208" title="2 of 4 branches missed.">        if (values == null || values.isEmpty())</span>
+<span class="nc" id="L209">            return ranges;</span>
+
+<span class="fc" id="L211">        Iterator&lt;Integer&gt; iter = values.iterator();</span>
+<span class="fc" id="L212">        int lastBegin = iter.next();</span>
+<span class="fc" id="L213">        int lastEnd = lastBegin;</span>
+<span class="fc" id="L214">        int temp = 0;</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (int index = 1; index &lt; values.size(); index++) {</span>
+<span class="fc" id="L216">            temp = iter.next();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">            if (temp - lastEnd != 1) {</span>
+<span class="fc" id="L218">                ranges.add(Range.closed(lastBegin, lastEnd));</span>
+<span class="fc" id="L219">                lastBegin = temp;</span>
+            }
+<span class="fc" id="L221">            lastEnd = temp;</span>
+        }
+<span class="fc" id="L223">        ranges.add(Range.closed(lastBegin, lastEnd));</span>
+<span class="fc" id="L224">        return ranges;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

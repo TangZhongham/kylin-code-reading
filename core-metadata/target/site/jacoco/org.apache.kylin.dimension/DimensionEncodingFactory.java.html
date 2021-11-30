@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DimensionEncodingFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.dimension</a> &gt; <span class="el_source">DimensionEncodingFactory.java</span></div><h1>DimensionEncodingFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.dimension;
+
+import java.util.Map;
+
+import javax.annotation.Nullable;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Predicate;
+import org.apache.kylin.shaded.com.google.common.collect.Iterables;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+<span class="nc" id="L35">public abstract class DimensionEncodingFactory {</span>
+
+<span class="nc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(DimensionEncodingFactory.class);</span>
+
+    private static Map&lt;Pair&lt;String, Integer&gt;, DimensionEncodingFactory&gt; factoryMap;
+
+    /**
+     * If a bug found in a DimEnc will cause different cube outputs,
+     * we'll have to increase the version number of DimEnc, in order
+     * to distinguish current version with prior version.
+     * &lt;p&gt;
+     * The default version applys to all existing legacy DimEncs
+     */
+    protected int getCurrentVersion() {
+<span class="nc" id="L49">        return 1;</span>
+    }
+
+    /**
+     * Create a DimensionEncoding instance, with inputs corresponding to RowKeyColDesc.encodingName and RowKeyColDesc.encodingArgs.
+     */
+    public static DimensionEncoding create(String encodingName, String[] args, int version) {
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        if (factoryMap == null)</span>
+<span class="nc" id="L57">            initFactoryMap();</span>
+
+<span class="nc" id="L59">        DimensionEncodingFactory factory = factoryMap.get(Pair.newPair(encodingName, version));</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (factory == null) {</span>
+<span class="nc" id="L61">            throw new IllegalArgumentException(&quot;Unknown dimension encoding name &quot; + encodingName //</span>
+                    + &quot; (note '&quot; + DictionaryDimEnc.ENCODING_NAME + &quot;' is not handled by factory)&quot;);
+        }
+
+<span class="nc" id="L65">        return factory.createDimensionEncoding(encodingName, args);</span>
+    }
+
+    public static Map&lt;String, Integer&gt; getValidEncodings() {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (factoryMap == null)</span>
+<span class="nc" id="L70">            initFactoryMap();</span>
+
+<span class="nc" id="L72">        Map&lt;String, Integer&gt; result = Maps.newTreeMap();</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        for (Pair&lt;String, Integer&gt; p : factoryMap.keySet()) {</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            if (result.containsKey(p.getFirst())) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                if (result.get(p.getFirst()) &gt; p.getSecond()) {</span>
+<span class="nc" id="L76">                    continue;//skip small versions</span>
+                }
+            }
+
+<span class="nc" id="L80">            result.put(p.getFirst(), p.getSecond());</span>
+<span class="nc" id="L81">        }</span>
+<span class="nc" id="L82">        result.put(DictionaryDimEnc.ENCODING_NAME, 1);</span>
+<span class="nc" id="L83">        return result;</span>
+    }
+
+    public static boolean isValidEncoding(final String encodingName) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (factoryMap == null)</span>
+<span class="nc" id="L88">            initFactoryMap();</span>
+
+        // note dictionary is a special case
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        return DictionaryDimEnc.ENCODING_NAME.equals(encodingName) || //</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">                Iterables.any(factoryMap.keySet(), new Predicate&lt;Pair&lt;String, Integer&gt;&gt;() {</span>
+                    @Override
+                    public boolean apply(@Nullable Pair&lt;String, Integer&gt; input) {
+<span class="nc" id="L95">                        return input.getFirst().equals(encodingName);</span>
+                    }
+                });
+    }
+
+    public static boolean isValidEncoding(final String encodingName, String[] args, int version) {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        if (factoryMap == null)</span>
+<span class="nc" id="L102">            initFactoryMap();</span>
+
+<span class="nc" id="L104">        DimensionEncodingFactory factory = factoryMap.get(Pair.newPair(encodingName, version));</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (factory == null) {</span>
+<span class="nc" id="L106">            return true;</span>
+        }
+
+<span class="nc" id="L109">        return factory.isValidDimensionEncoding(encodingName, args);</span>
+    }
+
+    private static synchronized void initFactoryMap() {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (factoryMap == null) {</span>
+<span class="nc" id="L114">            Map&lt;Pair&lt;String, Integer&gt;, DimensionEncodingFactory&gt; map = Maps.newConcurrentMap();</span>
+
+            // built-in encodings, note dictionary is a special case
+            {
+<span class="nc" id="L118">                FixedLenDimEnc.Factory value = new FixedLenDimEnc.Factory();</span>
+<span class="nc" id="L119">                map.put(Pair.newPair(FixedLenDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+            {
+<span class="nc" id="L122">                IntDimEnc.Factory value = new IntDimEnc.Factory();</span>
+<span class="nc" id="L123">                map.put(Pair.newPair(IntDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+            {
+<span class="nc" id="L126">                IntegerDimEnc.Factory value = new IntegerDimEnc.Factory();</span>
+<span class="nc" id="L127">                map.put(Pair.newPair(IntegerDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+            {
+<span class="nc" id="L130">                FixedLenHexDimEnc.Factory value = new FixedLenHexDimEnc.Factory();</span>
+<span class="nc" id="L131">                map.put(Pair.newPair(FixedLenHexDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+            {
+<span class="nc" id="L134">                DateDimEnc.Factory value = new DateDimEnc.Factory();</span>
+<span class="nc" id="L135">                map.put(Pair.newPair(DateDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+            {
+<span class="nc" id="L138">                TimeDimEnc.Factory value = new TimeDimEnc.Factory();</span>
+<span class="nc" id="L139">                map.put(Pair.newPair(TimeDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+            {
+<span class="nc" id="L142">                BooleanDimEnc.Factory value = new BooleanDimEnc.Factory();</span>
+<span class="nc" id="L143">                map.put(Pair.newPair(BooleanDimEnc.ENCODING_NAME, value.getCurrentVersion()), value);</span>
+            }
+
+            // custom encodings
+<span class="nc" id="L147">            String[] clsNames = KylinConfig.getInstanceFromEnv().getCubeDimensionCustomEncodingFactories();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            for (String clsName : clsNames) {</span>
+                try {
+<span class="nc" id="L150">                    DimensionEncodingFactory factory = (DimensionEncodingFactory) ClassUtil.newInstance(clsName);</span>
+<span class="nc" id="L151">                    map.put(Pair.newPair(factory.getSupportedEncodingName(), factory.getCurrentVersion()), factory);</span>
+<span class="nc" id="L152">                } catch (Exception ex) {</span>
+<span class="nc" id="L153">                    logger.error(&quot;Failed to init dimension encoding factory &quot; + clsName, ex);</span>
+<span class="nc" id="L154">                }</span>
+            }
+
+<span class="nc" id="L157">            factoryMap = map;</span>
+        }
+<span class="nc" id="L159">    }</span>
+
+    /**
+     * Return the supported encoding name, corresponds to RowKeyColDesc.encodingName
+     */
+    abstract public String getSupportedEncodingName();
+
+    /**
+     * Create a DimensionEncoding instance, with inputs corresponding to RowKeyColDesc.encodingName and RowKeyColDesc.encodingArgs
+     */
+    abstract public DimensionEncoding createDimensionEncoding(String encodingName, String[] args);
+
+    /**
+     * Validate the inputs of RowKeyColDesc.encodingName and RowKeyColDesc.encodingArgs for a DimensionEncoding instance
+     */
+    abstract public boolean isValidDimensionEncoding(String encodingName, String[] args);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

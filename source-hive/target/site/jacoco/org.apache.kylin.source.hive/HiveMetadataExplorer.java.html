@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveMetadataExplorer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">HiveMetadataExplorer.java</span></div><h1>HiveMetadataExplorer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.hive;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HiveCmdBuilder;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.common.util.RandomUtil;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TableExtDesc;
+import org.apache.kylin.source.ISampleDataDeployer;
+import org.apache.kylin.source.ISourceMetadataExplorer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+<span class="nc" id="L43">public class HiveMetadataExplorer implements ISourceMetadataExplorer, ISampleDataDeployer {</span>
+
+<span class="nc" id="L45">    private static final Logger logger = LoggerFactory.getLogger(HiveClientFactory.class);</span>
+
+<span class="nc" id="L47">    IHiveClient hiveClient = HiveClientFactory.getHiveClient();</span>
+
+    @Override
+    public List&lt;String&gt; listDatabases() throws Exception {
+<span class="nc" id="L51">        return hiveClient.getHiveDbNames();</span>
+    }
+
+    @Override
+    public List&lt;String&gt; listTables(String database) throws Exception {
+<span class="nc" id="L56">        return hiveClient.getHiveTableNames(database);</span>
+    }
+
+    @Override
+    public Pair&lt;TableDesc, TableExtDesc&gt; loadTableMetadata(String database, String tableName, String prj) {
+<span class="nc" id="L61">        KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L62">        TableMetadataManager metaMgr = TableMetadataManager.getInstance(config);</span>
+
+        HiveTableMeta hiveTableMeta;
+        try {
+<span class="nc" id="L66">            hiveTableMeta = hiveClient.getHiveTableMeta(database, tableName);</span>
+<span class="nc" id="L67">        } catch (Exception e) {</span>
+<span class="nc" id="L68">            throw new RuntimeException(&quot;cannot get HiveTableMeta&quot;, e);</span>
+<span class="nc" id="L69">        }</span>
+
+<span class="nc" id="L71">        TableDesc tableDesc = metaMgr.getTableDesc(database + &quot;.&quot; + tableName, prj);</span>
+
+        // make a new TableDesc instance, don't modify the one in use
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (tableDesc == null) {</span>
+<span class="nc" id="L75">            tableDesc = new TableDesc();</span>
+<span class="nc" id="L76">            tableDesc.setDatabase(database.toUpperCase(Locale.ROOT));</span>
+<span class="nc" id="L77">            tableDesc.setName(tableName.toUpperCase(Locale.ROOT));</span>
+<span class="nc" id="L78">            tableDesc.setUuid(RandomUtil.randomUUID().toString());</span>
+<span class="nc" id="L79">            tableDesc.setLastModified(0);</span>
+        } else {
+<span class="nc" id="L81">            tableDesc = new TableDesc(tableDesc);</span>
+        }
+
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if (hiveTableMeta.tableType != null) {</span>
+<span class="nc" id="L85">            tableDesc.setTableType(hiveTableMeta.tableType);</span>
+        }
+
+<span class="nc" id="L88">        tableDesc.setColumns(extractColumnFromMeta(hiveTableMeta));</span>
+
+<span class="nc" id="L90">        StringBuffer partitionColumnString = new StringBuffer();</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        for (int i = 0, n = hiveTableMeta.partitionColumns.size(); i &lt; n; i++) {</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (i &gt; 0)</span>
+<span class="nc" id="L93">                partitionColumnString.append(&quot;, &quot;);</span>
+<span class="nc" id="L94">            partitionColumnString.append(hiveTableMeta.partitionColumns.get(i).name.toUpperCase(Locale.ROOT));</span>
+        }
+
+<span class="nc" id="L97">        TableExtDesc tableExtDesc = new TableExtDesc();</span>
+<span class="nc" id="L98">        tableExtDesc.setIdentity(tableDesc.getIdentity());</span>
+<span class="nc" id="L99">        tableExtDesc.setUuid(RandomUtil.randomUUID().toString());</span>
+<span class="nc" id="L100">        tableExtDesc.setLastModified(0);</span>
+<span class="nc" id="L101">        tableExtDesc.init(prj);</span>
+
+<span class="nc" id="L103">        tableExtDesc.addDataSourceProp(&quot;location&quot;, hiveTableMeta.sdLocation);</span>
+<span class="nc" id="L104">        tableExtDesc.addDataSourceProp(&quot;owner&quot;, hiveTableMeta.owner);</span>
+<span class="nc" id="L105">        tableExtDesc.addDataSourceProp(&quot;last_access_time&quot;, String.valueOf(hiveTableMeta.lastAccessTime));</span>
+<span class="nc" id="L106">        tableExtDesc.addDataSourceProp(&quot;partition_column&quot;, partitionColumnString.toString());</span>
+<span class="nc" id="L107">        tableExtDesc.addDataSourceProp(&quot;total_file_size&quot;, String.valueOf(hiveTableMeta.fileSize));</span>
+<span class="nc" id="L108">        tableExtDesc.addDataSourceProp(&quot;total_file_number&quot;, String.valueOf(hiveTableMeta.fileNum));</span>
+<span class="nc" id="L109">        tableExtDesc.addDataSourceProp(&quot;hive_inputFormat&quot;, hiveTableMeta.sdInputFormat);</span>
+<span class="nc" id="L110">        tableExtDesc.addDataSourceProp(&quot;hive_outputFormat&quot;, hiveTableMeta.sdOutputFormat);</span>
+<span class="nc" id="L111">        tableExtDesc.addDataSourceProp(&quot;skip_header_line_count&quot;, String.valueOf(hiveTableMeta.skipHeaderLineCount));</span>
+
+<span class="nc" id="L113">        return Pair.newPair(tableDesc, tableExtDesc);</span>
+    }
+
+    @Override
+    public List&lt;String&gt; getRelatedKylinResources(TableDesc table) {
+<span class="nc" id="L118">        return Collections.emptyList();</span>
+    }
+
+    @Override
+    public void createSampleDatabase(String database) throws Exception {
+<span class="nc" id="L123">        hiveClient.executeHQL(generateCreateSchemaSql(database));</span>
+<span class="nc" id="L124">    }</span>
+
+    private String generateCreateSchemaSql(String schemaName) {
+<span class="nc" id="L127">        return String.format(Locale.ROOT, &quot;CREATE DATABASE IF NOT EXISTS %s&quot;, schemaName);</span>
+    }
+
+    @Override
+    public void createSampleTable(TableDesc table) throws Exception {
+<span class="nc" id="L132">        hiveClient.executeHQL(generateCreateTableSql(table));</span>
+<span class="nc" id="L133">    }</span>
+
+    private String[] generateCreateTableSql(TableDesc tableDesc) {
+
+<span class="nc" id="L137">        String dropsql = &quot;DROP TABLE IF EXISTS &quot; + tableDesc.getIdentity();</span>
+<span class="nc" id="L138">        String dropsql2 = &quot;DROP VIEW IF EXISTS &quot; + tableDesc.getIdentity();</span>
+
+<span class="nc" id="L140">        StringBuilder ddl = new StringBuilder();</span>
+<span class="nc" id="L141">        ddl.append(&quot;CREATE TABLE &quot; + tableDesc.getIdentity() + &quot;\n&quot;);</span>
+<span class="nc" id="L142">        ddl.append(&quot;(&quot; + &quot;\n&quot;);</span>
+
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        for (int i = 0; i &lt; tableDesc.getColumns().length; i++) {</span>
+<span class="nc" id="L145">            ColumnDesc col = tableDesc.getColumns()[i];</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (i &gt; 0) {</span>
+<span class="nc" id="L147">                ddl.append(&quot;,&quot;);</span>
+            }
+<span class="nc" id="L149">            ddl.append(col.getName() + &quot; &quot; + getHiveDataType((col.getDatatype())) + &quot;\n&quot;);</span>
+        }
+
+<span class="nc" id="L152">        ddl.append(&quot;)&quot; + &quot;\n&quot;);</span>
+<span class="nc" id="L153">        ddl.append(&quot;ROW FORMAT DELIMITED FIELDS TERMINATED BY ','&quot; + &quot;\n&quot;);</span>
+<span class="nc" id="L154">        ddl.append(&quot;STORED AS TEXTFILE&quot;);</span>
+
+<span class="nc" id="L156">        return new String[] { dropsql, dropsql2, ddl.toString() };</span>
+    }
+
+    @Override
+    public void loadSampleData(String tableName, String tmpDataDir) throws Exception {
+<span class="nc" id="L161">        hiveClient.executeHQL(generateLoadDataSql(tableName, tmpDataDir));</span>
+<span class="nc" id="L162">    }</span>
+
+    private String generateLoadDataSql(String tableName, String tableFileDir) {
+<span class="nc" id="L165">        return &quot;LOAD DATA LOCAL INPATH '&quot; + tableFileDir + &quot;/&quot; + tableName + &quot;.csv' OVERWRITE INTO TABLE &quot; + tableName;</span>
+    }
+
+    @Override
+    public void createWrapperView(String origTableName, String viewName) throws Exception {
+<span class="nc" id="L170">        hiveClient.executeHQL(generateCreateViewSql(viewName, origTableName));</span>
+<span class="nc" id="L171">    }</span>
+
+    private String[] generateCreateViewSql(String viewName, String tableName) {
+
+<span class="nc" id="L175">        String dropView = &quot;DROP VIEW IF EXISTS &quot; + viewName;</span>
+<span class="nc" id="L176">        String dropTable = &quot;DROP TABLE IF EXISTS &quot; + viewName;</span>
+
+<span class="nc" id="L178">        String createSql = (&quot;CREATE VIEW &quot; + viewName + &quot; AS SELECT * FROM &quot; + tableName);</span>
+
+<span class="nc" id="L180">        return new String[] { dropView, dropTable, createSql };</span>
+    }
+
+    private static String getHiveDataType(String javaDataType) {
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        String hiveDataType = javaDataType.toLowerCase(Locale.ROOT).startsWith(&quot;varchar&quot;) ? &quot;string&quot; : javaDataType;</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        hiveDataType = javaDataType.toLowerCase(Locale.ROOT).startsWith(&quot;integer&quot;) ? &quot;int&quot; : hiveDataType;</span>
+
+<span class="nc" id="L187">        return hiveDataType.toLowerCase(Locale.ROOT);</span>
+    }
+
+    @Override
+    public ColumnDesc[] evalQueryMetadata(String query) {
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (StringUtils.isEmpty(query)) {</span>
+<span class="nc" id="L193">            throw new RuntimeException(&quot;Evaluate query shall not be empty.&quot;);</span>
+        }
+
+<span class="nc" id="L196">        KylinConfig config = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L197">        String tmpDatabase = config.getHiveDatabaseForIntermediateTable();</span>
+<span class="nc" id="L198">        String tmpView = &quot;kylin_eval_query_&quot;</span>
+<span class="nc" id="L199">                + UUID.nameUUIDFromBytes(query.getBytes(StandardCharsets.UTF_8)).toString().replace(&quot;-&quot;, &quot;&quot;);</span>
+
+<span class="nc" id="L201">        String dropViewSql = &quot;DROP VIEW IF EXISTS &quot; + tmpDatabase + &quot;.&quot; + tmpView;</span>
+<span class="nc" id="L202">        String evalViewSql = &quot;CREATE VIEW &quot; + tmpDatabase + &quot;.&quot; + tmpView + &quot; as &quot; + query;</span>
+
+        try {
+<span class="nc" id="L205">            logger.debug(&quot;Removing duplicate view {}&quot;, tmpView);</span>
+<span class="nc" id="L206">            hiveClient.executeHQL(dropViewSql);</span>
+<span class="nc" id="L207">            logger.debug(&quot;Creating view {} for query: {}&quot;, tmpView, query);</span>
+<span class="nc" id="L208">            hiveClient.executeHQL(evalViewSql);</span>
+<span class="nc" id="L209">            logger.debug(&quot;Evaluating query columns' metadata&quot;);</span>
+<span class="nc" id="L210">            HiveTableMeta hiveTableMeta = hiveClient.getHiveTableMeta(tmpDatabase, tmpView);</span>
+<span class="nc" id="L211">            return extractColumnFromMeta(hiveTableMeta);</span>
+<span class="nc" id="L212">        } catch (Exception e) {</span>
+<span class="nc" id="L213">            throw new RuntimeException(&quot;Cannot evaluate metadata of query: &quot; + query, e);</span>
+        } finally {
+            try {
+<span class="nc" id="L216">                logger.debug(&quot;Cleaning up.&quot;);</span>
+<span class="nc" id="L217">                hiveClient.executeHQL(dropViewSql);</span>
+<span class="nc" id="L218">            } catch (Exception e) {</span>
+<span class="nc" id="L219">                logger.warn(&quot;Cannot drop temp view of query: {}&quot;, query, e);</span>
+<span class="nc" id="L220">            }</span>
+        }
+    }
+
+    @Override
+    public void validateSQL(String query) throws Exception {
+<span class="nc" id="L226">        final HiveCmdBuilder hiveCmdBuilder = new HiveCmdBuilder();</span>
+<span class="nc" id="L227">        hiveCmdBuilder.addStatement(query);</span>
+
+<span class="nc" id="L229">        Pair&lt;Integer, String&gt; response = KylinConfig.getInstanceFromEnv().getCliCommandExecutor()</span>
+<span class="nc" id="L230">                .execute(hiveCmdBuilder.toString());</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (response.getFirst() != 0) {</span>
+<span class="nc" id="L232">            throw new IllegalArgumentException(response.getSecond());</span>
+        }
+<span class="nc" id="L234">    }</span>
+
+    private ColumnDesc[] extractColumnFromMeta(HiveTableMeta hiveTableMeta) {
+<span class="nc" id="L237">        int columnNumber = hiveTableMeta.allColumns.size();</span>
+<span class="nc" id="L238">        List&lt;ColumnDesc&gt; columns = new ArrayList&lt;ColumnDesc&gt;(columnNumber);</span>
+
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        for (int i = 0; i &lt; columnNumber; i++) {</span>
+<span class="nc" id="L241">            HiveTableMeta.HiveTableColumnMeta field = hiveTableMeta.allColumns.get(i);</span>
+
+            // skip unsupported fields, e.g. map&lt;string, int&gt;
+<span class="nc bnc" id="L244" title="All 2 branches missed.">            if (DataType.isKylinSupported(field.dataType)) {</span>
+<span class="nc" id="L245">                ColumnDesc cdesc = new ColumnDesc();</span>
+<span class="nc" id="L246">                cdesc.setName(field.name.toUpperCase(Locale.ROOT));</span>
+
+                // use &quot;double&quot; in kylin for &quot;float&quot;
+<span class="nc bnc" id="L249" title="All 2 branches missed.">                if (&quot;float&quot;.equalsIgnoreCase(field.dataType)) {</span>
+<span class="nc" id="L250">                    cdesc.setDatatype(&quot;double&quot;);</span>
+                } else {
+<span class="nc" id="L252">                    cdesc.setDatatype(field.dataType);</span>
+                }
+
+<span class="nc" id="L255">                cdesc.setId(String.valueOf(i + 1));</span>
+<span class="nc" id="L256">                cdesc.setComment(field.comment);</span>
+<span class="nc" id="L257">                columns.add(cdesc);</span>
+<span class="nc" id="L258">            } else {</span>
+<span class="nc" id="L259">                logger.warn(&quot;Unsupported data type {}, excluding the field '{}'.&quot;, field.dataType, field.name);</span>
+            }
+        }
+
+<span class="nc" id="L263">        return  columns.toArray(new ColumnDesc[0]);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

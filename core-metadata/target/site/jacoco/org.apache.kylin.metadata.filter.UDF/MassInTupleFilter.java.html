@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MassInTupleFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter.UDF</a> &gt; <span class="el_source">MassInTupleFilter.java</span></div><h1>MassInTupleFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.filter.UDF;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.filter.ColumnTupleFilter;
+import org.apache.kylin.metadata.filter.ConstantTupleFilter;
+import org.apache.kylin.metadata.filter.FunctionTupleFilter;
+import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.function.Functions;
+import org.apache.kylin.metadata.model.ExternalFilterDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class MassInTupleFilter extends FunctionTupleFilter {
+<span class="nc" id="L44">    public static final Logger logger = LoggerFactory.getLogger(MassInTupleFilter.class);</span>
+<span class="nc" id="L45">    public static MassInValueProviderFactory VALUE_PROVIDER_FACTORY = null;</span>
+
+<span class="nc" id="L47">    private transient MassInValueProvider valueProvider = null;</span>
+    private transient TblColRef column;
+
+    private String filterTableName;//key in MetadataManager.extFilterMap
+    private String filterTableResourceIdentifier;//HDFS path, or hbase table name depending on FilterTableType
+    private Functions.FilterTableType filterTableType;
+<span class="nc" id="L53">    private boolean reverse = false;</span>
+
+    public MassInTupleFilter() {
+<span class="nc" id="L56">        super(Lists.&lt;TupleFilter&gt; newArrayList(), TupleFilter.FilterOperatorEnum.MASSIN);</span>
+<span class="nc" id="L57">    }</span>
+
+    public MassInTupleFilter(MassInTupleFilter filter) {
+<span class="nc" id="L60">        super(new ArrayList&lt;TupleFilter&gt;(filter.children), filter.operator);</span>
+<span class="nc" id="L61">        this.valueProvider = filter.getValueProvider();</span>
+<span class="nc" id="L62">        this.column = filter.getColumn();</span>
+<span class="nc" id="L63">        this.filterTableName = filter.getFilterTableName();</span>
+<span class="nc" id="L64">        this.filterTableResourceIdentifier = filter.getFilterTableResourceIdentifier();</span>
+<span class="nc" id="L65">        this.filterTableType = filter.getFilterTableType();</span>
+<span class="nc" id="L66">        this.reverse = filter.isReverse();</span>
+<span class="nc" id="L67">    }</span>
+
+    @Override
+    public boolean evaluate(IEvaluatableTuple tuple, IFilterCodeSystem&lt;?&gt; cs) {
+<span class="nc" id="L71">        Preconditions.checkNotNull(tuple);</span>
+<span class="nc" id="L72">        Preconditions.checkNotNull(column);</span>
+
+<span class="nc" id="L74">        Object colValue = tuple.getValue(column);</span>
+
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        if (valueProvider == null) {</span>
+<span class="nc" id="L77">            valueProvider = VALUE_PROVIDER_FACTORY.getProvider(filterTableType, filterTableResourceIdentifier, column);</span>
+        }
+<span class="nc" id="L79">        boolean ret = valueProvider.getMassInValues().contains(colValue);</span>
+<span class="nc bnc" id="L80" title="All 4 branches missed.">        return reverse ? !ret : ret;</span>
+    }
+
+    @Override
+    public TupleFilter reverse() {
+        try {
+<span class="nc" id="L86">            MassInTupleFilter result = (MassInTupleFilter) this.clone();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            result.setReverse(!this.isReverse());</span>
+<span class="nc" id="L88">            return result;</span>
+<span class="nc" id="L89">        } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L90">            throw new UnsupportedOperationException(e);</span>
+        }
+    }
+
+    @Override
+    public Collection&lt;?&gt; getValues() {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (valueProvider == null) {</span>
+<span class="nc" id="L97">            valueProvider = VALUE_PROVIDER_FACTORY.getProvider(filterTableType, filterTableResourceIdentifier, column);</span>
+        }
+<span class="nc" id="L99">        return valueProvider.getMassInValues();</span>
+    }
+
+    public TblColRef getColumn() {
+<span class="nc" id="L103">        return column;</span>
+    }
+
+    @Override
+    public boolean isEvaluable() {
+<span class="nc" id="L108">        return true;</span>
+    }
+
+    @Override
+    public void addChild(TupleFilter child) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (child instanceof ColumnTupleFilter) {</span>
+<span class="nc" id="L114">            super.addChild(child);</span>
+<span class="nc" id="L115">            ColumnTupleFilter columnFilter = (ColumnTupleFilter) child;</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (this.column != null) {</span>
+<span class="nc" id="L117">                throw new IllegalStateException(&quot;Duplicate columns! old is &quot; + column.getName() + &quot; and new is &quot; + columnFilter.getColumn().getName());</span>
+            }
+<span class="nc" id="L119">            this.column = columnFilter.getColumn();</span>
+
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        } else if (child instanceof ConstantTupleFilter) {</span>
+            // super.addChild(child) is omitted because the filter table name is useless at storage side, 
+            // we'll extract the useful filterTableResourceIdentifier,filterTableType etc and save it at the MassInTupleFilter itself
+
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (filterTableName == null) {</span>
+<span class="nc" id="L126">                filterTableName = (String) child.getValues().iterator().next();</span>
+<span class="nc" id="L127">                ExternalFilterDesc externalFilterDesc = TableMetadataManager.getInstance(KylinConfig.getInstanceFromEnv()).getExtFilterDesc(filterTableName);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                if (externalFilterDesc == null) {</span>
+<span class="nc" id="L129">                    throw new IllegalArgumentException(&quot;External filter named &quot; + filterTableName + &quot; is not found&quot;);</span>
+                }
+<span class="nc" id="L131">                filterTableType = externalFilterDesc.getFilterTableType();</span>
+<span class="nc" id="L132">                filterTableResourceIdentifier = externalFilterDesc.getFilterResourceIdentifier();</span>
+<span class="nc" id="L133">            }</span>
+        } else {
+<span class="nc" id="L135">            throw new IllegalStateException(&quot;MassInTupleFilter only has two children: one ColumnTupleFilter and one ConstantTupleFilter&quot;);</span>
+        }
+<span class="nc" id="L137">    }</span>
+
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    @Override
+    public void serialize(IFilterCodeSystem cs, ByteBuffer buffer) {
+<span class="nc" id="L142">        BytesUtil.writeUTFString(filterTableName, buffer);</span>
+<span class="nc" id="L143">        BytesUtil.writeUTFString(filterTableResourceIdentifier, buffer);</span>
+<span class="nc" id="L144">        BytesUtil.writeUTFString(filterTableType.toString(), buffer);</span>
+<span class="nc" id="L145">        BytesUtil.writeUTFString(String.valueOf(reverse), buffer);</span>
+<span class="nc" id="L146">    }</span>
+
+    @Override
+    public void deserialize(IFilterCodeSystem&lt;?&gt; cs, ByteBuffer buffer) {
+<span class="nc" id="L150">        filterTableName = BytesUtil.readUTFString(buffer);</span>
+<span class="nc" id="L151">        filterTableResourceIdentifier = BytesUtil.readUTFString(buffer);</span>
+<span class="nc" id="L152">        filterTableType = Functions.FilterTableType.valueOf(BytesUtil.readUTFString(buffer));</span>
+<span class="nc" id="L153">        reverse = Boolean.parseBoolean(BytesUtil.readUTFString(buffer));</span>
+<span class="nc" id="L154">    }</span>
+
+    public static boolean containsMassInTupleFilter(TupleFilter filter) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (filter == null)</span>
+<span class="nc" id="L158">            return false;</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (filter instanceof MassInTupleFilter) {</span>
+<span class="nc" id="L161">            return true;</span>
+        }
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        for (TupleFilter child : filter.getChildren()) {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">            if (containsMassInTupleFilter(child))</span>
+<span class="nc" id="L166">                return true;</span>
+<span class="nc" id="L167">        }</span>
+<span class="nc" id="L168">        return false;</span>
+    }
+
+    public boolean isReverse() {
+<span class="nc" id="L172">        return reverse;</span>
+    }
+
+    public void setReverse(boolean reverse) {
+<span class="nc" id="L176">        this.reverse = reverse;</span>
+<span class="nc" id="L177">    }</span>
+
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+<span class="nc" id="L181">        return new MassInTupleFilter(this);</span>
+    }
+
+    public MassInValueProvider getValueProvider() {
+<span class="nc" id="L185">        return valueProvider;</span>
+    }
+
+    public String getFilterTableName() {
+<span class="nc" id="L189">        return filterTableName;</span>
+    }
+
+    public String getFilterTableResourceIdentifier() {
+<span class="nc" id="L193">        return filterTableResourceIdentifier;</span>
+    }
+
+    public Functions.FilterTableType getFilterTableType() {
+<span class="nc" id="L197">        return filterTableType;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

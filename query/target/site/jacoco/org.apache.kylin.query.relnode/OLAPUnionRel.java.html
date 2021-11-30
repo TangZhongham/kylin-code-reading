@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPUnionRel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPUnionRel.java</span></div><h1>OLAPUnionRel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.calcite.adapter.enumerable.EnumerableConvention;
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.core.SetOp;
+import org.apache.calcite.rel.core.Union;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.kylin.metadata.expression.ColumnTupleExpression;
+import org.apache.kylin.metadata.expression.RexCallTupleExpression;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+
+/**
+ */
+public class OLAPUnionRel extends Union implements OLAPRel {
+
+    ColumnRowType columnRowType;
+    OLAPContext context;
+
+    public OLAPUnionRel(RelOptCluster cluster, RelTraitSet traitSet, List&lt;RelNode&gt; inputs, boolean all) {
+<span class="nc" id="L52">        super(cluster, traitSet, inputs, all);</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == CONVENTION);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        for (RelNode child : inputs) {</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">            Preconditions.checkArgument(getConvention() == child.getConvention());</span>
+<span class="nc" id="L56">        }</span>
+<span class="nc" id="L57">    }</span>
+
+    @Override
+    public SetOp copy(RelTraitSet traitSet, List&lt;RelNode&gt; inputs, boolean all) {
+<span class="nc" id="L61">        return new OLAPUnionRel(getCluster(), traitSet, inputs, all);</span>
+    }
+
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+<span class="nc" id="L66">        return super.computeSelfCost(planner, mq).multiplyBy(.05);</span>
+    }
+
+    @Override
+    public RelWriter explainTerms(RelWriter pw) {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        boolean contextNotNull = context != null;</span>
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        return super.explainTerms(pw)</span>
+<span class="nc" id="L74">                .item(&quot;ctx&quot;, context == null ? &quot;&quot; : String.valueOf(context.id) + &quot;@&quot; + context.realization)</span>
+<span class="nc" id="L75">                .itemIf(&quot;all&quot;, all, true);</span>
+    }
+    @Override
+    public void implementOLAP(OLAPImplementor implementor) {
+        // Always create new OlapContext to combine columns from all children contexts.
+<span class="nc" id="L80">        implementor.allocateContext();</span>
+<span class="nc" id="L81">        this.context = implementor.getContext();</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        for (int i = 0, n = getInputs().size(); i &lt; n; i++) {</span>
+<span class="nc" id="L83">            implementor.fixSharedOlapTableScanAt(this, i);</span>
+<span class="nc" id="L84">            implementor.visitChild(getInputs().get(i), this);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            if (implementor.getContext() != this.context) {</span>
+<span class="nc" id="L86">                implementor.freeContext();</span>
+            }
+        }
+
+<span class="nc" id="L90">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L91">    }</span>
+
+    /**
+     * Fake ColumnRowType for Union, all the columns are inner columns.
+     */
+    private ColumnRowType buildColumnRowType() {
+<span class="nc" id="L97">        ColumnRowType inputColumnRowType = ((OLAPRel) getInput(0)).getColumnRowType();</span>
+<span class="nc" id="L98">        List&lt;TblColRef&gt; columns = Lists.newArrayList();</span>
+<span class="nc" id="L99">        List&lt;TupleExpression&gt; sourceColumns = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        for (TblColRef tblColRef : inputColumnRowType.getAllColumns()) {</span>
+<span class="nc" id="L102">            columns.add(TblColRef.newInnerColumn(tblColRef.getName(), TblColRef.InnerDataTypeEnum.LITERAL));</span>
+<span class="nc" id="L103">        }</span>
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (RelNode child : getInputs()) {</span>
+<span class="nc" id="L106">            OLAPRel olapChild = (OLAPRel) child;</span>
+<span class="nc" id="L107">            List&lt;TblColRef&gt; innerCols = olapChild.getColumnRowType().getAllColumns();</span>
+<span class="nc" id="L108">            List&lt;TupleExpression&gt; children = Lists.newArrayListWithExpectedSize(innerCols.size());</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            for (TblColRef innerCol : innerCols) {</span>
+<span class="nc" id="L110">                children.add(new ColumnTupleExpression(innerCol));</span>
+<span class="nc" id="L111">            }</span>
+<span class="nc" id="L112">            sourceColumns.add(new RexCallTupleExpression(children));</span>
+<span class="nc" id="L113">        }</span>
+
+<span class="nc" id="L115">        ColumnRowType fackColumnRowType = new ColumnRowType(columns, sourceColumns);</span>
+<span class="nc" id="L116">        return fackColumnRowType;</span>
+    }
+
+    @Override
+    public void implementRewrite(RewriteImplementor implementor) {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        for (RelNode child : getInputs()) {</span>
+<span class="nc" id="L122">            implementor.visitChild(this, child);</span>
+<span class="nc" id="L123">        }</span>
+
+<span class="nc" id="L125">        this.rowType = this.deriveRowType();</span>
+<span class="nc" id="L126">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L127">    }</span>
+
+    @Override
+    public EnumerableRel implementEnumerable(List&lt;EnumerableRel&gt; inputs) {
+<span class="nc" id="L131">        ArrayList&lt;RelNode&gt; relInputs = new ArrayList&lt;&gt;(inputs.size());</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        for (EnumerableRel input : inputs) {</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (input instanceof OLAPRel) {</span>
+<span class="nc" id="L134">                ((OLAPRel) input).replaceTraitSet(EnumerableConvention.INSTANCE);</span>
+            }
+<span class="nc" id="L136">            relInputs.add(input);</span>
+<span class="nc" id="L137">        }</span>
+<span class="nc" id="L138">        return new KylinEnumerableUnion(getCluster(), traitSet.replace(EnumerableConvention.INSTANCE), relInputs, all);</span>
+    }
+
+    @Override
+    public OLAPContext getContext() {
+<span class="nc" id="L143">        return context;</span>
+    }
+
+    @Override
+    public ColumnRowType getColumnRowType() {
+<span class="nc" id="L148">        return columnRowType;</span>
+    }
+
+    @Override
+    public boolean hasSubQuery() {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        for (RelNode child : getInputs()) {</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            if (((OLAPRel) child).hasSubQuery()) {</span>
+<span class="nc" id="L155">                return true;</span>
+            }
+<span class="nc" id="L157">        }</span>
+<span class="nc" id="L158">        return false;</span>
+    }
+
+    @Override
+    public RelTraitSet replaceTraitSet(RelTrait trait) {
+<span class="nc" id="L163">        RelTraitSet oldTraitSet = this.traitSet;</span>
+<span class="nc" id="L164">        this.traitSet = this.traitSet.replace(trait);</span>
+<span class="nc" id="L165">        return oldTraitSet;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

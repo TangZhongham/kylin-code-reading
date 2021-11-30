@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentPruner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.common</a> &gt; <span class="el_source">SegmentPruner.java</span></div><h1>SegmentPruner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.common;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.DimensionRangeInfo;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeOrder;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.ConstantTupleFilter;
+import org.apache.kylin.metadata.filter.DynamicTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.PartitionDesc;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class SegmentPruner {
+<span class="fc" id="L45">    private static final Logger logger = LoggerFactory.getLogger(SegmentPruner.class);</span>
+
+    private TupleFilterNode node;
+
+<span class="fc" id="L49">    public SegmentPruner(TupleFilter filter) {</span>
+<span class="fc" id="L50">        this.node = new TupleFilterNode(filter);</span>
+
+<span class="fc" id="L52">    }</span>
+
+    public List&lt;CubeSegment&gt; listSegmentsForQuery(CubeInstance cube) {
+<span class="nc" id="L55">        List&lt;CubeSegment&gt; r = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        for (CubeSegment seg : cube.getSegments(SegmentStatusEnum.READY)) {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (check(seg))</span>
+<span class="nc" id="L58">                r.add(seg);</span>
+<span class="nc" id="L59">        }</span>
+<span class="nc" id="L60">        return r;</span>
+    }
+    
+    public boolean check(CubeSegment seg) {
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (seg.getInputRecords() == 0) {</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (seg.getConfig().isSkippingEmptySegments()) {</span>
+<span class="fc" id="L67">                logger.debug(&quot;Prune segment {} due to 0 input record&quot;, seg);</span>
+<span class="fc" id="L68">                return false;</span>
+            } else {
+<span class="fc" id="L70">                logger.debug(&quot;Insist scan of segment {} having 0 input record&quot;, seg);</span>
+            }
+        }
+
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (!node.checkSeg(seg)) {</span>
+<span class="fc" id="L75">            logger.debug(&quot;Prune segment {} due to given filter&quot;, seg);</span>
+<span class="fc" id="L76">            return false;</span>
+        }
+
+<span class="fc" id="L79">        logger.debug(&quot;Pruner passed on segment {}&quot;, seg);</span>
+<span class="fc" id="L80">        return true;</span>
+    }
+
+    public static DimensionRangeInfo tryDeduceRangeFromPartitionCol(CubeSegment seg, TblColRef col) {
+<span class="fc" id="L84">        DataModelDesc model = seg.getModel();</span>
+<span class="fc" id="L85">        PartitionDesc part = model.getPartitionDesc();</span>
+
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (!part.isPartitioned())</span>
+<span class="nc" id="L88">            return null;</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (!col.equals(part.getPartitionDateColumnRef()))</span>
+<span class="nc" id="L90">            return null;</span>
+
+        // deduce the dim range from TSRange
+<span class="fc" id="L93">        TSRange tsRange = seg.getTSRange();</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">        if (tsRange.start.isMin || tsRange.end.isMax)</span>
+<span class="nc" id="L95">            return null; // DimensionRangeInfo cannot express infinite</span>
+
+<span class="fc" id="L97">        String min = tsRangeToStr(tsRange.start.v, part);</span>
+<span class="fc" id="L98">        String max = tsRangeToStr(tsRange.end.v - 1, part); // note the -1, end side is exclusive</span>
+<span class="fc" id="L99">        return new DimensionRangeInfo(min, max);</span>
+    }
+
+    private static String tsRangeToStr(long ts, PartitionDesc part) {
+        String value;
+<span class="fc" id="L104">        DataType partitionColType = part.getPartitionDateColumnRef().getType();</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (partitionColType.isDate()) {</span>
+<span class="fc" id="L106">            value = DateFormat.formatToDateStr(ts);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        } else if (partitionColType.isTimeFamily()) {</span>
+<span class="nc" id="L108">            value = DateFormat.formatToTimeWithoutMilliStr(ts);</span>
+<span class="nc bnc" id="L109" title="All 4 branches missed.">        } else if (partitionColType.isStringFamily() || partitionColType.isIntegerFamily()) {//integer like 20160101</span>
+<span class="nc" id="L110">            String partitionDateFormat = part.getPartitionDateFormat();</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            if (StringUtils.isEmpty(partitionDateFormat)) {</span>
+<span class="nc" id="L112">                value = &quot;&quot; + ts;</span>
+            } else {
+<span class="nc" id="L114">                value = DateFormat.formatToDateStr(ts, partitionDateFormat);</span>
+            }
+<span class="nc" id="L116">        } else {</span>
+<span class="nc" id="L117">            throw new RuntimeException(&quot;Type &quot; + partitionColType + &quot; is not valid partition column type&quot;);</span>
+        }
+<span class="fc" id="L119">        return value;</span>
+    }
+
+    public static boolean satisfy(CompareTupleFilter comp, String minVal, String maxVal) {
+
+        // When both min and max are null, it means all cells of the column are null.
+        // In such case, return true to let query engine scan the segment, since the
+        // result of null comparison is query engine specific.
+<span class="pc bpc" id="L127" title="3 of 4 branches missed.">        if (minVal == null &amp;&amp; maxVal == null)</span>
+<span class="nc" id="L128">            return true;</span>
+        
+        // pass on non-constant filter
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        if (comp.getChildren().size() &lt;= 1 || !isConstantValue(comp.getChildren().get(1)))</span>
+<span class="fc" id="L132">            return true;</span>
+
+<span class="fc" id="L134">        TblColRef col = comp.getColumn();</span>
+<span class="fc" id="L135">        DataTypeOrder order = col.getType().getOrder();</span>
+<span class="fc" id="L136">        String filterVal = toString(comp.getFirstValue());</span>
+        
+<span class="pc bpc" id="L138" title="1 of 6 branches missed.">        switch (comp.getOperator()) {</span>
+        case EQ:
+        case IN:
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            for (String filterValue : (Set&lt;String&gt;) comp.getValues()) {</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">                if (order.compare(filterValue, maxVal) &lt;= 0 &amp;&amp; order.compare(minVal, filterValue) &lt;= 0)</span>
+<span class="fc" id="L143">                    return true;</span>
+<span class="fc" id="L144">            }</span>
+<span class="fc" id="L145">            return false;</span>
+        case LT:
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            return order.compare(minVal, filterVal) &lt; 0;</span>
+        case LTE:
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            return order.compare(minVal, filterVal) &lt;= 0;</span>
+        case GT:
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            return order.compare(maxVal, filterVal) &gt; 0;</span>
+        case GTE:
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            return order.compare(maxVal, filterVal) &gt;= 0;</span>
+        case NEQ:
+        case NOTIN:
+        case ISNULL:
+        case ISNOTNULL:
+        default:
+<span class="nc" id="L159">            return true;</span>
+        }
+    }
+
+    private static boolean isConstantValue(TupleFilter tupleFilter) {
+<span class="fc bfc" id="L164" title="All 4 branches covered.">        return tupleFilter instanceof ConstantTupleFilter || tupleFilter instanceof DynamicTupleFilter;</span>
+    }
+
+    private static String toString(Object v) {
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        return v == null ? null : v.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

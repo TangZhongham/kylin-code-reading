@@ -1,0 +1,3 @@
+org/apache/kylin/cache/memcached/MemcachedChunkingCacheTest.class
+org/apache/kylin/cache/memcached/MemcachedCacheTest.class
+org/apache/kylin/cache/cachemanager/RemoteLocalFailOverCacheManagerTest.class

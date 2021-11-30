@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PBPUSCalculator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm</a> &gt; <span class="el_source">PBPUSCalculator.java</span></div><h1>PBPUSCalculator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+
+/**
+ * Calculate the benefit based on Benefit Per Unit Space with query probability distribution.
+ */
+public class PBPUSCalculator extends BPUSCalculator {
+
+    public PBPUSCalculator(final CuboidStats cuboidStats) {
+<span class="nc" id="L30">        super(cuboidStats);</span>
+<span class="nc" id="L31">    }</span>
+
+    protected PBPUSCalculator(CuboidStats cuboidStats, ImmutableMap&lt;Long, Long&gt; initCuboidAggCostMap) {
+<span class="nc" id="L34">        super(cuboidStats, initCuboidAggCostMap);</span>
+<span class="nc" id="L35">    }</span>
+
+    @Override
+    protected double getCostSaving(long descendant, long cuboid) {
+<span class="nc" id="L39">        return getCuboidHitProbability(descendant) * super.getCostSaving(descendant, cuboid);</span>
+    }
+
+    protected double getCuboidHitProbability(long cuboid) {
+<span class="nc" id="L43">        return cuboidStats.getCuboidHitProbability(cuboid);</span>
+    }
+
+    public double getMinBenefitRatio() {
+<span class="nc" id="L47">        int cuboidDomainSize = cuboidStats.getAllCuboidsForSelection().size();</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">        Preconditions.checkArgument(cuboidDomainSize &gt; 0,</span>
+                &quot;The set of cuboids for selection is empty!!!&quot;);
+<span class="nc" id="L50">        return super.getMinBenefitRatio() / cuboidDomainSize;</span>
+    }
+
+    @Override
+    public BenefitPolicy getInstance() {
+<span class="nc" id="L55">        return new PBPUSCalculator(this.cuboidStats, this.initCuboidAggCostMap);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

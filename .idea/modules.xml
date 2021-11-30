@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/kylin.iml" filepath="$PROJECT_DIR$/kylin.iml" />
+      <module fileurl="file://$PROJECT_DIR$/build-engine/kylin-build-engine.iml" filepath="$PROJECT_DIR$/build-engine/kylin-build-engine.iml" />
+      <module fileurl="file://$PROJECT_DIR$/cache/kylin-cache.iml" filepath="$PROJECT_DIR$/cache/kylin-cache.iml" />
+      <module fileurl="file://$PROJECT_DIR$/core-common/kylin-core-common.iml" filepath="$PROJECT_DIR$/core-common/kylin-core-common.iml" />
+      <module fileurl="file://$PROJECT_DIR$/core-cube/kylin-core-cube.iml" filepath="$PROJECT_DIR$/core-cube/kylin-core-cube.iml" />
+      <module fileurl="file://$PROJECT_DIR$/core-job/kylin-core-job.iml" filepath="$PROJECT_DIR$/core-job/kylin-core-job.iml" />
+      <module fileurl="file://$PROJECT_DIR$/core-metadata/kylin-core-metadata.iml" filepath="$PROJECT_DIR$/core-metadata/kylin-core-metadata.iml" />
+      <module fileurl="file://$PROJECT_DIR$/core-metrics/kylin-core-metrics.iml" filepath="$PROJECT_DIR$/core-metrics/kylin-core-metrics.iml" />
+      <module fileurl="file://$PROJECT_DIR$/core-storage/kylin-core-storage.iml" filepath="$PROJECT_DIR$/core-storage/kylin-core-storage.iml" />
+      <module fileurl="file://$PROJECT_DIR$/jdbc/kylin-jdbc.iml" filepath="$PROJECT_DIR$/jdbc/kylin-jdbc.iml" />
+      <module fileurl="file://$PROJECT_DIR$/metastore-hbase/kylin-metastore-hbase.iml" filepath="$PROJECT_DIR$/metastore-hbase/kylin-metastore-hbase.iml" />
+      <module fileurl="file://$PROJECT_DIR$/metrics-reporter-hive/kylin-metrics-reporter-hive.iml" filepath="$PROJECT_DIR$/metrics-reporter-hive/kylin-metrics-reporter-hive.iml" />
+      <module fileurl="file://$PROJECT_DIR$/metrics-reporter-kafka/kylin-metrics-reporter-kafka.iml" filepath="$PROJECT_DIR$/metrics-reporter-kafka/kylin-metrics-reporter-kafka.iml" />
+      <module fileurl="file://$PROJECT_DIR$/query/kylin-query.iml" filepath="$PROJECT_DIR$/query/kylin-query.iml" />
+      <module fileurl="file://$PROJECT_DIR$/server/kylin-server.iml" filepath="$PROJECT_DIR$/server/kylin-server.iml" />
+      <module fileurl="file://$PROJECT_DIR$/server-base/kylin-server-base.iml" filepath="$PROJECT_DIR$/server-base/kylin-server-base.iml" />
+      <module fileurl="file://$PROJECT_DIR$/source-hive/kylin-source-hive.iml" filepath="$PROJECT_DIR$/source-hive/kylin-source-hive.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-classloader/kylin-spark-classloader.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-classloader/kylin-spark-classloader.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-common/kylin-spark-common.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-common/kylin-spark-common.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-engine/kylin-spark-engine.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-engine/kylin-spark-engine.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-metadata/kylin-spark-metadata.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-metadata/kylin-spark-metadata.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-project.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-project.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-query/kylin-spark-query.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-query/kylin-spark-query.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kylin-spark-project/kylin-spark-test/kylin-spark-test.iml" filepath="$PROJECT_DIR$/kylin-spark-project/kylin-spark-test/kylin-spark-test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/tool/kylin-tool.iml" filepath="$PROJECT_DIR$/tool/kylin-tool.iml" />
+      <module fileurl="file://$PROJECT_DIR$/tool-assembly/kylin-tool-assembly.iml" filepath="$PROJECT_DIR$/tool-assembly/kylin-tool-assembly.iml" />
+      <module fileurl="file://$PROJECT_DIR$/parquet-assembly/parquet-assembly.iml" filepath="$PROJECT_DIR$/parquet-assembly/parquet-assembly.iml" />
+    </modules>
+  </component>
+</project>

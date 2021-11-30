@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidStatsUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm</a> &gt; <span class="el_source">CuboidStatsUtil.java</span></div><h1>CuboidStatsUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
+
+import org.apache.kylin.common.util.Pair;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+public class CuboidStatsUtil {
+
+<span class="nc" id="L37">    private CuboidStatsUtil() {</span>
+<span class="nc" id="L38">        throw new IllegalStateException(&quot;Class CuboidStatsUtil is an utility class !&quot;);</span>
+    }
+
+    /**
+     * According to the cuboid hit frequencies and query uncertainty ratio
+     * calculate each cuboid hit probability
+     * @param selectionCuboidSet subset of cuboid domain which needs probability
+     * @param nTotalCuboids number of cuboids needs to be considered, mainly for each cuboid's uncertainty weight
+     * */
+    public static Map&lt;Long, Double&gt; calculateCuboidHitProbability(Set&lt;Long&gt; selectionCuboidSet,
+            Map&lt;Long, Long&gt; hitFrequencyMap, long nTotalCuboids, double queryUncertaintyRatio) {
+<span class="fc" id="L49">        Map&lt;Long, Double&gt; cuboidHitProbabilityMap = Maps.newHashMapWithExpectedSize(selectionCuboidSet.size());</span>
+<span class="pc bpc" id="L50" title="2 of 4 branches missed.">        if (hitFrequencyMap == null || hitFrequencyMap.isEmpty()) {</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">            for (Long cuboid : selectionCuboidSet) {</span>
+<span class="nc" id="L52">                cuboidHitProbabilityMap.put(cuboid, 1.0 / nTotalCuboids);</span>
+<span class="nc" id="L53">            }</span>
+        } else {
+<span class="fc" id="L55">            long totalHitFrequency = 0L;</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            for (Map.Entry&lt;Long, Long&gt; hitFrequency : hitFrequencyMap.entrySet()) {</span>
+<span class="fc" id="L57">                totalHitFrequency += hitFrequency.getValue();</span>
+<span class="fc" id="L58">            }</span>
+
+<span class="fc" id="L60">            final double unitUncertainProb = queryUncertaintyRatio / nTotalCuboids;</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            for (Long cuboid : selectionCuboidSet) {</span>
+                //Calculate hit probability for each cuboid
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                if (hitFrequencyMap.get(cuboid) != null) {</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                    if (totalHitFrequency != 0)</span>
+<span class="fc" id="L65">                        cuboidHitProbabilityMap.put(cuboid, unitUncertainProb</span>
+<span class="fc" id="L66">                                + (1 - queryUncertaintyRatio) * hitFrequencyMap.get(cuboid) / totalHitFrequency);</span>
+                    else
+<span class="nc" id="L68">                        throw new ArithmeticException(&quot;/ by zero&quot;);</span>
+                } else {
+<span class="nc" id="L70">                    cuboidHitProbabilityMap.put(cuboid, unitUncertainProb);</span>
+                }
+<span class="fc" id="L72">            }</span>
+        }
+
+<span class="fc" id="L75">        return cuboidHitProbabilityMap;</span>
+    }
+
+    /**
+     * @param statistics for cuboid row count
+     * @param rollingUpSourceMap the key of the outer map is source cuboid,
+     *                           the key of the inner map is target cuboid,
+     *                                  if cube is optimized multiple times, target cuboid may change
+     *                           the first element of the pair is the rollup row count
+     *                           the second element of the pair is the return row count
+     * @return source cuboids with estimated row count
+     */
+    public static Map&lt;Long, Long&gt; generateSourceCuboidStats(Map&lt;Long, Long&gt; statistics,
+            Map&lt;Long, Double&gt; cuboidHitProbabilityMap, Map&lt;Long, Map&lt;Long, Pair&lt;Long, Long&gt;&gt;&gt; rollingUpSourceMap) {
+<span class="fc" id="L89">        Map&lt;Long, Long&gt; srcCuboidsStats = Maps.newHashMap();</span>
+<span class="pc bpc" id="L90" title="3 of 6 branches missed.">        if (cuboidHitProbabilityMap == null || cuboidHitProbabilityMap.isEmpty() || rollingUpSourceMap == null</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                || rollingUpSourceMap.isEmpty()) {</span>
+<span class="nc" id="L92">            return srcCuboidsStats;</span>
+        }
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (Long cuboid : cuboidHitProbabilityMap.keySet()) {</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (statistics.get(cuboid) != null) {</span>
+<span class="fc" id="L97">                continue;</span>
+            }
+<span class="fc" id="L99">            Map&lt;Long, Pair&lt;Long, Long&gt;&gt; innerRollingUpTargetMap = rollingUpSourceMap.get(cuboid);</span>
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">            if (innerRollingUpTargetMap == null || innerRollingUpTargetMap.isEmpty()) {</span>
+<span class="nc" id="L101">                continue;</span>
+            }
+
+<span class="fc" id="L104">            long totalEstRowCount = 0L;</span>
+<span class="fc" id="L105">            int nEffective = 0;</span>
+<span class="fc" id="L106">            boolean ifHasStats = false;</span>
+            // if ifHasStats equals true, then source cuboid row count = (1 - rollup ratio) * target cuboid row count
+            //                            else source cuboid row count = returned row count collected directly
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            for (Long tgtCuboid : innerRollingUpTargetMap.keySet()) {</span>
+<span class="fc" id="L110">                Pair&lt;Long, Long&gt; rollingupStats = innerRollingUpTargetMap.get(tgtCuboid);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                if (statistics.get(tgtCuboid) != null) {</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                    if (!ifHasStats) {</span>
+<span class="fc" id="L113">                        totalEstRowCount = 0L;</span>
+<span class="fc" id="L114">                        nEffective = 0;</span>
+<span class="fc" id="L115">                        ifHasStats = true;</span>
+                    }
+<span class="fc" id="L117">                    double rollupRatio = calculateRollupRatio(rollingupStats);</span>
+<span class="fc" id="L118">                    totalEstRowCount += (1 - rollupRatio) * statistics.get(tgtCuboid);</span>
+<span class="fc" id="L119">                    nEffective++;</span>
+<span class="fc" id="L120">                } else {</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                    if (ifHasStats) {</span>
+<span class="nc" id="L122">                        continue;</span>
+                    }
+<span class="fc" id="L124">                    totalEstRowCount += rollingupStats.getSecond();</span>
+<span class="fc" id="L125">                    nEffective++;</span>
+                }
+<span class="fc" id="L127">            }</span>
+
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            if (nEffective != 0)</span>
+<span class="fc" id="L130">                srcCuboidsStats.put(cuboid, totalEstRowCount / nEffective);</span>
+            else
+<span class="nc" id="L132">                throw new ArithmeticException(&quot;/ by zero&quot;);</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">        srcCuboidsStats.remove(0L);</span>
+<span class="fc" id="L135">        adjustCuboidStats(srcCuboidsStats, statistics);</span>
+<span class="fc" id="L136">        return srcCuboidsStats;</span>
+    }
+
+    /**
+     * Complement row count for mandatory cuboids
+     * with its best parent's row count
+     * */
+    public static Map&lt;Long, Long&gt; complementRowCountForCuboids(final Map&lt;Long, Long&gt; statistics, Set&lt;Long&gt; cuboids) {
+<span class="fc" id="L144">        Map&lt;Long, Long&gt; result = Maps.newHashMapWithExpectedSize(cuboids.size());</span>
+
+        // Sort entries order by row count asc
+<span class="fc" id="L147">        SortedSet&lt;Map.Entry&lt;Long, Long&gt;&gt; sortedStatsSet = new TreeSet&lt;&gt;(new Comparator&lt;Map.Entry&lt;Long, Long&gt;&gt;() {</span>
+            public int compare(Map.Entry&lt;Long, Long&gt; o1, Map.Entry&lt;Long, Long&gt; o2) {
+<span class="fc" id="L149">                int ret = o1.getValue().compareTo(o2.getValue());</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                return ret == 0 ? o1.getKey().compareTo(o2.getKey()) : ret;</span>
+            }
+        });
+        //sortedStatsSet.addAll(statistics.entrySet()); KYLIN-3580
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (Map.Entry&lt;Long, Long&gt; entry : statistics.entrySet()) {</span>
+<span class="fc" id="L155">            sortedStatsSet.add(entry);</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        for (Long cuboid : cuboids) {</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">            if (statistics.get(cuboid) == null) {</span>
+                // Get estimate row count for mandatory cuboid
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">                for (Map.Entry&lt;Long, Long&gt; entry : sortedStatsSet) {</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                    if (isDescendant(cuboid, entry.getKey())) {</span>
+<span class="fc" id="L162">                        result.put(cuboid, entry.getValue());</span>
+<span class="fc" id="L163">                        break;</span>
+                    }
+<span class="fc" id="L165">                }</span>
+            } else {
+<span class="nc" id="L167">                result.put(cuboid, statistics.get(cuboid));</span>
+            }
+<span class="fc" id="L169">        }</span>
+
+<span class="fc" id="L171">        return result;</span>
+    }
+
+    /**
+     * adjust cuboid row count, make sure parent not less than child
+     */
+    public static Map&lt;Long, Long&gt; adjustCuboidStats(Map&lt;Long, Long&gt; statistics) {
+<span class="fc" id="L178">        Map&lt;Long, Long&gt; ret = Maps.newHashMapWithExpectedSize(statistics.size());</span>
+
+<span class="fc" id="L180">        List&lt;Long&gt; cuboids = Lists.newArrayList(statistics.keySet());</span>
+<span class="fc" id="L181">        Collections.sort(cuboids);</span>
+
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        for (Long cuboid : cuboids) {</span>
+<span class="fc" id="L184">            Long rowCount = statistics.get(cuboid);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            for (Long childCuboid : ret.keySet()) {</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                if (isDescendant(childCuboid, cuboid)) {</span>
+<span class="fc" id="L187">                    Long childRowCount = ret.get(childCuboid);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                    if (rowCount &lt; childRowCount) {</span>
+<span class="fc" id="L189">                        rowCount = childRowCount;</span>
+                    }
+                }
+<span class="fc" id="L192">            }</span>
+<span class="fc" id="L193">            ret.put(cuboid, rowCount);</span>
+<span class="fc" id="L194">        }</span>
+
+<span class="fc" id="L196">        return ret;</span>
+    }
+
+    public static void adjustCuboidStats(Map&lt;Long, Long&gt; mandatoryCuboidsWithStats, Map&lt;Long, Long&gt; statistics) {
+<span class="fc" id="L200">        List&lt;Long&gt; mandatoryCuboids = Lists.newArrayList(mandatoryCuboidsWithStats.keySet());</span>
+<span class="fc" id="L201">        Collections.sort(mandatoryCuboids);</span>
+
+<span class="fc" id="L203">        List&lt;Long&gt; selectedCuboids = Lists.newArrayList(statistics.keySet());</span>
+<span class="fc" id="L204">        Collections.sort(selectedCuboids);</span>
+
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (int i = 0; i &lt; mandatoryCuboids.size(); i++) {</span>
+<span class="fc" id="L207">            Long mCuboid = mandatoryCuboids.get(i);</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">            if (statistics.get(mCuboid) != null) {</span>
+<span class="nc" id="L209">                mandatoryCuboidsWithStats.put(mCuboid, statistics.get(mCuboid));</span>
+<span class="nc" id="L210">                continue;</span>
+            }
+<span class="fc" id="L212">            int k = 0;</span>
+            // Make sure mCuboid's row count larger than its children's row count in statistics
+<span class="fc bfc" id="L214" title="All 2 branches covered.">            for (; k &lt; selectedCuboids.size(); k++) {</span>
+<span class="fc" id="L215">                Long sCuboid = selectedCuboids.get(k);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                if (sCuboid &gt; mCuboid) {</span>
+<span class="fc" id="L217">                    break;</span>
+                }
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                if (isDescendant(sCuboid, mCuboid)) {</span>
+<span class="fc" id="L220">                    Long childRowCount = statistics.get(sCuboid);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                    if (childRowCount &gt; mandatoryCuboidsWithStats.get(mCuboid)) {</span>
+<span class="fc" id="L222">                        mandatoryCuboidsWithStats.put(mCuboid, childRowCount);</span>
+                    }
+                }
+            }
+            // Make sure mCuboid's row count larger than its children's row count in mandatoryCuboids
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            for (int j = 0; j &lt; i; j++) {</span>
+<span class="fc" id="L228">                Long cCuboid = mandatoryCuboids.get(j);</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                if (isDescendant(cCuboid, mCuboid)) {</span>
+<span class="fc" id="L230">                    Long childRowCount = mandatoryCuboidsWithStats.get(cCuboid);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                    if (childRowCount &gt; mandatoryCuboidsWithStats.get(mCuboid)) {</span>
+<span class="fc" id="L232">                        mandatoryCuboidsWithStats.put(mCuboid, childRowCount);</span>
+                    }
+                }
+            }
+            // Make sure mCuboid's row count lower than its parents' row count in statistics
+<span class="fc bfc" id="L237" title="All 2 branches covered.">            for (; k &lt; selectedCuboids.size(); k++) {</span>
+<span class="fc" id="L238">                Long sCuboid = selectedCuboids.get(k);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                if (isDescendant(mCuboid, sCuboid)) {</span>
+<span class="fc" id="L240">                    Long parentRowCount = statistics.get(sCuboid);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                    if (parentRowCount &lt; mandatoryCuboidsWithStats.get(mCuboid)) {</span>
+<span class="fc" id="L242">                        mandatoryCuboidsWithStats.put(mCuboid, parentRowCount);</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L247">    }</span>
+
+    public static Map&lt;Long, List&lt;Long&gt;&gt; createDirectChildrenCache(final Set&lt;Long&gt; cuboidSet) {
+        /**
+         * Sort the list by ascending order:
+         * */
+<span class="fc" id="L253">        final List&lt;Long&gt; cuboidList = Lists.newArrayList(cuboidSet);</span>
+<span class="fc" id="L254">        Collections.sort(cuboidList);</span>
+        /**
+         * Sort the list by ascending order:
+         * 1. the more bit count of its value, the bigger
+         * 2. the larger of its value, the bigger
+         * */
+<span class="fc" id="L260">        List&lt;Integer&gt; layerIdxList = Lists.newArrayListWithExpectedSize(cuboidList.size());</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        for (int i = 0; i &lt; cuboidList.size(); i++) {</span>
+<span class="fc" id="L262">            layerIdxList.add(i);</span>
+        }
+<span class="fc" id="L264">        Collections.sort(layerIdxList, new Comparator&lt;Integer&gt;() {</span>
+            @Override
+            public int compare(Integer i1, Integer i2) {
+<span class="fc" id="L267">                Long o1 = cuboidList.get(i1);</span>
+<span class="fc" id="L268">                Long o2 = cuboidList.get(i2);</span>
+<span class="fc" id="L269">                int nBitDiff = Long.bitCount(o1) - Long.bitCount(o2);</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">                if (nBitDiff != 0) {</span>
+<span class="fc" id="L271">                    return nBitDiff;</span>
+                }
+<span class="fc" id="L273">                return Long.compare(o1, o2);</span>
+            }
+        });
+        /**
+         * Construct an index array for pointing the position in layerIdxList
+         * (layerCuboidList is for speeding up continuous iteration)
+         * */
+<span class="fc" id="L280">        int[] toLayerIdxArray = new int[layerIdxList.size()];</span>
+<span class="fc" id="L281">        final List&lt;Long&gt; layerCuboidList = Lists.newArrayListWithExpectedSize(cuboidList.size());</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (int i = 0; i &lt; layerIdxList.size(); i++) {</span>
+<span class="fc" id="L283">            int cuboidIdx = layerIdxList.get(i);</span>
+<span class="fc" id="L284">            toLayerIdxArray[cuboidIdx] = i;</span>
+<span class="fc" id="L285">            layerCuboidList.add(cuboidList.get(cuboidIdx));</span>
+        }
+
+<span class="fc" id="L288">        int[] previousLayerLastIdxArray = new int[layerIdxList.size()];</span>
+<span class="fc" id="L289">        int currentBitCount = 0;</span>
+<span class="fc" id="L290">        int previousLayerLastIdx = -1;</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        for (int i = 0; i &lt; layerIdxList.size(); i++) {</span>
+<span class="fc" id="L292">            int cuboidIdx = layerIdxList.get(i);</span>
+<span class="fc" id="L293">            int nBits = Long.bitCount(cuboidList.get(cuboidIdx));</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">            if (nBits &gt; currentBitCount) {</span>
+<span class="fc" id="L295">                currentBitCount = nBits;</span>
+<span class="fc" id="L296">                previousLayerLastIdx = i - 1;</span>
+            }
+<span class="fc" id="L298">            previousLayerLastIdxArray[i] = previousLayerLastIdx;</span>
+        }
+
+<span class="fc" id="L301">        Map&lt;Long, List&lt;Long&gt;&gt; directChildrenCache = Maps.newHashMap();</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        for (int i = 0; i &lt; cuboidList.size(); i++) {</span>
+<span class="fc" id="L303">            Long currentCuboid = cuboidList.get(i);</span>
+<span class="fc" id="L304">            LinkedList&lt;Long&gt; directChildren = Lists.newLinkedList();</span>
+<span class="fc" id="L305">            int lastLayerIdx = previousLayerLastIdxArray[toLayerIdxArray[i]];</span>
+            /**
+             * Choose one of the two scan strategies
+             * 1. cuboids are sorted by its value, like 1,2,3,4,...
+             * 2. cuboids are layered and sorted, like 1,2,4,8,...,3,5,...
+             * */
+<span class="fc bfc" id="L311" title="All 2 branches covered.">            if (i - 1 &lt;= lastLayerIdx) {</span>
+                /**
+                 * 1. Adding cuboid by descending order
+                 * */
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                for (int j = i - 1; j &gt;= 0; j--) {</span>
+<span class="fc" id="L316">                    checkAndAddDirectChild(directChildren, currentCuboid, cuboidList.get(j));</span>
+                }
+            } else {
+                /**
+                 * 1. Adding cuboid by descending order
+                 * 2. Check from lower cuboid layer
+                 * */
+<span class="fc bfc" id="L323" title="All 2 branches covered.">                for (int j = lastLayerIdx; j &gt;= 0; j--) {</span>
+<span class="fc" id="L324">                    checkAndAddDirectChild(directChildren, currentCuboid, layerCuboidList.get(j));</span>
+                }
+            }
+<span class="fc" id="L327">            directChildrenCache.put(currentCuboid, directChildren);</span>
+        }
+<span class="fc" id="L329">        return directChildrenCache;</span>
+    }
+
+    private static void checkAndAddDirectChild(List&lt;Long&gt; directChildren, Long currentCuboid, Long checkedCuboid) {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        if (isDescendant(checkedCuboid, currentCuboid)) {</span>
+<span class="fc" id="L334">            boolean ifDirectChild = true;</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">            for (long directChild : directChildren) {</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">                if (isDescendant(checkedCuboid, directChild)) {</span>
+<span class="fc" id="L337">                    ifDirectChild = false;</span>
+<span class="fc" id="L338">                    break;</span>
+                }
+<span class="fc" id="L340">            }</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (ifDirectChild) {</span>
+<span class="fc" id="L342">                directChildren.add(checkedCuboid);</span>
+            }
+        }
+<span class="fc" id="L345">    }</span>
+
+    public static boolean isDescendant(long cuboidToCheck, long parentCuboid) {
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        return (cuboidToCheck &amp; parentCuboid) == cuboidToCheck;</span>
+    }
+
+    private static double calculateRollupRatio(Pair&lt;Long, Long&gt; rollupStats) {
+<span class="fc" id="L352">        double rollupInputCount = (double) rollupStats.getFirst() + rollupStats.getSecond();</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">        return rollupInputCount == 0 ? 0 : 1.0 * rollupStats.getFirst() / rollupInputCount;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

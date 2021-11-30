@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BPUSCalculator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid.algorithm</a> &gt; <span class="el_source">BPUSCalculator.java</span></div><h1>BPUSCalculator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid.algorithm;
+
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ * Calculate the benefit based on Benefit Per Unit Space.
+ */
+public class BPUSCalculator implements BenefitPolicy {
+
+<span class="nc" id="L37">    private static Logger logger = LoggerFactory.getLogger(BPUSCalculator.class);</span>
+
+    protected final CuboidStats cuboidStats;
+    protected final ImmutableMap&lt;Long, Long&gt; initCuboidAggCostMap;
+    protected final Map&lt;Long, Long&gt; processCuboidAggCostMap;
+
+<span class="nc" id="L43">    public BPUSCalculator(CuboidStats cuboidStats) {</span>
+<span class="nc" id="L44">        this.cuboidStats = cuboidStats;</span>
+<span class="nc" id="L45">        this.initCuboidAggCostMap = ImmutableMap.copyOf(initCuboidAggCostMap());</span>
+<span class="nc" id="L46">        this.processCuboidAggCostMap = Maps.newHashMap(initCuboidAggCostMap);</span>
+<span class="nc" id="L47">    }</span>
+
+<span class="nc" id="L49">    protected BPUSCalculator(CuboidStats cuboidStats, ImmutableMap&lt;Long, Long&gt; initCuboidAggCostMap) {</span>
+<span class="nc" id="L50">        this.cuboidStats = cuboidStats;</span>
+<span class="nc" id="L51">        this.initCuboidAggCostMap = initCuboidAggCostMap;</span>
+<span class="nc" id="L52">        this.processCuboidAggCostMap = Maps.newHashMap(initCuboidAggCostMap);</span>
+<span class="nc" id="L53">    }</span>
+
+    private Map&lt;Long, Long&gt; initCuboidAggCostMap() {
+<span class="nc" id="L56">        Map&lt;Long, Long&gt; cuboidAggCostMap = Maps.newHashMap();</span>
+        //Initialize stats for mandatory cuboids
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        for (Long cuboid : cuboidStats.getAllCuboidsForMandatory()) {</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">            if (getCuboidCost(cuboid) != null) {</span>
+<span class="nc" id="L60">                cuboidAggCostMap.put(cuboid, getCuboidCost(cuboid));</span>
+            }
+<span class="nc" id="L62">        }</span>
+
+        //Initialize stats for selection cuboids
+<span class="nc" id="L65">        long baseCuboidCost = getCuboidCost(cuboidStats.getBaseCuboid());</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        for (Long cuboid : cuboidStats.getAllCuboidsForSelection()) {</span>
+<span class="nc" id="L67">            long leastCost = baseCuboidCost;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            for (Map.Entry&lt;Long, Long&gt; cuboidTargetEntry : cuboidAggCostMap.entrySet()) {</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">                if ((cuboid | cuboidTargetEntry.getKey()) == cuboidTargetEntry.getKey()) {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                    if (leastCost &gt; cuboidTargetEntry.getValue()) {</span>
+<span class="nc" id="L71">                        leastCost = cuboidTargetEntry.getValue();</span>
+                    }
+                }
+<span class="nc" id="L74">            }</span>
+<span class="nc" id="L75">            cuboidAggCostMap.put(cuboid, leastCost);</span>
+<span class="nc" id="L76">        }</span>
+<span class="nc" id="L77">        return cuboidAggCostMap;</span>
+    }
+
+    @Override
+    public CuboidBenefitModel.BenefitModel calculateBenefit(long cuboid, Set&lt;Long&gt; selected) {
+<span class="nc" id="L82">        double totalCostSaving = 0;</span>
+<span class="nc" id="L83">        int benefitCount = 0;</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        for (Long descendant : cuboidStats.getAllDescendants(cuboid)) {</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            if (!selected.contains(descendant)) {</span>
+<span class="nc" id="L86">                double costSaving = getCostSaving(descendant, cuboid);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">                if (costSaving &gt; 0) {</span>
+<span class="nc" id="L88">                    totalCostSaving += costSaving;</span>
+<span class="nc" id="L89">                    benefitCount++;</span>
+                }
+            }
+<span class="nc" id="L92">        }</span>
+
+<span class="nc" id="L94">        double spaceCost = calculateSpaceCost(cuboid);</span>
+<span class="nc" id="L95">        double benefitPerUnitSpace = totalCostSaving / spaceCost;</span>
+<span class="nc" id="L96">        return new CuboidBenefitModel.BenefitModel(benefitPerUnitSpace, benefitCount);</span>
+    }
+
+    @Override
+    public CuboidBenefitModel.BenefitModel calculateBenefitTotal(Set&lt;Long&gt; cuboidsToAdd, Set&lt;Long&gt; selected) {
+<span class="nc" id="L101">        Set&lt;Long&gt; selectedInner = Sets.newHashSet(selected);</span>
+<span class="nc" id="L102">        Map&lt;Long, Long&gt; cuboidAggCostMapCopy = Maps.newHashMap(processCuboidAggCostMap);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        for (Long cuboid : cuboidsToAdd) {</span>
+<span class="nc" id="L104">            selectedInner.add(cuboid);</span>
+<span class="nc" id="L105">            propagateAggregationCost(cuboid, selectedInner, cuboidAggCostMapCopy);</span>
+<span class="nc" id="L106">        }</span>
+<span class="nc" id="L107">        double totalCostSaving = 0;</span>
+<span class="nc" id="L108">        int benefitCount = 0;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        for (Map.Entry&lt;Long, Long&gt; entry : cuboidAggCostMapCopy.entrySet()) {</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            if (entry.getValue() &lt; processCuboidAggCostMap.get(entry.getKey())) {</span>
+<span class="nc" id="L111">                totalCostSaving += processCuboidAggCostMap.get(entry.getKey()) - entry.getValue();</span>
+<span class="nc" id="L112">                benefitCount++;</span>
+            }
+<span class="nc" id="L114">        }</span>
+
+<span class="nc" id="L116">        double benefitPerUnitSpace = totalCostSaving;</span>
+<span class="nc" id="L117">        return new CuboidBenefitModel.BenefitModel(benefitPerUnitSpace, benefitCount);</span>
+    }
+
+    protected double getCostSaving(long descendant, long cuboid) {
+<span class="nc" id="L121">        long cuboidCost = getCuboidCost(cuboid);</span>
+<span class="nc" id="L122">        long descendantAggCost = getCuboidAggregationCost(descendant);</span>
+<span class="nc" id="L123">        return (double) descendantAggCost - cuboidCost;</span>
+    }
+
+    protected Long getCuboidCost(long cuboid) {
+<span class="nc" id="L127">        return cuboidStats.getCuboidCount(cuboid);</span>
+    }
+
+    private long getCuboidAggregationCost(long cuboid) {
+<span class="nc" id="L131">        return processCuboidAggCostMap.get(cuboid);</span>
+    }
+
+    @Override
+    public boolean ifEfficient(CuboidBenefitModel best) {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (best.getBenefit() &lt; getMinBenefitRatio()) {</span>
+<span class="nc" id="L137">            logger.info(String.format(Locale.ROOT, &quot;The recommended cuboid %s doesn't meet minimum benifit ratio %f&quot;,</span>
+<span class="nc" id="L138">                    best, getMinBenefitRatio()));</span>
+<span class="nc" id="L139">            return false;</span>
+        }
+<span class="nc" id="L141">        return true;</span>
+    }
+
+    public double getMinBenefitRatio() {
+<span class="nc" id="L145">        return cuboidStats.getBpusMinBenefitRatio();</span>
+    }
+
+    @Override
+    public void propagateAggregationCost(long cuboid, Set&lt;Long&gt; selected) {
+<span class="nc" id="L150">        propagateAggregationCost(cuboid, selected, processCuboidAggCostMap);</span>
+<span class="nc" id="L151">    }</span>
+
+    public void propagateAggregationCost(long cuboid, Set&lt;Long&gt; selected, Map&lt;Long, Long&gt; processCuboidAggCostMap) {
+<span class="nc" id="L154">        long aggregationCost = getCuboidCost(cuboid);</span>
+<span class="nc" id="L155">        Set&lt;Long&gt; childrenCuboids = cuboidStats.getAllDescendants(cuboid);</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        for (Long child : childrenCuboids) {</span>
+<span class="nc bnc" id="L157" title="All 4 branches missed.">            if (!selected.contains(child) &amp;&amp; (aggregationCost &lt; getCuboidAggregationCost(child))) {</span>
+<span class="nc" id="L158">                processCuboidAggCostMap.put(child, aggregationCost);</span>
+            }
+<span class="nc" id="L160">        }</span>
+<span class="nc" id="L161">    }</span>
+
+    /**
+     * Return the space cost of building a cuboid.
+     *
+     */
+    public double calculateSpaceCost(long cuboid) {
+<span class="nc" id="L168">        return cuboidStats.getCuboidCount(cuboid);</span>
+    }
+
+    @Override
+    public BenefitPolicy getInstance() {
+<span class="nc" id="L173">        return new BPUSCalculator(this.cuboidStats, this.initCuboidAggCostMap);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

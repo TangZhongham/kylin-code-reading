@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StreamingCubeRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model.validation.rule</a> &gt; <span class="el_source">StreamingCubeRule.java</span></div><h1>StreamingCubeRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.model.validation.rule;
+
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.DimensionDesc;
+import org.apache.kylin.cube.model.validation.IValidatorRule;
+import org.apache.kylin.cube.model.validation.ResultLevel;
+import org.apache.kylin.cube.model.validation.ValidateContext;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.ISourceAware;
+
+import org.apache.kylin.metadata.model.TblColRef;
+
+/**
+ *
+ */
+<span class="fc" id="L34">public class StreamingCubeRule implements IValidatorRule&lt;CubeDesc&gt; {</span>
+
+    /*
+     * (non-Javadoc)
+     * 
+     * @see
+     * org.apache.kylin.metadata.validation.IValidatorRule#validate(java.lang.Object
+     * , org.apache.kylin.metadata.validation.ValidateContext)
+     */
+    @Override
+    public void validate(CubeDesc cube, ValidateContext context) {
+<span class="fc" id="L45">        DataModelDesc model = cube.getModel();</span>
+        
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (model.getRootFactTable().getTableDesc().getSourceType() != ISourceAware.ID_STREAMING</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                &amp;&amp; !model.getRootFactTable().getTableDesc().isStreamingTable()) {</span>
+<span class="fc" id="L49">            return;</span>
+        }
+
+<span class="nc bnc" id="L52" title="All 4 branches missed.">        if (model.getPartitionDesc() == null || model.getPartitionDesc().getPartitionDateColumn() == null) {</span>
+<span class="nc" id="L53">            context.addResult(ResultLevel.ERROR, &quot;Must define a partition column.&quot;);</span>
+<span class="nc" id="L54">            return;</span>
+        }
+
+<span class="nc" id="L57">        final TblColRef partitionCol = model.getPartitionDesc().getPartitionDateColumnRef();</span>
+<span class="nc" id="L58">        boolean found = false;</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        for (DimensionDesc dimensionDesc : cube.getDimensions()) {</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            for (TblColRef dimCol : dimensionDesc.getColumnRefs()) {</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">                if (dimCol.equals(partitionCol)) {</span>
+<span class="nc" id="L62">                    found = true;</span>
+<span class="nc" id="L63">                    break;</span>
+                }
+            }
+<span class="nc" id="L66">        }</span>
+
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (found == false) {</span>
+<span class="nc" id="L69">            context.addResult(ResultLevel.ERROR, &quot;Partition column '&quot; + partitionCol + &quot;' isn't in dimension list.&quot;);</span>
+<span class="nc" id="L70">            return;</span>
+        }
+
+<span class="nc" id="L73">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

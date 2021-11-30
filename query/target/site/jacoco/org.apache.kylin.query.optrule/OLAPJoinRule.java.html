@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPJoinRule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.optrule</a> &gt; <span class="el_source">OLAPJoinRule.java</span></div><h1>OLAPJoinRule.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.optrule;
+
+import org.apache.calcite.plan.Convention;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.InvalidRelException;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.convert.ConverterRule;
+import org.apache.calcite.rel.core.JoinInfo;
+import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.logical.LogicalJoin;
+import org.apache.kylin.metadata.realization.RoutingIndicatorException;
+import org.apache.kylin.query.relnode.OLAPFilterRel;
+import org.apache.kylin.query.relnode.OLAPJoinRel;
+import org.apache.kylin.query.relnode.OLAPNonEquiJoinRel;
+import org.apache.kylin.query.relnode.OLAPRel;
+
+/**
+ */
+public class OLAPJoinRule extends ConverterRule {
+
+<span class="nc" id="L40">    public static final ConverterRule INSTANCE = new OLAPJoinRule();</span>
+
+    public OLAPJoinRule() {
+<span class="nc" id="L43">        super(LogicalJoin.class, Convention.NONE, OLAPRel.CONVENTION, &quot;OLAPJoinRule&quot;);</span>
+<span class="nc" id="L44">    }</span>
+
+    @Override
+    public RelNode convert(RelNode rel) {
+<span class="nc" id="L48">        LogicalJoin join = (LogicalJoin) rel;</span>
+<span class="nc" id="L49">        RelNode left = join.getInput(0);</span>
+<span class="nc" id="L50">        RelNode right = join.getInput(1);</span>
+
+<span class="nc" id="L52">        RelTraitSet traitSet = join.getTraitSet().replace(OLAPRel.CONVENTION);</span>
+<span class="nc" id="L53">        left = convert(left, left.getTraitSet().replace(OLAPRel.CONVENTION));</span>
+<span class="nc" id="L54">        right = convert(right, right.getTraitSet().replace(OLAPRel.CONVENTION));</span>
+
+<span class="nc" id="L56">        final JoinInfo info = JoinInfo.of(left, right, join.getCondition());</span>
+<span class="nc bnc" id="L57" title="All 4 branches missed.">        if (!info.isEqui() &amp;&amp; join.getJoinType() != JoinRelType.INNER) {</span>
+            try {
+<span class="nc" id="L59">                return new OLAPNonEquiJoinRel(join.getCluster(), traitSet, left, right,</span>
+<span class="nc" id="L60">                        join.getCondition(), join.getVariablesSet(), join.getJoinType());</span>
+<span class="nc" id="L61">            } catch (InvalidRelException e) {</span>
+<span class="nc" id="L62">                throw new IllegalStateException(e);</span>
+            }
+        }
+
+<span class="nc" id="L66">        RelOptCluster cluster = join.getCluster();</span>
+        RelNode newRel;
+        try {
+<span class="nc bnc" id="L69" title="All 4 branches missed.">            if (!info.isEqui() &amp;&amp; join.getJoinType() != JoinRelType.INNER) {</span>
+<span class="nc" id="L70">                throw new RoutingIndicatorException(&quot;Currently, Non-equi SQL is not supported by Kylin&quot;);</span>
+            } else {
+<span class="nc" id="L72">                newRel = new OLAPJoinRel(cluster, traitSet, left, right, //</span>
+<span class="nc" id="L73">                        info.getEquiCondition(left, right, cluster.getRexBuilder()), //</span>
+<span class="nc" id="L74">                        info.leftKeys, info.rightKeys, join.getVariablesSet(), join.getJoinType());</span>
+            }
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            if (!info.isEqui()) {</span>
+<span class="nc" id="L77">                newRel = new OLAPFilterRel(cluster, newRel.getTraitSet(), newRel,</span>
+<span class="nc" id="L78">                        info.getRemaining(join.getCluster().getRexBuilder()));</span>
+            }
+<span class="nc" id="L80">        } catch (InvalidRelException e) {</span>
+            // Semantic error not possible. Must be a bug. Convert to internal error.
+<span class="nc" id="L82">            throw new AssertionError(e);</span>
+            // LOGGER.fine(e.toString());
+            // return null;
+<span class="nc" id="L85">        }</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (!info.isEqui()) {</span>
+<span class="nc" id="L87">            newRel = new OLAPFilterRel(cluster, newRel.getTraitSet(), newRel,</span>
+<span class="nc" id="L88">                    info.getRemaining(cluster.getRexBuilder()));</span>
+        }
+<span class="nc" id="L90">        return newRel;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

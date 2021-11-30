@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemcachedCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cache.memcached</a> &gt; <span class="el_source">MemcachedCache.java</span></div><h1>MemcachedCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cache.memcached;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.zip.DataFormatException;
+
+import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang3.SerializationUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.CompressionUtils;
+import org.apache.kylin.common.util.JsonUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.kylin.shaded.com.google.common.base.Charsets;
+import org.apache.kylin.shaded.com.google.common.base.Joiner;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.base.Strings;
+import org.apache.kylin.shaded.com.google.common.base.Throwables;
+import org.apache.kylin.shaded.com.google.common.primitives.Ints;
+import org.apache.kylin.shaded.com.google.common.primitives.Shorts;
+
+import net.spy.memcached.AddrUtil;
+import net.spy.memcached.ConnectionFactory;
+import net.spy.memcached.ConnectionFactoryBuilder;
+import net.spy.memcached.DefaultHashAlgorithm;
+import net.spy.memcached.FailureMode;
+import net.spy.memcached.MemcachedClient;
+import net.spy.memcached.MemcachedClientIF;
+import net.spy.memcached.ops.ArrayOperationQueueFactory;
+import net.spy.memcached.ops.LinkedOperationQueueFactory;
+import net.spy.memcached.ops.OperationQueueFactory;
+import net.spy.memcached.transcoders.SerializingTranscoder;
+
+/**
+ * Cache backend by Memcached. The implementation leverages spymemcached client to talk to the servers.
+ * Memcached itself has a limitation to the size of the key. So the real key for cache lookup is hashed from the orginal key.
+ * The implementation provdes a way for hash collsion detection. It can also compress/decompress the value bytes based on the preconfigred compression threshold to save network bandwidth and storage space.
+ *
+ * @author mingmwang
+ *
+ */
+public class MemcachedCache {
+    public static final int MAX_PREFIX_LENGTH = MemcachedClientIF.MAX_KEY_LENGTH - 40 // length of namespace hash
+            - 40 // length of key hash
+            - 2; // length of separators
+<span class="fc" id="L77">    private static final Logger logger = LoggerFactory.getLogger(MemcachedCache.class);</span>
+    private static final int DEFAULT_TTL = 7 * 24 * 3600;
+
+    private static final String UNABLE_TO_QUEUE_CACHE_OPERATION = &quot;Unable to queue cache operation.&quot;;
+
+    protected final MemcachedCacheConfig config;
+    protected final MemcachedClientIF client;
+    protected final String memcachedPrefix;
+    protected final int compressThreshold;
+<span class="fc" id="L86">    protected final AtomicLong hitCount = new AtomicLong(0);</span>
+<span class="fc" id="L87">    protected final AtomicLong missCount = new AtomicLong(0);</span>
+<span class="fc" id="L88">    protected final AtomicLong readBytes = new AtomicLong(0);</span>
+<span class="fc" id="L89">    protected final AtomicLong timeoutCount = new AtomicLong(0);</span>
+<span class="fc" id="L90">    protected final AtomicLong errorCount = new AtomicLong(0);</span>
+<span class="fc" id="L91">    protected final AtomicLong putCount = new AtomicLong(0);</span>
+<span class="fc" id="L92">    protected final AtomicLong putBytes = new AtomicLong(0);</span>
+    private final int timeToLiveSeconds;
+<span class="fc" id="L94">    protected AtomicLong cacheGetTime = new AtomicLong(0);</span>
+
+    public MemcachedCache(final MemcachedClientIF client, final MemcachedCacheConfig config,
+<span class="fc" id="L97">            final String memcachedPrefix, int timeToLiveSeconds) {</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        Preconditions.checkArgument(memcachedPrefix.length() &lt;= MAX_PREFIX_LENGTH,</span>
+<span class="fc" id="L99">                &quot;memcachedPrefix length [%d] exceeds maximum length [%d]&quot;, memcachedPrefix.length(), MAX_PREFIX_LENGTH);</span>
+<span class="fc" id="L100">        this.memcachedPrefix = memcachedPrefix;</span>
+<span class="fc" id="L101">        this.client = client;</span>
+<span class="fc" id="L102">        this.config = config;</span>
+<span class="fc" id="L103">        this.compressThreshold = config.getMaxObjectSize() / 2;</span>
+<span class="fc" id="L104">        this.timeToLiveSeconds = timeToLiveSeconds;</span>
+<span class="fc" id="L105">    }</span>
+
+    public MemcachedCache(MemcachedCache cache) {
+<span class="fc" id="L108">        this(cache.client, cache.config, cache.memcachedPrefix, cache.timeToLiveSeconds);</span>
+<span class="fc" id="L109">    }</span>
+
+    /**
+     * Create and return the MemcachedCache. Each time call this method will create a new instance.
+     * @param config            The MemcachedCache configuration to control the cache behavior.
+     * @return
+     */
+    public static MemcachedCache create(final MemcachedCacheConfig config, String memcachedPrefix) {
+<span class="fc" id="L117">        return create(config, memcachedPrefix, DEFAULT_TTL);</span>
+    }
+
+    public static MemcachedCache create(final MemcachedCacheConfig config, String memcachedPrefix, int timeToLive) {
+        try {
+<span class="fc" id="L122">            SerializingTranscoder transcoder = new SerializingTranscoder(config.getMaxObjectSize());</span>
+            // always no compression inside, we compress/decompress outside
+<span class="fc" id="L124">            transcoder.setCompressionThreshold(Integer.MAX_VALUE);</span>
+
+            OperationQueueFactory opQueueFactory;
+<span class="fc" id="L127">            int maxQueueSize = config.getMaxOperationQueueSize();</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (maxQueueSize &gt; 0) {</span>
+<span class="nc" id="L129">                opQueueFactory = new ArrayOperationQueueFactory(maxQueueSize);</span>
+            } else {
+<span class="fc" id="L131">                opQueueFactory = new LinkedOperationQueueFactory();</span>
+            }
+<span class="fc" id="L133">            String hostsStr = config.getHosts();</span>
+<span class="fc" id="L134">            ConnectionFactory connectionFactory = new MemcachedConnectionFactoryBuilder()</span>
+<span class="fc" id="L135">                    .setProtocol(ConnectionFactoryBuilder.Protocol.BINARY)</span>
+<span class="fc" id="L136">                    .setHashAlg(DefaultHashAlgorithm.FNV1A_64_HASH)</span>
+<span class="fc" id="L137">                    .setLocatorType(ConnectionFactoryBuilder.Locator.CONSISTENT).setDaemon(true)</span>
+<span class="fc" id="L138">                    .setFailureMode(FailureMode.Redistribute).setTranscoder(transcoder).setShouldOptimize(true)</span>
+<span class="fc" id="L139">                    .setOpQueueMaxBlockTime(config.getTimeout()).setOpTimeout(config.getTimeout())</span>
+<span class="fc" id="L140">                    .setReadBufferSize(config.getReadBufferSize()).setOpQueueFactory(opQueueFactory).build();</span>
+<span class="fc" id="L141">            return new MemcachedCache(new MemcachedClient(new MemcachedConnectionFactory(connectionFactory),</span>
+<span class="fc" id="L142">                    getResolvedAddrList(hostsStr)), config, memcachedPrefix, timeToLive);</span>
+<span class="nc" id="L143">        } catch (IOException e) {</span>
+<span class="nc" id="L144">            logger.error(&quot;Unable to create MemcachedCache instance.&quot;, e);</span>
+<span class="nc" id="L145">            throw Throwables.propagate(e);</span>
+        }
+    }
+
+    public static List&lt;InetSocketAddress&gt; getResolvedAddrList(String hostsStr) {
+<span class="fc" id="L150">        List&lt;InetSocketAddress&gt; addrs = AddrUtil.getAddresses(hostsStr);</span>
+<span class="fc" id="L151">        Iterator&lt;InetSocketAddress&gt; addrIterator = addrs.iterator();</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        while (addrIterator.hasNext()) {</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            if (addrIterator.next().isUnresolved()) {</span>
+<span class="fc" id="L154">                addrIterator.remove();</span>
+            }
+        }
+<span class="fc" id="L157">        return addrs;</span>
+    }
+
+    public String getName() {
+<span class="fc" id="L161">        return memcachedPrefix;</span>
+    }
+
+    public Object getNativeCache() {
+<span class="nc" id="L165">        return client;</span>
+    }
+
+    protected String serializeKey(Object key) {
+        try {
+<span class="fc" id="L170">            return JsonUtil.writeValueAsString(key);</span>
+<span class="nc" id="L171">        } catch (JsonProcessingException e) {</span>
+<span class="nc" id="L172">            logger.warn(&quot;Can not convert key to String.&quot;, e);</span>
+        }
+<span class="nc" id="L174">        return null;</span>
+    }
+
+    protected byte[] serializeValue(Object value) {
+<span class="fc" id="L178">        return SerializationUtils.serialize((Serializable) value);</span>
+    }
+
+    @VisibleForTesting
+    byte[] encodeValue(String keyS, Object value) {
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (keyS == null) {</span>
+<span class="nc" id="L184">            return null;</span>
+        }
+<span class="fc" id="L186">        return encodeValue(keyS.getBytes(Charsets.UTF_8), serializeValue(value));</span>
+    }
+
+    /**
+     * This method is used to get value object based on key from the Cache. It converts key to json string first.
+     * And then it calls getBinary() method to compute hashed key from the original key string, and use this as the real key to do lookup from internal Cache.
+     * Then decodes the real values bytes from the cache lookup result, and leverages object serializer to convert value bytes to object.
+     */
+    public byte[] get(Object key) {
+<span class="fc" id="L195">        return get(serializeKey(key));</span>
+    }
+
+    /**
+     * @param keyS should be the serialized string
+     */
+    public byte[] get(String keyS) {
+<span class="fc" id="L202">        return getBinary(keyS);</span>
+    }
+
+    /**
+     * This method is used to put key/value objects to the Cache. It converts key to json string and leverages object serializer to convert value object to bytes.
+     * And then it calls putBinary() method to compute hashed key from the original key string and encode the original key bytes into value bytes for hash conflicts detection.
+     */
+    public void put(Object key, Object value) {
+<span class="nc" id="L210">        put(serializeKey(key), value);</span>
+<span class="nc" id="L211">    }</span>
+
+    /**
+     * @param keyS should be the serialized string
+     */
+    public void put(String keyS, Object value) {
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (keyS != null) {</span>
+<span class="nc" id="L218">            putBinary(keyS, serializeValue(value), timeToLiveSeconds);</span>
+        }
+<span class="nc" id="L220">    }</span>
+
+    public void evict(Object key) {
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (key == null)</span>
+<span class="nc" id="L224">            return;</span>
+<span class="nc" id="L225">        evict(serializeKey(key));</span>
+<span class="nc" id="L226">    }</span>
+
+    /**
+     * @param keyS should be the serialized string
+     */
+    public void evict(String keyS) {
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (keyS == null)</span>
+<span class="nc" id="L233">            return;</span>
+<span class="nc" id="L234">        client.delete(computeKeyHash(keyS));</span>
+<span class="nc" id="L235">    }</span>
+
+    public void clear() {
+<span class="nc" id="L238">        logger.warn(&quot;Clear Remote Cache!&quot;);</span>
+<span class="nc" id="L239">        Future&lt;Boolean&gt; resultFuture = client.flush();</span>
+        try {
+<span class="nc" id="L241">            boolean result = resultFuture.get();</span>
+<span class="nc" id="L242">            logger.warn(&quot;Clear Remote Cache returned with result: &quot; + result);</span>
+<span class="nc" id="L243">        } catch (Exception e) {</span>
+<span class="nc" id="L244">            logger.warn(&quot;Can't clear Remote Cache.&quot;, e);</span>
+<span class="nc" id="L245">        }</span>
+<span class="nc" id="L246">    }</span>
+
+    public CacheStats getStats() {
+<span class="nc" id="L249">        return new CacheStats(readBytes.get(), cacheGetTime.get(), putCount.get(), putBytes.get(), hitCount.get(),</span>
+<span class="nc" id="L250">                missCount.get(), 0, timeoutCount.get(), errorCount.get());</span>
+    }
+
+    /**
+     * @param keyS should be the serialized string
+     * @return the serialized value
+     */
+    protected byte[] getBinary(String keyS) {
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        if (Strings.isNullOrEmpty(keyS)) {</span>
+<span class="nc" id="L259">            return null;</span>
+        }
+<span class="fc" id="L261">        byte[] bytes = internalGet(computeKeyHash(keyS));</span>
+<span class="fc" id="L262">        return decodeValue(keyS.getBytes(Charsets.UTF_8), bytes);</span>
+    }
+
+    /**
+     * @param keyS should be the serialized string
+     * @param valueB should be the serialized value
+     */
+    protected void putBinary(String keyS, byte[] valueB, int expiration) {
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (Strings.isNullOrEmpty(keyS)) {</span>
+<span class="nc" id="L271">            return;</span>
+        }
+<span class="nc" id="L273">        internalPut(computeKeyHash(keyS), encodeValue(keyS.getBytes(Charsets.UTF_8), valueB), expiration);</span>
+<span class="nc" id="L274">    }</span>
+
+    protected byte[] internalGet(String hashedKey) {
+        Future&lt;Object&gt; future;
+<span class="fc" id="L278">        long start = System.currentTimeMillis();</span>
+        try {
+<span class="fc" id="L280">            future = client.asyncGet(hashedKey);</span>
+<span class="nc" id="L281">        } catch (IllegalStateException e) {</span>
+            // operation did not get queued in time (queue is full)
+<span class="nc" id="L283">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L284">            logger.error(UNABLE_TO_QUEUE_CACHE_OPERATION, e);</span>
+<span class="nc" id="L285">            return null;</span>
+<span class="nc" id="L286">        } catch (Throwable t) {</span>
+<span class="nc" id="L287">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L288">            logger.error(UNABLE_TO_QUEUE_CACHE_OPERATION, t);</span>
+<span class="nc" id="L289">            return null;</span>
+<span class="fc" id="L290">        }</span>
+
+        try {
+<span class="fc" id="L293">            byte[] result = (byte[]) future.get(config.getTimeout(), TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L294">            cacheGetTime.addAndGet(System.currentTimeMillis() - start);</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (result != null) {</span>
+<span class="fc" id="L296">                hitCount.incrementAndGet();</span>
+<span class="fc" id="L297">                readBytes.addAndGet(result.length);</span>
+            } else {
+<span class="nc" id="L299">                missCount.incrementAndGet();</span>
+            }
+<span class="fc" id="L301">            return result;</span>
+<span class="nc" id="L302">        } catch (TimeoutException e) {</span>
+<span class="nc" id="L303">            timeoutCount.incrementAndGet();</span>
+<span class="nc" id="L304">            future.cancel(false);</span>
+<span class="nc" id="L305">            return null;</span>
+<span class="nc" id="L306">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L307">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L308">            throw Throwables.propagate(e);</span>
+<span class="nc" id="L309">        } catch (ExecutionException e) {</span>
+<span class="nc" id="L310">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L311">            logger.error(&quot;ExecutionException when pulling key meta from cache.&quot;, e);</span>
+<span class="nc" id="L312">            return null;</span>
+        }
+    }
+
+    private void internalPut(String hashedKey, byte[] encodedValue, int expiration) {
+        try {
+<span class="nc" id="L318">            client.set(hashedKey, expiration, encodedValue);</span>
+<span class="nc" id="L319">            putCount.incrementAndGet();</span>
+<span class="nc" id="L320">            putBytes.addAndGet(encodedValue.length);</span>
+<span class="nc" id="L321">        } catch (IllegalStateException e) {</span>
+            // operation did not get queued in time (queue is full)
+<span class="nc" id="L323">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L324">            logger.error(UNABLE_TO_QUEUE_CACHE_OPERATION, e);</span>
+<span class="nc" id="L325">        } catch (Throwable t) {</span>
+<span class="nc" id="L326">            errorCount.incrementAndGet();</span>
+<span class="nc" id="L327">            logger.error(UNABLE_TO_QUEUE_CACHE_OPERATION, t);</span>
+<span class="nc" id="L328">        }</span>
+<span class="nc" id="L329">    }</span>
+
+    protected byte[] encodeValue(byte[] key, byte[] valueB) {
+<span class="fc" id="L332">        byte[] compressed = null;</span>
+<span class="pc bpc" id="L333" title="1 of 4 branches missed.">        if (config.isEnableCompression() &amp;&amp; (valueB.length + Ints.BYTES + key.length &gt; compressThreshold)) {</span>
+            try {
+<span class="fc" id="L335">                compressed = CompressionUtils.compress(ByteBuffer.allocate(Ints.BYTES + key.length + valueB.length)</span>
+<span class="fc" id="L336">                        .putInt(key.length).put(key).put(valueB).array());</span>
+<span class="nc" id="L337">            } catch (IOException e) {</span>
+<span class="nc" id="L338">                compressed = null;</span>
+<span class="nc" id="L339">                logger.warn(&quot;Compressing value bytes error.&quot;, e);</span>
+<span class="fc" id="L340">            }</span>
+        }
+<span class="fc bfc" id="L342" title="All 2 branches covered.">        if (compressed != null) {</span>
+<span class="fc" id="L343">            return ByteBuffer.allocate(Shorts.BYTES + compressed.length).putShort((short) 1).put(compressed).array();</span>
+        } else {
+<span class="fc" id="L345">            return ByteBuffer.allocate(Shorts.BYTES + Ints.BYTES + key.length + valueB.length).putShort((short) 0)</span>
+<span class="fc" id="L346">                    .putInt(key.length).put(key).put(valueB).array();</span>
+        }
+    }
+
+    protected byte[] decodeValue(byte[] key, byte[] valueE) {
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">        if (valueE == null)</span>
+<span class="nc" id="L352">            return null;</span>
+<span class="fc" id="L353">        ByteBuffer buf = ByteBuffer.wrap(valueE);</span>
+<span class="fc" id="L354">        short enableCompression = buf.getShort();</span>
+<span class="fc" id="L355">        byte[] uncompressed = null;</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        if (enableCompression == 1) {</span>
+<span class="fc" id="L357">            byte[] value = new byte[buf.remaining()];</span>
+<span class="fc" id="L358">            buf.get(value);</span>
+            try {
+<span class="fc" id="L360">                uncompressed = CompressionUtils.decompress(value);</span>
+<span class="nc" id="L361">            } catch (IOException | DataFormatException e) {</span>
+<span class="nc" id="L362">                logger.error(&quot;Decompressing value bytes error.&quot;, e);</span>
+<span class="nc" id="L363">                return null;</span>
+<span class="fc" id="L364">            }</span>
+        }
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        if (uncompressed != null) {</span>
+<span class="fc" id="L367">            buf = ByteBuffer.wrap(uncompressed);</span>
+        }
+<span class="fc" id="L369">        final int keyLength = buf.getInt();</span>
+<span class="fc" id="L370">        byte[] keyBytes = new byte[keyLength];</span>
+<span class="fc" id="L371">        buf.get(keyBytes);</span>
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">        if (!Arrays.equals(keyBytes, key)) {</span>
+<span class="nc" id="L373">            logger.error(&quot;Keys do not match, possible hash collision!&quot;);</span>
+<span class="nc" id="L374">            return null;</span>
+        }
+<span class="fc" id="L376">        byte[] value = new byte[buf.remaining()];</span>
+<span class="fc" id="L377">        buf.get(value);</span>
+<span class="fc" id="L378">        return value;</span>
+    }
+
+    protected String computeKeyHash(String key) {
+        // hash keys to keep things under 250 characters for memcached
+<span class="fc" id="L383">        return Joiner.on(&quot;:&quot;).skipNulls().join(KylinConfig.getInstanceFromEnv().getDeployEnv(), this.memcachedPrefix,</span>
+<span class="fc" id="L384">                DigestUtils.shaHex(key));</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SelectedColumnMeta.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.querymeta</a> &gt; <span class="el_source">SelectedColumnMeta.java</span></div><h1>SelectedColumnMeta.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.querymeta;
+
+import java.io.Serializable;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class SelectedColumnMeta implements Serializable {
+    public SelectedColumnMeta(boolean isAutoIncrement, boolean isCaseSensitive, boolean isSearchable, boolean isCurrency, int isNullalbe, boolean isSigned, int displaySize, String label, String name, String schemaName, String catelogName, String tableName, int precision, int scale, int columnType, String columnTypeName, boolean isReadOnly, boolean isWritable, boolean isDefinitelyWritable) {
+<span class="nc" id="L28">        super();</span>
+<span class="nc" id="L29">        this.isAutoIncrement = isAutoIncrement;</span>
+<span class="nc" id="L30">        this.isCaseSensitive = isCaseSensitive;</span>
+<span class="nc" id="L31">        this.isSearchable = isSearchable;</span>
+<span class="nc" id="L32">        this.isCurrency = isCurrency;</span>
+<span class="nc" id="L33">        this.isNullable = isNullalbe;</span>
+<span class="nc" id="L34">        this.isSigned = isSigned;</span>
+<span class="nc" id="L35">        this.displaySize = displaySize;</span>
+<span class="nc" id="L36">        this.label = label;</span>
+<span class="nc" id="L37">        this.name = name;</span>
+<span class="nc" id="L38">        this.schemaName = schemaName;</span>
+<span class="nc" id="L39">        this.catelogName = catelogName;</span>
+<span class="nc" id="L40">        this.tableName = tableName;</span>
+<span class="nc" id="L41">        this.precision = precision;</span>
+<span class="nc" id="L42">        this.scale = scale;</span>
+<span class="nc" id="L43">        this.columnType = columnType;</span>
+<span class="nc" id="L44">        this.columnTypeName = columnTypeName;</span>
+<span class="nc" id="L45">        this.isReadOnly = isReadOnly;</span>
+<span class="nc" id="L46">        this.isWritable = isWritable;</span>
+<span class="nc" id="L47">        this.isDefinitelyWritable = isDefinitelyWritable;</span>
+<span class="nc" id="L48">    }</span>
+
+    public boolean isAutoIncrement() {
+<span class="nc" id="L51">        return isAutoIncrement;</span>
+    }
+
+    public boolean isCaseSensitive() {
+<span class="nc" id="L55">        return isCaseSensitive;</span>
+    }
+
+    public boolean isSearchable() {
+<span class="nc" id="L59">        return isSearchable;</span>
+    }
+
+    public boolean isCurrency() {
+<span class="nc" id="L63">        return isCurrency;</span>
+    }
+
+    public int getIsNullable() {
+<span class="nc" id="L67">        return isNullable;</span>
+    }
+
+    public boolean isSigned() {
+<span class="nc" id="L71">        return isSigned;</span>
+    }
+
+    public int getDisplaySize() {
+<span class="nc" id="L75">        return displaySize;</span>
+    }
+
+    public String getLabel() {
+<span class="nc" id="L79">        return label;</span>
+    }
+
+    public String getName() {
+<span class="nc" id="L83">        return name;</span>
+    }
+
+    public String getSchemaName() {
+<span class="nc" id="L87">        return schemaName;</span>
+    }
+
+    public String getCatelogName() {
+<span class="nc" id="L91">        return catelogName;</span>
+    }
+
+    public String getTableName() {
+<span class="nc" id="L95">        return tableName;</span>
+    }
+
+    public int getPrecision() {
+<span class="nc" id="L99">        return precision;</span>
+    }
+
+    public int getScale() {
+<span class="nc" id="L103">        return scale;</span>
+    }
+
+    public int getColumnType() {
+<span class="nc" id="L107">        return columnType;</span>
+    }
+
+    public String getColumnTypeName() {
+<span class="nc" id="L111">        return columnTypeName;</span>
+    }
+
+    public boolean isReadOnly() {
+<span class="nc" id="L115">        return isReadOnly;</span>
+    }
+
+    public boolean isWritable() {
+<span class="nc" id="L119">        return isWritable;</span>
+    }
+
+    public boolean isDefinitelyWritable() {
+<span class="nc" id="L123">        return isDefinitelyWritable;</span>
+    }
+
+    private final boolean isAutoIncrement;
+    private final boolean isCaseSensitive;
+    private final boolean isSearchable;
+    private final boolean isCurrency;
+    private final int isNullable;// 0:nonull, 1:nullable, 2: nullableunknown
+    private final boolean isSigned;
+    private final int displaySize;
+    private final String label;// AS keyword
+    private final String name;
+    private final String schemaName;
+    private final String catelogName;
+    private final String tableName;
+    private final int precision;
+    private final int scale;
+    private final int columnType;// as defined in java.sql.Types
+    private final String columnTypeName;
+    private final boolean isReadOnly;
+    private final boolean isWritable;
+    private final boolean isDefinitelyWritable;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

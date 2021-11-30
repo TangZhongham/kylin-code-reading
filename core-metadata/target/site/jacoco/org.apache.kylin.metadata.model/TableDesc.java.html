@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TableDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">TableDesc.java</span></div><h1>TableDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.StringSplitter;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * Table Metadata from Source. All name should be uppercase.
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+public class TableDesc extends RootPersistentEntity implements ISourceAware {
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="fc" id="L48">    private static final Logger logger = LoggerFactory.getLogger(TableDesc.class);</span>
+
+    private static final String TABLE_TYPE_VIRTUAL_VIEW = &quot;VIRTUAL_VIEW&quot;;
+
+    public static class TableProject {
+       private String table;
+       private String project;
+
+<span class="fc" id="L56">        TableProject(String table, String project) {</span>
+<span class="fc" id="L57">            this.table = table;</span>
+<span class="fc" id="L58">            this.project = project;</span>
+<span class="fc" id="L59">        }</span>
+
+        public String getTable() {
+<span class="fc" id="L62">            return table;</span>
+        }
+
+        public void setTable(String table) {
+<span class="nc" id="L66">            this.table = table;</span>
+<span class="nc" id="L67">        }</span>
+
+        public String getProject() {
+<span class="fc" id="L70">            return project;</span>
+        }
+
+        public void setProject(String project) {
+<span class="nc" id="L74">            this.project = project;</span>
+<span class="nc" id="L75">        }</span>
+    }
+
+    public static String concatRawResourcePath(String nameOnPath) {
+<span class="nc" id="L79">        return ResourceStore.TABLE_RESOURCE_ROOT + &quot;/&quot; + nameOnPath + &quot;.json&quot;;</span>
+    }
+
+    public static String makeResourceName(String tableIdentity, String prj) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        return prj == null ? tableIdentity : tableIdentity + &quot;--&quot; + prj;</span>
+    }
+
+    // this method should only used for getting dest path when copying from src to dest.
+    // if you want to get table's src path, use getResourcePath() instead.
+    public static String concatResourcePath(String tableIdentity, String prj) {
+<span class="nc" id="L89">        return concatRawResourcePath(makeResourceName(tableIdentity, prj));</span>
+    }
+
+    public static TableProject parseResourcePath(String path) {
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (path.endsWith(&quot;.json&quot;))</span>
+<span class="nc" id="L94">            path = path.substring(0, path.length() - &quot;.json&quot;.length());</span>
+
+<span class="fc" id="L96">        int cut = path.lastIndexOf(&quot;/&quot;);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (cut &gt;= 0)</span>
+<span class="nc" id="L98">            path = path.substring(cut + 1);</span>
+
+        String table;
+        String prj;
+<span class="fc" id="L102">        int dash = path.indexOf(&quot;--&quot;);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (dash &gt;= 0) {</span>
+<span class="fc" id="L104">            table = path.substring(0, dash);</span>
+<span class="fc" id="L105">            prj = path.substring(dash + 2);</span>
+        } else {
+<span class="fc" id="L107">            table = path;</span>
+<span class="fc" id="L108">            prj = null;</span>
+        }
+<span class="fc" id="L110">        return new TableProject(table, prj);</span>
+    }
+
+    // ============================================================================
+
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;columns&quot;)
+    private ColumnDesc[] columns;
+<span class="fc" id="L119">    @JsonProperty(&quot;source_type&quot;)</span>
+    private int sourceType = ISourceAware.ID_HIVE;
+    @JsonProperty(&quot;table_type&quot;)
+    private String tableType;
+
+    @JsonProperty(&quot;data_gen&quot;)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String dataGen;
+
+    private String project;
+    private KylinConfig config;
+<span class="fc" id="L130">    private DatabaseDesc database = new DatabaseDesc();</span>
+<span class="fc" id="L131">    private String identity = null;</span>
+<span class="fc" id="L132">    private boolean isBorrowedFromGlobal = false;</span>
+
+<span class="fc" id="L134">    public TableDesc() {</span>
+<span class="fc" id="L135">    }</span>
+
+<span class="fc" id="L137">    public TableDesc(TableDesc other) {</span>
+<span class="fc" id="L138">        this.uuid = other.uuid;</span>
+<span class="fc" id="L139">        this.lastModified = other.lastModified;</span>
+
+<span class="fc" id="L141">        this.name = other.name;</span>
+<span class="fc" id="L142">        this.sourceType = other.sourceType;</span>
+<span class="fc" id="L143">        this.tableType = other.tableType;</span>
+<span class="fc" id="L144">        this.dataGen = other.dataGen;</span>
+
+<span class="fc" id="L146">        this.columns = new ColumnDesc[other.columns.length];</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (int i = 0; i &lt; other.columns.length; i++) {</span>
+<span class="fc" id="L148">            this.columns[i] = new ColumnDesc(other.columns[i]);</span>
+<span class="fc" id="L149">            this.columns[i].init(this);</span>
+        }
+
+<span class="fc" id="L152">        this.project = other.project;</span>
+<span class="fc" id="L153">        this.config = other.config;</span>
+<span class="fc" id="L154">        this.database.setName(other.getDatabase());</span>
+<span class="fc" id="L155">        this.identity = other.identity;</span>
+<span class="fc" id="L156">    }</span>
+
+    @Override
+    public String resourceName() {
+<span class="fc" id="L160">        return makeResourceName(getIdentity(), getProject());</span>
+    }
+
+    public TableDesc appendColumns(ColumnDesc[] computedColumns, boolean makeCopy) {
+<span class="nc bnc" id="L164" title="All 4 branches missed.">        if (computedColumns == null || computedColumns.length == 0) {</span>
+<span class="nc" id="L165">            return this;</span>
+        }
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        TableDesc ret = makeCopy ? new TableDesc(this) : this;</span>
+<span class="nc" id="L169">        ColumnDesc[] existingColumns = ret.columns;</span>
+<span class="nc" id="L170">        List&lt;ColumnDesc&gt; newColumns = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        for (int j = 0; j &lt; computedColumns.length; j++) {</span>
+
+            //check name conflict
+<span class="nc" id="L175">            boolean isFreshCC = true;</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">            for (int i = 0; i &lt; existingColumns.length; i++) {</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                if (existingColumns[i].getName().equalsIgnoreCase(computedColumns[j].getName())) {</span>
+                    // if we're adding a computed column twice, it should be allowed without producing duplicates
+<span class="nc bnc" id="L179" title="All 2 branches missed.">                    if (!existingColumns[i].isComputedColumn()) {</span>
+<span class="nc" id="L180">                        String errorMsg = String.format(Locale.ROOT,</span>
+                                &quot;There is already a column named %s on table %s, please change your computed column name&quot;,
+<span class="nc" id="L182">                                computedColumns[j].getName(), this.getIdentity());</span>
+<span class="nc" id="L183">                        throw new IllegalArgumentException(errorMsg);</span>
+                    } else {
+<span class="nc" id="L185">                        isFreshCC = false;</span>
+                    }
+                }
+            }
+
+<span class="nc bnc" id="L190" title="All 2 branches missed.">            if (isFreshCC) {</span>
+<span class="nc" id="L191">                newColumns.add(computedColumns[j]);</span>
+            }
+        }
+
+<span class="nc" id="L195">        List&lt;ColumnDesc&gt; expandedColumns = Lists.newArrayList(existingColumns);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        for (ColumnDesc newColumnDesc : newColumns) {</span>
+<span class="nc" id="L197">            newColumnDesc.init(ret);</span>
+<span class="nc" id="L198">            expandedColumns.add(newColumnDesc);</span>
+<span class="nc" id="L199">        }</span>
+<span class="nc" id="L200">        ret.columns = expandedColumns.toArray(new ColumnDesc[0]);</span>
+<span class="nc" id="L201">        return ret;</span>
+    }
+
+    public ColumnDesc findColumnByName(String name) {
+        //ignore the db name and table name if exists
+<span class="fc" id="L206">        int lastIndexOfDot = name.lastIndexOf('.');</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (lastIndexOfDot &gt;= 0) {</span>
+<span class="nc" id="L208">            name = name.substring(lastIndexOfDot + 1);</span>
+        }
+
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        for (ColumnDesc c : columns) {</span>
+            // return first matched column
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">            if (name.equalsIgnoreCase(c.getName())) {</span>
+<span class="fc" id="L214">                return c;</span>
+            }
+        }
+<span class="nc" id="L217">        return null;</span>
+    }
+
+    public String getResourcePath() {
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if (isBorrowedFromGlobal()) {</span>
+<span class="nc" id="L222">            return concatResourcePath(getIdentity(), null);</span>
+        }
+
+<span class="nc" id="L225">        return concatResourcePath(getIdentity(), project);</span>
+    }
+
+    /**
+     * @deprecated this is for compatible with data model v1;
+     * @return
+     */
+    @Deprecated
+    public String getResourcePathV1() {
+<span class="nc" id="L234">        return concatResourcePath(name, null);</span>
+    }
+
+    public String getIdentity() {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (identity == null) {</span>
+<span class="fc" id="L239">            setIdentity();</span>
+        }
+<span class="fc" id="L241">        return identity;</span>
+    }
+
+    public boolean isView() {
+<span class="fc" id="L245">        return TABLE_TYPE_VIRTUAL_VIEW.equals(tableType);</span>
+    }
+
+    public boolean isBorrowedFromGlobal() {
+<span class="nc" id="L249">        return isBorrowedFromGlobal;</span>
+    }
+
+    public void setBorrowedFromGlobal(boolean borrowedFromGlobal) {
+<span class="fc" id="L253">        isBorrowedFromGlobal = borrowedFromGlobal;</span>
+<span class="fc" id="L254">    }</span>
+
+    public String getProject() {
+<span class="fc" id="L257">        return project;</span>
+    }
+
+    public void setProject(String project) {
+<span class="fc" id="L261">        this.project = project;</span>
+<span class="fc" id="L262">    }</span>
+
+    public String getName() {
+<span class="fc" id="L265">        return this.name;</span>
+    }
+
+    public void setName(String name) {
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (name != null) {</span>
+<span class="fc" id="L270">            String[] splits = StringSplitter.split(name, &quot;.&quot;);</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">            if (splits.length == 2) {</span>
+<span class="fc" id="L272">                this.setDatabase(splits[0]);</span>
+<span class="fc" id="L273">                this.name = splits[1];</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">            } else if (splits.length == 1) {</span>
+<span class="fc" id="L275">                this.name = splits[0];</span>
+            }
+<span class="fc" id="L277">        } else {</span>
+<span class="nc" id="L278">            this.name = null;</span>
+        }
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        if (identity != null) {</span>
+<span class="nc" id="L281">            setIdentity();</span>
+        }
+<span class="fc" id="L283">    }</span>
+
+    @JsonProperty(&quot;database&quot;)
+    public String getDatabase() {
+<span class="fc" id="L287">        return database.getName();</span>
+    }
+
+    @JsonProperty(&quot;database&quot;)
+    public void setDatabase(String database) {
+<span class="fc" id="L292">        this.database.setName(database);</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">        if (identity != null) {</span>
+<span class="nc" id="L294">            setIdentity();</span>
+        }
+<span class="fc" id="L296">    }</span>
+
+    private void setIdentity() {
+<span class="fc" id="L299">        identity = String.format(Locale.ROOT, &quot;%s.%s&quot;, this.getDatabase().toUpperCase(Locale.ROOT), this.getName())</span>
+<span class="fc" id="L300">                .toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L301">    }</span>
+
+    public ColumnDesc[] getColumns() {
+<span class="fc" id="L304">        return columns;</span>
+    }
+
+    public void setColumns(ColumnDesc[] columns) {
+<span class="nc" id="L308">        this.columns = columns;</span>
+<span class="nc" id="L309">    }</span>
+
+    public int getMaxColumnIndex() {
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (columns == null) {</span>
+<span class="nc" id="L313">            return -1;</span>
+        }
+
+<span class="nc" id="L316">        int max = -1;</span>
+
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        for (ColumnDesc col : columns) {</span>
+<span class="nc" id="L319">            int idx = col.getZeroBasedIndex();</span>
+<span class="nc" id="L320">            max = Math.max(max, idx);</span>
+        }
+<span class="nc" id="L322">        return max;</span>
+    }
+
+    public int getColumnCount() {
+<span class="nc" id="L326">        return getMaxColumnIndex() + 1;</span>
+    }
+
+    public String getDataGen() {
+<span class="fc" id="L330">        return dataGen;</span>
+    }
+
+    public void init(KylinConfig config, String project) {
+<span class="fc" id="L334">        this.project = project;</span>
+<span class="fc" id="L335">        this.config = config;</span>
+
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        if (name != null)</span>
+<span class="fc" id="L338">            name = name.toUpperCase(Locale.ROOT);</span>
+
+<span class="pc bpc" id="L340" title="1 of 2 branches missed.">        if (getDatabase() != null)</span>
+<span class="fc" id="L341">            setDatabase(getDatabase().toUpperCase(Locale.ROOT));</span>
+
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (columns != null) {</span>
+<span class="fc" id="L344">            Arrays.parallelSort(columns, new Comparator&lt;ColumnDesc&gt;() {</span>
+                @Override
+                public int compare(ColumnDesc col1, ColumnDesc col2) {
+<span class="fc" id="L347">                    Integer id1 = Integer.parseInt(col1.getId());</span>
+<span class="fc" id="L348">                    Integer id2 = Integer.parseInt(col2.getId());</span>
+<span class="fc" id="L349">                    return id1.compareTo(id2);</span>
+                }
+            });
+
+<span class="fc bfc" id="L353" title="All 2 branches covered.">            for (ColumnDesc col : columns) {</span>
+<span class="fc" id="L354">                col.init(this);</span>
+            }
+        }
+<span class="fc" id="L357">    }</span>
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L361">        return getIdentity().hashCode();</span>
+    }
+
+    //    @Override
+    //    public boolean equals(Object obj) {
+    //        if (this == obj)
+    //            return true;
+    //        if (!super.equals(obj))
+    //            return false;
+    //        if (getClass() != obj.getClass())
+    //            return false;
+    //        TableDesc other = (TableDesc) obj;
+    //        return getIdentity().equals(other.getIdentity());
+    //    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L379">            return true;</span>
+<span class="nc bnc" id="L380" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L381">            return false;</span>
+
+<span class="nc" id="L383">        TableDesc tableDesc = (TableDesc) o;</span>
+
+<span class="nc bnc" id="L385" title="All 2 branches missed.">        if (sourceType != tableDesc.sourceType)</span>
+<span class="nc" id="L386">            return false;</span>
+<span class="nc bnc" id="L387" title="All 6 branches missed.">        if (name != null ? !name.equals(tableDesc.name) : tableDesc.name != null)</span>
+<span class="nc" id="L388">            return false;</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (!Arrays.equals(columns, tableDesc.columns))</span>
+<span class="nc" id="L390">            return false;</span>
+
+<span class="nc" id="L392">        return getIdentity().equals(tableDesc.getIdentity());</span>
+
+    }
+
+    public String getMaterializedName() {
+<span class="nc" id="L397">        return config.getHiveIntermediateTablePrefix() + database.getName() + &quot;_&quot; + name;</span>
+    }
+
+    public String getMaterializedName(String uuid) {
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        if (uuid == null) {</span>
+<span class="nc" id="L402">            return getMaterializedName();</span>
+        } else
+<span class="nc" id="L404">            return config.getHiveIntermediateTablePrefix() + database.getName() + &quot;_&quot; + name + &quot;_&quot;</span>
+<span class="nc" id="L405">                    + uuid.replaceAll(&quot;-&quot;, &quot;_&quot;);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L410">        return &quot;TableDesc{&quot; + &quot;name='&quot; + name + '\'' + &quot;, columns=&quot; + Arrays.toString(columns) + &quot;, sourceType=&quot;</span>
+                + sourceType + &quot;, tableType='&quot; + tableType + '\'' + &quot;, database=&quot; + database + &quot;, identity='&quot;
+<span class="fc" id="L412">                + getIdentity() + '\'' + '}';</span>
+    }
+
+    /** create a mockup table for unit test */
+    public static TableDesc mockup(String tableName) {
+<span class="fc" id="L417">        TableDesc mockup = new TableDesc();</span>
+<span class="fc" id="L418">        mockup.setName(tableName);</span>
+<span class="fc" id="L419">        return mockup;</span>
+    }
+
+    @Override
+    public int getSourceType() {
+<span class="nc" id="L424">        return sourceType;</span>
+    }
+
+    // cannot set config in init() due to cascade lock() on projectManager
+    @Override
+    public KylinConfig getConfig() {
+<span class="nc bnc" id="L430" title="All 2 branches missed.">        if (project == null) {</span>
+<span class="nc" id="L431">            return config;</span>
+        } else {
+<span class="nc" id="L433">            ProjectInstance projInstance = ProjectManager.getInstance(config).getProject(project);</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">            return projInstance == null ? config : projInstance.getConfig();</span>
+        }
+    }
+
+    public void setSourceType(int sourceType) {
+<span class="nc" id="L439">        this.sourceType = sourceType;</span>
+<span class="nc" id="L440">    }</span>
+
+    public String getTableType() {
+<span class="nc" id="L443">        return tableType;</span>
+    }
+
+    public void setTableType(String tableType) {
+<span class="nc" id="L447">        this.tableType = tableType;</span>
+<span class="nc" id="L448">    }</span>
+
+    public boolean isStreamingTable() {
+<span class="nc bnc" id="L451" title="All 4 branches missed.">        if (sourceType == ISourceAware.ID_KAFKA</span>
+                || sourceType == ISourceAware.ID_KAFKA_HIVE) {
+<span class="nc" id="L453">            return true;</span>
+        }
+<span class="nc" id="L455">        return false;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

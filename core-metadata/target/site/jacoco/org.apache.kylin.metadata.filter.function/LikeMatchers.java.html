@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LikeMatchers.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter.function</a> &gt; <span class="el_source">LikeMatchers.java</span></div><h1>LikeMatchers.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.metadata.filter.function;
+
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringUtils;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+<span class="nc" id="L27">public class LikeMatchers {</span>
+
+    private final static String PERCENT_SIGN = &quot;%&quot;;
+    private final static String UNDERSCORE_SIGN = &quot;_&quot;;
+
+    public interface LikeMatcher {
+        boolean matches(String input);
+    }
+
+    public static class DefaultLikeMatcher implements LikeMatcher {
+        private Pattern p;
+
+<span class="nc" id="L39">        private DefaultLikeMatcher(String patternStr) {</span>
+<span class="nc" id="L40">            patternStr = patternStr.toLowerCase(Locale.ROOT);</span>
+<span class="nc" id="L41">            final String regex = Like.sqlToRegexLike(patternStr, null);</span>
+<span class="nc" id="L42">            p = Pattern.compile(regex);</span>
+<span class="nc" id="L43">        }</span>
+
+        @Override
+        public boolean matches(String input) {
+<span class="nc" id="L47">            return p.matcher(input).matches();</span>
+        }
+    }
+
+    // abc%, %abc, abc%def
+    public static class OnePercentSignLikeMatcher implements LikeMatcher {
+
+<span class="nc" id="L54">        enum SignPosition {</span>
+<span class="nc" id="L55">            LEFT, MIDDLE, RIGHT</span>
+        }
+
+        private SignPosition signPosition;
+        private String[] remaining;
+
+<span class="nc" id="L61">        private OnePercentSignLikeMatcher(String patternStr) {</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (patternStr.startsWith(PERCENT_SIGN)) {</span>
+<span class="nc" id="L63">                signPosition = SignPosition.LEFT;</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            } else if (patternStr.endsWith(PERCENT_SIGN)) {</span>
+<span class="nc" id="L65">                signPosition = SignPosition.RIGHT;</span>
+            } else {
+<span class="nc" id="L67">                signPosition = SignPosition.MIDDLE;</span>
+            }
+<span class="nc" id="L69">            remaining = StringUtils.split(patternStr, PERCENT_SIGN);</span>
+<span class="nc" id="L70">        }</span>
+
+        @Override
+        public boolean matches(String input) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            if (input == null)</span>
+<span class="nc" id="L75">                return false;</span>
+
+<span class="nc bnc" id="L77" title="All 4 branches missed.">            switch (signPosition) {</span>
+            case LEFT:
+<span class="nc" id="L79">                return input.endsWith(remaining[0]);</span>
+            case RIGHT:
+<span class="nc" id="L81">                return input.startsWith(remaining[0]);</span>
+            case MIDDLE:
+<span class="nc bnc" id="L83" title="All 4 branches missed.">                return input.startsWith(remaining[0]) &amp;&amp; input.endsWith(remaining[1]);</span>
+            default:
+<span class="nc" id="L85">                throw new IllegalStateException();</span>
+            }
+        }
+    }
+
+    //only deal with %abc%
+    public static class TwoPercentSignLikeMatcher implements LikeMatcher {
+        private String[] remaining;
+
+<span class="nc" id="L94">        private TwoPercentSignLikeMatcher(String patternStr) {</span>
+<span class="nc" id="L95">            remaining = StringUtils.split(patternStr, PERCENT_SIGN);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            Preconditions.checkState(remaining.length == 1);</span>
+<span class="nc" id="L97">        }</span>
+
+        @Override
+        public boolean matches(String input) {
+<span class="nc" id="L101">            return input.contains(remaining[0]);</span>
+        }
+    }
+
+    //only deal with %abc%def%
+    public static class ThreePercentSignLikeMatcher implements LikeMatcher {
+        private String[] remaining;
+
+<span class="nc" id="L109">        private ThreePercentSignLikeMatcher(String patternStr) {</span>
+<span class="nc" id="L110">            remaining = StringUtils.split(patternStr, PERCENT_SIGN);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            Preconditions.checkState(remaining.length == 2);</span>
+<span class="nc" id="L112">        }</span>
+
+        @Override
+        public boolean matches(String input) {
+<span class="nc" id="L116">            int i = input.indexOf(remaining[0]);</span>
+<span class="nc" id="L117">            int j = input.lastIndexOf(remaining[1]);</span>
+<span class="nc bnc" id="L118" title="All 6 branches missed.">            return (i != -1) &amp;&amp; (j != -1) &amp;&amp; (i &lt;= j - remaining[0].length());</span>
+        }
+    }
+
+    public static LikeMatcher createMatcher(String patternStr) {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (patternStr == null) {</span>
+<span class="nc" id="L124">            throw new IllegalArgumentException(&quot;pattern is null&quot;);</span>
+        }
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (patternStr.contains(UNDERSCORE_SIGN)) {</span>
+<span class="nc" id="L128">            return new DefaultLikeMatcher(patternStr);</span>
+        }
+
+<span class="nc" id="L131">        int count = StringUtils.countMatches(patternStr, PERCENT_SIGN);</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (count == 1) {</span>
+<span class="nc" id="L133">            return new OnePercentSignLikeMatcher(patternStr);</span>
+<span class="nc bnc" id="L134" title="All 6 branches missed.">        } else if (count == 2 &amp;&amp; patternStr.startsWith(PERCENT_SIGN) &amp;&amp; patternStr.endsWith(PERCENT_SIGN)) {</span>
+<span class="nc" id="L135">            return new TwoPercentSignLikeMatcher(patternStr);</span>
+<span class="nc bnc" id="L136" title="All 8 branches missed.">        } else if (count == 3 &amp;&amp; patternStr.startsWith(PERCENT_SIGN) &amp;&amp; patternStr.endsWith(PERCENT_SIGN) &amp;&amp; !patternStr.contains(PERCENT_SIGN + PERCENT_SIGN)) {</span>
+<span class="nc" id="L137">            return new ThreePercentSignLikeMatcher(patternStr);</span>
+        } else {
+<span class="nc" id="L139">            return new DefaultLikeMatcher(patternStr);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

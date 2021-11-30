@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetricsSystem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metrics</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metrics.lib.impl</a> &gt; <span class="el_source">MetricsSystem.java</span></div><h1>MetricsSystem.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metrics.lib.impl;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.metrics.QuerySparkMetrics;
+import org.apache.kylin.metrics.lib.ActiveReservoir;
+import org.apache.kylin.metrics.lib.ActiveReservoirRecordFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.codahale.metrics.MetricRegistry;
+
+public class MetricsSystem extends MetricRegistry {
+<span class="fc" id="L38">    public static final MetricsSystem Metrics = new MetricsSystem();</span>
+<span class="fc" id="L39">    private static final Logger logger = LoggerFactory.getLogger(MetricsSystem.class);</span>
+    private final ConcurrentHashMap&lt;String, ActiveReservoir&gt; activeReservoirs;
+
+<span class="fc" id="L42">    private MetricsSystem() {</span>
+<span class="fc" id="L43">        activeReservoirs = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L45">        Runtime.getRuntime().addShutdownHook(new Thread() {</span>
+            public void run() {
+<span class="fc" id="L47">                logger.info(&quot;Closing Metrics System&quot;);</span>
+                try {
+<span class="nc" id="L49">                    shutdown();</span>
+<span class="nc" id="L50">                } catch (IOException e) {</span>
+<span class="nc" id="L51">                    logger.error(&quot;error during shutdown activeReservoirs and listeners&quot;, e);</span>
+<span class="nc" id="L52">                }</span>
+<span class="nc" id="L53">                logger.info(&quot;Closed Metrics System&quot;);</span>
+<span class="nc" id="L54">            }</span>
+        });
+<span class="fc" id="L56">    }</span>
+
+    public void shutdown() throws IOException {
+<span class="nc" id="L59">        QuerySparkMetrics.getInstance().getQueryExecutionMetricsMap().invalidateAll();</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        for (ActiveReservoir entry : activeReservoirs.values()) {</span>
+<span class="nc" id="L61">            entry.close();</span>
+<span class="nc" id="L62">        }</span>
+<span class="nc" id="L63">    }</span>
+
+    public ActiveReservoir activeReservoir(String name) {
+<span class="fc" id="L66">        return getOrAddActiveReservoir(name);</span>
+    }
+
+    public ActiveReservoir register(String name, ActiveReservoir activeReservoir) {
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">        if (name == null || activeReservoir == null) {</span>
+<span class="fc" id="L71">            throw new IllegalArgumentException(&quot;neither of name or ActiveReservoir can be null&quot;);</span>
+        }
+<span class="fc" id="L73">        final ActiveReservoir existingReservoir = activeReservoirs.putIfAbsent(name, activeReservoir);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (existingReservoir == null) {</span>
+<span class="fc" id="L75">            onActiveReservoirAdded(activeReservoir);</span>
+        } else {
+<span class="fc" id="L77">            throw new IllegalArgumentException(&quot;An active reservoir named &quot; + name + &quot; already exists&quot;);</span>
+        }
+
+<span class="fc" id="L80">        return activeReservoir;</span>
+    }
+
+    /**
+     * Removes the active reservoir with the given name.
+     *
+     * @param name the name of the active reservoir
+     * @return whether or not the active reservoir was removed
+     */
+    public boolean removeActiveReservoir(String name) {
+<span class="fc" id="L90">        final ActiveReservoir recordReservoir = activeReservoirs.remove(name);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (recordReservoir != null) {</span>
+<span class="fc" id="L92">            onActiveReservoirRemoved(recordReservoir);</span>
+<span class="fc" id="L93">            return true;</span>
+        }
+<span class="fc" id="L95">        return false;</span>
+    }
+
+    /**
+     * Removes all active reservoirs which match the given filter.
+     *
+     * @param filter a filter
+     */
+    public void removeActiveReservoirMatching(ActiveReservoirRecordFilter filter) {
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        for (Map.Entry&lt;String, ActiveReservoir&gt; entry : activeReservoirs.entrySet()) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (filter.matches(entry.getKey(), entry.getValue())) {</span>
+<span class="nc" id="L106">                removeActiveReservoir(entry.getKey());</span>
+            }
+<span class="nc" id="L108">        }</span>
+<span class="fc" id="L109">    }</span>
+
+    private void onActiveReservoirAdded(ActiveReservoir activeReservoir) {
+<span class="fc" id="L112">        activeReservoir.start();</span>
+<span class="fc" id="L113">    }</span>
+
+    private void onActiveReservoirRemoved(ActiveReservoir activeReservoir) {
+        try {
+<span class="fc" id="L117">            activeReservoir.close();</span>
+<span class="nc" id="L118">        } catch (IOException e) {</span>
+<span class="fc" id="L119">        }</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Returns a map of all the active reservoirs in the metrics system and their names.
+     *
+     * @return all the active reservoirs in the metrics system
+     */
+    public SortedMap&lt;String, ActiveReservoir&gt; getActiveReservoirs() {
+<span class="fc" id="L128">        return getActiveReservoirs(ActiveReservoirRecordFilter.ALL);</span>
+    }
+
+    /**
+     * Returns a map of all the active reservoirs in the metrics system and their names which match the given filter.
+     *
+     * @param filter    the active reservoir filter to match
+     * @return all the active reservoirs in the metrics system
+     */
+    public SortedMap&lt;String, ActiveReservoir&gt; getActiveReservoirs(ActiveReservoirRecordFilter filter) {
+<span class="fc" id="L138">        final TreeMap&lt;String, ActiveReservoir&gt; reservoirs = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (Map.Entry&lt;String, ActiveReservoir&gt; entry : activeReservoirs.entrySet()) {</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            if (filter.matches(entry.getKey(), entry.getValue())) {</span>
+<span class="fc" id="L141">                reservoirs.put(entry.getKey(), entry.getValue());</span>
+            }
+<span class="fc" id="L143">        }</span>
+<span class="fc" id="L144">        return Collections.unmodifiableSortedMap(reservoirs);</span>
+    }
+
+    private ActiveReservoir getOrAddActiveReservoir(String name) {
+<span class="fc" id="L148">        ActiveReservoir activeReservoir = activeReservoirs.get(name);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        if (activeReservoir != null) {</span>
+<span class="fc" id="L150">            return activeReservoir;</span>
+        } else {
+<span class="nc" id="L152">            String defaultActiveReservoirClass = KylinConfig.getInstanceFromEnv()</span>
+<span class="nc" id="L153">                    .getKylinMetricsActiveReservoirDefaultClass();</span>
+            try {
+<span class="nc" id="L155">                activeReservoir = (ActiveReservoir) Class.forName(defaultActiveReservoirClass).getConstructor()</span>
+<span class="nc" id="L156">                        .newInstance();</span>
+<span class="nc" id="L157">            } catch (Exception e) {</span>
+<span class="nc" id="L158">                logger.warn(</span>
+                        &quot;Failed to initialize the &quot; + defaultActiveReservoirClass + &quot;. The StubReservoir will be used&quot;);
+<span class="nc" id="L160">                activeReservoir = new StubReservoir();</span>
+<span class="nc" id="L161">            }</span>
+<span class="nc" id="L162">            return register(name, activeReservoir);</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

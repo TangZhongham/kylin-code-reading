@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataTypeSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.datatype</a> &gt; <span class="el_source">DataTypeSerializer.java</span></div><h1>DataTypeSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.datatype;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.nio.ByteBuffer;
+import java.util.Map;
+
+import org.apache.kylin.common.util.BytesSerializer;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+/**
+ * Note: the implementations MUST be thread-safe.
+ */
+@SuppressWarnings(&quot;serial&quot;)
+<span class="fc" id="L34">abstract public class DataTypeSerializer&lt;T&gt; implements BytesSerializer&lt;T&gt;, java.io.Serializable {</span>
+
+<span class="fc" id="L36">    final static Map&lt;String, Class&lt;?&gt;&gt; implementations = Maps.newHashMap();</span>
+<span class="fc" id="L37">    protected transient ThreadLocal current = new ThreadLocal();</span>
+    static {
+<span class="fc" id="L39">        implementations.put(&quot;char&quot;, StringSerializer.class);</span>
+<span class="fc" id="L40">        implementations.put(&quot;varchar&quot;, StringSerializer.class);</span>
+<span class="fc" id="L41">        implementations.put(&quot;decimal&quot;, BigDecimalSerializer.class);</span>
+<span class="fc" id="L42">        implementations.put(&quot;double&quot;, DoubleSerializer.class);</span>
+<span class="fc" id="L43">        implementations.put(&quot;float&quot;, DoubleSerializer.class);</span>
+<span class="fc" id="L44">        implementations.put(&quot;bigint&quot;, LongSerializer.class);</span>
+<span class="fc" id="L45">        implementations.put(&quot;long&quot;, LongSerializer.class);</span>
+<span class="fc" id="L46">        implementations.put(&quot;integer&quot;, LongSerializer.class);</span>
+<span class="fc" id="L47">        implementations.put(&quot;int&quot;, LongSerializer.class);</span>
+<span class="fc" id="L48">        implementations.put(&quot;tinyint&quot;, LongSerializer.class);</span>
+<span class="fc" id="L49">        implementations.put(&quot;smallint&quot;, LongSerializer.class);</span>
+<span class="fc" id="L50">        implementations.put(&quot;int4&quot;, Int4Serializer.class);</span>
+<span class="fc" id="L51">        implementations.put(&quot;long8&quot;, Long8Serializer.class);</span>
+<span class="fc" id="L52">        implementations.put(&quot;boolean&quot;, BooleanSerializer.class);</span>
+<span class="fc" id="L53">        implementations.put(&quot;date&quot;, DateTimeSerializer.class);</span>
+<span class="fc" id="L54">        implementations.put(&quot;datetime&quot;, DateTimeSerializer.class);</span>
+<span class="fc" id="L55">        implementations.put(&quot;timestamp&quot;, DateTimeSerializer.class);</span>
+<span class="fc" id="L56">    }</span>
+
+    public static void register(String dataTypeName, Class&lt;? extends DataTypeSerializer&lt;?&gt;&gt; impl) {
+<span class="fc" id="L59">        implementations.put(dataTypeName, impl);</span>
+<span class="fc" id="L60">    }</span>
+
+    public static DataTypeSerializer&lt;?&gt; create(String dataType) {
+<span class="nc" id="L63">        return create(DataType.getType(dataType));</span>
+    }
+
+    public static DataTypeSerializer&lt;?&gt; create(DataType type) {
+<span class="nc" id="L67">        Class&lt;?&gt; clz = implementations.get(type.getName());</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (clz == null)</span>
+<span class="nc" id="L69">            throw new RuntimeException(&quot;No DataTypeSerializer for type &quot; + type);</span>
+
+        try {
+<span class="nc" id="L72">            return (DataTypeSerializer&lt;?&gt;) clz.getConstructor(DataType.class).newInstance(type);</span>
+<span class="nc" id="L73">        } catch (Exception e) {</span>
+<span class="nc" id="L74">            throw new RuntimeException(e); // never happen</span>
+        }
+    }
+
+    /** Peek into buffer and return the length of serialization which is previously written by this.serialize().
+     *  The current position of input buffer is guaranteed to be at the beginning of the serialization.
+     *  The implementation must not alter the buffer position by its return. */
+    abstract public int peekLength(ByteBuffer in);
+
+    /** Return the max number of bytes to the longest possible serialization */
+    abstract public int maxLength();
+
+    /** Get an estimate of the average size in bytes of this kind of serialized data */
+    abstract public int getStorageBytesEstimate();
+
+    protected double getStorageBytesEstimate(double count) {
+<span class="nc" id="L90">        return 0;</span>
+    }
+
+    /** An optional convenient method that converts a string to this data type (for dimensions) */
+    public T valueOf(String str) {
+<span class="nc" id="L95">        throw new UnsupportedOperationException();</span>
+    }
+
+    /** If the query is exactAggregation and has some memory hungry measures,
+     * we could directly return final result to speed up the query.
+     * If the DataTypeSerializer support this,
+     * which should override the getFinalResult method, besides that, the deserialize and peekLength method should also support it, like {@link org.apache.kylin.measure.bitmap.BitmapSerializer} */
+    public boolean supportDirectReturnResult() {
+<span class="nc" id="L103">        return false;</span>
+    }
+
+    /** An optional method that converts a expensive buffer to lightweight buffer containing final result (for memory hungry measures) */
+    public ByteBuffer getFinalResult(ByteBuffer in) {
+<span class="nc" id="L108">        throw new UnsupportedOperationException();</span>
+    }
+
+    /** Convert from obj to string */
+    public String toString(T value) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (value == null)</span>
+<span class="nc" id="L114">            return &quot;NULL&quot;;</span>
+        else
+<span class="nc" id="L116">            return value.toString();</span>
+    }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="nc" id="L120">        in.defaultReadObject();</span>
+<span class="nc" id="L121">        current = new ThreadLocal();</span>
+<span class="nc" id="L122">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

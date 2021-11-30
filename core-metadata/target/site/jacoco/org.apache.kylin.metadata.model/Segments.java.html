@@ -1,0 +1,509 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Segments.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">Segments.java</span></div><h1>Segments.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.model.SegmentRange.Endpoint;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+<span class="nc bnc" id="L38" title="All 2 branches missed.">public class Segments&lt;T extends ISegment&gt; extends ArrayList&lt;T&gt; implements Serializable {</span>
+
+    private static final long serialVersionUID = 1L;
+
+<span class="nc" id="L42">    private static final Logger logger = LoggerFactory.getLogger(Segments.class);</span>
+
+    public static ISegmentAdvisor newSegmentAdvisor(ISegment seg) {
+        try {
+<span class="nc" id="L46">            Class&lt;? extends ISegmentAdvisor&gt; clz = ClassUtil.forName(seg.getConfig().getSegmentAdvisor(),</span>
+                    ISegmentAdvisor.class);
+<span class="nc" id="L48">            return clz.getConstructor(ISegment.class).newInstance(seg);</span>
+<span class="nc" id="L49">        } catch (Exception e) {</span>
+<span class="nc" id="L50">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    // ============================================================================
+
+    public Segments() {
+<span class="nc" id="L57">        super();</span>
+<span class="nc" id="L58">    }</span>
+
+    public Segments(List&lt;T&gt; copy) {
+<span class="nc" id="L61">        super(copy);</span>
+<span class="nc" id="L62">    }</span>
+
+    public T getFirstSegment() {
+<span class="nc bnc" id="L65" title="All 4 branches missed.">        if (this == null || this.size() == 0) {</span>
+<span class="nc" id="L66">            return null;</span>
+        } else {
+<span class="nc" id="L68">            return this.get(0);</span>
+        }
+    }
+
+    public long getTSStart() {
+<span class="nc" id="L73">        Segments&lt;T&gt; readySegs = getSegments(SegmentStatusEnum.READY);</span>
+
+<span class="nc" id="L75">        long startTime = Long.MAX_VALUE;</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        for (ISegment seg : readySegs) {</span>
+<span class="nc" id="L77">            startTime = Math.min(startTime, seg.getTSRange().start.v);</span>
+<span class="nc" id="L78">        }</span>
+
+<span class="nc" id="L80">        return startTime;</span>
+    }
+
+    public long getTSEnd() {
+<span class="nc" id="L84">        Segments&lt;T&gt; readySegs = getSegments(SegmentStatusEnum.READY);</span>
+
+<span class="nc" id="L86">        long endTime = Long.MIN_VALUE;</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        for (ISegment seg : readySegs) {</span>
+<span class="nc" id="L88">            endTime = Math.max(endTime, seg.getTSRange().end.v);</span>
+<span class="nc" id="L89">        }</span>
+
+<span class="nc" id="L91">        return endTime;</span>
+    }
+
+    public T getLatestReadySegment() {
+<span class="nc" id="L95">        T latest = null;</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (int i = this.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L97">            T seg = this.get(i);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            if (seg.getStatus() != SegmentStatusEnum.READY)</span>
+<span class="nc" id="L99">                continue;</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">            if (latest == null || latest.getTSRange().end.v &lt; seg.getTSRange().end.v) {</span>
+<span class="nc" id="L101">                latest = seg;</span>
+            }
+        }
+<span class="nc" id="L104">        return latest;</span>
+    }
+
+    public T getLatestBuiltSegment() {
+<span class="nc" id="L108">        T latest = null;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        for (int i = this.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L110">            T seg = this.get(i);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            if (seg.getLastBuildTime() &gt; 0) {</span>
+<span class="nc bnc" id="L112" title="All 4 branches missed.">                if (latest == null || seg.getLastBuildTime() &gt; latest.getLastBuildTime())</span>
+<span class="nc" id="L113">                    latest = seg;</span>
+            }
+        }
+<span class="nc" id="L116">        return latest;</span>
+    }
+
+    public Segments&lt;T&gt; getSegments(SegmentStatusEnum status) {
+<span class="nc" id="L120">        Segments&lt;T&gt; result = new Segments&lt;&gt;();</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        for (T segment : this) {</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (segment.getStatus() == status) {</span>
+<span class="nc" id="L124">                result.add(segment);</span>
+            }
+<span class="nc" id="L126">        }</span>
+<span class="nc" id="L127">        return result;</span>
+    }
+
+    public T getSegment(String name, SegmentStatusEnum status) {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        for (T segment : this) {</span>
+<span class="nc bnc" id="L132" title="All 6 branches missed.">            if ((null != segment.getName() &amp;&amp; segment.getName().equals(name))</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                    &amp;&amp; (status == null || segment.getStatus() == status)) {</span>
+<span class="nc" id="L134">                return segment;</span>
+            }
+<span class="nc" id="L136">        }</span>
+<span class="nc" id="L137">        return null;</span>
+    }
+
+    public Segments&lt;T&gt; getBuildingSegments() {
+<span class="nc" id="L141">        Segments&lt;T&gt; buildingSegments = new Segments();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (null != this) {</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            for (T segment : this) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                if (SegmentStatusEnum.NEW == segment.getStatus()</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">                        || SegmentStatusEnum.READY_PENDING == segment.getStatus()) {</span>
+<span class="nc" id="L146">                    buildingSegments.add(segment);</span>
+                }
+<span class="nc" id="L148">            }</span>
+        }
+<span class="nc" id="L150">        return buildingSegments;</span>
+    }
+
+    public Segments&lt;T&gt; getMergingSegments(T mergedSegment) {
+<span class="nc" id="L154">        Segments&lt;T&gt; result = new Segments();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (mergedSegment == null)</span>
+<span class="nc" id="L156">            return result;</span>
+
+<span class="nc" id="L158">        long maxSegMergeSpan = KylinConfig.getInstanceFromEnv().getMaxSegmentMergeSpan();</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        for (T seg : this) {</span>
+<span class="nc bnc" id="L160" title="All 4 branches missed.">            if (seg.getStatus() != SegmentStatusEnum.READY &amp;&amp; seg.getStatus() != SegmentStatusEnum.READY_PENDING)</span>
+<span class="nc" id="L161">                continue;</span>
+
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            if (seg == mergedSegment)</span>
+<span class="nc" id="L164">                continue;</span>
+
+<span class="nc bnc" id="L166" title="All 4 branches missed.">            if (maxSegMergeSpan &gt; 0 &amp;&amp; seg.getTSRange().duration() &gt; maxSegMergeSpan) {</span>
+<span class="nc" id="L167">                continue;</span>
+            }
+
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            if (mergedSegment.getSegRange().contains(seg.getSegRange())) {</span>
+<span class="nc" id="L171">                result.add(seg);</span>
+            }
+<span class="nc" id="L173">        }</span>
+<span class="nc" id="L174">        return result;</span>
+    }
+
+    public void removeLatestSegmentByVolatileRange(Segments&lt;T&gt; segs, long volatileRange) {
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if(volatileRange &lt;= 0) {</span>
+<span class="nc" id="L179">            return;</span>
+        }
+<span class="nc" id="L181">        long latestSegEndTs = Long.MIN_VALUE;</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        for(T seg: segs) {</span>
+<span class="nc" id="L183">            latestSegEndTs = Math.max(latestSegEndTs, seg.getTSRange().end.v);</span>
+<span class="nc" id="L184">        }</span>
+<span class="nc" id="L185">        Segments volatileSegs = new Segments();</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        for(T seg: segs) {</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (seg.getTSRange().end.v + volatileRange &gt; latestSegEndTs) {</span>
+<span class="nc" id="L188">                logger.warn(&quot;Segment in volatile range, seg: {}, rangeStart:{}, rangeEnd {}.&quot;, seg,</span>
+<span class="nc" id="L189">                        seg.getTSRange().start.v, seg.getTSRange().end.v);</span>
+<span class="nc" id="L190">                volatileSegs.add(seg);</span>
+            }
+<span class="nc" id="L192">        }</span>
+<span class="nc" id="L193">        segs.removeAll(volatileSegs);</span>
+<span class="nc" id="L194">    }</span>
+
+    public void removeMaxSpanSegment(Segments&lt;T&gt; segs, long maxSegSpan) {
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (maxSegSpan &lt;= 0) {</span>
+<span class="nc" id="L198">            return;</span>
+        }
+<span class="nc" id="L200">        Segments maxSpanSegs = new Segments();</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        for (T seg : segs) {</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if (seg.getTSRange().duration() &gt;= maxSegSpan) {</span>
+
+<span class="nc" id="L204">                logger.warn(&quot;segment with max span: seg:&quot; + seg.toString() +</span>
+<span class="nc" id="L205">                        &quot;rangeStart:&quot; + seg.getTSRange().start.v + &quot;, rangeEnd&quot; + seg.getTSRange().end.v);</span>
+<span class="nc" id="L206">                maxSpanSegs.add(seg);</span>
+            }
+<span class="nc" id="L208">        }</span>
+<span class="nc" id="L209">        segs.removeAll(maxSpanSegs);</span>
+<span class="nc" id="L210">    }</span>
+
+    public SegmentRange autoMergeCubeSegments(boolean needAutoMerge, String cubeName, long[] timeRanges, long volatileRange) throws IOException {
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (!needAutoMerge) {</span>
+<span class="nc" id="L214">            logger.debug(&quot;Cube &quot; + cubeName + &quot; doesn't need auto merge&quot;);</span>
+<span class="nc" id="L215">            return null;</span>
+        }
+
+<span class="nc" id="L218">        int buildingSize = getBuildingSegments().size();</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (buildingSize &gt; 0) {</span>
+<span class="nc" id="L220">            logger.debug(&quot;Cube &quot; + cubeName + &quot; has &quot; + buildingSize + &quot; building segments&quot;);</span>
+        }
+
+<span class="nc" id="L223">        Segments&lt;T&gt; readySegs = getSegments(SegmentStatusEnum.READY);</span>
+
+<span class="nc" id="L225">        Segments mergingSegs = new Segments();</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (buildingSize &gt; 0) {</span>
+
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            for (ISegment building : getBuildingSegments()) {</span>
+                // exclude those under-merging segs
+<span class="nc bnc" id="L230" title="All 2 branches missed.">                for (ISegment ready : readySegs) {</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">                    if (building.getSegRange().contains(ready.getSegRange())) {</span>
+<span class="nc" id="L232">                        mergingSegs.add(ready);</span>
+                    }
+<span class="nc" id="L234">                }</span>
+<span class="nc" id="L235">            }</span>
+        }
+<span class="nc" id="L237">        removeLatestSegmentByVolatileRange(readySegs, volatileRange);</span>
+<span class="nc" id="L238">        removeMaxSpanSegment(readySegs, KylinConfig.getInstanceFromEnv().getMaxSegmentMergeSpan());</span>
+        // exclude those already under merging segments
+<span class="nc" id="L240">        readySegs.removeAll(mergingSegs);</span>
+
+<span class="nc" id="L242">        Arrays.parallelSort(timeRanges);</span>
+
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        for (int i = timeRanges.length - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L245">            long toMergeRange = timeRanges[i];</span>
+
+<span class="nc bnc" id="L247" title="All 2 branches missed.">            for (int s = 0; s &lt; readySegs.size(); s++) {</span>
+<span class="nc" id="L248">                ISegment seg = readySegs.get(s);</span>
+<span class="nc" id="L249">                TSRange tsRange = new TSRange(seg.getTSRange().start.v, seg.getTSRange().start.v + toMergeRange);</span>
+<span class="nc" id="L250">                Pair&lt;T, T&gt; p = readySegs.getSubList(s, readySegs.size()) //</span>
+<span class="nc" id="L251">                        .findMergeOffsetsByDateRange(tsRange, toMergeRange);</span>
+<span class="nc bnc" id="L252" title="All 4 branches missed.">                if (p != null &amp;&amp; p.getSecond().getTSRange().end.v - p.getFirst().getTSRange().start.v &gt;= toMergeRange)</span>
+<span class="nc" id="L253">                    return new SegmentRange(p.getFirst().getSegRange().start.v, p.getSecond().getSegRange().end.v);</span>
+            }
+        }
+
+<span class="nc" id="L257">        return null;</span>
+    }
+
+    public Pair&lt;T, T&gt; findMergeOffsetsByDateRange(TSRange tsRange, long skipSegDateRangeCap) {
+        // must be offset cube
+<span class="nc" id="L262">        Segments result = new Segments();</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        for (ISegment seg : this) {</span>
+
+            // include if date range overlaps
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            if (tsRange.overlaps(seg.getTSRange())) {</span>
+
+                // reject too big segment
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                if (seg.getTSRange().duration() &gt; skipSegDateRangeCap)</span>
+<span class="nc" id="L270">                    break;</span>
+
+                // reject holes
+<span class="nc bnc" id="L273" title="All 4 branches missed.">                if (result.size() &gt; 0 &amp;&amp; !result.getLast().getSegRange().connects(seg.getSegRange()))</span>
+<span class="nc" id="L274">                    break;</span>
+
+<span class="nc" id="L276">                result.add(seg);</span>
+            }
+<span class="nc" id="L278">        }</span>
+
+<span class="nc bnc" id="L280" title="All 2 branches missed.">        if (result.size() &lt;= 1)</span>
+<span class="nc" id="L281">            return null;</span>
+        else
+<span class="nc" id="L283">            return (Pair&lt;T, T&gt;) Pair.newPair(result.getFirst(), result.getLast());</span>
+    }
+
+    /**
+     * Smartly figure out the TOBE segments once all new segments are built.
+     * - Ensures no gap, no overlap
+     * - Favors new segments over the old
+     * - Favors big segments over the small
+     */
+    public Segments calculateToBeSegments(ISegment newSegment) {
+
+<span class="nc" id="L294">        Segments tobe = (Segments) this.clone();</span>
+<span class="nc bnc" id="L295" title="All 4 branches missed.">        if (newSegment != null &amp;&amp; !tobe.contains(newSegment)) {</span>
+<span class="nc" id="L296">            tobe.add(newSegment);</span>
+        }
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        if (tobe.size() == 0)</span>
+<span class="nc" id="L299">            return tobe;</span>
+
+        // sort by source offset
+<span class="nc" id="L302">        Collections.sort(tobe);</span>
+
+<span class="nc" id="L304">        ISegment firstSeg = tobe.getFirst();</span>
+<span class="nc" id="L305">        firstSeg.validate();</span>
+
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        for (int i = 0, j = 1; j &lt; tobe.size();) {</span>
+<span class="nc" id="L308">            ISegment is = (ISegment) tobe.get(i);</span>
+<span class="nc" id="L309">            ISegment js = (ISegment) tobe.get(j);</span>
+<span class="nc" id="L310">            js.validate();</span>
+
+            // check i is either ready or new
+<span class="nc bnc" id="L313" title="All 4 branches missed.">            if (!isNew(is) &amp;&amp; !isReady(is)) {</span>
+<span class="nc" id="L314">                tobe.remove(i);</span>
+<span class="nc" id="L315">                continue;</span>
+            }
+
+            // check j is either ready or new
+<span class="nc bnc" id="L319" title="All 4 branches missed.">            if (!isNew(js) &amp;&amp; !isReady(js)) {</span>
+<span class="nc" id="L320">                tobe.remove(j);</span>
+<span class="nc" id="L321">                continue;</span>
+            }
+
+<span class="nc bnc" id="L324" title="All 2 branches missed.">            if (is.getSegRange().start.compareTo(js.getSegRange().start) == 0) {</span>
+                // if i, j competes
+<span class="nc bnc" id="L326" title="All 8 branches missed.">                if (isReady(is) &amp;&amp; isReady(js) || isNew(is) &amp;&amp; isNew(js)) {</span>
+                    // if both new or ready, favor the bigger segment
+<span class="nc bnc" id="L328" title="All 2 branches missed.">                    if (is.getSegRange().end.compareTo(js.getSegRange().end) &lt;= 0) {</span>
+<span class="nc" id="L329">                        tobe.remove(i);</span>
+                    } else {
+<span class="nc" id="L331">                        tobe.remove(j);</span>
+                    }
+<span class="nc" id="L333">                    continue;</span>
+                } else {
+                    // otherwise, favor the new segment
+<span class="nc bnc" id="L336" title="All 4 branches missed.">                    if (isNew(is) &amp;&amp; is.equals(newSegment)) {</span>
+<span class="nc" id="L337">                        tobe.remove(j);</span>
+<span class="nc" id="L338">                        continue;</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                    } else if (js.equals(newSegment)) {</span>
+<span class="nc" id="L340">                        tobe.remove(i);</span>
+<span class="nc" id="L341">                        continue;</span>
+                    }
+                }
+            }
+
+            // if i, j in sequence
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            if (is.getSegRange().end.compareTo(js.getSegRange().start) &lt;= 0) {</span>
+<span class="nc" id="L348">                i++;</span>
+<span class="nc" id="L349">                j++;</span>
+<span class="nc" id="L350">                continue;</span>
+            }
+
+            // js can be covered by is
+<span class="nc bnc" id="L354" title="All 2 branches missed.">            if (is.equals(newSegment)) {</span>
+                // seems j not fitting
+<span class="nc" id="L356">                tobe.remove(j);</span>
+<span class="nc" id="L357">                continue;</span>
+            } else {
+<span class="nc" id="L359">                i++;</span>
+<span class="nc" id="L360">                j++;</span>
+<span class="nc" id="L361">                continue;</span>
+            }
+
+        }
+
+<span class="nc" id="L366">        return tobe;</span>
+    }
+
+    private boolean isReady(ISegment seg) {
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        return seg.getStatus() == SegmentStatusEnum.READY;</span>
+    }
+
+    private boolean isNew(ISegment seg) {
+<span class="nc bnc" id="L374" title="All 4 branches missed.">        return seg.getStatus() == SegmentStatusEnum.NEW || seg.getStatus() == SegmentStatusEnum.READY_PENDING;</span>
+    }
+
+    private T getLast() {
+<span class="nc bnc" id="L378" title="All 4 branches missed.">        assert this.size() != 0;</span>
+<span class="nc" id="L379">        return this.get(this.size() - 1);</span>
+    }
+
+    private T getFirst() {
+<span class="nc bnc" id="L383" title="All 4 branches missed.">        assert this.size() != 0;</span>
+<span class="nc" id="L384">        return this.get(0);</span>
+    }
+
+    private Segments&lt;T&gt; getSubList(int from, int to) {
+<span class="nc" id="L388">        Segments&lt;T&gt; result = new Segments&lt;&gt;();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        for (T seg : this.subList(from, to)) {</span>
+<span class="nc" id="L390">            result.add(seg);</span>
+<span class="nc" id="L391">        }</span>
+<span class="nc" id="L392">        return result;</span>
+    }
+
+    /**
+     * Validates:
+     * - consistent isOffsetCube()
+     * - for all ready segments, sourceOffset MUST have no overlaps, SHOULD have no holes
+     * - for all new segments, sourceOffset MUST have no overlaps, MUST contain a ready segment if overlaps with it
+     * - for all new segments, sourceOffset SHOULD fit/connect another segments
+     * - dateRange does not matter any more
+     */
+    public void validate() {
+<span class="nc bnc" id="L404" title="All 2 branches missed.">        if (this.isEmpty())</span>
+<span class="nc" id="L405">            return;</span>
+
+        // make a copy, don't modify existing list
+<span class="nc" id="L408">        Segments&lt;T&gt; all = new Segments&lt;T&gt;(this);</span>
+<span class="nc" id="L409">        Collections.sort(all);</span>
+
+        // check consistent isOffsetCube()
+<span class="nc" id="L412">        boolean isOffsetCube = all.get(0).isOffsetCube();</span>
+<span class="nc bnc" id="L413" title="All 2 branches missed.">        for (ISegment seg : all) {</span>
+<span class="nc" id="L414">            seg.validate();</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">            if (seg.isOffsetCube() != isOffsetCube)</span>
+<span class="nc" id="L416">                throw new IllegalStateException(&quot;Inconsistent isOffsetsOn for segment &quot; + seg);</span>
+<span class="nc" id="L417">        }</span>
+
+<span class="nc" id="L419">        List&lt;ISegment&gt; ready = Lists.newArrayListWithCapacity(all.size());</span>
+<span class="nc" id="L420">        List&lt;ISegment&gt; news = Lists.newArrayListWithCapacity(all.size());</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">        for (ISegment seg : all) {</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">            if (seg.getStatus() == SegmentStatusEnum.READY)</span>
+<span class="nc" id="L423">                ready.add(seg);</span>
+            else
+<span class="nc" id="L425">                news.add(seg);</span>
+<span class="nc" id="L426">        }</span>
+
+        // for all ready segments, sourceOffset MUST have no overlaps, SHOULD have no holes
+<span class="nc" id="L429">        ISegment pre = null;</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">        for (ISegment seg : ready) {</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">            if (pre != null) {</span>
+<span class="nc bnc" id="L432" title="All 2 branches missed.">                if (pre.getSegRange().overlaps(seg.getSegRange()))</span>
+<span class="nc" id="L433">                    throw new IllegalStateException(&quot;Segments overlap: &quot; + pre + &quot; and &quot; + seg);</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                if (pre.getSegRange().apartBefore(seg.getSegRange()))</span>
+<span class="nc" id="L435">                    logger.warn(&quot;Hole between adjacent READY segments &quot; + pre + &quot; and &quot; + seg);</span>
+            }
+<span class="nc" id="L437">            pre = seg;</span>
+<span class="nc" id="L438">        }</span>
+
+        // for all other segments, sourceOffset MUST have no overlaps, MUST contain a ready segment if overlaps with it
+<span class="nc" id="L441">        pre = null;</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        for (ISegment seg : news) {</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">            if (pre != null) {</span>
+<span class="nc bnc" id="L444" title="All 2 branches missed.">                if (pre.getSegRange().overlaps(seg.getSegRange()))</span>
+<span class="nc" id="L445">                    throw new IllegalStateException(&quot;Segments overlap: &quot; + pre + &quot; and &quot; + seg);</span>
+            }
+<span class="nc" id="L447">            pre = seg;</span>
+
+<span class="nc bnc" id="L449" title="All 2 branches missed.">            for (ISegment aReady : ready) {</span>
+<span class="nc bnc" id="L450" title="All 2 branches missed.">                if (seg.getSegRange().overlaps(aReady.getSegRange())</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">                        &amp;&amp; !seg.getSegRange().contains(aReady.getSegRange()))</span>
+<span class="nc" id="L452">                    throw new IllegalStateException(&quot;Segments overlap: &quot; + aReady + &quot; and &quot; + seg);</span>
+<span class="nc" id="L453">            }</span>
+<span class="nc" id="L454">        }</span>
+
+        // for all other segments, sourceOffset SHOULD fit/connect other segments
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        for (ISegment seg : news) {</span>
+<span class="nc" id="L458">            Pair&lt;Boolean, Boolean&gt; pair = all.fitInSegments(seg);</span>
+<span class="nc" id="L459">            boolean startFit = pair.getFirst();</span>
+<span class="nc" id="L460">            boolean endFit = pair.getSecond();</span>
+
+<span class="nc bnc" id="L462" title="All 2 branches missed.">            if (!startFit)</span>
+<span class="nc" id="L463">                logger.warn(&quot;NEW segment start does not fit/connect with other segments: &quot; + seg);</span>
+<span class="nc bnc" id="L464" title="All 2 branches missed.">            if (!endFit)</span>
+<span class="nc" id="L465">                logger.warn(&quot;NEW segment end does not fit/connect with other segments: &quot; + seg);</span>
+<span class="nc" id="L466">        }</span>
+<span class="nc" id="L467">    }</span>
+
+    public Pair&lt;Boolean, Boolean&gt; fitInSegments(ISegment newOne) {
+<span class="nc bnc" id="L470" title="All 2 branches missed.">        if (this.isEmpty()) {</span>
+<span class="nc" id="L471">          return Pair.newPair(false, false);        </span>
+        }
+
+<span class="nc" id="L474">        ISegment first = this.get(0);</span>
+<span class="nc" id="L475">        ISegment last = this.get(this.size() - 1);</span>
+<span class="nc" id="L476">        Endpoint start = newOne.getSegRange().start;</span>
+<span class="nc" id="L477">        Endpoint end = newOne.getSegRange().end;</span>
+<span class="nc" id="L478">        boolean startFit = false;</span>
+<span class="nc" id="L479">        boolean endFit = false;</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">        for (ISegment sss : this) {</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">            if (sss == newOne)</span>
+<span class="nc" id="L482">                continue;</span>
+<span class="nc bnc" id="L483" title="All 6 branches missed.">            startFit = startFit || (start.equals(sss.getSegRange().start) || start.equals(sss.getSegRange().end));</span>
+<span class="nc bnc" id="L484" title="All 6 branches missed.">            endFit = endFit || (end.equals(sss.getSegRange().start) || end.equals(sss.getSegRange().end));</span>
+<span class="nc" id="L485">        }</span>
+<span class="nc bnc" id="L486" title="All 6 branches missed.">        if (!startFit &amp;&amp; endFit &amp;&amp; newOne == first)</span>
+<span class="nc" id="L487">            startFit = true;</span>
+<span class="nc bnc" id="L488" title="All 6 branches missed.">        if (!endFit &amp;&amp; startFit &amp;&amp; newOne == last)</span>
+<span class="nc" id="L489">            endFit = true;</span>
+
+<span class="nc" id="L491">        return Pair.newPair(startFit, endFit);</span>
+    }
+
+    // given all segments in cube, checks whether specified segment is operative (not under processing)
+    public boolean isOperative(ISegment seg) {
+<span class="nc bnc" id="L496" title="All 2 branches missed.">        if (seg.getStatus() != SegmentStatusEnum.READY)</span>
+<span class="nc" id="L497">            return false;</span>
+
+<span class="nc bnc" id="L499" title="All 2 branches missed.">        for (ISegment other : this) {</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">            if (other == seg)</span>
+<span class="nc" id="L501">                continue;</span>
+
+<span class="nc bnc" id="L503" title="All 2 branches missed.">            if (other.getSegRange().overlaps(seg.getSegRange()))</span>
+<span class="nc" id="L504">                return false;</span>
+<span class="nc" id="L505">        }</span>
+<span class="nc" id="L506">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

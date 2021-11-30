@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidToGridTableMapping.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.gridtable</a> &gt; <span class="el_source">CuboidToGridTableMapping.java</span></div><h1>CuboidToGridTableMapping.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.gridtable;
+
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.model.HBaseColumnDesc;
+import org.apache.kylin.cube.model.HBaseColumnFamilyDesc;
+import org.apache.kylin.dimension.DimensionEncoding;
+import org.apache.kylin.dimension.IDimensionEncodingMap;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+<span class="nc bnc" id="L45" title="All 2 branches missed.">public class CuboidToGridTableMapping {</span>
+
+    final private Cuboid cuboid;
+
+    private List&lt;DataType&gt; gtDataTypes;
+    private List&lt;ImmutableBitSet&gt; gtColBlocks;
+
+    private int nDimensions;
+    private Map&lt;TblColRef, Integer&gt; dim2gt;
+    private ImmutableBitSet gtPrimaryKey;
+
+    private int nMetrics;
+    private Map&lt;FunctionDesc, Integer&gt; metrics2gt; // because count distinct may have a holistic version
+
+<span class="nc" id="L59">    public CuboidToGridTableMapping(Cuboid cuboid) {</span>
+<span class="nc" id="L60">        this.cuboid = cuboid;</span>
+<span class="nc" id="L61">        init();</span>
+<span class="nc" id="L62">    }</span>
+
+    private void init() {
+<span class="nc" id="L65">        int gtColIdx = 0;</span>
+<span class="nc" id="L66">        gtDataTypes = Lists.newArrayList();</span>
+<span class="nc" id="L67">        gtColBlocks = Lists.newArrayList();</span>
+
+        // dimensions
+<span class="nc" id="L70">        dim2gt = Maps.newHashMap();</span>
+<span class="nc" id="L71">        BitSet pk = new BitSet();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        for (TblColRef dimension : cuboid.getColumns()) {</span>
+<span class="nc" id="L73">            gtDataTypes.add(dimension.getType());</span>
+<span class="nc" id="L74">            dim2gt.put(dimension, gtColIdx);</span>
+<span class="nc" id="L75">            pk.set(gtColIdx);</span>
+<span class="nc" id="L76">            gtColIdx++;</span>
+<span class="nc" id="L77">        }</span>
+<span class="nc" id="L78">        gtPrimaryKey = new ImmutableBitSet(pk);</span>
+<span class="nc" id="L79">        gtColBlocks.add(gtPrimaryKey);</span>
+
+<span class="nc" id="L81">        nDimensions = gtColIdx;</span>
+<span class="nc bnc" id="L82" title="All 4 branches missed.">        assert nDimensions == cuboid.getColumns().size();</span>
+
+        // column blocks of metrics
+<span class="nc" id="L85">        ArrayList&lt;BitSet&gt; metricsColBlocks = Lists.newArrayList();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        for (HBaseColumnFamilyDesc familyDesc : cuboid.getCubeDesc().getHbaseMapping().getColumnFamily()) {</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            for (int i = 0; i &lt; familyDesc.getColumns().length; i++) {</span>
+<span class="nc" id="L88">                metricsColBlocks.add(new BitSet());</span>
+            }
+        }
+
+        // metrics
+<span class="nc" id="L93">        metrics2gt = Maps.newHashMap();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        for (MeasureDesc measure : cuboid.getCubeDesc().getMeasures()) {</span>
+            // Count distinct &amp; holistic count distinct are equals() but different.
+            // Ensure the holistic version if exists is always the first.
+<span class="nc" id="L97">            FunctionDesc func = measure.getFunction();</span>
+<span class="nc" id="L98">            metrics2gt.put(func, gtColIdx);</span>
+<span class="nc" id="L99">            gtDataTypes.add(func.getReturnDataType());</span>
+
+            // map to column block
+<span class="nc" id="L102">            int cbIdx = 0;</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            for (HBaseColumnFamilyDesc familyDesc : cuboid.getCubeDesc().getHbaseMapping().getColumnFamily()) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">                for (HBaseColumnDesc hbaseColDesc : familyDesc.getColumns()) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                    if (hbaseColDesc.containsMeasure(measure.getName())) {</span>
+<span class="nc" id="L106">                        metricsColBlocks.get(cbIdx).set(gtColIdx);</span>
+                    }
+<span class="nc" id="L108">                    cbIdx++;</span>
+                }
+            }
+
+<span class="nc" id="L112">            gtColIdx++;</span>
+<span class="nc" id="L113">        }</span>
+
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        for (BitSet set : metricsColBlocks) {</span>
+<span class="nc" id="L116">            gtColBlocks.add(new ImmutableBitSet(set));</span>
+<span class="nc" id="L117">        }</span>
+
+<span class="nc" id="L119">        nMetrics = gtColIdx - nDimensions;</span>
+<span class="nc bnc" id="L120" title="All 4 branches missed.">        assert nMetrics == cuboid.getCubeDesc().getMeasures().size();</span>
+<span class="nc" id="L121">    }</span>
+
+    public int getColumnCount() {
+<span class="nc" id="L124">        return nDimensions + nMetrics;</span>
+    }
+
+    public DataType[] getDataTypes() {
+<span class="nc" id="L128">        return gtDataTypes.toArray(new DataType[gtDataTypes.size()]);</span>
+    }
+
+    public ImmutableBitSet getPrimaryKey() {
+<span class="nc" id="L132">        return gtPrimaryKey;</span>
+    }
+
+    public ImmutableBitSet[] getColumnBlocks() {
+<span class="nc" id="L136">        return gtColBlocks.toArray(new ImmutableBitSet[gtColBlocks.size()]);</span>
+    }
+
+    public int getIndexOf(TblColRef dimension) {
+<span class="nc" id="L140">        Integer i = dim2gt.get(dimension);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        return i == null ? -1 : i.intValue();</span>
+    }
+
+    public int[] getDimIndexes(Collection&lt;TblColRef&gt; dims) {
+<span class="nc" id="L145">        int[] result = new int[dims.size()];</span>
+<span class="nc" id="L146">        int i = 0;</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        for (TblColRef dim : dims) {</span>
+<span class="nc" id="L148">            result[i++] = getIndexOf(dim);</span>
+<span class="nc" id="L149">        }</span>
+<span class="nc" id="L150">        return result;</span>
+    }
+
+    public int getIndexOf(FunctionDesc metric) {
+<span class="nc" id="L154">        Integer r = metrics2gt.get(metric);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        return r == null ? -1 : r;</span>
+    }
+
+    public int[] getMetricsIndexes(Collection&lt;FunctionDesc&gt; metrics) {
+<span class="nc" id="L159">        int[] result = new int[metrics.size()];</span>
+<span class="nc" id="L160">        int i = 0;</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        for (FunctionDesc metric : metrics) {</span>
+<span class="nc" id="L162">            result[i++] = getIndexOf(metric);</span>
+<span class="nc" id="L163">        }</span>
+<span class="nc" id="L164">        return result;</span>
+    }
+
+    public List&lt;TblColRef&gt; getCuboidDimensionsInGTOrder() {
+<span class="nc" id="L168">        return cuboid.getColumns();</span>
+    }
+
+    public DimensionEncoding[] getDimensionEncodings(IDimensionEncodingMap dimEncMap) {
+<span class="nc" id="L172">        List&lt;TblColRef&gt; dims = cuboid.getColumns();</span>
+<span class="nc" id="L173">        DimensionEncoding[] dimEncs = new DimensionEncoding[dims.size()];</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        for (int i = 0; i &lt; dimEncs.length; i++) {</span>
+<span class="nc" id="L175">            dimEncs[i] = dimEncMap.get(dims.get(i));</span>
+        }
+<span class="nc" id="L177">        return dimEncs;</span>
+    }
+
+    public Map&lt;Integer, Integer&gt; getDependentMetricsMap() {
+<span class="nc" id="L181">        Map&lt;Integer, Integer&gt; result = Maps.newHashMap();</span>
+<span class="nc" id="L182">        List&lt;MeasureDesc&gt; measures = cuboid.getCubeDesc().getMeasures();</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        for (MeasureDesc child : measures) {</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            if (child.getDependentMeasureRef() != null) {</span>
+<span class="nc" id="L185">                boolean ok = false;</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">                for (MeasureDesc parent : measures) {</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">                    if (parent.getName().equals(child.getDependentMeasureRef())) {</span>
+<span class="nc" id="L188">                        int childIndex = getIndexOf(child.getFunction());</span>
+<span class="nc" id="L189">                        int parentIndex = getIndexOf(parent.getFunction());</span>
+<span class="nc" id="L190">                        result.put(childIndex, parentIndex);</span>
+<span class="nc" id="L191">                        ok = true;</span>
+<span class="nc" id="L192">                        break;</span>
+                    }
+<span class="nc" id="L194">                }</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                if (!ok)</span>
+<span class="nc" id="L196">                    throw new IllegalStateException(&quot;Cannot find dependent measure: &quot; + child.getDependentMeasureRef());</span>
+            }
+<span class="nc" id="L198">        }</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        return result.isEmpty() ? Collections.&lt;Integer, Integer&gt; emptyMap() : result;</span>
+    }
+
+    public ImmutableBitSet makeGridTableColumns(Set&lt;TblColRef&gt; dimensions) {
+<span class="nc" id="L203">        BitSet result = new BitSet();</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        for (TblColRef dim : dimensions) {</span>
+<span class="nc" id="L205">            int idx = getIndexOf(dim);</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            if (idx &gt;= 0)</span>
+<span class="nc" id="L207">                result.set(idx);</span>
+<span class="nc" id="L208">        }</span>
+<span class="nc" id="L209">        return new ImmutableBitSet(result);</span>
+    }
+
+    public ImmutableBitSet makeGridTableColumns(Collection&lt;? extends FunctionDesc&gt; metrics) {
+<span class="nc" id="L213">        BitSet result = new BitSet();</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        for (FunctionDesc metric : metrics) {</span>
+<span class="nc" id="L215">            int idx = getIndexOf(metric);</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">            if (idx &lt; 0)</span>
+<span class="nc" id="L217">                throw new IllegalStateException(metric + &quot; not found in &quot; + this);</span>
+<span class="nc" id="L218">            result.set(idx);</span>
+<span class="nc" id="L219">        }</span>
+<span class="nc" id="L220">        return new ImmutableBitSet(result);</span>
+    }
+
+    public String[] makeAggrFuncs(Collection&lt;FunctionDesc&gt; metrics) {
+
+        //metrics are represented in ImmutableBitSet, which loses order information
+        //sort the aggrFuns to align with metrics natural order 
+<span class="nc" id="L227">        List&lt;FunctionDesc&gt; metricList = Lists.newArrayList(metrics);</span>
+<span class="nc" id="L228">        Collections.sort(metricList, new Comparator&lt;FunctionDesc&gt;() {</span>
+            @Override
+            public int compare(FunctionDesc o1, FunctionDesc o2) {
+<span class="nc" id="L231">                int a = getIndexOf(o1);</span>
+<span class="nc" id="L232">                int b = getIndexOf(o2);</span>
+<span class="nc" id="L233">                return a - b;</span>
+            }
+        });
+
+<span class="nc" id="L237">        String[] result = new String[metricList.size()];</span>
+<span class="nc" id="L238">        int i = 0;</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        for (FunctionDesc metric : metricList) {</span>
+<span class="nc" id="L240">            result[i++] = metric.getExpression();</span>
+<span class="nc" id="L241">        }</span>
+<span class="nc" id="L242">        return result;</span>
+    }
+
+    public Map&lt;TblColRef, Integer&gt; getDim2gt() {
+<span class="nc" id="L246">        return ImmutableMap.copyOf(dim2gt);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

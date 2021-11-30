@@ -1,0 +1,6 @@
+org/apache/kylin/storage/hbase/HBaseResourceStore$FolderVisitor.class
+org/apache/kylin/storage/hbase/HBaseConnection.class
+org/apache/kylin/storage/hbase/HBaseConnection$1.class
+org/apache/kylin/storage/hbase/HBaseConnection$2.class
+org/apache/kylin/storage/hbase/HBaseResourceStore$1.class
+org/apache/kylin/storage/hbase/HBaseResourceStore.class

@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IPushDownConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.adhocquery</a> &gt; <span class="el_source">IPushDownConverter.java</span></div><h1>IPushDownConverter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.kylin.source.adhocquery;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableSet;
+
+/**
+ * convert the query to satisfy the parser of push down query engine
+ */
+public interface IPushDownConverter {
+<span class="fc" id="L26">    ImmutableSet&lt;String&gt; calciteKeyWords = ImmutableSet.of(&quot;A&quot;, &quot;ABS&quot;, &quot;ABSOLUTE&quot;, &quot;ACTION&quot;, &quot;ADA&quot;, &quot;ADD&quot;, &quot;ADMIN&quot;,</span>
+            &quot;AFTER&quot;, &quot;ALL&quot;, &quot;ALLOCATE&quot;, &quot;ALLOW&quot;, &quot;ALTER&quot;, &quot;ALWAYS&quot;, &quot;AND&quot;, &quot;ANY&quot;, &quot;APPLY&quot;, &quot;ARE&quot;, &quot;ARRAY&quot;,
+            &quot;ARRAY_MAX_CARDINALITY&quot;, &quot;AS&quot;, &quot;ASC&quot;, &quot;ASENSITIVE&quot;, &quot;ASSERTION&quot;, &quot;ASSIGNMENT&quot;, &quot;ASYMMETRIC&quot;, &quot;AT&quot;, &quot;ATOMIC&quot;,
+            &quot;ATTRIBUTE&quot;, &quot;ATTRIBUTES&quot;, &quot;AUTHORIZATION&quot;, &quot;AVG&quot;, &quot;BEFORE&quot;, &quot;BEGIN&quot;, &quot;BEGIN_FRAME&quot;, &quot;BEGIN_PARTITION&quot;,
+            &quot;BERNOULLI&quot;, &quot;BETWEEN&quot;, &quot;BIGINT&quot;, &quot;BINARY&quot;, &quot;BIT&quot;, &quot;BLOB&quot;, &quot;BOOLEAN&quot;, &quot;BOTH&quot;, &quot;BREADTH&quot;, &quot;BY&quot;, &quot;C&quot;, &quot;CALL&quot;,
+            &quot;CALLED&quot;, &quot;CARDINALITY&quot;, &quot;CASCADE&quot;, &quot;CASCADED&quot;, &quot;CASE&quot;, &quot;CAST&quot;, &quot;CATALOG&quot;, &quot;CATALOG_NAME&quot;, &quot;CEIL&quot;,
+            &quot;CEILING&quot;, &quot;CENTURY&quot;, &quot;CHAIN&quot;, &quot;CHAR&quot;, &quot;CHARACTER&quot;, &quot;CHARACTERISTICS&quot;, &quot;CHARACTERS&quot;, &quot;CHARACTER_LENGTH&quot;,
+            &quot;CHARACTER_SET_CATALOG&quot;, &quot;CHARACTER_SET_NAME&quot;, &quot;CHARACTER_SET_SCHEMA&quot;, &quot;CHAR_LENGTH&quot;, &quot;CHECK&quot;, &quot;CLASSIFIER&quot;,
+            &quot;CLASS_ORIGIN&quot;, &quot;CLOB&quot;, &quot;CLOSE&quot;, &quot;COALESCE&quot;, &quot;COBOL&quot;, &quot;COLLATE&quot;, &quot;COLLATION&quot;, &quot;COLLATION_CATALOG&quot;,
+            &quot;COLLATION_NAME&quot;, &quot;COLLATION_SCHEMA&quot;, &quot;COLLECT&quot;, &quot;COLUMN&quot;, &quot;COLUMN_NAME&quot;, &quot;COMMAND_FUNCTION&quot;,
+            &quot;COMMAND_FUNCTION_CODE&quot;, &quot;COMMIT&quot;, &quot;COMMITTED&quot;, &quot;CONDITION&quot;, &quot;CONDITION_NUMBER&quot;, &quot;CONNECT&quot;, &quot;CONNECTION&quot;,
+            &quot;CONNECTION_NAME&quot;, &quot;CONSTRAINT&quot;, &quot;CONSTRAINTS&quot;, &quot;CONSTRAINT_CATALOG&quot;, &quot;CONSTRAINT_NAME&quot;,
+            &quot;CONSTRAINT_SCHEMA&quot;, &quot;CONSTRUCTOR&quot;, &quot;CONTAINS&quot;, &quot;CONTINUE&quot;, &quot;CONVERT&quot;, &quot;CORR&quot;, &quot;CORRESPONDING&quot;, &quot;COUNT&quot;,
+            &quot;COVAR_POP&quot;, &quot;COVAR_SAMP&quot;, &quot;CREATE&quot;, &quot;CROSS&quot;, &quot;CUBE&quot;, &quot;CUME_DIST&quot;, &quot;CURRENT&quot;, &quot;CURRENT_CATALOG&quot;,
+            &quot;CURRENT_DATE&quot;, &quot;CURRENT_DEFAULT_TRANSFORM_GROUP&quot;, &quot;CURRENT_PATH&quot;, &quot;CURRENT_ROLE&quot;, &quot;CURRENT_ROW&quot;,
+            &quot;CURRENT_SCHEMA&quot;, &quot;CURRENT_TIME&quot;, &quot;CURRENT_TIMESTAMP&quot;, &quot;CURRENT_TRANSFORM_GROUP_FOR_TYPE&quot;, &quot;CURRENT_USER&quot;,
+            &quot;CURSOR&quot;, &quot;CURSOR_NAME&quot;, &quot;CYCLE&quot;, &quot;DATA&quot;, &quot;DATABASE&quot;, &quot;DATE&quot;, &quot;DATETIME_INTERVAL_CODE&quot;,
+            &quot;DATETIME_INTERVAL_PRECISION&quot;, &quot;DAY&quot;, &quot;DEALLOCATE&quot;, &quot;DEC&quot;, &quot;DECADE&quot;, &quot;DECIMAL&quot;, &quot;DECLARE&quot;, &quot;DEFAULT&quot;,
+            &quot;DEFAULTS&quot;, &quot;DEFERRABLE&quot;, &quot;DEFERRED&quot;, &quot;DEFINE&quot;, &quot;DEFINED&quot;, &quot;DEFINER&quot;, &quot;DEGREE&quot;, &quot;DELETE&quot;, &quot;DENSE_RANK&quot;,
+            &quot;DEPTH&quot;, &quot;DEREF&quot;, &quot;DERIVED&quot;, &quot;DESC&quot;, &quot;DESCRIBE&quot;, &quot;DESCRIPTION&quot;, &quot;DESCRIPTOR&quot;, &quot;DETERMINISTIC&quot;,
+            &quot;DIAGNOSTICS&quot;, &quot;DISALLOW&quot;, &quot;DISCONNECT&quot;, &quot;DISPATCH&quot;, &quot;DISTINCT&quot;, &quot;DOMAIN&quot;, &quot;DOUBLE&quot;, &quot;DOW&quot;, &quot;DOY&quot;, &quot;DROP&quot;,
+            &quot;DYNAMIC&quot;, &quot;DYNAMIC_FUNCTION&quot;, &quot;DYNAMIC_FUNCTION_CODE&quot;, &quot;EACH&quot;, &quot;ELEMENT&quot;, &quot;ELSE&quot;, &quot;EMPTY&quot;, &quot;END&quot;,
+            &quot;END-EXEC&quot;, &quot;END_FRAME&quot;, &quot;END_PARTITION&quot;, &quot;EPOCH&quot;, &quot;EQUALS&quot;, &quot;ESCAPE&quot;, &quot;EVERY&quot;, &quot;EXCEPT&quot;, &quot;EXCEPTION&quot;,
+            &quot;EXCLUDE&quot;, &quot;EXCLUDING&quot;, &quot;EXEC&quot;, &quot;EXECUTE&quot;, &quot;EXISTS&quot;, &quot;EXP&quot;, &quot;EXPLAIN&quot;, &quot;EXTEND&quot;, &quot;EXTERNAL&quot;, &quot;EXTRACT&quot;,
+            &quot;FALSE&quot;, &quot;FETCH&quot;, &quot;FILTER&quot;, &quot;FINAL&quot;, &quot;FIRST&quot;, &quot;FIRST_VALUE&quot;, &quot;FLOAT&quot;, &quot;FLOOR&quot;, &quot;FOLLOWING&quot;, &quot;FOR&quot;,
+            &quot;FOREIGN&quot;, &quot;FORTRAN&quot;, &quot;FOUND&quot;, &quot;FRAC_SECOND&quot;, &quot;FRAME_ROW&quot;, &quot;FREE&quot;, &quot;FROM&quot;, &quot;FULL&quot;, &quot;FUNCTION&quot;, &quot;FUSION&quot;,
+            &quot;G&quot;, &quot;GENERAL&quot;, &quot;GENERATED&quot;, &quot;GET&quot;, &quot;GLOBAL&quot;, &quot;GO&quot;, &quot;GOTO&quot;, &quot;GRANT&quot;, &quot;GRANTED&quot;, &quot;GROUP&quot;, &quot;GROUPING&quot;,
+            &quot;GROUPS&quot;, &quot;HAVING&quot;, &quot;HIERARCHY&quot;, &quot;HOLD&quot;, &quot;HOUR&quot;, &quot;IDENTITY&quot;, &quot;IMMEDIATE&quot;, &quot;IMMEDIATELY&quot;, &quot;IMPLEMENTATION&quot;,
+            &quot;IMPORT&quot;, &quot;IN&quot;, &quot;INCLUDING&quot;, &quot;INCREMENT&quot;, &quot;INDICATOR&quot;, &quot;INITIAL&quot;, &quot;INITIALLY&quot;, &quot;INNER&quot;, &quot;INOUT&quot;, &quot;INPUT&quot;,
+            &quot;INSENSITIVE&quot;, &quot;INSERT&quot;, &quot;INSTANCE&quot;, &quot;INSTANTIABLE&quot;, &quot;INT&quot;, &quot;INTEGER&quot;, &quot;INTERSECT&quot;, &quot;INTERSECTION&quot;,
+            &quot;INTERVAL&quot;, &quot;INTO&quot;, &quot;INVOKER&quot;, &quot;IS&quot;, &quot;ISOLATION&quot;, &quot;JAVA&quot;, &quot;JOIN&quot;, &quot;JSON&quot;, &quot;K&quot;, &quot;KEY&quot;, &quot;KEY_MEMBER&quot;,
+            &quot;KEY_TYPE&quot;, &quot;LABEL&quot;, &quot;LAG&quot;, &quot;LANGUAGE&quot;, &quot;LARGE&quot;, &quot;LAST&quot;, &quot;LAST_VALUE&quot;, &quot;LATERAL&quot;, &quot;LEAD&quot;, &quot;LEADING&quot;, &quot;LEFT&quot;,
+            &quot;LENGTH&quot;, &quot;LEVEL&quot;, &quot;LIBRARY&quot;, &quot;LIKE&quot;, &quot;LIKE_REGEX&quot;, &quot;LIMIT&quot;, &quot;LN&quot;, &quot;LOCAL&quot;, &quot;LOCALTIME&quot;, &quot;LOCALTIMESTAMP&quot;,
+            &quot;LOCATOR&quot;, &quot;LOWER&quot;, &quot;M&quot;, &quot;MAP&quot;, &quot;MATCH&quot;, &quot;MATCHED&quot;, &quot;MATCHES&quot;, &quot;MATCH_NUMBER&quot;, &quot;MATCH_RECOGNIZE&quot;, &quot;MAX&quot;,
+            &quot;MAXVALUE&quot;, &quot;MEASURES&quot;, &quot;MEMBER&quot;, &quot;MERGE&quot;, &quot;MESSAGE_LENGTH&quot;, &quot;MESSAGE_OCTET_LENGTH&quot;, &quot;MESSAGE_TEXT&quot;,
+            &quot;METHOD&quot;, &quot;MICROSECOND&quot;, &quot;MILLENNIUM&quot;, &quot;MIN&quot;, &quot;MINUS&quot;, &quot;MINUTE&quot;, &quot;MINVALUE&quot;, &quot;MOD&quot;, &quot;MODIFIES&quot;, &quot;MODULE&quot;,
+            &quot;MONTH&quot;, &quot;MORE&quot;, &quot;MULTISET&quot;, &quot;MUMPS&quot;, &quot;NAME&quot;, &quot;NAMES&quot;, &quot;NATIONAL&quot;, &quot;NATURAL&quot;, &quot;NCHAR&quot;, &quot;NCLOB&quot;, &quot;NESTING&quot;,
+            &quot;NEW&quot;, &quot;NEXT&quot;, &quot;NO&quot;, &quot;NONE&quot;, &quot;NORMALIZE&quot;, &quot;NORMALIZED&quot;, &quot;NOT&quot;, &quot;NTH_VALUE&quot;, &quot;NTILE&quot;, &quot;NULL&quot;, &quot;NULLABLE&quot;,
+            &quot;NULLIF&quot;, &quot;NULLS&quot;, &quot;NUMBER&quot;, &quot;NUMERIC&quot;, &quot;OBJECT&quot;, &quot;OCCURRENCES_REGEX&quot;, &quot;OCTETS&quot;, &quot;OCTET_LENGTH&quot;, &quot;OF&quot;,
+            &quot;OFFSET&quot;, &quot;OLD&quot;, &quot;OMIT&quot;, &quot;ON&quot;, &quot;ONE&quot;, &quot;ONLY&quot;, &quot;OPEN&quot;, &quot;OPTION&quot;, &quot;OPTIONS&quot;, &quot;OR&quot;, &quot;ORDER&quot;, &quot;ORDERING&quot;,
+            &quot;ORDINALITY&quot;, &quot;OTHERS&quot;, &quot;OUT&quot;, &quot;OUTER&quot;, &quot;OUTPUT&quot;, &quot;OVER&quot;, &quot;OVERLAPS&quot;, &quot;OVERLAY&quot;, &quot;OVERRIDING&quot;, &quot;PAD&quot;,
+            &quot;PARAMETER&quot;, &quot;PARAMETER_MODE&quot;, &quot;PARAMETER_NAME&quot;, &quot;PARAMETER_ORDINAL_POSITION&quot;, &quot;PARAMETER_SPECIFIC_CATALOG&quot;,
+            &quot;PARAMETER_SPECIFIC_NAME&quot;, &quot;PARAMETER_SPECIFIC_SCHEMA&quot;, &quot;PARTIAL&quot;, &quot;PARTITION&quot;, &quot;PASCAL&quot;, &quot;PASSTHROUGH&quot;,
+            &quot;PAST&quot;, &quot;PATH&quot;, &quot;PATTERN&quot;, &quot;PER&quot;, &quot;PERCENT&quot;, &quot;PERCENTILE_CONT&quot;, &quot;PERCENTILE_DISC&quot;, &quot;PERCENT_RANK&quot;, &quot;PERIOD&quot;,
+            &quot;PERMUTE&quot;, &quot;PLACING&quot;, &quot;PLAN&quot;, &quot;PLI&quot;, &quot;PORTION&quot;, &quot;POSITION&quot;, &quot;POSITION_REGEX&quot;, &quot;POWER&quot;, &quot;PRECEDES&quot;,
+            &quot;PRECEDING&quot;, &quot;PRECISION&quot;, &quot;PREPARE&quot;, &quot;PRESERVE&quot;, &quot;PREV&quot;, &quot;PRIMARY&quot;, &quot;PRIOR&quot;, &quot;PRIVILEGES&quot;, &quot;PROCEDURE&quot;,
+            &quot;PUBLIC&quot;, &quot;QUARTER&quot;, &quot;RANGE&quot;, &quot;RANK&quot;, &quot;READ&quot;, &quot;READS&quot;, &quot;REAL&quot;, &quot;RECURSIVE&quot;, &quot;REF&quot;, &quot;REFERENCES&quot;,
+            &quot;REFERENCING&quot;, &quot;REGR_AVGX&quot;, &quot;REGR_AVGY&quot;, &quot;REGR_COUNT&quot;, &quot;REGR_INTERCEPT&quot;, &quot;REGR_R2&quot;, &quot;REGR_SLOPE&quot;,
+            &quot;REGR_SXX&quot;, &quot;REGR_SXY&quot;, &quot;REGR_SYY&quot;, &quot;RELATIVE&quot;, &quot;RELEASE&quot;, &quot;REPEATABLE&quot;, &quot;REPLACE&quot;, &quot;RESET&quot;, &quot;RESTART&quot;,
+            &quot;RESTRICT&quot;, &quot;RESULT&quot;, &quot;RETURN&quot;, &quot;RETURNED_CARDINALITY&quot;, &quot;RETURNED_LENGTH&quot;, &quot;RETURNED_OCTET_LENGTH&quot;,
+            &quot;RETURNED_SQLSTATE&quot;, &quot;RETURNS&quot;, &quot;REVOKE&quot;, &quot;RIGHT&quot;, &quot;ROLE&quot;, &quot;ROLLBACK&quot;, &quot;ROLLUP&quot;, &quot;ROUTINE&quot;,
+            &quot;ROUTINE_CATALOG&quot;, &quot;ROUTINE_NAME&quot;, &quot;ROUTINE_SCHEMA&quot;, &quot;ROW&quot;, &quot;ROWS&quot;, &quot;ROW_COUNT&quot;, &quot;ROW_NUMBER&quot;, &quot;RUNNING&quot;,
+            &quot;SAVEPOINT&quot;, &quot;SCALE&quot;, &quot;SCHEMA&quot;, &quot;SCHEMA_NAME&quot;, &quot;SCOPE&quot;, &quot;SCOPE_CATALOGS&quot;, &quot;SCOPE_NAME&quot;, &quot;SCOPE_SCHEMA&quot;,
+            &quot;SCROLL&quot;, &quot;SEARCH&quot;, &quot;SECOND&quot;, &quot;SECTION&quot;, &quot;SECURITY&quot;, &quot;SEEK&quot;, &quot;SELECT&quot;, &quot;SELF&quot;, &quot;SENSITIVE&quot;, &quot;SEQUENCE&quot;,
+            &quot;SERIALIZABLE&quot;, &quot;SERVER&quot;, &quot;SERVER_NAME&quot;, &quot;SESSION&quot;, &quot;SESSION_USER&quot;, &quot;SET&quot;, &quot;SETS&quot;, &quot;SHOW&quot;, &quot;SIMILAR&quot;,
+            &quot;SIMPLE&quot;, &quot;SIZE&quot;, &quot;SKIP&quot;, &quot;SMALLINT&quot;, &quot;SOME&quot;, &quot;SOURCE&quot;, &quot;SPACE&quot;, &quot;SPECIFIC&quot;, &quot;SPECIFICTYPE&quot;,
+            &quot;SPECIFIC_NAME&quot;, &quot;SQL&quot;, &quot;SQLEXCEPTION&quot;, &quot;SQLSTATE&quot;, &quot;SQLWARNING&quot;, &quot;SQL_BIGINT&quot;, &quot;SQL_BINARY&quot;, &quot;SQL_BIT&quot;,
+            &quot;SQL_BLOB&quot;, &quot;SQL_BOOLEAN&quot;, &quot;SQL_CHAR&quot;, &quot;SQL_CLOB&quot;, &quot;SQL_DATE&quot;, &quot;SQL_DECIMAL&quot;, &quot;SQL_DOUBLE&quot;, &quot;SQL_FLOAT&quot;,
+            &quot;SQL_INTEGER&quot;, &quot;SQL_INTERVAL_DAY&quot;, &quot;SQL_INTERVAL_DAY_TO_HOUR&quot;, &quot;SQL_INTERVAL_DAY_TO_MINUTE&quot;,
+            &quot;SQL_INTERVAL_DAY_TO_SECOND&quot;, &quot;SQL_INTERVAL_HOUR&quot;, &quot;SQL_INTERVAL_HOUR_TO_MINUTE&quot;,
+            &quot;SQL_INTERVAL_HOUR_TO_SECOND&quot;, &quot;SQL_INTERVAL_MINUTE&quot;, &quot;SQL_INTERVAL_MINUTE_TO_SECOND&quot;, &quot;SQL_INTERVAL_MONTH&quot;,
+            &quot;SQL_INTERVAL_SECOND&quot;, &quot;SQL_INTERVAL_YEAR&quot;, &quot;SQL_INTERVAL_YEAR_TO_MONTH&quot;, &quot;SQL_LONGVARBINARY&quot;,
+            &quot;SQL_LONGVARCHAR&quot;, &quot;SQL_LONGVARNCHAR&quot;, &quot;SQL_NCHAR&quot;, &quot;SQL_NCLOB&quot;, &quot;SQL_NUMERIC&quot;, &quot;SQL_NVARCHAR&quot;, &quot;SQL_REAL&quot;,
+            &quot;SQL_SMALLINT&quot;, &quot;SQL_TIME&quot;, &quot;SQL_TIMESTAMP&quot;, &quot;SQL_TINYINT&quot;, &quot;SQL_TSI_DAY&quot;, &quot;SQL_TSI_FRAC_SECOND&quot;,
+            &quot;SQL_TSI_HOUR&quot;, &quot;SQL_TSI_MICROSECOND&quot;, &quot;SQL_TSI_MINUTE&quot;, &quot;SQL_TSI_MONTH&quot;, &quot;SQL_TSI_QUARTER&quot;,
+            &quot;SQL_TSI_SECOND&quot;, &quot;SQL_TSI_WEEK&quot;, &quot;SQL_TSI_YEAR&quot;, &quot;SQL_VARBINARY&quot;, &quot;SQL_VARCHAR&quot;, &quot;SQRT&quot;, &quot;START&quot;, &quot;STATE&quot;,
+            &quot;STATEMENT&quot;, &quot;STATIC&quot;, &quot;STDDEV_POP&quot;, &quot;STDDEV_SAMP&quot;, &quot;STREAM&quot;, &quot;STRUCTURE&quot;, &quot;STYLE&quot;, &quot;SUBCLASS_ORIGIN&quot;,
+            &quot;SUBMULTISET&quot;, &quot;SUBSET&quot;, &quot;SUBSTITUTE&quot;, &quot;SUBSTRING&quot;, &quot;SUBSTRING_REGEX&quot;, &quot;SUCCEEDS&quot;, &quot;SUM&quot;, &quot;SYMMETRIC&quot;,
+            &quot;SYSTEM&quot;, &quot;SYSTEM_TIME&quot;, &quot;SYSTEM_USER&quot;, &quot;TABLE&quot;, &quot;TABLESAMPLE&quot;, &quot;TABLE_NAME&quot;, &quot;TEMPORARY&quot;, &quot;THEN&quot;, &quot;TIES&quot;,
+            &quot;TIME&quot;, &quot;TIMESTAMP&quot;, &quot;TIMESTAMPADD&quot;, &quot;TIMESTAMPDIFF&quot;, &quot;TIMEZONE_HOUR&quot;, &quot;TIMEZONE_MINUTE&quot;, &quot;TINYINT&quot;, &quot;TO&quot;,
+            &quot;TOP_LEVEL_COUNT&quot;, &quot;TRAILING&quot;, &quot;TRANSACTION&quot;, &quot;TRANSACTIONS_ACTIVE&quot;, &quot;TRANSACTIONS_COMMITTED&quot;,
+            &quot;TRANSACTIONS_ROLLED_BACK&quot;, &quot;TRANSFORM&quot;, &quot;TRANSFORMS&quot;, &quot;TRANSLATE&quot;, &quot;TRANSLATE_REGEX&quot;, &quot;TRANSLATION&quot;,
+            &quot;TREAT&quot;, &quot;TRIGGER&quot;, &quot;TRIGGER_CATALOG&quot;, &quot;TRIGGER_NAME&quot;, &quot;TRIGGER_SCHEMA&quot;, &quot;TRIM&quot;, &quot;TRIM_ARRAY&quot;, &quot;TRUE&quot;,
+            &quot;TRUNCATE&quot;, &quot;TYPE&quot;, &quot;UESCAPE&quot;, &quot;UNBOUNDED&quot;, &quot;UNCOMMITTED&quot;, &quot;UNDER&quot;, &quot;UNION&quot;, &quot;UNIQUE&quot;, &quot;UNKNOWN&quot;, &quot;UNNAMED&quot;,
+            &quot;UNNEST&quot;, &quot;UPDATE&quot;, &quot;UPPER&quot;, &quot;UPSERT&quot;, &quot;USAGE&quot;, &quot;USER&quot;, &quot;USER_DEFINED_TYPE_CATALOG&quot;,
+            &quot;USER_DEFINED_TYPE_CODE&quot;, &quot;USER_DEFINED_TYPE_NAME&quot;, &quot;USER_DEFINED_TYPE_SCHEMA&quot;, &quot;USING&quot;, &quot;VALUE&quot;, &quot;VALUES&quot;,
+            &quot;VALUE_OF&quot;, &quot;VARBINARY&quot;, &quot;VARCHAR&quot;, &quot;VARYING&quot;, &quot;VAR_POP&quot;, &quot;VAR_SAMP&quot;, &quot;VERSION&quot;, &quot;VERSIONING&quot;, &quot;VIEW&quot;,
+            &quot;WEEK&quot;, &quot;WHEN&quot;, &quot;WHENEVER&quot;, &quot;WHERE&quot;, &quot;WIDTH_BUCKET&quot;, &quot;WINDOW&quot;, &quot;WITH&quot;, &quot;WITHIN&quot;, &quot;WITHOUT&quot;, &quot;WORK&quot;,
+            &quot;WRAPPER&quot;, &quot;WRITE&quot;, &quot;XML&quot;, &quot;YEAR&quot;, &quot;ZONE&quot;);
+
+    // https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL#LanguageManualDDL-Keywords,Non-reservedKeywordsandReservedKeywords
+<span class="fc" id="L107">    ImmutableSet&lt;String&gt; hiveKeyWords = ImmutableSet.of(&quot;ADD&quot;, &quot;ADMIN&quot;, &quot;AFTER&quot;, &quot;ANALYZE&quot;, &quot;ARCHIVE&quot;, &quot;ASC&quot;, &quot;BEFORE&quot;,</span>
+            &quot;BUCKET&quot;, &quot;BUCKETS&quot;, &quot;CASCADE&quot;, &quot;CHANGE&quot;, &quot;CLUSTER&quot;, &quot;CLUSTERED&quot;, &quot;CLUSTERSTATUS&quot;, &quot;COLLECTION&quot;, &quot;COLUMNS&quot;,
+            &quot;COMMENT&quot;, &quot;COMPACT&quot;, &quot;COMPACTIONS&quot;, &quot;COMPUTE&quot;, &quot;CONCATENATE&quot;, &quot;CONTINUE&quot;, &quot;DATA&quot;, &quot;DATABASES&quot;, &quot;DATETIME&quot;,
+            &quot;DAY&quot;, &quot;DBPROPERTIES&quot;, &quot;DEFERRED&quot;, &quot;DEFINED&quot;, &quot;DELIMITED&quot;, &quot;DEPENDENCY&quot;, &quot;DESC&quot;, &quot;DIRECTORIES&quot;, &quot;DIRECTORY&quot;,
+            &quot;DISABLE&quot;, &quot;DISTRIBUTE&quot;, &quot;ELEM_TYPE&quot;, &quot;ENABLE&quot;, &quot;ESCAPED&quot;, &quot;EXCLUSIVE&quot;, &quot;EXPLAIN&quot;, &quot;EXPORT&quot;, &quot;FIELDS&quot;,
+            &quot;FILE&quot;, &quot;FILEFORMAT&quot;, &quot;FIRST&quot;, &quot;FORMAT&quot;, &quot;FORMATTED&quot;, &quot;FUNCTIONS&quot;, &quot;HOLD_DDLTIME&quot;, &quot;HOUR&quot;, &quot;IDXPROPERTIES&quot;,
+            &quot;IGNORE&quot;, &quot;INDEX&quot;, &quot;INDEXES&quot;, &quot;INPATH&quot;, &quot;INPUTDRIVER&quot;, &quot;INPUTFORMAT&quot;, &quot;ITEMS&quot;, &quot;JAR&quot;, &quot;KEYS&quot;, &quot;KEY_TYPE&quot;,
+            &quot;LIMIT&quot;, &quot;LINES&quot;, &quot;LOAD&quot;, &quot;LOCATION&quot;, &quot;LOCK&quot;, &quot;LOCKS&quot;, &quot;LOGICAL&quot;, &quot;LONG&quot;, &quot;MAPJOIN&quot;, &quot;MATERIALIZED&quot;,
+            &quot;METADATA&quot;, &quot;MINUS&quot;, &quot;MINUTE&quot;, &quot;MONTH&quot;, &quot;MSCK&quot;, &quot;NOSCAN&quot;, &quot;NO_DROP&quot;, &quot;OFFLINE&quot;, &quot;OPTION&quot;, &quot;OUTPUTDRIVER&quot;,
+            &quot;OUTPUTFORMAT&quot;, &quot;OVERWRITE&quot;, &quot;OWNER&quot;, &quot;PARTITIONED&quot;, &quot;PARTITIONS&quot;, &quot;PLUS&quot;, &quot;PRETTY&quot;, &quot;PRINCIPALS&quot;,
+            &quot;PROTECTION&quot;, &quot;PURGE&quot;, &quot;READ&quot;, &quot;READONLY&quot;, &quot;REBUILD&quot;, &quot;RECORDREADER&quot;, &quot;RECORDWRITER&quot;, &quot;REGEXP&quot;, &quot;RELOAD&quot;,
+            &quot;RENAME&quot;, &quot;REPAIR&quot;, &quot;REPLACE&quot;, &quot;REPLICATION&quot;, &quot;RESTRICT&quot;, &quot;REWRITE&quot;, &quot;RLIKE&quot;, &quot;ROLE&quot;, &quot;ROLES&quot;, &quot;SCHEMA&quot;,
+            &quot;SCHEMAS&quot;, &quot;SECOND&quot;, &quot;SEMI&quot;, &quot;SERDE&quot;, &quot;SERDEPROPERTIES&quot;, &quot;SERVER&quot;, &quot;SETS&quot;, &quot;SHARED&quot;, &quot;SHOW&quot;,
+            &quot;SHOW_DATABASE&quot;, &quot;SKEWED&quot;, &quot;SORT&quot;, &quot;SORTED&quot;, &quot;SSL&quot;, &quot;STATISTICS&quot;, &quot;STORED&quot;, &quot;STREAMTABLE&quot;, &quot;STRING&quot;,
+            &quot;STRUCT&quot;, &quot;TABLES&quot;, &quot;TBLPROPERTIES&quot;, &quot;TEMPORARY&quot;, &quot;TERMINATED&quot;, &quot;TINYINT&quot;, &quot;TOUCH&quot;, &quot;TRANSACTIONS&quot;,
+            &quot;UNARCHIVE&quot;, &quot;UNDO&quot;, &quot;UNIONTYPE&quot;, &quot;UNLOCK&quot;, &quot;UNSET&quot;, &quot;UNSIGNED&quot;, &quot;URI&quot;, &quot;USE&quot;, &quot;UTC&quot;, &quot;UTCTIMESTAMP&quot;,
+            &quot;VALUE_TYPE&quot;, &quot;VIEW&quot;, &quot;WHILE&quot;, &quot;YEAR&quot;, &quot;AUTOCOMMIT&quot;, &quot;ISOLATION&quot;, &quot;LEVEL&quot;, &quot;OFFSET&quot;, &quot;SNAPSHOT&quot;,
+            &quot;TRANSACTION&quot;, &quot;WORK&quot;, &quot;WRITE&quot;, &quot;COMMIT&quot;, &quot;ONLY&quot;, &quot;REGEXP&quot;, &quot;RLIKE&quot;, &quot;ROLLBACK&quot;, &quot;START&quot;, &quot;ABORT&quot;, &quot;KEY&quot;,
+            &quot;LAST&quot;, &quot;NORELY&quot;, &quot;NOVALIDATE&quot;, &quot;NULLS&quot;, &quot;RELY&quot;, &quot;VALIDATE&quot;, &quot;CACHE&quot;, &quot;CONSTRAINT&quot;, &quot;FOREIGN&quot;, &quot;PRIMARY&quot;,
+            &quot;REFERENCES&quot;, &quot;DETAIL&quot;, &quot;DOW&quot;, &quot;EXPRESSION&quot;, &quot;OPERATOR&quot;, &quot;QUARTER&quot;, &quot;SUMMARY&quot;, &quot;VECTORIZATION&quot;, &quot;WEEK&quot;,
+            &quot;YEARS&quot;, &quot;MONTHS&quot;, &quot;WEEKS&quot;, &quot;DAYS&quot;, &quot;HOURS&quot;, &quot;MINUTES&quot;, &quot;SECONDS&quot;, &quot;DAYOFWEEK&quot;, &quot;EXTRACT&quot;, &quot;FLOOR&quot;,
+            &quot;INTEGER&quot;, &quot;PRECISION&quot;, &quot;VIEWS&quot;, &quot;TIMESTAMPTZ&quot;, &quot;ZONE&quot;, &quot;TIME&quot;, &quot;NUMERIC&quot;);
+
+    String convert(String originSql, String project, String defaultSchema, boolean isPrepare);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

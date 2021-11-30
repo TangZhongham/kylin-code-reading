@@ -1,0 +1,888 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTAggregateScanner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTAggregateScanner.java</span></div><h1>GTAggregateScanner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.NoSuchElementException;
+import java.util.PriorityQueue;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.kylin.common.exceptions.ResourceLimitExceededException;
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.common.util.MemoryBudgetController;
+import org.apache.kylin.common.util.MemoryBudgetController.MemoryWaterLevel;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureAggregators;
+import org.apache.kylin.measure.bitmap.BitmapCounter;
+import org.apache.kylin.measure.hllc.HLLCounter;
+import org.apache.kylin.measure.percentile.PercentileCounter;
+import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.ITuple;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+@SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })
+public class GTAggregateScanner implements IGTScanner, IGTBypassChecker {
+
+<span class="fc" id="L71">    private static final Logger logger = LoggerFactory.getLogger(GTAggregateScanner.class);</span>
+    private static final int MAX_BUFFER_SIZE = 64 * 1024 * 1024;
+
+    final GTInfo info;
+    final ImmutableBitSet dimensions; // dimensions to return, can be more than group by
+    final ImmutableBitSet groupBy;
+    final ImmutableBitSet metrics;
+    final String[] metricsAggrFuncs;
+    final IGTScanner inputScanner;
+    final BufferedMeasureCodec measureCodec;
+    final AggregationCache aggrCache;
+    long spillThreshold; // 0 means no memory control &amp;&amp; no spill
+    final int storagePushDownLimit;//default to be Int.MAX
+    final StorageLimitLevel storageLimitLevel;
+    final boolean spillEnabled;
+    final TupleFilter havingFilter;
+
+<span class="fc" id="L88">    private long inputRowCount = 0L;</span>
+    private MemoryWaterLevel memTracker;
+    private boolean[] aggrMask;
+
+    public GTAggregateScanner(IGTScanner inputScanner, GTScanRequest req) {
+<span class="fc" id="L93">        this(inputScanner, req, true);</span>
+<span class="fc" id="L94">    }</span>
+
+<span class="fc" id="L96">    public GTAggregateScanner(IGTScanner input, GTScanRequest req, boolean spillEnabled) {</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (!req.hasAggregation())</span>
+<span class="nc" id="L98">            throw new IllegalStateException();</span>
+
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (input instanceof GTFilterScanner) {</span>
+<span class="nc" id="L101">            logger.info(&quot;setting IGTBypassChecker of child&quot;);</span>
+<span class="nc" id="L102">            ((GTFilterScanner) input).setChecker(this);</span>
+        } else {
+<span class="fc" id="L104">            logger.info(&quot;applying a GTFilterScanner with IGTBypassChecker on top child&quot;);</span>
+<span class="fc" id="L105">            input = new GTFilterScanner(input, null, this);</span>
+        }
+
+<span class="fc" id="L108">        this.inputScanner = input;</span>
+<span class="fc" id="L109">        this.info = this.inputScanner.getInfo();</span>
+<span class="fc" id="L110">        this.dimensions = req.getDimensions();</span>
+<span class="fc" id="L111">        this.groupBy = req.getAggrGroupBy();</span>
+<span class="fc" id="L112">        this.metrics = req.getAggrMetrics();</span>
+<span class="fc" id="L113">        this.metricsAggrFuncs = req.getAggrMetricsFuncs();</span>
+<span class="fc" id="L114">        this.measureCodec = req.createMeasureCodec();</span>
+<span class="fc" id="L115">        this.spillThreshold = (long) (req.getAggCacheMemThreshold() * MemoryBudgetController.ONE_GB);</span>
+<span class="fc" id="L116">        this.aggrMask = new boolean[metricsAggrFuncs.length];</span>
+<span class="fc" id="L117">        this.storagePushDownLimit = req.getStoragePushDownLimit();</span>
+<span class="fc" id="L118">        this.storageLimitLevel = req.getStorageLimitLevel();</span>
+<span class="fc" id="L119">        this.spillEnabled = spillEnabled;</span>
+<span class="fc" id="L120">        this.havingFilter = req.getHavingFilterPushDown();</span>
+
+<span class="fc" id="L122">        this.aggrCache = new AggregationCache();</span>
+
+<span class="fc" id="L124">        Arrays.fill(aggrMask, true);</span>
+<span class="fc" id="L125">    }</span>
+
+    public static long estimateSizeOfAggrCache(byte[] keySample, MeasureAggregator&lt;?&gt;[] aggrSample, int size) {
+        // Aggregation cache is basically a tree map. The tree map entry overhead is
+        // - 40 according to http://java-performance.info/memory-consumption-of-java-data-types-2/
+        // - 41~52 according to AggregationCacheMemSizeTest
+<span class="fc" id="L131">        return (estimateSizeOf(keySample) + estimateSizeOf(aggrSample) + 64) * size;</span>
+    }
+
+    public static long estimateSizeOf(MeasureAggregator[] aggrs) {
+        // size of array, AggregationCacheMemSizeTest reports 4 for [0], 12 for [1], 12 for [2], 20 for [3] etc..
+        // Memory alignment to 8 bytes
+<span class="fc" id="L137">        long est = (aggrs.length + 1) / 2 * 8L + 4 + (4 /* extra */);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (MeasureAggregator aggr : aggrs) {</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (aggr != null)</span>
+<span class="fc" id="L140">                est += aggr.getMemBytesEstimate();</span>
+        }
+<span class="fc" id="L142">        return est;</span>
+    }
+
+    public static long estimateSizeOf(byte[] bytes) {
+        // AggregationCacheMemSizeTest reports 20 for byte[10] and 20 again for byte[16]
+        // Memory alignment to 8 bytes
+<span class="fc" id="L148">        return (bytes.length + 7) / 8 * 8L + 4 + (4 /* extra */);</span>
+    }
+
+    public void trackMemoryLevel(MemoryWaterLevel tracker) {
+<span class="nc" id="L152">        this.memTracker = tracker;</span>
+<span class="nc" id="L153">    }</span>
+
+    @Override
+    public GTInfo getInfo() {
+<span class="nc" id="L157">        return info;</span>
+    }
+
+    public long getInputRowCount() {
+<span class="nc" id="L161">        return inputRowCount;</span>
+    }
+
+    @Override
+    public void close() throws IOException {
+<span class="fc" id="L166">        inputScanner.close();</span>
+<span class="fc" id="L167">        aggrCache.close();</span>
+<span class="fc" id="L168">    }</span>
+
+    @Override
+    public Iterator&lt;GTRecord&gt; iterator() {
+<span class="fc" id="L172">        long count = 0;</span>
+
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        for (GTRecord r : inputScanner) {</span>
+
+            //check limit
+<span class="fc" id="L177">            boolean ret = aggrCache.aggregate(r);</span>
+
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if (!ret) {</span>
+<span class="nc" id="L180">                logger.info(&quot;abort reading inputScanner because storage push down limit is hit&quot;);</span>
+<span class="nc" id="L181">                break;//limit is hit</span>
+            }
+
+<span class="fc" id="L184">            count++;</span>
+<span class="fc" id="L185">        }</span>
+<span class="fc" id="L186">        logger.info(&quot;GTAggregateScanner input rows: &quot; + count);</span>
+<span class="fc" id="L187">        return aggrCache.iterator();</span>
+    }
+
+    public int getNumOfSpills() {
+<span class="fc" id="L191">        return aggrCache.dumps.size();</span>
+    }
+
+    public void setAggrMask(boolean[] aggrMask) {
+<span class="nc" id="L195">        this.aggrMask = aggrMask;</span>
+<span class="nc" id="L196">    }</span>
+
+    /** return the estimate memory size of aggregation cache */
+    public long getEstimateSizeOfAggrCache() {
+<span class="nc" id="L200">        return aggrCache.estimatedMemSize();</span>
+    }
+
+    public boolean shouldBypass(GTRecord record) {
+<span class="fc" id="L204">        return aggrCache.shouldBypass(record);</span>
+    }
+
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">    class AggregationCache implements Closeable {</span>
+        /**
+         * if a limit construct is provided
+         * before a gtrecord is sent to filter-&gt;aggregate pipeline, 
+         * this check could help to decide if the record should be skipped
+         *
+         * e.g. 
+         * limit is three, and current AggregationCache's key set contains (1,2,3),
+         * when gtrecord with key 4 comes, it should be skipped before sending to filter 
+         */
+        class ByPassChecker {
+<span class="nc" id="L218">            private int aggregateBufferSizeLimit = -1;</span>
+<span class="nc" id="L219">            private byte[] currentLastKey = null;</span>
+<span class="nc" id="L220">            private int[] groupOffsetsInLastKey = null;</span>
+
+<span class="nc" id="L222">            private int byPassCounter = 0;</span>
+
+<span class="nc" id="L224">            ByPassChecker(int aggregateBufferSizeLimit) {</span>
+<span class="nc" id="L225">                this.aggregateBufferSizeLimit = aggregateBufferSizeLimit;</span>
+
+                //init groupOffsetsInLastKey
+<span class="nc" id="L228">                int p = 0;</span>
+<span class="nc" id="L229">                int idx = 0;</span>
+<span class="nc" id="L230">                this.groupOffsetsInLastKey = new int[groupBy.trueBitCount()];</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">                for (int i = 0; i &lt; dimensions.trueBitCount(); i++) {</span>
+<span class="nc" id="L232">                    int c = dimensions.trueBitAt(i);</span>
+<span class="nc" id="L233">                    int l = info.codeSystem.maxCodeLength(c);</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                    if (groupBy.get(c))</span>
+<span class="nc" id="L235">                        groupOffsetsInLastKey[idx++] = p;</span>
+<span class="nc" id="L236">                    p += l;</span>
+                }
+<span class="nc" id="L238">            }</span>
+
+            /**
+             * @return true if should bypass this record
+             */
+            boolean shouldByPass(GTRecord record) {
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">                if (dumps.size() &gt; 0) {</span>
+<span class="nc" id="L246">                    return false; //rare case: limit tends to be small, when limit is applied it's not likely to have dumps</span>
+                    //TODO: what if bypass before dump happens?
+                }
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">                Preconditions.checkState(aggBufMap.size() &lt;= aggregateBufferSizeLimit);</span>
+
+<span class="nc bnc" id="L252" title="All 2 branches missed.">                if (aggBufMap.size() == aggregateBufferSizeLimit) {</span>
+<span class="nc" id="L253">                    Preconditions.checkNotNull(currentLastKey);</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                    for (int i = 0; i &lt; groupBy.trueBitCount(); i++) {</span>
+<span class="nc" id="L255">                        int c = groupBy.trueBitAt(i);</span>
+<span class="nc" id="L256">                        ByteArray col = record.get(c);</span>
+
+<span class="nc" id="L258">                        int compare = Bytes.compareTo(col.array(), col.offset(), col.length(), currentLastKey,</span>
+<span class="nc" id="L259">                                groupOffsetsInLastKey[i], col.length());</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                        if (compare &gt; 0) {</span>
+<span class="nc" id="L261">                            byPassCounter++;</span>
+<span class="nc" id="L262">                            return true;</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">                        } else if (compare &lt; 0) {</span>
+<span class="nc" id="L264">                            return false;</span>
+                        }
+                    }
+                }
+
+<span class="nc" id="L269">                return false;</span>
+            }
+
+            void updateOnBufferChange() {
+<span class="nc bnc" id="L273" title="All 2 branches missed.">                if (aggBufMap.size() &gt; aggregateBufferSizeLimit) {</span>
+<span class="nc" id="L274">                    aggBufMap.pollLastEntry();</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">                    Preconditions.checkState(aggBufMap.size() == aggregateBufferSizeLimit);</span>
+                }
+
+<span class="nc" id="L278">                currentLastKey = aggBufMap.lastKey();</span>
+<span class="nc" id="L279">            }</span>
+
+            int getByPassCounter() {
+<span class="nc" id="L282">                return byPassCounter;</span>
+            }
+        }
+
+        final List&lt;Dump&gt; dumps;
+        final int keyLength;
+        final boolean[] compareMask;
+<span class="fc" id="L289">        boolean compareAll = true;</span>
+<span class="fc" id="L290">        long sumSpilledSize = 0;</span>
+<span class="fc" id="L291">        ByPassChecker byPassChecker = null;</span>
+
+<span class="fc" id="L293">        final Comparator&lt;byte[]&gt; bytesComparator = new Comparator&lt;byte[]&gt;() {</span>
+            @Override
+            public int compare(byte[] o1, byte[] o2) {
+<span class="fc bfc" id="L296" title="All 2 branches covered.">                if (compareAll) {</span>
+<span class="fc" id="L297">                    return Bytes.compareTo(o1, o2);</span>
+                }
+
+<span class="fc" id="L300">                int result = 0;</span>
+                // profiler shows this check is slow
+                // Preconditions.checkArgument(keyLength == o1.length &amp;&amp; keyLength == o2.length);
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                for (int i = 0; i &lt; keyLength; ++i) {</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">                    if (compareMask[i]) {</span>
+<span class="fc" id="L305">                        int a = (o1[i] &amp; 0xff);</span>
+<span class="fc" id="L306">                        int b = (o2[i] &amp; 0xff);</span>
+<span class="fc" id="L307">                        result = a - b;</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">                        if (result == 0) {</span>
+<span class="fc" id="L309">                            continue;</span>
+                        } else {
+<span class="fc" id="L311">                            return result;</span>
+                        }
+                    }
+                }
+<span class="fc" id="L315">                return result;</span>
+            }
+        };
+
+        TreeMap&lt;byte[], MeasureAggregator[]&gt; aggBufMap;
+
+<span class="fc" id="L321">        public AggregationCache() {</span>
+<span class="fc" id="L322">            compareMask = createCompareMask();</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">            for (boolean l : compareMask) {</span>
+<span class="fc bfc" id="L324" title="All 4 branches covered.">                compareAll = compareAll &amp;&amp; l;</span>
+            }
+<span class="fc" id="L326">            keyLength = compareMask.length;</span>
+<span class="fc" id="L327">            dumps = Lists.newArrayList();</span>
+<span class="fc" id="L328">            aggBufMap = createBuffMap();</span>
+
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">            if (storageLimitLevel == StorageLimitLevel.LIMIT_ON_RETURN_SIZE) {</span>
+                //ByPassChecker is not free, if LIMIT_ON_SCAN, not worth to as it has better optimization
+<span class="nc" id="L332">                byPassChecker = new ByPassChecker(storagePushDownLimit);</span>
+            }
+<span class="fc" id="L334">        }</span>
+
+        public boolean shouldBypass(GTRecord record) {
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">            if (byPassChecker == null) {</span>
+<span class="fc" id="L338">                return false;</span>
+            }
+
+<span class="nc" id="L341">            boolean b = byPassChecker.shouldByPass(record);</span>
+<span class="nc" id="L342">            return b;</span>
+        }
+
+        private boolean[] createCompareMask() {
+<span class="fc" id="L346">            int keyLength = 0;</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            for (int i = 0; i &lt; dimensions.trueBitCount(); i++) {</span>
+<span class="fc" id="L348">                int c = dimensions.trueBitAt(i);</span>
+<span class="fc" id="L349">                int l = info.codeSystem.maxCodeLength(c);</span>
+<span class="fc" id="L350">                keyLength += l;</span>
+            }
+
+<span class="fc" id="L353">            boolean[] mask = new boolean[keyLength];</span>
+<span class="fc" id="L354">            int p = 0;</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            for (int i = 0; i &lt; dimensions.trueBitCount(); i++) {</span>
+<span class="fc" id="L356">                int c = dimensions.trueBitAt(i);</span>
+<span class="fc" id="L357">                int l = info.codeSystem.maxCodeLength(c);</span>
+<span class="fc" id="L358">                boolean m = groupBy.get(c);</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                for (int j = 0; j &lt; l; j++) {</span>
+<span class="fc" id="L360">                    mask[p++] = m;</span>
+                }
+            }
+<span class="fc" id="L363">            return mask;</span>
+        }
+
+        private TreeMap&lt;byte[], MeasureAggregator[]&gt; createBuffMap() {
+<span class="fc" id="L367">            return Maps.newTreeMap(bytesComparator);</span>
+        }
+
+        private byte[] createKey(GTRecord record) {
+<span class="fc" id="L371">            byte[] result = new byte[keyLength];</span>
+<span class="fc" id="L372">            int offset = 0;</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">            for (int i = 0; i &lt; dimensions.trueBitCount(); i++) {</span>
+<span class="fc" id="L374">                int c = dimensions.trueBitAt(i);</span>
+<span class="fc" id="L375">                final ByteArray byteArray = record.cols[c];</span>
+<span class="fc" id="L376">                final int columnLength = info.codeSystem.maxCodeLength(c);</span>
+<span class="fc" id="L377">                System.arraycopy(byteArray.array(), byteArray.offset(), result, offset, byteArray.length());</span>
+<span class="fc" id="L378">                offset += columnLength;</span>
+            }
+<span class="pc bpc" id="L380" title="2 of 4 branches missed.">            assert offset == result.length;</span>
+<span class="fc" id="L381">            return result;</span>
+        }
+
+        boolean aggregate(GTRecord r) {
+<span class="pc bpc" id="L385" title="1 of 2 branches missed.">            if (++inputRowCount % 100000 == 0) {</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">                if (memTracker != null) {</span>
+<span class="nc" id="L387">                    memTracker.markHigh();</span>
+                }
+
+<span class="nc" id="L390">                final long estMemSize = estimatedMemSize();</span>
+<span class="nc bnc" id="L391" title="All 4 branches missed.">                if (spillThreshold &gt; 0 &amp;&amp; estMemSize &gt; spillThreshold) {</span>
+<span class="nc bnc" id="L392" title="All 2 branches missed.">                    if (!spillEnabled) {</span>
+<span class="nc" id="L393">                        throw new ResourceLimitExceededException(&quot;aggregation's memory consumption &quot; + estMemSize</span>
+                                + &quot; exceeds threshold &quot; + spillThreshold);
+                    }
+<span class="nc" id="L396">                    spillBuffMap(estMemSize); // spill to disk</span>
+<span class="nc" id="L397">                    aggBufMap = createBuffMap();</span>
+                }
+            }
+
+<span class="fc" id="L401">            final byte[] key = createKey(r);</span>
+<span class="fc" id="L402">            MeasureAggregator[] aggrs = aggBufMap.get(key);</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">            if (aggrs == null) {</span>
+
+                //for storage push down limit
+                //TODO: what if bypass before dump happens?
+<span class="pc bpc" id="L407" title="2 of 4 branches missed.">                if (getNumOfSpills() == 0 &amp;&amp; storageLimitLevel == StorageLimitLevel.LIMIT_ON_SCAN</span>
+<span class="nc bnc" id="L408" title="All 2 branches missed.">                        &amp;&amp; aggBufMap.size() &gt;= storagePushDownLimit) {</span>
+<span class="nc" id="L409">                    return false;</span>
+                }
+
+<span class="fc" id="L412">                aggrs = newAggregators();</span>
+<span class="fc" id="L413">                aggBufMap.put(key, aggrs);</span>
+            }
+<span class="fc bfc" id="L415" title="All 2 branches covered.">            for (int i = 0; i &lt; aggrs.length; i++) {</span>
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">                if (aggrMask[i]) {</span>
+<span class="fc" id="L417">                    int col = metrics.trueBitAt(i);</span>
+<span class="fc" id="L418">                    Object metrics = info.codeSystem.decodeColumnValue(col, r.cols[col].asBuffer());</span>
+<span class="fc" id="L419">                    aggrs[i].aggregate(metrics);</span>
+                }
+            }
+
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">            if (byPassChecker != null) {</span>
+<span class="nc" id="L424">                byPassChecker.updateOnBufferChange();</span>
+            }
+
+<span class="fc" id="L427">            return true;</span>
+        }
+
+        private void spillBuffMap(long estMemSize) throws RuntimeException {
+            try {
+<span class="nc" id="L432">                Dump dump = new Dump(aggBufMap, estMemSize);</span>
+<span class="nc" id="L433">                dump.flush();</span>
+<span class="nc" id="L434">                dumps.add(dump);</span>
+<span class="nc" id="L435">                sumSpilledSize += dump.size();</span>
+                // when spilled data is too much, we can modify it by other strategy.
+                // this means, all spilled data is bigger than half of original spillThreshold.
+<span class="nc bnc" id="L438" title="All 2 branches missed.">                if (sumSpilledSize &gt; spillThreshold) {</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">                    for (Dump current : dumps) {</span>
+<span class="nc" id="L440">                        current.spill();</span>
+<span class="nc" id="L441">                    }</span>
+<span class="nc" id="L442">                    spillThreshold += sumSpilledSize;</span>
+<span class="nc" id="L443">                    sumSpilledSize = 0;</span>
+                } else {
+<span class="nc" id="L445">                    spillThreshold -= dump.size();</span>
+                }
+<span class="nc" id="L447">            } catch (Exception e) {</span>
+<span class="nc" id="L448">                throw new RuntimeException(&quot;AggregationCache failed to spill&quot;, e);</span>
+<span class="nc" id="L449">            }</span>
+<span class="nc" id="L450">        }</span>
+
+        @Override
+        public void close() throws RuntimeException {
+            try {
+<span class="fc" id="L455">                logger.info(&quot;closing aggrCache&quot;);</span>
+<span class="pc bpc" id="L456" title="1 of 2 branches missed.">                if (byPassChecker != null) {</span>
+<span class="nc" id="L457">                    logger.info(&quot;AggregationCache byPassChecker helps to skip {} cuboid rows&quot;,</span>
+<span class="nc" id="L458">                            byPassChecker.getByPassCounter());</span>
+                }
+
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">                for (Dump dump : dumps) {</span>
+<span class="nc" id="L462">                    dump.terminate();</span>
+<span class="nc" id="L463">                }</span>
+<span class="nc" id="L464">            } catch (Exception e) {</span>
+<span class="nc" id="L465">                throw new RuntimeException(&quot;AggregationCache close failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L466">            }</span>
+<span class="fc" id="L467">        }</span>
+
+        private MeasureAggregator[] newAggregators() {
+<span class="fc" id="L470">            return info.codeSystem.newMetricsAggregators(metrics, metricsAggrFuncs);</span>
+        }
+
+        public long estimatedMemSize() {
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            if (aggBufMap.isEmpty())</span>
+<span class="nc" id="L475">                return 0;</span>
+
+<span class="nc" id="L477">            byte[] sampleKey = aggBufMap.firstKey();</span>
+<span class="nc" id="L478">            MeasureAggregator&lt;?&gt;[] sampleValue = aggBufMap.get(sampleKey);</span>
+<span class="nc" id="L479">            return estimateSizeOfAggrCache(sampleKey, sampleValue, aggBufMap.size());</span>
+        }
+
+        public Iterator&lt;GTRecord&gt; iterator() {
+<span class="fc" id="L483">            Iterator&lt;Entry&lt;byte[], MeasureAggregator[]&gt;&gt; it = null;</span>
+
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">            if (dumps.isEmpty()) {</span>
+                // the all-in-mem case
+<span class="fc" id="L487">                it = aggBufMap.entrySet().iterator();</span>
+            } else {
+                // the spill case
+<span class="nc bnc" id="L490" title="All 2 branches missed.">                if (!aggBufMap.isEmpty()) {</span>
+<span class="nc" id="L491">                    spillBuffMap(getEstimateSizeOfAggrCache()); // TODO allow merge in-mem map with spilled dumps</span>
+                }
+<span class="nc" id="L493">                DumpMerger merger = new DumpMerger(dumps);</span>
+<span class="nc" id="L494">                it = merger.iterator();</span>
+            }
+
+<span class="fc" id="L497">            final Iterator&lt;Entry&lt;byte[], MeasureAggregator[]&gt;&gt; input = it;</span>
+
+<span class="fc" id="L499">            return new Iterator&lt;GTRecord&gt;() {</span>
+
+<span class="fc" id="L501">                final ReturningRecord returningRecord = new ReturningRecord();</span>
+<span class="fc" id="L502">                Entry&lt;byte[], MeasureAggregator[]&gt; returningEntry = null;</span>
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">                final HavingFilterChecker havingFilterChecker = (havingFilter == null) ? null</span>
+                        : new HavingFilterChecker();
+
+                @Override
+                public boolean hasNext() {
+<span class="fc bfc" id="L508" title="All 4 branches covered.">                    while (returningEntry == null &amp;&amp; input.hasNext()) {</span>
+<span class="fc" id="L509">                        returningEntry = input.next();</span>
+<span class="pc bpc" id="L510" title="1 of 2 branches missed.">                        if (havingFilterChecker != null)</span>
+<span class="nc" id="L511">                            returningEntry = havingFilterChecker.check(returningEntry);</span>
+                    }
+<span class="fc bfc" id="L513" title="All 2 branches covered.">                    return returningEntry != null;</span>
+                }
+
+                @Override
+                public GTRecord next() {
+<span class="fc" id="L518">                    returningRecord.load(returningEntry.getKey(), returningEntry.getValue());</span>
+<span class="fc" id="L519">                    returningEntry = null;</span>
+<span class="fc" id="L520">                    return returningRecord.record;</span>
+                }
+
+                @Override
+                public void remove() {
+<span class="nc" id="L525">                    throw new UnsupportedOperationException();</span>
+                }
+            };
+        }
+
+        class HavingFilterChecker {
+
+<span class="nc" id="L532">            final HavingFilterTuple tuple = new HavingFilterTuple();</span>
+<span class="nc" id="L533">            final IFilterCodeSystem cs = new HavingFilterCodeSys();</span>
+
+<span class="nc" id="L535">            HavingFilterChecker() {</span>
+<span class="nc" id="L536">                logger.info(&quot;Evaluating 'having' filter -- &quot; + havingFilter);</span>
+<span class="nc" id="L537">            }</span>
+
+            public Entry&lt;byte[], MeasureAggregator[]&gt; check(Entry&lt;byte[], MeasureAggregator[]&gt; returningEntry) {
+<span class="nc" id="L540">                tuple.aggrValues = returningEntry.getValue();</span>
+<span class="nc" id="L541">                boolean pass = havingFilter.evaluate(tuple, cs);</span>
+<span class="nc bnc" id="L542" title="All 2 branches missed.">                return pass ? returningEntry : null;</span>
+            }
+        }
+
+<span class="nc" id="L546">        private class HavingFilterCodeSys implements IFilterCodeSystem {</span>
+
+            Object o2Cache;
+            double n2Cache;
+
+            @Override
+            public int compare(Object o1, Object o2) {
+<span class="nc bnc" id="L553" title="All 4 branches missed.">                if (o1 == null &amp;&amp; o2 == null)</span>
+<span class="nc" id="L554">                    return 0;</span>
+
+<span class="nc bnc" id="L556" title="All 2 branches missed.">                if (o1 == null) // null is bigger to align with CubeCodeSystem</span>
+<span class="nc" id="L557">                    return 1;</span>
+
+<span class="nc bnc" id="L559" title="All 2 branches missed.">                if (o2 == null) // null is bigger to align with CubeCodeSystem</span>
+<span class="nc" id="L560">                    return -1;</span>
+
+                // for the 'having clause', we only concern numbers and BigDecimal
+                // we try to cache the o2, which should be a constant according to CompareTupleFilter.evaluate()
+
+                double n1;
+<span class="nc bnc" id="L566" title="All 2 branches missed.">                if (o1 instanceof Number) {</span>
+<span class="nc" id="L567">                    n1 = ((Number) o1).doubleValue();</span>
+<span class="nc bnc" id="L568" title="All 2 branches missed.">                } else if (o1 instanceof HLLCounter) {</span>
+<span class="nc" id="L569">                    n1 = ((HLLCounter) o1).getCountEstimate();</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">                } else if (o1 instanceof BitmapCounter) {</span>
+<span class="nc" id="L571">                    n1 = ((BitmapCounter) o1).getCount();</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">                } else if (o1 instanceof PercentileCounter) {</span>
+<span class="nc" id="L573">                    n1 = ((PercentileCounter) o1).getResultEstimate();</span>
+                } else {
+<span class="nc" id="L575">                    throw new RuntimeException(&quot;Unknown datatype: value=&quot; + o1 + &quot;, class=&quot; + o1.getClass());</span>
+                }
+
+<span class="nc bnc" id="L578" title="All 2 branches missed.">                double n2 = (o2Cache == o2) ? n2Cache : Double.parseDouble((String) o2);</span>
+
+<span class="nc bnc" id="L580" title="All 2 branches missed.">                if (o2Cache == null) {</span>
+<span class="nc" id="L581">                    o2Cache = o2;</span>
+<span class="nc" id="L582">                    n2Cache = n2;</span>
+                }
+
+<span class="nc" id="L585">                return Double.compare(n1, n2);</span>
+            }
+
+            @Override
+            public boolean isNull(Object code) {
+<span class="nc bnc" id="L590" title="All 2 branches missed.">                return code == null;</span>
+            }
+
+            @Override
+            public void serialize(Object code, ByteBuffer buf) {
+<span class="nc" id="L595">                throw new UnsupportedOperationException();</span>
+            }
+
+            @Override
+            public Object deserialize(ByteBuffer buf) {
+<span class="nc" id="L600">                throw new UnsupportedOperationException();</span>
+            }
+        }
+
+<span class="nc" id="L604">        private class HavingFilterTuple implements ITuple {</span>
+            MeasureAggregator[] aggrValues;
+
+            @Override
+            public Object getValue(TblColRef col) {
+<span class="nc" id="L609">                return aggrValues[col.getColumnDesc().getZeroBasedIndex()].getState();</span>
+            }
+
+            @Override
+            public List&lt;String&gt; getAllFields() {
+<span class="nc" id="L614">                throw new UnsupportedOperationException();</span>
+            }
+
+            @Override
+            public List&lt;TblColRef&gt; getAllColumns() {
+<span class="nc" id="L619">                throw new UnsupportedOperationException();</span>
+            }
+
+            @Override
+            public Object[] getAllValues() {
+<span class="nc" id="L624">                throw new UnsupportedOperationException();</span>
+            }
+
+            @Override
+            public ITuple makeCopy() {
+<span class="nc" id="L629">                throw new UnsupportedOperationException();</span>
+            }
+        };
+
+<span class="fc" id="L633">        class ReturningRecord {</span>
+<span class="fc" id="L634">            final GTRecord record = new GTRecord(info);</span>
+<span class="fc" id="L635">            final Object[] tmpValues = new Object[metrics.trueBitCount()];</span>
+
+            void load(byte[] key, MeasureAggregator[] value) {
+<span class="fc" id="L638">                int offset = 0;</span>
+<span class="fc bfc" id="L639" title="All 2 branches covered.">                for (int i = 0; i &lt; dimensions.trueBitCount(); i++) {</span>
+<span class="fc" id="L640">                    int c = dimensions.trueBitAt(i);</span>
+<span class="fc" id="L641">                    final int columnLength = info.codeSystem.maxCodeLength(c);</span>
+<span class="fc" id="L642">                    record.cols[c].reset(key, offset, columnLength);</span>
+<span class="fc" id="L643">                    offset += columnLength;</span>
+                }
+
+<span class="fc bfc" id="L646" title="All 2 branches covered.">                for (int i = 0; i &lt; value.length; i++) {</span>
+<span class="fc" id="L647">                    tmpValues[i] = value[i].getState();</span>
+                }
+
+<span class="fc" id="L650">                byte[] bytes = measureCodec.encode(tmpValues).array();</span>
+<span class="fc" id="L651">                int[] sizes = measureCodec.getMeasureSizes();</span>
+<span class="fc" id="L652">                offset = 0;</span>
+<span class="fc bfc" id="L653" title="All 2 branches covered.">                for (int i = 0; i &lt; value.length; i++) {</span>
+<span class="fc" id="L654">                    int col = metrics.trueBitAt(i);</span>
+<span class="fc" id="L655">                    record.cols[col].reset(bytes, offset, sizes[i]);</span>
+<span class="fc" id="L656">                    offset += sizes[i];</span>
+                }
+<span class="fc" id="L658">            }</span>
+        }
+
+        class Dump implements Iterable&lt;Pair&lt;byte[], byte[]&gt;&gt; {
+            final File dumpedFile;
+            SortedMap&lt;byte[], MeasureAggregator[]&gt; buffMap;
+            final long estMemSize;
+            byte[] spillBuffer;
+            DataInputStream dis;
+
+<span class="nc" id="L668">            public Dump(SortedMap&lt;byte[], MeasureAggregator[]&gt; buffMap, long estMemSize) throws IOException {</span>
+<span class="nc" id="L669">                this.dumpedFile = File.createTempFile(&quot;KYLIN_SPILL_&quot;, &quot;.tmp&quot;);</span>
+<span class="nc" id="L670">                this.buffMap = buffMap;</span>
+<span class="nc" id="L671">                this.estMemSize = estMemSize;</span>
+<span class="nc" id="L672">            }</span>
+
+            @Override
+            public Iterator&lt;Pair&lt;byte[], byte[]&gt;&gt; iterator() {
+                try {
+<span class="nc bnc" id="L677" title="All 4 branches missed.">                    if (dumpedFile == null || !dumpedFile.exists()) {</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">                        throw new RuntimeException(&quot;Dumped file cannot be found at: &quot;</span>
+<span class="nc" id="L679">                                + (dumpedFile == null ? &quot;&lt;null&gt;&quot; : dumpedFile.getAbsolutePath()));</span>
+                    }
+
+<span class="nc bnc" id="L682" title="All 2 branches missed.">                    if (spillBuffer == null) {</span>
+<span class="nc" id="L683">                        dis = new DataInputStream(new FileInputStream(dumpedFile));</span>
+                    } else {
+<span class="nc" id="L685">                        dis = new DataInputStream(new ByteArrayInputStream(spillBuffer));</span>
+                    }
+<span class="nc" id="L687">                    final int count = dis.readInt();</span>
+<span class="nc" id="L688">                    return new Iterator&lt;Pair&lt;byte[], byte[]&gt;&gt;() {</span>
+<span class="nc" id="L689">                        int cursorIdx = 0;</span>
+
+                        @Override
+                        public boolean hasNext() {
+<span class="nc bnc" id="L693" title="All 2 branches missed.">                            return cursorIdx &lt; count;</span>
+                        }
+
+                        @Override
+                        public Pair&lt;byte[], byte[]&gt; next() {
+                            try {
+<span class="nc" id="L699">                                cursorIdx++;</span>
+<span class="nc" id="L700">                                int keyLen = dis.readInt();</span>
+<span class="nc" id="L701">                                byte[] key = new byte[keyLen];</span>
+<span class="nc" id="L702">                                dis.readFully(key);</span>
+<span class="nc" id="L703">                                int valueLen = dis.readInt();</span>
+<span class="nc" id="L704">                                byte[] value = new byte[valueLen];</span>
+<span class="nc" id="L705">                                dis.readFully(value);</span>
+<span class="nc" id="L706">                                return new Pair&lt;&gt;(key, value);</span>
+<span class="nc" id="L707">                            } catch (Exception e) {</span>
+<span class="nc" id="L708">                                throw new NoSuchElementException(</span>
+<span class="nc" id="L709">                                        &quot;Cannot read AggregationCache from dumped file: &quot; + e.getMessage());</span>
+                            }
+                        }
+
+                        @Override
+                        public void remove() {
+<span class="nc" id="L715">                            throw new UnsupportedOperationException();</span>
+                        }
+                    };
+<span class="nc" id="L718">                } catch (Exception e) {</span>
+<span class="nc" id="L719">                    throw new RuntimeException(&quot;Failed to read dumped file: &quot; + e.getMessage());</span>
+                }
+            }
+
+            public void spill() throws IOException {
+<span class="nc bnc" id="L724" title="All 2 branches missed.">                if (spillBuffer == null)</span>
+<span class="nc" id="L725">                    return;</span>
+<span class="nc" id="L726">                OutputStream ops = new FileOutputStream(dumpedFile);</span>
+<span class="nc" id="L727">                InputStream ips = new ByteArrayInputStream(spillBuffer);</span>
+<span class="nc" id="L728">                IOUtils.copy(ips, ops);</span>
+<span class="nc" id="L729">                spillBuffer = null;</span>
+<span class="nc" id="L730">                IOUtils.closeQuietly(ips);</span>
+<span class="nc" id="L731">                IOUtils.closeQuietly(ops);</span>
+
+<span class="nc" id="L733">                logger.info(&quot;Spill buffer to disk, location: {}, size = {}.&quot;, dumpedFile.getAbsolutePath(),</span>
+<span class="nc" id="L734">                        dumpedFile.length());</span>
+<span class="nc" id="L735">            }</span>
+
+            public int size() {
+<span class="nc bnc" id="L738" title="All 2 branches missed.">                return spillBuffer == null ? 0 : spillBuffer.length;</span>
+            }
+
+            public void flush() throws IOException {
+<span class="nc" id="L742">                logger.info(&quot;AggregationCache(size={} est_mem_size={} threshold={}) will spill to {}&quot;, buffMap.size(),</span>
+<span class="nc" id="L743">                        estMemSize, spillThreshold, dumpedFile.getAbsolutePath());</span>
+<span class="nc" id="L744">                ByteArrayOutputStream baos = new ByteArrayOutputStream(MAX_BUFFER_SIZE);</span>
+<span class="nc bnc" id="L745" title="All 2 branches missed.">                if (buffMap != null) {</span>
+<span class="nc" id="L746">                    DataOutputStream bos = new DataOutputStream(baos);</span>
+<span class="nc" id="L747">                    Object[] aggrResult = null;</span>
+                    try {
+<span class="nc" id="L749">                        bos.writeInt(buffMap.size());</span>
+
+<span class="nc bnc" id="L751" title="All 2 branches missed.">                        for (Entry&lt;byte[], MeasureAggregator[]&gt; entry : buffMap.entrySet()) {</span>
+<span class="nc" id="L752">                            MeasureAggregators aggs = new MeasureAggregators(entry.getValue());</span>
+<span class="nc" id="L753">                            aggrResult = new Object[metrics.trueBitCount()];</span>
+<span class="nc" id="L754">                            aggs.collectStates(aggrResult);</span>
+<span class="nc" id="L755">                            ByteBuffer metricsBuf = measureCodec.encode(aggrResult);</span>
+
+<span class="nc" id="L757">                            bos.writeInt(entry.getKey().length);</span>
+<span class="nc" id="L758">                            bos.write(entry.getKey());</span>
+<span class="nc" id="L759">                            bos.writeInt(metricsBuf.position());</span>
+<span class="nc" id="L760">                            bos.write(metricsBuf.array(), 0, metricsBuf.position());</span>
+<span class="nc" id="L761">                        }</span>
+                    } finally {
+<span class="nc" id="L763">                        buffMap = null;</span>
+<span class="nc" id="L764">                        IOUtils.closeQuietly(bos);</span>
+                    }
+                }
+<span class="nc" id="L767">                spillBuffer = baos.toByteArray();</span>
+<span class="nc" id="L768">                IOUtils.closeQuietly(baos);</span>
+<span class="nc" id="L769">                logger.info(&quot;Accurately spill data size = {}&quot;, spillBuffer.length);</span>
+<span class="nc" id="L770">            }</span>
+
+            public void terminate() throws IOException {
+<span class="nc" id="L773">                buffMap = null;</span>
+<span class="nc bnc" id="L774" title="All 2 branches missed.">                if (dis != null)</span>
+<span class="nc" id="L775">                    IOUtils.closeQuietly(dis);</span>
+<span class="nc bnc" id="L776" title="All 4 branches missed.">                if (dumpedFile != null &amp;&amp; dumpedFile.exists())</span>
+<span class="nc" id="L777">                    dumpedFile.delete();</span>
+<span class="nc" id="L778">                spillBuffer = null;</span>
+<span class="nc" id="L779">            }</span>
+        }
+
+        class DumpMerger implements Iterable&lt;Entry&lt;byte[], MeasureAggregator[]&gt;&gt; {
+            final PriorityQueue&lt;Entry&lt;byte[], Integer&gt;&gt; minHeap;
+            final List&lt;Iterator&lt;Pair&lt;byte[], byte[]&gt;&gt;&gt; dumpIterators;
+            final List&lt;Object[]&gt; dumpCurrentValues;
+<span class="nc" id="L786">            final MeasureAggregator[] resultMeasureAggregators = newAggregators();</span>
+<span class="nc" id="L787">            final MeasureAggregators resultAggrs = new MeasureAggregators(resultMeasureAggregators);</span>
+
+<span class="nc" id="L789">            public DumpMerger(List&lt;Dump&gt; dumps) {</span>
+<span class="nc" id="L790">                minHeap = new PriorityQueue&lt;&gt;(dumps.size(), new Comparator&lt;Entry&lt;byte[], Integer&gt;&gt;() {</span>
+                    @Override
+                    public int compare(Entry&lt;byte[], Integer&gt; o1, Entry&lt;byte[], Integer&gt; o2) {
+<span class="nc" id="L793">                        return bytesComparator.compare(o1.getKey(), o2.getKey());</span>
+                    }
+                });
+<span class="nc" id="L796">                dumpIterators = Lists.newArrayListWithCapacity(dumps.size());</span>
+<span class="nc" id="L797">                dumpCurrentValues = Lists.newArrayListWithCapacity(dumps.size());</span>
+
+                Iterator&lt;Pair&lt;byte[], byte[]&gt;&gt; it;
+<span class="nc bnc" id="L800" title="All 2 branches missed.">                for (int i = 0; i &lt; dumps.size(); i++) {</span>
+<span class="nc" id="L801">                    it = dumps.get(i).iterator();</span>
+<span class="nc" id="L802">                    dumpCurrentValues.add(i, null);</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">                    if (it.hasNext()) {</span>
+<span class="nc" id="L804">                        dumpIterators.add(i, it);</span>
+<span class="nc" id="L805">                        enqueueFromDump(i);</span>
+                    } else {
+<span class="nc" id="L807">                        dumpIterators.add(i, null);</span>
+                    }
+                }
+<span class="nc" id="L810">            }</span>
+
+            private void enqueueFromDump(int index) {
+<span class="nc bnc" id="L813" title="All 4 branches missed.">                if (dumpIterators.get(index) != null &amp;&amp; dumpIterators.get(index).hasNext()) {</span>
+<span class="nc" id="L814">                    Pair&lt;byte[], byte[]&gt; pair = dumpIterators.get(index).next();</span>
+<span class="nc" id="L815">                    minHeap.offer(new SimpleEntry(pair.getFirst(), index));</span>
+<span class="nc" id="L816">                    Object[] metricValues = new Object[metrics.trueBitCount()];</span>
+<span class="nc" id="L817">                    measureCodec.decode(ByteBuffer.wrap(pair.getSecond()), metricValues);</span>
+<span class="nc" id="L818">                    dumpCurrentValues.set(index, metricValues);</span>
+                }
+<span class="nc" id="L820">            }</span>
+
+            @Override
+            public Iterator&lt;Entry&lt;byte[], MeasureAggregator[]&gt;&gt; iterator() {
+<span class="nc" id="L824">                return new Iterator&lt;Entry&lt;byte[], MeasureAggregator[]&gt;&gt;() {</span>
+                    @Override
+                    public boolean hasNext() {
+<span class="nc bnc" id="L827" title="All 2 branches missed.">                        return !minHeap.isEmpty();</span>
+                    }
+
+                    private void internalAggregate() {
+<span class="nc" id="L831">                        Entry&lt;byte[], Integer&gt; peekEntry = minHeap.poll();</span>
+<span class="nc" id="L832">                        resultAggrs.aggregate(dumpCurrentValues.get(peekEntry.getValue()));</span>
+<span class="nc" id="L833">                        enqueueFromDump(peekEntry.getValue());</span>
+<span class="nc" id="L834">                    }</span>
+
+                    @Override
+                    public Entry&lt;byte[], MeasureAggregator[]&gt; next() {
+                        // Use minimum heap to merge sort the keys,
+                        // also do aggregation for measures with same keys in different dumps
+<span class="nc" id="L840">                        resultAggrs.reset();</span>
+
+<span class="nc" id="L842">                        byte[] peekKey = minHeap.peek().getKey();</span>
+<span class="nc" id="L843">                        internalAggregate();</span>
+
+<span class="nc bnc" id="L845" title="All 4 branches missed.">                        while (!minHeap.isEmpty() &amp;&amp; bytesComparator.compare(peekKey, minHeap.peek().getKey()) == 0) {</span>
+<span class="nc" id="L846">                            internalAggregate();</span>
+                        }
+
+<span class="nc" id="L849">                        return new SimpleEntry(peekKey, resultMeasureAggregators);</span>
+                    }
+
+                    @Override
+                    public void remove() {
+<span class="nc" id="L854">                        throw new UnsupportedOperationException();</span>
+                    }
+                };
+            }
+        }
+    }
+
+    private static class SimpleEntry&lt;K, V&gt; implements Entry&lt;K, V&gt; {
+        K k;
+        V v;
+
+<span class="nc" id="L865">        SimpleEntry(K k, V v) {</span>
+<span class="nc" id="L866">            this.k = k;</span>
+<span class="nc" id="L867">            this.v = v;</span>
+<span class="nc" id="L868">        }</span>
+
+        @Override
+        public K getKey() {
+<span class="nc" id="L872">            return k;</span>
+        }
+
+        @Override
+        public V getValue() {
+<span class="nc" id="L877">            return v;</span>
+        }
+
+        @Override
+        public V setValue(V value) {
+<span class="nc" id="L882">            V oldV = v;</span>
+<span class="nc" id="L883">            this.v = value;</span>
+<span class="nc" id="L884">            return oldV;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

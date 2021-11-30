@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderedProperties.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">OrderedProperties.java</span></div><h1>OrderedProperties.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Serializable;
+import java.io.Writer;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Enumeration;
+import java.util.InvalidPropertiesFormatException;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.Vector;
+
+/**
+ * Modified from the etiennestuder/java-ordered-properties in https://github.com/etiennestuder/java-ordered-properties
+ *
+ * This class provides an alternative to the JDK's {@link Properties} class. It fixes the design flaw of using
+ * inheritance over composition, while keeping up the same APIs as the original class. Keys and values are
+ * guaranteed to be of type {@link String}.
+ * &lt;p/&gt;
+ * This class is not synchronized, contrary to the original implementation.
+ * &lt;p/&gt;
+ * As additional functionality, this class keeps its properties in a well-defined order. By default, the order
+ * is the one in which the individual properties have been added, either through explicit API calls or through
+ * reading them top-to-bottom from a properties file.
+ * &lt;p/&gt;
+ * Currently, this class does not support the concept of default properties, contrary to the original implementation.
+ * &lt;p/&gt;
+ * &lt;strong&gt;Note that this implementation is not synchronized.&lt;/strong&gt; If multiple threads access ordered
+ * properties concurrently, and at least one of the threads modifies the ordered properties structurally, it
+ * &lt;em&gt;must&lt;/em&gt; be synchronized externally. This is typically accomplished by synchronizing on some object
+ * that naturally encapsulates the properties.
+ * &lt;p/&gt;
+ * Note that the actual (and quite complex) logic of parsing and storing properties from and to a stream
+ * is delegated to the {@link Properties} class from the JDK.
+ *
+ * @see Properties
+ */
+public final class OrderedProperties implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    private transient Map&lt;String, String&gt; properties;
+
+    public OrderedProperties() {
+<span class="fc" id="L76">        this(new LinkedHashMap&lt;String, String&gt;());</span>
+<span class="fc" id="L77">    }</span>
+
+<span class="fc" id="L79">    public OrderedProperties(Map&lt;String, String&gt; properties) {</span>
+<span class="fc" id="L80">        this.properties = properties;</span>
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Creates a new instance that will have both the same property entries and
+     * the same behavior as the given source.
+     * &lt;p/&gt;
+     * Note that the source instance and the copy instance will share the same
+     * comparator instance if a custom ordering had been configured on the source.
+     *
+     * @param source the source to copy from
+     * @return the copy
+     */
+    public static OrderedProperties copyOf(OrderedProperties source) {
+        // create a copy that has the same behaviour
+<span class="nc" id="L95">        OrderedPropertiesBuilder builder = new OrderedPropertiesBuilder();</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (source.properties instanceof TreeMap) {</span>
+<span class="nc" id="L97">            builder.withOrdering(((TreeMap&lt;String, String&gt;) source.properties).comparator());</span>
+        }
+<span class="nc" id="L99">        OrderedProperties result = builder.build();</span>
+
+        // copy the properties from the source to the target
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; entry : source.entrySet()) {</span>
+<span class="nc" id="L103">            result.setProperty(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L104">        }</span>
+<span class="nc" id="L105">        return result;</span>
+    }
+
+    /**
+     * See {@link Properties#getProperty(String)}.
+     */
+    public String getProperty(String key) {
+<span class="nc" id="L112">        return properties.get(key);</span>
+    }
+
+    /**
+     * See {@link Properties#getProperty(String, String)}.
+     */
+    public String getProperty(String key, String defaultValue) {
+<span class="nc" id="L119">        String value = properties.get(key);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        return (value == null) ? defaultValue : value;</span>
+    }
+
+    /**
+     * See {@link Properties#setProperty(String, String)}.
+     */
+    public String setProperty(String key, String value) {
+<span class="fc" id="L127">        return properties.put(key, value);</span>
+    }
+
+    /**
+     * Removes the property with the specified key, if it is present. Returns
+     * the value of the property, or &lt;tt&gt;null&lt;/tt&gt; if there was no property with
+     * the specified key.
+     *
+     * @param key the key of the property to remove
+     * @return the previous value of the property, or &lt;tt&gt;null&lt;/tt&gt; if there was no property with the specified key
+     */
+    public String removeProperty(String key) {
+<span class="nc" id="L139">        return properties.remove(key);</span>
+    }
+
+    /**
+     * Returns &lt;tt&gt;true&lt;/tt&gt; if there is a property with the specified key.
+     *
+     * @param key the key whose presence is to be tested
+     */
+    public boolean containsProperty(String key) {
+<span class="nc" id="L148">        return properties.containsKey(key);</span>
+    }
+
+    /**
+     * See {@link Properties#size()}.
+     */
+    public int size() {
+<span class="nc" id="L155">        return properties.size();</span>
+    }
+
+    /**
+     * See {@link Properties#isEmpty()}.
+     */
+    public boolean isEmpty() {
+<span class="nc" id="L162">        return properties.isEmpty();</span>
+    }
+
+    /**
+     * See {@link Properties#propertyNames()}.
+     */
+    public Enumeration&lt;String&gt; propertyNames() {
+<span class="nc" id="L169">        return new Vector&lt;String&gt;(properties.keySet()).elements();</span>
+    }
+
+    /**
+     * See {@link Properties#stringPropertyNames()}.
+     */
+    public Set&lt;String&gt; stringPropertyNames() {
+<span class="nc" id="L176">        return new LinkedHashSet&lt;String&gt;(properties.keySet());</span>
+    }
+
+    /**
+     * See {@link Properties#entrySet()}.
+     */
+    public Set&lt;Map.Entry&lt;String, String&gt;&gt; entrySet() {
+<span class="fc" id="L183">        return new LinkedHashSet&lt;Map.Entry&lt;String, String&gt;&gt;(properties.entrySet());</span>
+    }
+
+    public void putAll(OrderedProperties others) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; each : others.entrySet()) {</span>
+<span class="fc" id="L188">            properties.put(each.getKey(), each.getValue());</span>
+<span class="fc" id="L189">        }</span>
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * See {@link Properties#load(InputStream)}.
+     */
+    public void load(InputStream stream) throws IOException {
+<span class="nc" id="L196">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L197">        customProperties.load(stream);</span>
+<span class="nc" id="L198">    }</span>
+
+    /**
+     * See {@link Properties#load(Reader)}.
+     */
+    public void load(Reader reader) throws IOException {
+<span class="fc" id="L204">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="fc" id="L205">        customProperties.load(reader);</span>
+<span class="fc" id="L206">    }</span>
+
+    /**
+     * See {@link Properties#loadFromXML(InputStream)}.
+     */
+    @SuppressWarnings(&quot;DuplicateThrows&quot;)
+    public void loadFromXML(InputStream stream) throws IOException, InvalidPropertiesFormatException {
+<span class="nc" id="L213">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L214">        customProperties.loadFromXML(stream);</span>
+<span class="nc" id="L215">    }</span>
+
+    /**
+     * See {@link Properties#store(OutputStream, String)}.
+     */
+    public void store(OutputStream stream, String comments) throws IOException {
+<span class="nc" id="L221">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L222">        customProperties.store(stream, comments);</span>
+<span class="nc" id="L223">    }</span>
+
+    /**
+     * See {@link Properties#store(Writer, String)}.
+     */
+    public void store(Writer writer, String comments) throws IOException {
+<span class="nc" id="L229">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L230">        customProperties.store(writer, comments);</span>
+<span class="nc" id="L231">    }</span>
+
+    /**
+     * See {@link Properties#storeToXML(OutputStream, String)}.
+     */
+    public void storeToXML(OutputStream stream, String comment) throws IOException {
+<span class="nc" id="L237">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L238">        customProperties.storeToXML(stream, comment);</span>
+<span class="nc" id="L239">    }</span>
+
+    /**
+     * See {@link Properties#storeToXML(OutputStream, String, String)}.
+     */
+    public void storeToXML(OutputStream stream, String comment, String encoding) throws IOException {
+<span class="nc" id="L245">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L246">        customProperties.storeToXML(stream, comment, encoding);</span>
+<span class="nc" id="L247">    }</span>
+
+    /**
+     * See {@link Properties#list(PrintStream)}.
+     */
+    public void list(PrintStream stream) {
+<span class="nc" id="L253">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L254">        customProperties.list(stream);</span>
+<span class="nc" id="L255">    }</span>
+
+    /**
+     * See {@link Properties#list(PrintWriter)}.
+     */
+    public void list(PrintWriter writer) {
+<span class="nc" id="L261">        CustomProperties customProperties = new CustomProperties(this.properties);</span>
+<span class="nc" id="L262">        customProperties.list(writer);</span>
+<span class="nc" id="L263">    }</span>
+
+    /**
+     * Convert this instance to a {@link Properties} instance.
+     *
+     * @return the {@link Properties} instance
+     */
+    public Properties toJdkProperties() {
+<span class="nc" id="L271">        Properties jdkProperties = new Properties();</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        for (Map.Entry&lt;String, String&gt; entry : this.entrySet()) {</span>
+<span class="nc" id="L273">            jdkProperties.put(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L274">        }</span>
+<span class="nc" id="L275">        return jdkProperties;</span>
+    }
+
+    @Override
+    public boolean equals(Object other) {
+<span class="nc bnc" id="L280" title="All 2 branches missed.">        if (this == other) {</span>
+<span class="nc" id="L281">            return true;</span>
+        }
+
+<span class="nc bnc" id="L284" title="All 4 branches missed.">        if (other == null || getClass() != other.getClass()) {</span>
+<span class="nc" id="L285">            return false;</span>
+        }
+
+<span class="nc" id="L288">        OrderedProperties that = (OrderedProperties) other;</span>
+<span class="nc" id="L289">        return Arrays.equals(properties.entrySet().toArray(), that.properties.entrySet().toArray());</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L294">        return Arrays.hashCode(properties.entrySet().toArray());</span>
+    }
+
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="nc" id="L298">        stream.defaultWriteObject();</span>
+<span class="nc" id="L299">        stream.writeObject(properties);</span>
+<span class="nc" id="L300">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
+<span class="nc" id="L304">        stream.defaultReadObject();</span>
+<span class="nc" id="L305">        properties = (Map&lt;String, String&gt;) stream.readObject();</span>
+<span class="nc" id="L306">    }</span>
+
+    private void readObjectNoData() throws InvalidObjectException {
+<span class="nc" id="L309">        throw new InvalidObjectException(&quot;Stream data required&quot;);</span>
+    }
+
+    /**
+     * See {@link Properties#toString()}.
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L317">        return properties.toString();</span>
+    }
+
+    public Map&lt;String, String&gt; getProperties() {
+<span class="nc" id="L321">        return properties;</span>
+    }
+
+    /**
+     * Builder for {@link OrderedProperties} instances.
+     */
+<span class="nc" id="L327">    public static final class OrderedPropertiesBuilder {</span>
+
+        private Comparator&lt;? super String&gt; comparator;
+
+        /**
+         * Use a custom ordering of the keys.
+         *
+         * @param comparator the ordering to apply on the keys
+         * @return the builder
+         */
+        public OrderedPropertiesBuilder withOrdering(Comparator&lt;? super String&gt; comparator) {
+<span class="nc" id="L338">            this.comparator = comparator;</span>
+<span class="nc" id="L339">            return this;</span>
+        }
+
+        /**
+         * Builds a new {@link OrderedProperties} instance.
+         *
+         * @return the new instance
+         */
+        public OrderedProperties build() {
+<span class="nc bnc" id="L348" title="All 2 branches missed.">            Map&lt;String, String&gt; properties = (this.comparator != null) ? new TreeMap&lt;String, String&gt;(comparator) : new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L349">            return new OrderedProperties(properties);</span>
+        }
+
+    }
+
+    /**
+     * Custom {@link Properties} that delegates reading, writing, and enumerating properties to the
+     * backing {@link OrderedProperties} instance's properties.
+     */
+    private static final class CustomProperties extends Properties {
+
+        private final Map&lt;String, String&gt; targetProperties;
+
+<span class="fc" id="L362">        private CustomProperties(Map&lt;String, String&gt; targetProperties) {</span>
+<span class="fc" id="L363">            this.targetProperties = targetProperties;</span>
+<span class="fc" id="L364">        }</span>
+
+        @Override
+        public Object get(Object key) {
+<span class="nc" id="L368">            return targetProperties.get(key);</span>
+        }
+
+        @Override
+        public Object put(Object key, Object value) {
+<span class="fc" id="L373">            return targetProperties.put((String) key, (String) value);</span>
+        }
+
+        @Override
+        public String getProperty(String key) {
+<span class="nc" id="L378">            return targetProperties.get(key);</span>
+        }
+
+        @Override
+        public Enumeration&lt;Object&gt; keys() {
+<span class="nc" id="L383">            return new Vector&lt;Object&gt;(targetProperties.keySet()).elements();</span>
+        }
+
+        @SuppressWarnings(&quot;NullableProblems&quot;)
+        @Override
+        public Set&lt;Object&gt; keySet() {
+<span class="nc" id="L389">            return new LinkedHashSet&lt;Object&gt;(targetProperties.keySet());</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

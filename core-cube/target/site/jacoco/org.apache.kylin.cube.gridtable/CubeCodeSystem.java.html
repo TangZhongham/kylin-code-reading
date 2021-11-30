@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeCodeSystem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.gridtable</a> &gt; <span class="el_source">CubeCodeSystem.java</span></div><h1>CubeCodeSystem.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.gridtable;
+
+import static org.apache.kylin.metadata.filter.FilterOptimizeTransformer.logger;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.util.Collections;
+import java.util.Map;
+
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.dimension.DictionaryDimEnc;
+import org.apache.kylin.dimension.DictionaryDimEnc.DictionarySerializer;
+import org.apache.kylin.dimension.DimensionEncoding;
+import org.apache.kylin.gridtable.DefaultGTComparator;
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.IGTCodeSystem;
+import org.apache.kylin.gridtable.IGTComparator;
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.datatype.DynamicDimSerializer;
+
+/**
+ * defines how column values will be encoded to/ decoded from GTRecord 
+ * 
+ * Cube meta can provide which columns are dictionary encoded (dict encoded dimensions) or fixed length encoded (fixed length dimensions)
+ * Metrics columns are more flexible, they will use DataTypeSerializer according to their data type.
+ */
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">@SuppressWarnings({ &quot;rawtypes&quot;, &quot;unchecked&quot; })</span>
+public class CubeCodeSystem implements IGTCodeSystem {
+
+    GTInfo info;
+
+    DimensionEncoding[] dimEncs;
+    DataTypeSerializer[] serializers;
+    IGTComparator comparator;
+    Map&lt;Integer, Integer&gt; dependentMetricsMap;
+
+    public CubeCodeSystem(DimensionEncoding[] dimEncs) {
+<span class="nc" id="L60">        this(dimEncs, Collections.&lt;Integer, Integer&gt; emptyMap());</span>
+<span class="nc" id="L61">    }</span>
+
+<span class="nc" id="L63">    public CubeCodeSystem(DimensionEncoding[] dimEncs, Map&lt;Integer, Integer&gt; dependentMetricsMap) {</span>
+<span class="nc" id="L64">        this.dimEncs = dimEncs;</span>
+<span class="nc" id="L65">        this.comparator = new DefaultGTComparator();</span>
+<span class="nc" id="L66">        this.dependentMetricsMap = dependentMetricsMap;</span>
+<span class="nc" id="L67">    }</span>
+
+    public TrimmedCubeCodeSystem trimForCoprocessor() {
+<span class="nc" id="L70">        return new TrimmedCubeCodeSystem(dimEncs, dependentMetricsMap);</span>
+    }
+
+    @Override
+    public void init(GTInfo info) {
+<span class="nc" id="L75">        this.info = info;</span>
+<span class="nc" id="L76">        ImmutableBitSet dDims = info.getDynamicDims();</span>
+<span class="nc" id="L77">        this.serializers = new DataTypeSerializer[info.getColumnCount()];</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        for (int i = 0; i &lt; serializers.length; i++) {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">            DimensionEncoding dimEnc = i &lt; dimEncs.length ? dimEncs[i] : null;</span>
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if (dimEnc != null) {</span>
+                // for dimensions
+<span class="nc" id="L83">                serializers[i] = dimEnc.asDataTypeSerializer();</span>
+            } else {
+<span class="nc" id="L85">                DataTypeSerializer dSerializer = DataTypeSerializer.create(info.getColumnType(i));</span>
+<span class="nc bnc" id="L86" title="All 4 branches missed.">                if (dDims != null &amp;&amp; dDims.get(i)) {</span>
+                    // for dynamic dimensions
+<span class="nc" id="L88">                    dSerializer = new DynamicDimSerializer(dSerializer);</span>
+                } else {
+                    // for measures
+                }
+<span class="nc" id="L92">                serializers[i] = dSerializer;</span>
+            }
+        }
+<span class="nc" id="L95">    }</span>
+
+    @Override
+    public IGTComparator getComparator() {
+<span class="nc" id="L99">        return comparator;</span>
+    }
+
+    @Override
+    public int codeLength(int col, ByteBuffer buf) {
+<span class="nc" id="L104">        return serializers[col].peekLength(buf);</span>
+    }
+
+    @Override
+    public int maxCodeLength(int col) {
+<span class="nc" id="L109">        return serializers[col].maxLength();</span>
+    }
+
+    @Override
+    public DimensionEncoding getDimEnc(int col) {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (col &lt; dimEncs.length) {</span>
+<span class="nc" id="L115">            return dimEncs[col];</span>
+        } else {
+<span class="nc" id="L117">            return null;</span>
+        }
+    }
+
+    @Override
+    public void encodeColumnValue(int col, Object value, ByteBuffer buf) {
+<span class="nc" id="L123">        encodeColumnValue(col, value, 0, buf);</span>
+<span class="nc" id="L124">    }</span>
+
+    @Override
+    public void encodeColumnValue(int col, Object value, int roundingFlag, ByteBuffer buf) {
+<span class="nc" id="L128">        DataTypeSerializer serializer = serializers[col];</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (serializer instanceof DictionarySerializer) {</span>
+<span class="nc" id="L130">            DictionaryDimEnc dictEnc = ((DictionaryDimEnc) dimEncs[col]);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">            if (dictEnc.getRoundingFlag() != roundingFlag) {</span>
+<span class="nc" id="L132">                serializer = dictEnc.copy(roundingFlag).asDataTypeSerializer();</span>
+            }
+
+            // Deal with data type change from string to datetime
+<span class="nc" id="L136">            DataType dataType = info.getColumnType(col);</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            if (dataType.isDateTimeFamily()) {</span>
+                try {
+<span class="nc" id="L139">                    long ts = DateFormat.stringToMillis((String) value);</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">                    if (dataType.isDate()) {</span>
+<span class="nc" id="L141">                        value = DateFormat.formatToDateStr(ts);</span>
+                    } else {
+<span class="nc" id="L143">                        value = DateFormat.formatToTimeWithoutMilliStr(ts);</span>
+                    }
+<span class="nc" id="L145">                    logger.info(&quot;Convert value from {} to {}&quot;, ts, value);</span>
+<span class="nc" id="L146">                } catch (Exception e) {</span>
+<span class="nc" id="L147">                    logger.warn(&quot;Fail to convert value {} to string due to {}&quot;, value, e);</span>
+<span class="nc" id="L148">                }</span>
+            }
+            
+            try {
+<span class="nc" id="L152">                serializer.serialize(value, buf);</span>
+<span class="nc" id="L153">            } catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L154">                IllegalArgumentException rewordEx = new IllegalArgumentException(&quot;Column &quot; + col + &quot; value '&quot; + toStringBinary(value) + &quot;' met dictionary error: &quot; + ex.getMessage());</span>
+<span class="nc" id="L155">                rewordEx.setStackTrace(ex.getStackTrace());</span>
+<span class="nc" id="L156">                throw rewordEx;</span>
+<span class="nc" id="L157">            }</span>
+<span class="nc" id="L158">        } else {</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">            if (value instanceof String) {</span>
+                // for dimensions; measures are converted by MeasureIngestor before reaching this point
+<span class="nc" id="L161">                value = serializer.valueOf((String) value);</span>
+            }
+<span class="nc" id="L163">            serializer.serialize(value, buf);</span>
+        }
+<span class="nc" id="L165">    }</span>
+
+    private String toStringBinary(Object value) {
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (value == null)</span>
+<span class="nc" id="L169">            return &quot;Null&quot;;</span>
+        byte[] bytes;
+<span class="nc" id="L171">        bytes = value.toString().getBytes(Charset.forName(&quot;UTF-8&quot;));</span>
+<span class="nc" id="L172">        return Bytes.toStringBinary(bytes);</span>
+    }
+
+    @Override
+    public Object decodeColumnValue(int col, ByteBuffer buf) {
+<span class="nc" id="L177">        return serializers[col].deserialize(buf);</span>
+    }
+
+    @Override
+    public MeasureAggregator&lt;?&gt;[] newMetricsAggregators(ImmutableBitSet columns, String[] aggrFunctions) {
+<span class="nc bnc" id="L182" title="All 4 branches missed.">        assert columns.trueBitCount() == aggrFunctions.length;</span>
+
+<span class="nc" id="L184">        MeasureAggregator&lt;?&gt;[] result = new MeasureAggregator[aggrFunctions.length];</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        for (int i = 0; i &lt; result.length; i++) {</span>
+<span class="nc" id="L186">            int col = columns.trueBitAt(i);</span>
+<span class="nc" id="L187">            result[i] = MeasureAggregator.create(aggrFunctions[i], info.getColumnType(col));</span>
+        }
+
+        // deal with holistic distinct count
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (dependentMetricsMap != null) {</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            for (Map.Entry&lt;Integer, Integer&gt; childEntry : dependentMetricsMap.entrySet()) {</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                if (columns.get(childEntry.getKey())) {</span>
+<span class="nc" id="L194">                    Integer parent = childEntry.getValue();</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                    if (columns.get(parent) == false)</span>
+<span class="nc" id="L196">                        throw new IllegalStateException();</span>
+
+<span class="nc" id="L198">                    int childIdx = columns.trueBitIndexOf(childEntry.getKey());</span>
+<span class="nc" id="L199">                    int parentIdx = columns.trueBitIndexOf(parent);</span>
+<span class="nc" id="L200">                    result[childIdx].setDependentAggregator(result[parentIdx]);</span>
+                }
+<span class="nc" id="L202">            }</span>
+        }
+
+<span class="nc" id="L205">        return result;</span>
+    }
+
+    @Override
+    public DataTypeSerializer&lt;?&gt; getSerializer(int col) {
+<span class="nc" id="L210">        return serializers[col];</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

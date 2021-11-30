@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GTUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.gridtable</a> &gt; <span class="el_source">GTUtil.java</span></div><h1>GTUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.gridtable;
+
+import java.nio.ByteBuffer;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMapping;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.expression.TupleExpressionSerializer;
+import org.apache.kylin.metadata.filter.ColumnTupleFilter;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.ConstantTupleFilter;
+import org.apache.kylin.metadata.filter.FilterOptimizeTransformer;
+import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter.FilterOperatorEnum;
+import org.apache.kylin.metadata.filter.TupleFilterSerializer;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class GTUtil {
+
+    private GTUtil(){}
+
+<span class="nc" id="L51">    static final TableDesc MOCKUP_TABLE = TableDesc.mockup(&quot;GT_MOCKUP_TABLE&quot;);</span>
+
+    static TblColRef tblColRef(int col, String datatype) {
+<span class="nc" id="L54">        return TblColRef.mockup(MOCKUP_TABLE, col + 1, &quot;&quot; + col, datatype);</span>
+    }
+
+    public static byte[] serializeGTFilter(TupleFilter gtFilter, GTInfo info) {
+<span class="nc" id="L58">        IFilterCodeSystem&lt;ByteArray&gt; filterCodeSystem = wrap(info.codeSystem.getComparator());</span>
+<span class="nc" id="L59">        return TupleFilterSerializer.serialize(gtFilter, filterCodeSystem);</span>
+    }
+
+    public static TupleFilter deserializeGTFilter(byte[] bytes, GTInfo info) {
+<span class="nc" id="L63">        IFilterCodeSystem&lt;ByteArray&gt; filterCodeSystem = wrap(info.codeSystem.getComparator());</span>
+<span class="nc" id="L64">        return TupleFilterSerializer.deserialize(bytes, filterCodeSystem);</span>
+    }
+
+    public static TupleFilter convertFilterUnevaluatable(TupleFilter rootFilter, GTInfo info, //
+            Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+<span class="nc" id="L69">        return convertFilter(rootFilter, info, null, false, unevaluatableColumnCollector);</span>
+    }
+
+    public static TupleFilter convertFilterColumnsAndConstants(TupleFilter rootFilter, GTInfo info, //
+            List&lt;TblColRef&gt; colMapping, Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+<span class="nc" id="L74">        Map&lt;TblColRef, Integer&gt; map = colListToMap(colMapping);</span>
+<span class="nc" id="L75">        return convertFilterColumnsAndConstants(rootFilter, info, map, unevaluatableColumnCollector);</span>
+    }
+
+    public static TupleFilter convertFilterColumnsAndConstants(TupleFilter rootFilter, GTInfo info, //
+            Map&lt;TblColRef, Integer&gt; colMapping, Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+<span class="nc" id="L80">        TupleFilter filter = convertFilter(rootFilter, info, colMapping, true, unevaluatableColumnCollector);</span>
+
+        // optimize the filter: after translating with dictionary, some filters become determined
+        // e.g.
+        // ( a = 'value_in_dict' OR a = 'value_not_in_dict') will become (a = 'value_in_dict' OR ConstantTupleFilter.FALSE)
+        // use the following to further trim the filter to (a = 'value_in_dict')
+        // The goal is to avoid too many children after flatten filter step
+<span class="nc" id="L87">        filter = new FilterOptimizeTransformer().transform(filter);</span>
+<span class="nc" id="L88">        return filter;</span>
+    }
+
+    protected static Map&lt;TblColRef, Integer&gt; colListToMap(List&lt;TblColRef&gt; colMapping) {
+<span class="nc" id="L92">        Map&lt;TblColRef, Integer&gt; map = Maps.newHashMap();</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (int i = 0; i &lt; colMapping.size(); i++) {</span>
+<span class="nc" id="L94">            map.put(colMapping.get(i), i);</span>
+        }
+<span class="nc" id="L96">        return map;</span>
+    }
+
+    // converts TblColRef to GridTable column, encode constants, drop unEvaluatable parts
+    private static TupleFilter convertFilter(TupleFilter rootFilter, final GTInfo info, //
+            final Map&lt;TblColRef, Integer&gt; colMapping, final boolean encodeConstants, //
+            final Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+
+<span class="nc" id="L104">        IFilterCodeSystem&lt;ByteArray&gt; filterCodeSystem = wrap(info.codeSystem.getComparator());</span>
+
+<span class="nc" id="L106">        GTConvertDecorator decorator = new GTConvertDecorator(unevaluatableColumnCollector, colMapping, info,</span>
+                encodeConstants);
+
+<span class="nc" id="L109">        byte[] bytes = TupleFilterSerializer.serialize(rootFilter, decorator, filterCodeSystem);</span>
+<span class="nc" id="L110">        return TupleFilterSerializer.deserialize(bytes, filterCodeSystem);</span>
+    }
+
+    public static TupleExpression convertFilterColumnsAndConstants(TupleExpression rootExpression, GTInfo info,
+            CuboidToGridTableMapping mapping, Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+<span class="nc" id="L115">        Map&lt;TblColRef, FunctionDesc&gt; innerFuncMap = Maps.newHashMap();</span>
+<span class="nc" id="L116">        return convertFilterColumnsAndConstants(rootExpression, info, mapping, innerFuncMap,</span>
+                unevaluatableColumnCollector);
+    }
+
+    public static TupleExpression convertFilterColumnsAndConstants(TupleExpression rootExpression, GTInfo info,
+            CuboidToGridTableMapping mapping, //
+            Map&lt;TblColRef, FunctionDesc&gt; innerFuncMap, Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+<span class="nc" id="L123">        return convertExpression(rootExpression, info, mapping, innerFuncMap, true, unevaluatableColumnCollector);</span>
+    }
+
+    private static TupleExpression convertExpression(TupleExpression rootExpression, final GTInfo info,
+            final CuboidToGridTableMapping mapping, //
+            final Map&lt;TblColRef, FunctionDesc&gt; innerFuncMap, final boolean encodeConstants,
+            final Set&lt;TblColRef&gt; unevaluatableColumnCollector) {
+<span class="nc" id="L130">        IFilterCodeSystem&lt;ByteArray&gt; filterCodeSystem = wrap(info.codeSystem.getComparator());</span>
+
+<span class="nc" id="L132">        final TupleExpressionSerializer.Decorator decorator = new TupleExpressionSerializer.Decorator() {</span>
+            @Override
+            public TupleFilter convertInnerFilter(TupleFilter filter) {
+<span class="nc" id="L135">                return convertFilter(filter, info, mapping.getDim2gt(), encodeConstants, unevaluatableColumnCollector);</span>
+            }
+
+            @Override
+            public TupleExpression convertInnerExpression(TupleExpression expression) {
+<span class="nc" id="L140">                return convertFilterColumnsAndConstants(expression, info, mapping, innerFuncMap,</span>
+                        unevaluatableColumnCollector);
+            }
+
+            @Override
+            public TblColRef mapCol(TblColRef col) {
+<span class="nc" id="L146">                int gtColIdx = mapping.getIndexOf(col);</span>
+<span class="nc bnc" id="L147" title="All 4 branches missed.">                if (gtColIdx &lt; 0 &amp;&amp; innerFuncMap.get(col) != null) {</span>
+<span class="nc" id="L148">                    gtColIdx = mapping.getIndexOf(innerFuncMap.get(col));</span>
+                }
+<span class="nc" id="L150">                return info.colRef(gtColIdx);</span>
+            }
+        };
+
+<span class="nc" id="L154">        byte[] bytes = TupleExpressionSerializer.serialize(rootExpression, decorator, filterCodeSystem);</span>
+<span class="nc" id="L155">        return TupleExpressionSerializer.deserialize(bytes, filterCodeSystem);</span>
+    }
+
+    public static IFilterCodeSystem&lt;ByteArray&gt; wrap(final IGTComparator comp) {
+<span class="nc" id="L159">        return new IFilterCodeSystem&lt;ByteArray&gt;() {</span>
+
+            @Override
+            public int compare(ByteArray o1, ByteArray o2) {
+<span class="nc" id="L163">                return comp.compare(o1, o2);</span>
+            }
+
+            @Override
+            public boolean isNull(ByteArray code) {
+<span class="nc" id="L168">                return comp.isNull(code);</span>
+            }
+
+            @Override
+            public void serialize(ByteArray code, ByteBuffer buffer) {
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                if (code == null)</span>
+<span class="nc" id="L174">                    BytesUtil.writeByteArray(null, 0, 0, buffer);</span>
+                else
+<span class="nc" id="L176">                    BytesUtil.writeByteArray(code.array(), code.offset(), code.length(), buffer);</span>
+<span class="nc" id="L177">            }</span>
+
+            @Override
+            public ByteArray deserialize(ByteBuffer buffer) {
+<span class="nc" id="L181">                return new ByteArray(BytesUtil.readByteArray(buffer));</span>
+            }
+        };
+    }
+
+    protected static class GTConvertDecorator implements TupleFilterSerializer.Decorator {
+        protected final Set&lt;TblColRef&gt; unevaluatableColumnCollector;
+        protected final Map&lt;TblColRef, Integer&gt; colMapping;
+        protected final GTInfo info;
+        protected final boolean useEncodeConstants;
+
+        public GTConvertDecorator(Set&lt;TblColRef&gt; unevaluatableColumnCollector, Map&lt;TblColRef, Integer&gt; colMapping,
+<span class="nc" id="L193">                GTInfo info, boolean encodeConstants) {</span>
+<span class="nc" id="L194">            this.unevaluatableColumnCollector = unevaluatableColumnCollector;</span>
+<span class="nc" id="L195">            this.colMapping = colMapping;</span>
+<span class="nc" id="L196">            this.info = info;</span>
+<span class="nc" id="L197">            this.useEncodeConstants = encodeConstants;</span>
+<span class="nc" id="L198">            buf = ByteBuffer.allocate(info.getMaxColumnLength());</span>
+<span class="nc" id="L199">        }</span>
+
+        protected int mapCol(TblColRef col) {
+<span class="nc" id="L202">            Integer i = colMapping.get(col);</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            return i == null ? -1 : i;</span>
+        }
+
+        @Override
+        public TupleFilter onSerialize(TupleFilter filter) {
+<span class="nc bnc" id="L208" title="All 2 branches missed.">            if (filter == null)</span>
+<span class="nc" id="L209">                return null;</span>
+
+            // In case of NOT(unEvaluatableFilter), we should immediately replace it as TRUE,
+            // Otherwise, unEvaluatableFilter will later be replace with TRUE and NOT(unEvaluatableFilter)
+            // will always return FALSE.
+<span class="nc bnc" id="L214" title="All 4 branches missed.">            if (filter.getOperator() == FilterOperatorEnum.NOT &amp;&amp; !TupleFilter.isEvaluableRecursively(filter)) {</span>
+<span class="nc" id="L215">                TupleFilter.collectColumns(filter, unevaluatableColumnCollector);</span>
+<span class="nc" id="L216">                return ConstantTupleFilter.TRUE;</span>
+            }
+
+            // shortcut for unEvaluatable filter
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            if (!filter.isEvaluable()) {</span>
+<span class="nc" id="L221">                TupleFilter.collectColumns(filter, unevaluatableColumnCollector);</span>
+<span class="nc" id="L222">                return ConstantTupleFilter.TRUE;</span>
+            }
+
+            // map to column onto grid table
+<span class="nc bnc" id="L226" title="All 4 branches missed.">            if (colMapping != null &amp;&amp; filter instanceof ColumnTupleFilter) {</span>
+<span class="nc" id="L227">                ColumnTupleFilter colFilter = (ColumnTupleFilter) filter;</span>
+<span class="nc" id="L228">                int gtColIdx = mapCol(colFilter.getColumn());</span>
+<span class="nc" id="L229">                return new ColumnTupleFilter(info.colRef(gtColIdx));</span>
+            }
+
+            // encode constants
+<span class="nc bnc" id="L233" title="All 4 branches missed.">            if (useEncodeConstants &amp;&amp; filter instanceof CompareTupleFilter) {</span>
+<span class="nc" id="L234">                return encodeConstants((CompareTupleFilter) filter);</span>
+            }
+
+<span class="nc" id="L237">            return filter;</span>
+        }
+
+        protected TupleFilter encodeConstants(CompareTupleFilter oldCompareFilter) {
+            // extract ColumnFilter &amp; ConstantFilter
+<span class="nc" id="L242">            TblColRef externalCol = oldCompareFilter.getColumn();</span>
+
+<span class="nc bnc" id="L244" title="All 2 branches missed.">            if (externalCol == null) {</span>
+<span class="nc" id="L245">                return oldCompareFilter;</span>
+            }
+
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            if (externalCol.isInnerColumn()) {</span>
+<span class="nc" id="L249">                return ConstantTupleFilter.TRUE;</span>
+            }
+
+<span class="nc" id="L252">            Collection constValues = oldCompareFilter.getValues();</span>
+<span class="nc bnc" id="L253" title="All 4 branches missed.">            if (constValues == null || constValues.isEmpty()) {</span>
+<span class="nc" id="L254">                return oldCompareFilter;</span>
+            }
+
+            //CompareTupleFilter containing BuiltInFunctionTupleFilter will not reach here caz it will be transformed by BuiltInFunctionTransformer
+<span class="nc" id="L258">            CompareTupleFilter newCompareFilter = new CompareTupleFilter(oldCompareFilter.getOperator());</span>
+<span class="nc" id="L259">            newCompareFilter.addChild(new ColumnTupleFilter(externalCol));</span>
+
+            //for CompareTupleFilter containing dynamicVariables, the below codes will actually replace dynamicVariables
+            //with normal ConstantTupleFilter
+
+<span class="nc" id="L264">            Object firstValue = constValues.iterator().next();</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            int col = colMapping == null ? externalCol.getColumnDesc().getZeroBasedIndex() : mapCol(externalCol);</span>
+
+            TupleFilter result;
+            ByteArray code;
+
+            // translate constant into code
+<span class="nc bnc" id="L271" title="All 8 branches missed.">            switch (newCompareFilter.getOperator()) {</span>
+            case EQ:
+            case IN:
+<span class="nc" id="L274">                Set newValues = Sets.newHashSet();</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">                for (Object value : constValues) {</span>
+<span class="nc" id="L276">                    code = translate(col, value, 0);</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                    if (code != null)</span>
+<span class="nc" id="L278">                        newValues.add(code);</span>
+<span class="nc" id="L279">                }</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                if (newValues.isEmpty()) {</span>
+<span class="nc" id="L281">                    result = ConstantTupleFilter.FALSE;</span>
+                } else {
+<span class="nc" id="L283">                    newCompareFilter.addChild(new ConstantTupleFilter(newValues));</span>
+<span class="nc" id="L284">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L286">                break;</span>
+            case NOTIN:
+<span class="nc" id="L288">                Set notInValues = Sets.newHashSet();</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">                for (Object value : constValues) {</span>
+<span class="nc" id="L290">                    code = translate(col, value, 0);</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">                    if (code != null)</span>
+<span class="nc" id="L292">                        notInValues.add(code);</span>
+<span class="nc" id="L293">                }</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">                if (notInValues.isEmpty()) {</span>
+<span class="nc" id="L295">                    result = ConstantTupleFilter.TRUE;</span>
+                } else {
+<span class="nc" id="L297">                    newCompareFilter.addChild(new ConstantTupleFilter(notInValues));</span>
+<span class="nc" id="L298">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L300">                break;</span>
+            case NEQ:
+<span class="nc" id="L302">                code = translate(col, firstValue, 0);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">                if (code == null) {</span>
+<span class="nc" id="L304">                    result = newCompareFilter(TupleFilter.FilterOperatorEnum.ISNOTNULL, externalCol);</span>
+                } else {
+<span class="nc" id="L306">                    newCompareFilter.addChild(new ConstantTupleFilter(code));</span>
+<span class="nc" id="L307">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L309">                break;</span>
+            case LT:
+<span class="nc" id="L311">                code = translate(col, firstValue, 0);</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                if (code == null) {</span>
+<span class="nc" id="L313">                    code = translate(col, firstValue, -1);</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">                    if (code == null)</span>
+<span class="nc" id="L315">                        result = newCompareFilter(TupleFilter.FilterOperatorEnum.ISNOTNULL, externalCol);</span>
+                    else
+<span class="nc" id="L317">                        result = newCompareFilter(FilterOperatorEnum.LTE, externalCol, code);</span>
+                } else {
+<span class="nc" id="L319">                    newCompareFilter.addChild(new ConstantTupleFilter(code));</span>
+<span class="nc" id="L320">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L322">                break;</span>
+            case LTE:
+<span class="nc" id="L324">                code = translate(col, firstValue, -1);</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">                if (code == null) {</span>
+<span class="nc" id="L326">                    result = ConstantTupleFilter.FALSE;</span>
+                } else {
+<span class="nc" id="L328">                    newCompareFilter.addChild(new ConstantTupleFilter(code));</span>
+<span class="nc" id="L329">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L331">                break;</span>
+            case GT:
+<span class="nc" id="L333">                code = translate(col, firstValue, 0);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">                if (code == null) {</span>
+<span class="nc" id="L335">                    code = translate(col, firstValue, 1);</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">                    if (code == null)</span>
+<span class="nc" id="L337">                        result = newCompareFilter(TupleFilter.FilterOperatorEnum.ISNOTNULL, externalCol);</span>
+                    else
+<span class="nc" id="L339">                        result = newCompareFilter(FilterOperatorEnum.GTE, externalCol, code);</span>
+                } else {
+<span class="nc" id="L341">                    newCompareFilter.addChild(new ConstantTupleFilter(code));</span>
+<span class="nc" id="L342">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L344">                break;</span>
+            case GTE:
+<span class="nc" id="L346">                code = translate(col, firstValue, 1);</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">                if (code == null) {</span>
+<span class="nc" id="L348">                    result = ConstantTupleFilter.FALSE;</span>
+                } else {
+<span class="nc" id="L350">                    newCompareFilter.addChild(new ConstantTupleFilter(code));</span>
+<span class="nc" id="L351">                    result = newCompareFilter;</span>
+                }
+<span class="nc" id="L353">                break;</span>
+            default:
+<span class="nc" id="L355">                throw new IllegalStateException(&quot;Cannot handle operator &quot; + newCompareFilter.getOperator());</span>
+            }
+<span class="nc" id="L357">            return result;</span>
+        }
+
+        private TupleFilter newCompareFilter(FilterOperatorEnum op, TblColRef col, ByteArray code) {
+<span class="nc" id="L361">            CompareTupleFilter r = new CompareTupleFilter(op);</span>
+<span class="nc" id="L362">            r.addChild(new ColumnTupleFilter(col));</span>
+<span class="nc" id="L363">            r.addChild(new ConstantTupleFilter(code));</span>
+<span class="nc" id="L364">            return r;</span>
+        }
+
+        private TupleFilter newCompareFilter(TupleFilter.FilterOperatorEnum op, TblColRef col) {
+<span class="nc" id="L368">            CompareTupleFilter r = new CompareTupleFilter(op);</span>
+<span class="nc" id="L369">            r.addChild(new ColumnTupleFilter(col));</span>
+<span class="nc" id="L370">            return r;</span>
+        }
+
+        transient ByteBuffer buf;
+
+        protected ByteArray translate(int col, Object value, int roundingFlag) {
+            try {
+<span class="nc" id="L377">                buf.clear();</span>
+<span class="nc" id="L378">                info.codeSystem.encodeColumnValue(col, value, roundingFlag, buf);</span>
+<span class="nc" id="L379">                return ByteArray.copyOf(buf.array(), 0, buf.position());</span>
+<span class="nc" id="L380">            } catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L381">                return null;</span>
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

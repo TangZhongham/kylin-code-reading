@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HadoopUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">HadoopUtil.java</span></div><h1>HadoopUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.ContentSummary;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.storage.IStorageProvider;
+import org.apache.kylin.common.threadlocal.InternalThreadLocal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+public class HadoopUtil {
+
+    public static final String JOB_TMP_ROOT = &quot;/job_tmp&quot;;
+    public static final String PARQUET_STORAGE_ROOT = &quot;/parquet&quot;;
+    public static final String DICT_STORAGE_ROOT = &quot;/dict&quot;;
+    public static final String GLOBAL_DICT_STORAGE_ROOT = DICT_STORAGE_ROOT + &quot;/global_dict&quot;;
+    public static final String SNAPSHOT_STORAGE_ROOT = &quot;/table_snapshot&quot;;
+    public static final String TABLE_EXD_STORAGE_ROOT = ResourceStore.TABLE_EXD_RESOURCE_ROOT;
+    
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="fc" id="L62">    private static final Logger logger = LoggerFactory.getLogger(HadoopUtil.class);</span>
+<span class="fc" id="L63">    private static final transient InternalThreadLocal&lt;Configuration&gt; hadoopConfig = new InternalThreadLocal&lt;&gt;();</span>
+<span class="nc" id="L64">    private HadoopUtil() {</span>
+<span class="nc" id="L65">        throw new IllegalStateException(&quot;Class HadoopUtil is an utility class !&quot;);</span>
+    }
+
+    public static void setCurrentConfiguration(Configuration conf) {
+<span class="nc" id="L69">        hadoopConfig.set(conf);</span>
+<span class="nc" id="L70">    }</span>
+
+    public static Configuration getCurrentConfiguration() {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (hadoopConfig.get() == null) {</span>
+<span class="fc" id="L74">            Configuration conf = healSickConfig(new Configuration());</span>
+            // do not cache this conf, or will affect following mr jobs
+<span class="fc" id="L76">            return conf;</span>
+        }
+<span class="nc" id="L78">        Configuration conf = hadoopConfig.get();</span>
+<span class="nc" id="L79">        return conf;</span>
+    }
+
+    public static Configuration healSickConfig(Configuration conf) {
+        // https://issues.apache.org/jira/browse/KYLIN-953
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (StringUtils.isBlank(conf.get(&quot;hadoop.tmp.dir&quot;))) {</span>
+<span class="nc" id="L85">            conf.set(&quot;hadoop.tmp.dir&quot;, &quot;/tmp&quot;);</span>
+        }
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (StringUtils.isBlank(conf.get(&quot;hbase.fs.tmp.dir&quot;))) {</span>
+<span class="fc" id="L88">            conf.set(&quot;hbase.fs.tmp.dir&quot;, &quot;/tmp&quot;);</span>
+        }
+        //  https://issues.apache.org/jira/browse/KYLIN-3064
+<span class="fc" id="L91">        conf.set(&quot;yarn.timeline-service.enabled&quot;, &quot;false&quot;);</span>
+<span class="fc" id="L92">        return conf;</span>
+    }
+
+    public static FileSystem getWorkingFileSystem() {
+<span class="nc" id="L96">        return getFileSystem(KylinConfig.getInstanceFromEnv().getHdfsWorkingDirectory());</span>
+    }
+
+    public static FileSystem getWorkingFileSystem(Configuration conf) throws IOException {
+<span class="nc" id="L100">        Path workingPath = new Path(KylinConfig.getInstanceFromEnv().getHdfsWorkingDirectory());</span>
+<span class="nc" id="L101">        return getFileSystem(workingPath, conf);</span>
+    }
+
+    public static FileSystem getReadFileSystem() throws IOException {
+<span class="nc" id="L105">        return getFileSystem(KylinConfig.getInstanceFromEnv().getReadHdfsWorkingDirectory());</span>
+    }
+
+    public static FileSystem getFileSystem(String path) {
+<span class="fc" id="L109">        return getFileSystem(new Path(makeURI(path)));</span>
+    }
+
+    public static FileSystem getFileSystem(String path, Configuration conf) throws IOException {
+<span class="nc" id="L113">        return getFileSystem(new Path(makeURI(path)), conf);</span>
+    }
+    
+    public static FileSystem getFileSystem(Path path) {
+<span class="fc" id="L117">        Configuration conf = getCurrentConfiguration();</span>
+<span class="fc" id="L118">        return getFileSystem(path, conf);</span>
+    }
+
+    public static FileSystem getFileSystem(Path path, Configuration conf) {
+        try {
+<span class="fc" id="L123">            return path.getFileSystem(conf);</span>
+<span class="nc" id="L124">        } catch (IOException e) {</span>
+<span class="nc" id="L125">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public static URI makeURI(String filePath) {
+        try {
+<span class="fc" id="L131">            return new URI(fixWindowsPath(filePath));</span>
+<span class="nc" id="L132">        } catch (URISyntaxException e) {</span>
+<span class="nc" id="L133">            throw new IllegalArgumentException(&quot;Cannot create FileSystem from URI: &quot; + filePath, e);</span>
+        }
+    }
+
+    public static String fixWindowsPath(String path) {
+        // fix windows path
+<span class="pc bpc" id="L139" title="3 of 6 branches missed.">        if (path.startsWith(&quot;file://&quot;) &amp;&amp; !path.startsWith(&quot;file:///&quot;) &amp;&amp; path.contains(&quot;:\\&quot;)) {</span>
+<span class="nc" id="L140">            path = path.replace(&quot;file://&quot;, &quot;file:///&quot;);</span>
+        }
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (path.startsWith(&quot;file:///&quot;)) {</span>
+<span class="fc" id="L143">            path = path.replace('\\', '/');</span>
+        }
+<span class="fc" id="L145">        return path;</span>
+    }
+
+    /**
+     * @param table the identifier of hive table, in format &lt;db_name&gt;.&lt;table_name&gt;
+     * @return a string array with 2 elements: {&quot;db_name&quot;, &quot;table_name&quot;}
+     */
+    public static String[] parseHiveTableName(String table) {
+<span class="nc" id="L153">        int cut = table.indexOf('.');</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        String database = cut &gt;= 0 ? table.substring(0, cut).trim() : &quot;DEFAULT&quot;;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        String tableName = cut &gt;= 0 ? table.substring(cut + 1).trim() : table.trim();</span>
+
+<span class="nc" id="L157">        return new String[] { database, tableName };</span>
+    }
+
+    public static void deletePath(Configuration conf, Path path) throws IOException {
+<span class="nc" id="L161">        FileSystem fs = FileSystem.get(path.toUri(), conf);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (fs.exists(path)) {</span>
+<span class="nc" id="L163">            fs.delete(path, true);</span>
+        }
+<span class="nc" id="L165">    }</span>
+
+    public static byte[] toBytes(Writable writable) {
+        try {
+<span class="nc" id="L169">            ByteArrayOutputStream bout = new ByteArrayOutputStream();</span>
+<span class="nc" id="L170">            DataOutputStream out = new DataOutputStream(bout);</span>
+<span class="nc" id="L171">            writable.write(out);</span>
+<span class="nc" id="L172">            out.close();</span>
+<span class="nc" id="L173">            bout.close();</span>
+<span class="nc" id="L174">            return bout.toByteArray();</span>
+<span class="nc" id="L175">        } catch (IOException e) {</span>
+<span class="nc" id="L176">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public static Path getFilterOnlyPath(FileSystem fs, Path baseDir, final String filter) throws IOException {
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (fs.exists(baseDir) == false) {</span>
+<span class="nc" id="L182">            return null;</span>
+        }
+
+<span class="nc" id="L185">        FileStatus[] fileStatus = fs.listStatus(baseDir, new PathFilter() {</span>
+            @Override
+            public boolean accept(Path path) {
+<span class="nc" id="L188">                return path.getName().startsWith(filter);</span>
+            }
+        });
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (fileStatus.length == 1) {</span>
+<span class="nc" id="L193">            return fileStatus[0].getPath();</span>
+        } else {
+<span class="nc" id="L195">            return null;</span>
+        }
+    }
+
+    public static Path[] getFilteredPath(FileSystem fs, Path baseDir, final String prefix) throws IOException {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (fs.exists(baseDir) == false) {</span>
+<span class="nc" id="L201">            return null;</span>
+        }
+
+<span class="nc" id="L204">        FileStatus[] fileStatus = fs.listStatus(baseDir, new PathFilter() {</span>
+            @Override
+            public boolean accept(Path path) {
+<span class="nc" id="L207">                return path.getName().startsWith(prefix);</span>
+            }
+        });
+
+<span class="nc" id="L211">        Path[] result = new Path[fileStatus.length];</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        for (int i = 0; i &lt; fileStatus.length; i++) {</span>
+<span class="nc" id="L213">            result[i] = fileStatus[i].getPath();</span>
+        }
+<span class="nc" id="L215">        return result;</span>
+    }
+
+    public static void deleteHDFSMeta(String metaUrl) throws IOException {
+<span class="nc" id="L219">        String realHdfsPath = StorageURL.valueOf(metaUrl).getParameter(&quot;path&quot;);</span>
+<span class="nc" id="L220">        HadoopUtil.getFileSystem(realHdfsPath).delete(new Path(realHdfsPath), true);</span>
+<span class="nc" id="L221">        logger.info(&quot;Delete metadata in HDFS for this job: &quot; + realHdfsPath);</span>
+<span class="nc" id="L222">    }</span>
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    public static void writeToSequenceFile(Configuration conf, String outputPath, Map&lt;String, String&gt; counterMap) throws IOException {
+<span class="nc" id="L226">        try (SequenceFile.Writer writer = SequenceFile.createWriter(getWorkingFileSystem(conf), conf, new Path(outputPath), Text.class, Text.class)) {</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            for (Map.Entry&lt;String, String&gt; counterEntry : counterMap.entrySet()) {</span>
+<span class="nc" id="L228">                writer.append(new Text(counterEntry.getKey()), new Text(counterEntry.getValue()));</span>
+<span class="nc" id="L229">            }</span>
+        }
+<span class="nc" id="L231">    }</span>
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    public static Map&lt;String, String&gt; readFromSequenceFile(Configuration conf, String inputPath) throws IOException {
+<span class="nc" id="L235">        try (SequenceFile.Reader reader = new SequenceFile.Reader(getWorkingFileSystem(conf), new Path(inputPath), conf)) {</span>
+<span class="nc" id="L236">            Map&lt;String, String&gt; map = Maps.newHashMap();</span>
+
+<span class="nc" id="L238">            Text key = (Text) ReflectionUtils.newInstance(reader.getKeyClass(), conf);</span>
+<span class="nc" id="L239">            Text value = (Text) ReflectionUtils.newInstance(reader.getValueClass(), conf);</span>
+
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            while (reader.next(key, value)) {</span>
+<span class="nc" id="L242">                map.put(key.toString(), value.toString());</span>
+            }
+
+<span class="nc" id="L245">            return map;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    public static List&lt;String&gt; readDistinctColumnValues(Configuration conf, String inputPath) throws IOException {
+<span class="nc" id="L251">        try (SequenceFile.Reader reader = new SequenceFile.Reader(HadoopUtil.getWorkingFileSystem(conf), new Path(inputPath), conf)) {</span>
+<span class="nc" id="L252">            List&lt;String&gt; values = Lists.newArrayList();</span>
+
+<span class="nc" id="L254">            NullWritable key = (NullWritable) ReflectionUtils.newInstance(reader.getKeyClass(), conf);</span>
+<span class="nc" id="L255">            Text value = (Text) ReflectionUtils.newInstance(reader.getValueClass(), conf);</span>
+
+<span class="nc bnc" id="L257" title="All 2 branches missed.">            while (reader.next(key, value)) {</span>
+<span class="nc" id="L258">                values.add(value.toString());</span>
+            }
+
+<span class="nc" id="L261">            return values;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    public static List&lt;String&gt; readDistinctColumnValues(String inputPath) throws IOException {
+<span class="nc" id="L267">        return readDistinctColumnValues(HadoopUtil.getCurrentConfiguration(), inputPath);</span>
+    }
+
+    public static Map&lt;String, String&gt; readFromSequenceFile(String inputPath) throws IOException {
+<span class="nc" id="L271">        return readFromSequenceFile(getCurrentConfiguration(), inputPath);</span>
+    }
+
+    public static boolean isSequenceFile(Configuration conf, Path filePath) {
+<span class="nc" id="L275">        try (SequenceFile.Reader reader = new SequenceFile.Reader(getWorkingFileSystem(conf), filePath, conf)) {</span>
+<span class="nc" id="L276">            return true;</span>
+<span class="nc" id="L277">        } catch (Exception e) {</span>
+<span class="nc" id="L278">            logger.warn(&quot;Read sequence file {} failed.&quot;, filePath.getName(), e);</span>
+<span class="nc" id="L279">            return false;</span>
+        }
+    }
+
+    public static boolean isSequenceDir(Configuration conf, Path fileDir) throws IOException {
+<span class="nc" id="L284">        FileSystem fs = getWorkingFileSystem(conf);</span>
+<span class="nc" id="L285">        FileStatus[] fileStatuses = fs.listStatus(fileDir, new PathFilter() {</span>
+            @Override
+            public boolean accept(Path path) {
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                return !&quot;_SUCCESS&quot;.equals(path.getName());</span>
+            }
+        });
+
+<span class="nc bnc" id="L292" title="All 4 branches missed.">        if (fileStatuses != null &amp;&amp; fileStatuses.length &gt; 0) {</span>
+<span class="nc" id="L293">            return isSequenceFile(conf, fileStatuses[0].getPath());</span>
+        } else {
+<span class="nc" id="L295">            return true;</span>
+        }
+    }
+
+    public static ContentSummary getContentSummary(FileSystem fileSystem, Path path) throws IOException {
+        IStorageProvider provider = (IStorageProvider) ClassUtil
+<span class="nc" id="L301">                .newInstance(KylinConfig.getInstanceFromEnv().getStorageProvider());</span>
+<span class="nc" id="L302">        logger.debug(&quot;Use provider:{}&quot;, provider.getClass().getCanonicalName());</span>
+<span class="nc" id="L303">        return provider.getContentSummary(fileSystem, path);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

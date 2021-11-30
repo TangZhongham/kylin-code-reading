@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ScanRangePlannerBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.gridtable</a> &gt; <span class="el_source">ScanRangePlannerBase.java</span></div><h1>ScanRangePlannerBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.gridtable;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.ImmutableBitSet;
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.ConstantTupleFilter;
+import org.apache.kylin.metadata.filter.LogicalTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+<span class="nc" id="L44">public abstract class ScanRangePlannerBase {</span>
+    
+<span class="nc" id="L46">    private static final ByteArray EMPTY = new ByteArray();</span>
+
+    //GT 
+    protected GTInfo gtInfo;
+    protected TupleFilter gtFilter;
+    protected ImmutableBitSet gtDimensions;
+    protected ImmutableBitSet gtAggrGroups;
+    protected ImmutableBitSet gtAggrMetrics;
+    protected String[] gtAggrFuncs;
+    protected TupleFilter havingFilter;
+<span class="nc" id="L56">    protected boolean isPartitionColUsingDatetimeEncoding = true;</span>
+<span class="nc" id="L57">    protected int onlyShardId = -1;</span>
+
+    protected RecordComparator rangeStartComparator;
+    protected RecordComparator rangeEndComparator;
+    protected RecordComparator rangeStartEndComparator;
+
+    protected ImmutableBitSet gtDynColumns;
+    protected ImmutableBitSet gtRtAggrMetrics;
+    protected Map&lt;Integer, TupleExpression&gt; tupleExpressionMap;
+
+    public abstract GTScanRequest planScanRequest();
+
+    protected TupleFilter flattenToOrAndFilter(TupleFilter filter) {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (filter == null)</span>
+<span class="nc" id="L71">            return null;</span>
+
+<span class="nc" id="L73">        TupleFilter flatFilter = filter.flatFilter();</span>
+
+        // normalize to OR-AND filter
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        if (flatFilter.getOperator() == TupleFilter.FilterOperatorEnum.AND) {</span>
+<span class="nc" id="L77">            LogicalTupleFilter f = new LogicalTupleFilter(TupleFilter.FilterOperatorEnum.OR);</span>
+<span class="nc" id="L78">            f.addChild(flatFilter);</span>
+<span class="nc" id="L79">            flatFilter = f;</span>
+        }
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (flatFilter.getOperator() != TupleFilter.FilterOperatorEnum.OR)</span>
+<span class="nc" id="L83">            throw new IllegalStateException();</span>
+
+<span class="nc" id="L85">        return flatFilter;</span>
+    }
+
+    protected List&lt;Collection&lt;ColumnRange&gt;&gt; translateToOrAndDimRanges(TupleFilter flatFilter) {
+<span class="nc" id="L89">        List&lt;Collection&lt;ColumnRange&gt;&gt; result = Lists.newArrayList();</span>
+
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (flatFilter == null) {</span>
+<span class="nc" id="L92">            result.add(Collections.&lt;ColumnRange&gt; emptyList());</span>
+<span class="nc" id="L93">            return result;</span>
+        }
+
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (TupleFilter andFilter : flatFilter.getChildren()) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (andFilter.getOperator() != TupleFilter.FilterOperatorEnum.AND)</span>
+<span class="nc" id="L98">                throw new IllegalStateException(&quot;Filter should be AND instead of &quot; + andFilter);</span>
+
+<span class="nc" id="L100">            Collection&lt;ColumnRange&gt; andRanges = translateToAndDimRanges(andFilter.getChildren());</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            if (andRanges != null) {</span>
+<span class="nc" id="L102">                result.add(andRanges);</span>
+            }
+<span class="nc" id="L104">        }</span>
+
+<span class="nc" id="L106">        return preEvaluateConstantConditions(result);</span>
+    }
+
+    private Collection&lt;ColumnRange&gt; translateToAndDimRanges(List&lt;? extends TupleFilter&gt; andFilters) {
+<span class="nc" id="L110">        Map&lt;TblColRef, ColumnRange&gt; rangeMap = new HashMap&lt;TblColRef, ColumnRange&gt;();</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        for (TupleFilter filter : andFilters) {</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if ((filter instanceof CompareTupleFilter) == false) {</span>
+<span class="nc bnc" id="L113" title="All 4 branches missed.">                if (filter instanceof ConstantTupleFilter &amp;&amp; !filter.evaluate(null, null)) {</span>
+<span class="nc" id="L114">                    return null;</span>
+                } else {
+                    continue;
+                }
+            }
+
+<span class="nc" id="L120">            CompareTupleFilter comp = (CompareTupleFilter) filter;</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">            if (comp.getColumn() == null) {</span>
+<span class="nc" id="L122">                continue;</span>
+            }
+
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L126">            ColumnRange newRange = new ColumnRange(comp.getColumn(), (Set&lt;ByteArray&gt;) comp.getValues(), comp.getOperator());</span>
+<span class="nc" id="L127">            ColumnRange existing = rangeMap.get(newRange.column);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            if (existing == null) {</span>
+<span class="nc" id="L129">                rangeMap.put(newRange.column, newRange);</span>
+            } else {
+<span class="nc" id="L131">                existing.andMerge(newRange);</span>
+            }
+<span class="nc" id="L133">        }</span>
+<span class="nc" id="L134">        return rangeMap.values();</span>
+    }
+
+    private List&lt;Collection&lt;ColumnRange&gt;&gt; preEvaluateConstantConditions(List&lt;Collection&lt;ColumnRange&gt;&gt; orAndRanges) {
+<span class="nc" id="L138">        boolean globalAlwaysTrue = false;</span>
+<span class="nc" id="L139">        Iterator&lt;Collection&lt;ColumnRange&gt;&gt; iterator = orAndRanges.iterator();</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L141">            Collection&lt;ColumnRange&gt; andRanges = iterator.next();</span>
+<span class="nc" id="L142">            Iterator&lt;ColumnRange&gt; iterator2 = andRanges.iterator();</span>
+<span class="nc" id="L143">            boolean hasAlwaysFalse = false;</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            while (iterator2.hasNext()) {</span>
+<span class="nc" id="L145">                ColumnRange range = iterator2.next();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                if (range.satisfyAll())</span>
+<span class="nc" id="L147">                    iterator2.remove();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                else if (range.satisfyNone())</span>
+<span class="nc" id="L149">                    hasAlwaysFalse = true;</span>
+<span class="nc" id="L150">            }</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">            if (hasAlwaysFalse) {</span>
+<span class="nc" id="L152">                iterator.remove();</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            } else if (andRanges.isEmpty()) {</span>
+<span class="nc" id="L154">                globalAlwaysTrue = true;</span>
+<span class="nc" id="L155">                break;</span>
+            }
+<span class="nc" id="L157">        }</span>
+        // return empty OR list means global false
+        // return an empty AND collection inside OR list means global true
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (globalAlwaysTrue) {</span>
+<span class="nc" id="L161">            orAndRanges.clear();</span>
+<span class="nc" id="L162">            orAndRanges.add(Collections.&lt;ColumnRange&gt; emptyList());</span>
+        }
+<span class="nc" id="L164">        return orAndRanges;</span>
+    }
+
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    public class ColumnRange {</span>
+        public TblColRef column;
+<span class="nc" id="L169">        public ByteArray begin = EMPTY;</span>
+<span class="nc" id="L170">        public ByteArray end = EMPTY;</span>
+        public Set&lt;ByteArray&gt; valueSet;
+        public boolean isBoundryInclusive;
+
+<span class="nc" id="L174">        public ColumnRange(TblColRef column, Set&lt;ByteArray&gt; values, TupleFilter.FilterOperatorEnum op) {</span>
+<span class="nc" id="L175">            this.column = column;</span>
+
+            //TODO: the treatment is un-precise
+<span class="nc bnc" id="L178" title="All 8 branches missed.">            if (op == TupleFilter.FilterOperatorEnum.EQ || op == TupleFilter.FilterOperatorEnum.IN || op == TupleFilter.FilterOperatorEnum.LTE || op == TupleFilter.FilterOperatorEnum.GTE) {</span>
+<span class="nc" id="L179">                isBoundryInclusive = true;</span>
+            }
+
+<span class="nc bnc" id="L182" title="All 5 branches missed.">            switch (op) {</span>
+            case EQ:
+            case IN:
+<span class="nc" id="L185">                valueSet = new HashSet&lt;ByteArray&gt;(values);</span>
+<span class="nc" id="L186">                refreshBeginEndFromEquals();</span>
+<span class="nc" id="L187">                break;</span>
+            case LT:
+            case LTE:
+<span class="nc" id="L190">                end = rangeEndComparator.comparator.max(values);</span>
+<span class="nc" id="L191">                break;</span>
+            case GT:
+            case GTE:
+<span class="nc" id="L194">                begin = rangeStartComparator.comparator.min(values);</span>
+<span class="nc" id="L195">                break;</span>
+            case NEQ:
+            case NOTIN:
+            case ISNULL:
+            case ISNOTNULL:
+                // let Optiq filter it!
+<span class="nc" id="L201">                break;</span>
+            default:
+<span class="nc" id="L203">                throw new UnsupportedOperationException(op.name());</span>
+            }
+<span class="nc" id="L205">        }</span>
+
+        void copy(TblColRef column, ByteArray beginValue, ByteArray endValue, Set&lt;ByteArray&gt; equalValues) {
+<span class="nc" id="L208">            this.column = column;</span>
+<span class="nc" id="L209">            this.begin = beginValue;</span>
+<span class="nc" id="L210">            this.end = endValue;</span>
+<span class="nc" id="L211">            this.valueSet = equalValues;</span>
+<span class="nc" id="L212">        }</span>
+
+        private void refreshBeginEndFromEquals() {
+<span class="nc bnc" id="L215" title="All 2 branches missed.">            if (valueSet.isEmpty()) {</span>
+<span class="nc" id="L216">                begin = EMPTY;</span>
+<span class="nc" id="L217">                end = EMPTY;</span>
+            } else {
+<span class="nc" id="L219">                begin = rangeStartComparator.comparator.min(valueSet);</span>
+<span class="nc" id="L220">                end = rangeEndComparator.comparator.max(valueSet);</span>
+            }
+<span class="nc" id="L222">        }</span>
+
+        public boolean satisfyAll() {
+<span class="nc bnc" id="L225" title="All 4 branches missed.">            return begin.array() == null &amp;&amp; end.array() == null; // the NEQ case</span>
+        }
+
+        public boolean satisfyNone() {
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            if (valueSet != null) {</span>
+<span class="nc" id="L230">                return valueSet.isEmpty();</span>
+<span class="nc bnc" id="L231" title="All 4 branches missed.">            } else if (begin.array() != null &amp;&amp; end.array() != null) {</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">                return gtInfo.getCodeSystem().getComparator().compare(begin, end) &gt; 0;</span>
+            } else {
+<span class="nc" id="L234">                return false;</span>
+            }
+        }
+
+        public void andMerge(ColumnRange another) {
+<span class="nc bnc" id="L239" title="All 4 branches missed.">            assert this.column.equals(another.column);</span>
+
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (another.satisfyAll()) {</span>
+<span class="nc" id="L242">                return;</span>
+            }
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">            if (this.satisfyAll()) {</span>
+<span class="nc" id="L246">                copy(another.column, another.begin, another.end, another.valueSet);</span>
+<span class="nc" id="L247">                return;</span>
+            }
+
+<span class="nc bnc" id="L250" title="All 4 branches missed.">            if (this.valueSet != null &amp;&amp; another.valueSet != null) {</span>
+<span class="nc" id="L251">                this.valueSet.retainAll(another.valueSet);</span>
+<span class="nc" id="L252">                refreshBeginEndFromEquals();</span>
+<span class="nc" id="L253">                return;</span>
+            }
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            if (this.valueSet != null) {</span>
+<span class="nc" id="L257">                this.valueSet = filter(this.valueSet, another.begin, another.end);</span>
+<span class="nc" id="L258">                refreshBeginEndFromEquals();</span>
+<span class="nc" id="L259">                return;</span>
+            }
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            if (another.valueSet != null) {</span>
+<span class="nc" id="L263">                this.valueSet = filter(another.valueSet, this.begin, this.end);</span>
+<span class="nc" id="L264">                refreshBeginEndFromEquals();</span>
+<span class="nc" id="L265">                return;</span>
+            }
+
+<span class="nc" id="L268">            this.begin = rangeStartComparator.comparator.max(this.begin, another.begin);</span>
+<span class="nc" id="L269">            this.end = rangeEndComparator.comparator.min(this.end, another.end);</span>
+<span class="nc" id="L270">            this.isBoundryInclusive |= another.isBoundryInclusive;</span>
+<span class="nc" id="L271">        }</span>
+
+        private Set&lt;ByteArray&gt; filter(Set&lt;ByteArray&gt; equalValues, ByteArray beginValue, ByteArray endValue) {
+<span class="nc" id="L274">            Set&lt;ByteArray&gt; result = Sets.newHashSetWithExpectedSize(equalValues.size());</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            for (ByteArray v : equalValues) {</span>
+<span class="nc bnc" id="L276" title="All 4 branches missed.">                if (rangeStartEndComparator.comparator.compare(beginValue, v) &lt;= 0 &amp;&amp; rangeStartEndComparator.comparator.compare(v, endValue) &lt;= 0) {</span>
+<span class="nc" id="L277">                    result.add(v);</span>
+                }
+<span class="nc" id="L279">            }</span>
+<span class="nc" id="L280">            return equalValues;</span>
+        }
+
+        public String toString() {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">            if (valueSet == null) {</span>
+<span class="nc" id="L285">                return column.getName() + &quot; between &quot; + begin + &quot; and &quot; + end;</span>
+            } else {
+<span class="nc" id="L287">                return column.getName() + &quot; in &quot; + valueSet;</span>
+            }
+        }
+
+    }
+
+    protected String makeReadable(ByteArray byteArray) {
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        if (byteArray == null) {</span>
+<span class="nc" id="L295">            return null;</span>
+        } else {
+<span class="nc" id="L297">            return byteArray.toReadableText();</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

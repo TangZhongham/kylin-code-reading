@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TopNCounterSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.topn</a> &gt; <span class="el_source">TopNCounterSerializer.java</span></div><h1>TopNCounterSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.measure.topn;
+
+import java.nio.ByteBuffer;
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.dimension.DictionaryDimEnc;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
+/**
+ * 
+ */
+public class TopNCounterSerializer extends DataTypeSerializer&lt;TopNCounter&lt;ByteArray&gt;&gt; {
+
+<span class="fc" id="L35">    private DoubleDeltaSerializer dds = new DoubleDeltaSerializer(3);</span>
+
+    private int precision;
+
+    private int scale;
+
+<span class="fc" id="L41">    public TopNCounterSerializer(DataType dataType) {</span>
+<span class="fc" id="L42">        this.precision = dataType.getPrecision();</span>
+<span class="fc" id="L43">        this.scale = dataType.getScale();</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (scale &lt; 0) {</span>
+<span class="fc" id="L45">            scale = DictionaryDimEnc.MAX_ENCODING_LENGTH;</span>
+        }
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public int peekLength(ByteBuffer in) {
+<span class="nc" id="L51">        int mark = in.position();</span>
+        @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L53">        int capacity = in.getInt();</span>
+<span class="nc" id="L54">        int size = in.getInt();</span>
+<span class="nc" id="L55">        int keyLength = in.getInt();</span>
+<span class="nc" id="L56">        dds.deserialize(in);</span>
+<span class="nc" id="L57">        int len = in.position() - mark + keyLength * size;</span>
+<span class="nc" id="L58">        in.position(mark);</span>
+<span class="nc" id="L59">        return len;</span>
+    }
+
+    @Override
+    public int maxLength() {
+<span class="nc" id="L64">        return Math.max(precision * TopNCounter.EXTRA_SPACE_RATE * storageBytesEstimatePerCounter(), 1024 * 1024); // use at least 1M</span>
+    }
+
+    @Override
+    public int getStorageBytesEstimate() {
+<span class="nc" id="L69">        return precision * TopNCounter.EXTRA_SPACE_RATE * storageBytesEstimatePerCounter();</span>
+    }
+
+    @Override
+    public void serialize(TopNCounter&lt;ByteArray&gt; value, ByteBuffer out) {
+<span class="fc" id="L74">        double[] counters = value.getCounters();</span>
+<span class="fc" id="L75">        List&lt;Counter&lt;ByteArray&gt;&gt; peek = value.topK(1);</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        int keyLength = !peek.isEmpty() ? peek.get(0).getItem().length() : 0;</span>
+<span class="fc" id="L77">        out.putInt(value.getCapacity());</span>
+<span class="fc" id="L78">        out.putInt(value.size());</span>
+<span class="fc" id="L79">        out.putInt(keyLength);</span>
+<span class="fc" id="L80">        dds.serialize(counters, out);</span>
+<span class="fc" id="L81">        Iterator&lt;Counter&lt;ByteArray&gt;&gt; iterator = value.iterator();</span>
+        ByteArray item;
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L84">            item = iterator.next().getItem();</span>
+<span class="fc" id="L85">            out.put(item.array(), item.offset(), item.length());</span>
+        }
+<span class="fc" id="L87">    }</span>
+
+    @Override
+    public TopNCounter&lt;ByteArray&gt; deserialize(ByteBuffer in) {
+<span class="fc" id="L91">        int capacity = in.getInt();</span>
+<span class="fc" id="L92">        int size = in.getInt();</span>
+<span class="fc" id="L93">        int keyLength = in.getInt();</span>
+<span class="fc" id="L94">        double[] counters = dds.deserialize(in);</span>
+
+<span class="fc" id="L96">        TopNCounter&lt;ByteArray&gt; counter = new TopNCounter&lt;&gt;(capacity);</span>
+        ByteArray byteArray;
+<span class="fc" id="L98">        byte[] keyArray = new byte[size * keyLength];</span>
+<span class="fc" id="L99">        int offset = 0;</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L101">            in.get(keyArray, offset, keyLength);</span>
+<span class="fc" id="L102">            byteArray = new ByteArray(keyArray, offset, keyLength);</span>
+<span class="fc" id="L103">            counter.offerToHead(byteArray, counters[i]);</span>
+<span class="fc" id="L104">            offset += keyLength;</span>
+        }
+
+<span class="fc" id="L107">        return counter;</span>
+    }
+
+    @Override
+    protected double getStorageBytesEstimate(double averageNumOfElementsInCounter) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (averageNumOfElementsInCounter &lt; precision * TopNCounter.EXTRA_SPACE_RATE) {</span>
+<span class="nc" id="L113">            return averageNumOfElementsInCounter * storageBytesEstimatePerCounter() + 12;</span>
+        } else {
+<span class="nc" id="L115">            return getStorageBytesEstimate();</span>
+        }
+    }
+
+    private int storageBytesEstimatePerCounter() {
+<span class="nc" id="L120">        return (scale + 8);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

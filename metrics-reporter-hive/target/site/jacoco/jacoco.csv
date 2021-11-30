@@ -1,0 +1,10 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveProducer.new CacheLoader() {...},45,0,0,0,9,0,2,0,2,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveProducerRecord,211,0,28,0,46,0,24,0,10,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveReservoirReporter.Builder,15,0,0,0,5,0,3,0,3,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveSink,18,0,0,0,2,0,2,0,2,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveProducer,855,0,70,0,164,0,45,0,10,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveReservoirReporter,47,0,0,0,14,0,7,0,7,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveReservoirReporter.HiveReservoirListener,159,0,12,0,42,0,11,0,5,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveProducer.new RemovalListener() {...},25,0,0,0,5,0,2,0,2,0
+Apache Kylin - Metrics Reporter Hive,org.apache.kylin.metrics.lib.impl.hive,HiveProducerRecord.RecordKey,182,0,32,0,43,0,26,0,10,0

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPSchema.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.schema</a> &gt; <span class="el_source">OLAPSchema.java</span></div><h1>OLAPSchema.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.schema;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.calcite.schema.Table;
+import org.apache.calcite.schema.impl.AbstractSchema;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.cube.CubeManager;
+import org.apache.kylin.metadata.model.DataModelManager;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+
+/**
+ */
+public class OLAPSchema extends AbstractSchema {
+
+    //    private static final Logger logger = LoggerFactory.getLogger(OLAPSchema.class);
+
+    private KylinConfig config;
+    private String projectName;
+    private String schemaName;
+    private boolean exposeMore;
+    private StorageURL storageUrl;
+    private String starSchemaUrl;
+    private String starSchemaUser;
+    private String starSchemaPassword;
+
+    private void init() {
+<span class="fc" id="L51">        this.config = KylinConfig.getInstanceFromEnv();</span>
+<span class="fc" id="L52">        this.storageUrl = config.getStorageUrl();</span>
+<span class="fc" id="L53">        this.starSchemaUrl = config.getHiveUrl();</span>
+<span class="fc" id="L54">        this.starSchemaUser = config.getHiveUser();</span>
+<span class="fc" id="L55">        this.starSchemaPassword = config.getHivePassword();</span>
+<span class="fc" id="L56">    }</span>
+
+<span class="fc" id="L58">    public OLAPSchema(String project, String schemaName, boolean exposeMore) {</span>
+<span class="fc" id="L59">        this.projectName = project;</span>
+<span class="fc" id="L60">        this.schemaName = schemaName;</span>
+<span class="fc" id="L61">        this.exposeMore = exposeMore;</span>
+<span class="fc" id="L62">        init();</span>
+<span class="fc" id="L63">    }</span>
+
+    /**
+     * It is intended to skip caching, because underlying project/tables might change.
+     *
+     * @return
+     */
+    @Override
+    public Map&lt;String, Table&gt; getTableMap() {
+<span class="nc" id="L72">        return buildTableMap();</span>
+    }
+
+    private Map&lt;String, Table&gt; buildTableMap() {
+<span class="nc" id="L76">        Map&lt;String, Table&gt; olapTables = new HashMap&lt;String, Table&gt;();</span>
+
+<span class="nc" id="L78">        Collection&lt;TableDesc&gt; projectTables = ProjectManager.getInstance(config).listExposedTables(projectName,</span>
+                exposeMore);
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        for (TableDesc tableDesc : projectTables) {</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">            if (tableDesc.getDatabase().equals(schemaName)) {</span>
+<span class="nc" id="L83">                final String tableName = tableDesc.getName();//safe to use tableDesc.getName() here, it is in a DB context now</span>
+<span class="nc" id="L84">                final OLAPTable table = new OLAPTable(this, tableDesc, exposeMore);</span>
+<span class="nc" id="L85">                olapTables.put(tableName, table);</span>
+                //logger.debug(&quot;Project &quot; + projectName + &quot; exposes table &quot; + tableName);
+            }
+<span class="nc" id="L88">        }</span>
+
+<span class="nc" id="L90">        return olapTables;</span>
+    }
+
+    public String getSchemaName() {
+<span class="nc" id="L94">        return schemaName;</span>
+    }
+
+    public StorageURL getStorageUrl() {
+<span class="nc" id="L98">        return storageUrl;</span>
+    }
+
+    public boolean hasStarSchemaUrl() {
+<span class="nc bnc" id="L102" title="All 4 branches missed.">        return starSchemaUrl != null &amp;&amp; !starSchemaUrl.isEmpty();</span>
+    }
+
+    public String getStarSchemaUrl() {
+<span class="nc" id="L106">        return starSchemaUrl;</span>
+    }
+
+    public String getStarSchemaUser() {
+<span class="nc" id="L110">        return starSchemaUser;</span>
+    }
+
+    public String getStarSchemaPassword() {
+<span class="nc" id="L114">        return starSchemaPassword;</span>
+    }
+
+    public DataModelManager getMetadataManager() {
+<span class="nc" id="L118">        return DataModelManager.getInstance(config);</span>
+    }
+
+    public KylinConfig getConfig() {
+<span class="nc" id="L122">        return config;</span>
+    }
+
+    public String getProjectName() {
+<span class="nc" id="L126">        return this.projectName;</span>
+    }
+
+    public CubeManager getCubeManager() {
+<span class="nc" id="L130">        return CubeManager.getInstance(config);</span>
+    }
+
+    public ProjectInstance getProjectInstance() {
+<span class="nc" id="L134">        return ProjectManager.getInstance(config).getProject(projectName);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

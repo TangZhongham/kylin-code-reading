@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InternalThreadLocalMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.threadlocal</a> &gt; <span class="el_source">InternalThreadLocalMap.java</span></div><h1>InternalThreadLocalMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.threadlocal;
+
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * The internal data structure that stores the threadLocal variables for Netty and all {@link InternalThread}s.
+ * Note that this class is for internal use only. Use {@link InternalThread}
+ * unless you know what you are doing.
+ */
+public final class InternalThreadLocalMap {
+
+    private Object[] indexedVariables;
+
+<span class="fc" id="L33">    private static ThreadLocal&lt;InternalThreadLocalMap&gt; slowThreadLocalMap = new ThreadLocal&lt;InternalThreadLocalMap&gt;();</span>
+
+<span class="fc" id="L35">    private static final AtomicInteger nextIndex = new AtomicInteger();</span>
+
+<span class="fc" id="L37">    public static final Object UNSET = new Object();</span>
+
+    public static InternalThreadLocalMap getIfSet() {
+<span class="fc" id="L40">        Thread thread = Thread.currentThread();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (thread instanceof InternalThread) {</span>
+<span class="nc" id="L42">            return ((InternalThread) thread).threadLocalMap();</span>
+        }
+<span class="fc" id="L44">        return slowThreadLocalMap.get();</span>
+    }
+
+    public static InternalThreadLocalMap get() {
+<span class="fc" id="L48">        Thread thread = Thread.currentThread();</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (thread instanceof InternalThread) {</span>
+<span class="nc" id="L50">            return fastGet((InternalThread) thread);</span>
+        }
+<span class="fc" id="L52">        return slowGet();</span>
+    }
+
+    public static void remove() {
+<span class="nc" id="L56">        Thread thread = Thread.currentThread();</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (thread instanceof InternalThread) {</span>
+<span class="nc" id="L58">            ((InternalThread) thread).setThreadLocalMap(null);</span>
+        } else {
+<span class="nc" id="L60">            slowThreadLocalMap.remove();</span>
+        }
+<span class="nc" id="L62">    }</span>
+
+    public static void destroy() {
+<span class="nc" id="L65">        slowThreadLocalMap = null;</span>
+<span class="nc" id="L66">    }</span>
+
+    public static int nextVariableIndex() {
+<span class="fc" id="L69">        int index = nextIndex.getAndIncrement();</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (index &lt; 0) {</span>
+<span class="nc" id="L71">            nextIndex.decrementAndGet();</span>
+<span class="nc" id="L72">            throw new IllegalStateException(&quot;Too many thread-local indexed variables&quot;);</span>
+        }
+<span class="fc" id="L74">        return index;</span>
+    }
+
+    public static int lastVariableIndex() {
+<span class="nc" id="L78">        return nextIndex.get() - 1;</span>
+    }
+
+<span class="fc" id="L81">    private InternalThreadLocalMap() {</span>
+<span class="fc" id="L82">        indexedVariables = newIndexedVariableTable();</span>
+<span class="fc" id="L83">    }</span>
+
+    public Object indexedVariable(int index) {
+<span class="fc" id="L86">        Object[] lookup = indexedVariables;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        return index &lt; lookup.length ? lookup[index] : UNSET;</span>
+    }
+
+    /**
+     * @return {@code true} if and only if a new thread-local variable has been created
+     */
+    public boolean setIndexedVariable(int index, Object value) {
+<span class="fc" id="L94">        Object[] lookup = indexedVariables;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (index &lt; lookup.length) {</span>
+<span class="fc" id="L96">            Object oldValue = lookup[index];</span>
+<span class="fc" id="L97">            lookup[index] = value;</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            return oldValue == UNSET;</span>
+        } else {
+<span class="fc" id="L100">            expandIndexedVariableTableAndSet(index, value);</span>
+<span class="fc" id="L101">            return true;</span>
+        }
+    }
+
+    public Object removeIndexedVariable(int index) {
+<span class="fc" id="L106">        Object[] lookup = indexedVariables;</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (index &lt; lookup.length) {</span>
+<span class="fc" id="L108">            Object v = lookup[index];</span>
+<span class="fc" id="L109">            lookup[index] = UNSET;</span>
+<span class="fc" id="L110">            return v;</span>
+        } else {
+<span class="nc" id="L112">            return UNSET;</span>
+        }
+    }
+
+    public int size() {
+<span class="nc" id="L117">        int count = 0;</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        for (Object o : indexedVariables) {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">            if (o != UNSET) {</span>
+<span class="nc" id="L120">                ++count;</span>
+            }
+        }
+
+        //the fist element in `indexedVariables` is a set to keep all the InternalThreadLocal to remove
+        //look at method `addToVariablesToRemove`
+<span class="nc" id="L126">        return count - 1;</span>
+    }
+
+    private static Object[] newIndexedVariableTable() {
+<span class="fc" id="L130">        Object[] array = new Object[32];</span>
+<span class="fc" id="L131">        Arrays.fill(array, UNSET);</span>
+<span class="fc" id="L132">        return array;</span>
+    }
+
+    private static InternalThreadLocalMap fastGet(InternalThread thread) {
+<span class="nc" id="L136">        InternalThreadLocalMap threadLocalMap = thread.threadLocalMap();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (threadLocalMap == null) {</span>
+<span class="nc" id="L138">            thread.setThreadLocalMap(threadLocalMap = new InternalThreadLocalMap());</span>
+        }
+<span class="nc" id="L140">        return threadLocalMap;</span>
+    }
+
+    private static InternalThreadLocalMap slowGet() {
+<span class="fc" id="L144">        ThreadLocal&lt;InternalThreadLocalMap&gt; slowThreadLocalMap = InternalThreadLocalMap.slowThreadLocalMap;</span>
+<span class="fc" id="L145">        InternalThreadLocalMap ret = slowThreadLocalMap.get();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (ret == null) {</span>
+<span class="fc" id="L147">            ret = new InternalThreadLocalMap();</span>
+<span class="fc" id="L148">            slowThreadLocalMap.set(ret);</span>
+        }
+<span class="fc" id="L150">        return ret;</span>
+    }
+
+    private void expandIndexedVariableTableAndSet(int index, Object value) {
+<span class="fc" id="L154">        Object[] oldArray = indexedVariables;</span>
+<span class="fc" id="L155">        final int oldCapacity = oldArray.length;</span>
+<span class="fc" id="L156">        int newCapacity = index;</span>
+<span class="fc" id="L157">        newCapacity |= newCapacity &gt;&gt;&gt; 1;</span>
+<span class="fc" id="L158">        newCapacity |= newCapacity &gt;&gt;&gt; 2;</span>
+<span class="fc" id="L159">        newCapacity |= newCapacity &gt;&gt;&gt; 4;</span>
+<span class="fc" id="L160">        newCapacity |= newCapacity &gt;&gt;&gt; 8;</span>
+<span class="fc" id="L161">        newCapacity |= newCapacity &gt;&gt;&gt; 16;</span>
+<span class="fc" id="L162">        newCapacity++;</span>
+
+<span class="fc" id="L164">        Object[] newArray = Arrays.copyOf(oldArray, newCapacity);</span>
+<span class="fc" id="L165">        Arrays.fill(newArray, oldCapacity, newArray.length, UNSET);</span>
+<span class="fc" id="L166">        newArray[index] = value;</span>
+<span class="fc" id="L167">        indexedVariables = newArray;</span>
+<span class="fc" id="L168">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

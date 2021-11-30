@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid</a> &gt; <span class="el_source">CuboidScheduler.java</span></div><h1>CuboidScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.cube.model.AggregationGroup;
+import org.apache.kylin.cube.model.CubeDesc;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * Defines a cuboid tree, rooted by the base cuboid. A parent cuboid generates its child cuboids.
+ */
+abstract public class CuboidScheduler {
+    
+    public static CuboidScheduler getInstance(CubeDesc cubeDesc) {
+<span class="fc" id="L38">        String clzName = cubeDesc.getConfig().getCuboidScheduler();</span>
+        try {
+<span class="fc" id="L40">            Class&lt;? extends CuboidScheduler&gt; clz = ClassUtil.forName(clzName, CuboidScheduler.class);</span>
+<span class="fc" id="L41">            return clz.getConstructor(CubeDesc.class).newInstance(cubeDesc);</span>
+<span class="fc" id="L42">        } catch (Exception e) {</span>
+<span class="fc" id="L43">            throw new RuntimeException(e);</span>
+        }
+    }
+    
+    // ============================================================================
+    
+    final protected CubeDesc cubeDesc;
+    
+<span class="fc" id="L51">    protected CuboidScheduler(CubeDesc cubeDesc) {</span>
+<span class="fc" id="L52">        this.cubeDesc = cubeDesc;</span>
+<span class="fc" id="L53">    }</span>
+
+    /** Returns all cuboids on the tree. */
+    abstract public Set&lt;Long&gt; getAllCuboidIds();
+    
+    /** Returns the number of all cuboids. */
+    abstract public int getCuboidCount();
+    
+    /** Returns the child cuboids of a parent. */
+    abstract public List&lt;Long&gt; getSpanningCuboid(long parentCuboid);
+    
+    /** Returns a valid cuboid that best matches the request cuboid. */
+    abstract public long findBestMatchCuboid(long requestCuboid);
+
+    /** optional */
+    abstract public Set&lt;Long&gt; calculateCuboidsForAggGroup(AggregationGroup agg);
+
+    // ============================================================================
+    
+    private transient List&lt;List&lt;Long&gt;&gt; cuboidsByLayer;
+
+    public long getBaseCuboidId() {
+<span class="fc" id="L75">        return Cuboid.getBaseCuboidId(cubeDesc);</span>
+    }
+
+    public CubeDesc getCubeDesc() {
+<span class="fc" id="L79">        return cubeDesc;</span>
+    }
+
+    /** Checks whether a cuboid is valid or not. */
+    public boolean isValid(long requestCuboid) {
+<span class="nc" id="L84">        return getAllCuboidIds().contains(requestCuboid);</span>
+    }
+
+    /**
+     * Get cuboids by layer. It's built from pre-expanding tree.
+     * @return layered cuboids
+     */
+    public List&lt;List&lt;Long&gt;&gt; getCuboidsByLayer() {
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (cuboidsByLayer != null) {</span>
+<span class="nc" id="L93">            return cuboidsByLayer;</span>
+        }
+
+<span class="fc" id="L96">        int totalNum = 0;</span>
+<span class="fc" id="L97">        cuboidsByLayer = Lists.newArrayList();</span>
+
+<span class="fc" id="L99">        cuboidsByLayer.add(Collections.singletonList(Cuboid.getBaseCuboidId(cubeDesc)));</span>
+<span class="fc" id="L100">        totalNum++;</span>
+
+<span class="fc" id="L102">        List&lt;Long&gt; lastLayer = cuboidsByLayer.get(cuboidsByLayer.size() - 1);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        while (!lastLayer.isEmpty()) {</span>
+<span class="fc" id="L104">            List&lt;Long&gt; newLayer = Lists.newArrayList();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            for (Long parent : lastLayer) {</span>
+<span class="fc" id="L106">                newLayer.addAll(getSpanningCuboid(parent));</span>
+<span class="fc" id="L107">            }</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (newLayer.isEmpty()) {</span>
+<span class="fc" id="L109">                break;</span>
+            }
+<span class="fc" id="L111">            cuboidsByLayer.add(newLayer);</span>
+<span class="fc" id="L112">            totalNum += newLayer.size();</span>
+<span class="fc" id="L113">            lastLayer = newLayer;</span>
+<span class="fc" id="L114">        }</span>
+
+<span class="fc" id="L116">        int size = getAllCuboidIds().size();</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        Preconditions.checkState(totalNum == size, &quot;total Num: &quot; + totalNum + &quot; actual size: &quot; + size);</span>
+<span class="fc" id="L118">        return cuboidsByLayer;</span>
+    }
+
+    /**
+     * Get cuboid level count except base cuboid
+     * @return
+     */
+    public int getBuildLevel() {
+<span class="fc" id="L126">        return getCuboidsByLayer().size() - 1;</span>
+    }
+    
+    /** Returns the key for what this cuboid scheduler responsible for. */
+    public String getCuboidCacheKey() {
+<span class="fc" id="L131">        return cubeDesc.getName();</span>
+    }
+    
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

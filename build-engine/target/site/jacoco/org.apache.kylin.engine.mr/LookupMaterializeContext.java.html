@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LookupMaterializeContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr</a> &gt; <span class="el_source">LookupMaterializeContext.java</span></div><h1>LookupMaterializeContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr;
+
+import java.util.Map;
+import java.util.Map.Entry;
+
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+
+import com.google.common.collect.Maps;
+
+public class LookupMaterializeContext {
+    private DefaultChainedExecutable jobFlow;
+    private Map&lt;String, String&gt; lookupSnapshotMap;
+
+<span class="nc" id="L33">    public LookupMaterializeContext(DefaultChainedExecutable jobFlow) {</span>
+<span class="nc" id="L34">        this.jobFlow = jobFlow;</span>
+<span class="nc" id="L35">        this.lookupSnapshotMap = Maps.newHashMap();</span>
+<span class="nc" id="L36">    }</span>
+
+    public DefaultChainedExecutable getJobFlow() {
+<span class="nc" id="L39">        return jobFlow;</span>
+    }
+
+    /**
+     * add snapshot path info into the context
+     * @param lookupTable
+     * @param snapshotPath
+     */
+    public void addLookupSnapshotPath(String lookupTable, String snapshotPath) {
+<span class="nc" id="L48">        lookupSnapshotMap.put(lookupTable, snapshotPath);</span>
+<span class="nc" id="L49">    }</span>
+
+    /**
+     *
+     * @return string format of lookup snapshotPath info, it will return like: &quot;lookup1=/path/uuid1,lookup2=/path/uuid2&quot;
+     *
+     */
+    public String getAllLookupSnapshotsInString() {
+<span class="nc" id="L57">        StringBuilder result = new StringBuilder();</span>
+<span class="nc" id="L58">        boolean first = true;</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        for (Entry&lt;String, String&gt; lookupSnapshotEntry : lookupSnapshotMap.entrySet()) {</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            if (!first) {</span>
+<span class="nc" id="L61">                result.append(&quot;,&quot;);</span>
+            }
+<span class="nc" id="L63">            first = false;</span>
+<span class="nc" id="L64">            result.append(lookupSnapshotEntry.getKey());</span>
+<span class="nc" id="L65">            result.append(&quot;=&quot;);</span>
+<span class="nc" id="L66">            result.append(lookupSnapshotEntry.getValue());</span>
+<span class="nc" id="L67">        }</span>
+<span class="nc" id="L68">        return result.toString();</span>
+    }
+
+    /**
+     * parse the lookup snapshot string to lookup snapshot path map.
+     * @param snapshotsString
+     * @return
+     */
+    public static Map&lt;String, String&gt; parseLookupSnapshots(String snapshotsString) {
+<span class="nc" id="L77">        Map&lt;String, String&gt; lookupSnapshotMap = Maps.newHashMap();</span>
+<span class="nc" id="L78">        String[] lookupSnapshotEntries = StringUtil.splitByComma(snapshotsString);</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        for (String lookupSnapshotEntryStr : lookupSnapshotEntries) {</span>
+<span class="nc" id="L80">            String[] split = StringUtil.split(lookupSnapshotEntryStr, &quot;=&quot;);</span>
+<span class="nc" id="L81">            lookupSnapshotMap.put(split[0], split[1]);</span>
+        }
+<span class="nc" id="L83">        return lookupSnapshotMap;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

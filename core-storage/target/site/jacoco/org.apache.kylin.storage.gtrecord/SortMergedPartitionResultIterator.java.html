@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SortMergedPartitionResultIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">SortMergedPartitionResultIterator.java</span></div><h1>SortMergedPartitionResultIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.PriorityQueue;
+
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Iterators;
+import org.apache.kylin.shaded.com.google.common.collect.PeekingIterator;
+import org.apache.kylin.shaded.com.google.common.collect.UnmodifiableIterator;
+
+/**
+ * Merge-sort {@code GTRecord}s in all partitions, assume each partition contains sorted elements.
+ */
+public class SortMergedPartitionResultIterator extends UnmodifiableIterator&lt;GTRecord&gt; {
+<span class="nc" id="L39">    private static final Logger logger = LoggerFactory.getLogger(SortMergedPartitionResultIterator.class);</span>
+
+    private final Iterator&lt;PartitionResultIterator&gt; iterators;
+    private final Comparator&lt;GTRecord&gt; comparator;
+    private final GTRecord record; // reuse to avoid object creation
+
+<span class="nc" id="L45">    private boolean initted = false;</span>
+    private PriorityQueue&lt;PeekingIterator&lt;GTRecord&gt;&gt; heap;
+
+    SortMergedPartitionResultIterator(Iterator&lt;PartitionResultIterator&gt; iterators, GTInfo info,
+<span class="nc" id="L49">            final Comparator&lt;GTRecord&gt; comparator) {</span>
+<span class="nc" id="L50">        this.iterators = iterators;</span>
+<span class="nc" id="L51">        this.record = new GTRecord(info);</span>
+<span class="nc" id="L52">        this.comparator = comparator;</span>
+<span class="nc" id="L53">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (!initted) {</span>
+
+<span class="nc" id="L59">            Comparator&lt;PeekingIterator&lt;GTRecord&gt;&gt; heapComparator = new Comparator&lt;PeekingIterator&lt;GTRecord&gt;&gt;() {</span>
+                public int compare(PeekingIterator&lt;GTRecord&gt; o1, PeekingIterator&lt;GTRecord&gt; o2) {
+<span class="nc" id="L61">                    return comparator.compare(o1.peek(), o2.peek());</span>
+                }
+            };
+
+<span class="nc" id="L65">            this.heap = new PriorityQueue&lt;&gt;(3, heapComparator);</span>
+<span class="nc" id="L66">            int total = 0, actual = 0;</span>
+
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            while (iterators.hasNext()) {</span>
+<span class="nc" id="L69">                total++;</span>
+<span class="nc" id="L70">                PartitionResultIterator it = iterators.next();</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                if (it.hasNext()) {</span>
+<span class="nc" id="L72">                    actual++;</span>
+<span class="nc" id="L73">                    heap.offer(Iterators.peekingIterator(it));</span>
+                }
+<span class="nc" id="L75">            }</span>
+<span class="nc" id="L76">            logger.debug(&quot;Using SortMergedPartitionResultIterator to merge {} partition results out of {} partitions&quot;,</span>
+<span class="nc" id="L77">                    actual, total);</span>
+<span class="nc" id="L78">            initted = true;</span>
+        }
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        return !heap.isEmpty();</span>
+    }
+
+    @Override
+    public GTRecord next() {
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (!hasNext()) {</span>
+<span class="nc" id="L87">            throw new NoSuchElementException();</span>
+        }
+        // get smallest record
+<span class="nc" id="L90">        PeekingIterator&lt;GTRecord&gt; it = heap.poll();</span>
+        // WATCH OUT! record got from PartitionResultIterator.next() may changed later,
+        // so we must make a shallow copy of it.
+<span class="nc" id="L93">        record.shallowCopyFrom(it.next());</span>
+
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (it.hasNext()) {</span>
+<span class="nc" id="L96">            heap.offer(it);</span>
+        }
+
+<span class="nc" id="L99">        return record;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

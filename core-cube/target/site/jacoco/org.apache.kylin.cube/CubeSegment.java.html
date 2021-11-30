@@ -1,0 +1,696 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeSegment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">CubeSegment.java</span></div><h1>CubeSegment.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube;
+
+import java.io.Serializable;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.annotation.Clarification;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.common.util.ShardingHash;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.cube.kv.CubeDimEncMap;
+import org.apache.kylin.cube.kv.RowConstants;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.IBuildable;
+import org.apache.kylin.metadata.model.ISegment;
+import org.apache.kylin.metadata.model.ISegmentAdvisor;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.Segments;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.IRealization;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L63">public class CubeSegment implements IBuildable, ISegment, Serializable {</span>
+
+    @JsonBackReference
+    private CubeInstance cubeInstance;
+    @JsonProperty(&quot;uuid&quot;)
+    private String uuid;
+    @JsonProperty(&quot;name&quot;)
+    private String name;
+    @JsonProperty(&quot;storage_location_identifier&quot;)
+    private String storageLocationIdentifier;
+    @JsonProperty(&quot;date_range_start&quot;)
+    private long dateRangeStart;
+    @JsonProperty(&quot;date_range_end&quot;)
+    private long dateRangeEnd;
+    @JsonProperty(&quot;source_offset_start&quot;)
+    @Clarification(deprecated = true)
+    private long sourceOffsetStart;
+    @JsonProperty(&quot;source_offset_end&quot;)
+    @Clarification(deprecated = true)
+    private long sourceOffsetEnd;
+    @JsonProperty(&quot;status&quot;)
+    private SegmentStatusEnum status;
+    @JsonProperty(&quot;size_kb&quot;)
+    private long sizeKB;
+    @JsonProperty(&quot;is_merged&quot;)
+    private boolean isMerged;
+    @JsonProperty(&quot;estimate_ratio&quot;)
+    private List&lt;Double&gt; estimateRatio;
+    @JsonProperty(&quot;input_records&quot;)
+    private long inputRecords;
+    @JsonProperty(&quot;input_records_size&quot;)
+    private long inputRecordsSize;
+    @JsonProperty(&quot;last_build_time&quot;)
+    private long lastBuildTime;
+    @JsonProperty(&quot;last_build_job_id&quot;)
+    private String lastBuildJobID;
+    @JsonProperty(&quot;create_time_utc&quot;)
+    private long createTimeUTC;
+<span class="fc" id="L101">    @JsonProperty(&quot;cuboid_shard_nums&quot;)</span>
+<span class="fc" id="L102">    private Map&lt;Long, Short&gt; cuboidShardNums = Maps.newHashMap();</span>
+<span class="fc" id="L103">    @JsonProperty(&quot;total_shards&quot;) //it is only valid when all cuboids are squshed into some shards. like the HBASE_STORAGE case, otherwise it'll stay 0</span>
+    private int totalShards = 0;
+<span class="fc" id="L105">    @JsonProperty(&quot;blackout_cuboids&quot;)</span>
+<span class="fc" id="L106">    private List&lt;Long&gt; blackoutCuboids = Lists.newArrayList();</span>
+
+    @JsonProperty(&quot;binary_signature&quot;)
+    private String binarySignature; // a hash of cube schema and dictionary ID, used for sanity check
+
+    @JsonProperty(&quot;dictionaries&quot;)
+    @Clarification(deprecated = true)
+    private ConcurrentHashMap&lt;String, String&gt; dictionaries; // table/column ==&gt; dictionary resource path
+    @JsonProperty(&quot;snapshots&quot;)
+    private ConcurrentHashMap&lt;String, String&gt; snapshots; // table name ==&gt; snapshot resource path
+
+<span class="fc" id="L117">    @JsonProperty(&quot;rowkey_stats&quot;)</span>
+<span class="fc" id="L118">    private List&lt;Object[]&gt; rowkeyStats = Lists.newArrayList();</span>
+
+<span class="fc" id="L120">    @JsonProperty(&quot;source_partition_offset_start&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @Clarification(deprecated = true)
+<span class="fc" id="L123">    private Map&lt;Integer, Long&gt; sourcePartitionOffsetStart = Maps.newHashMap();</span>
+
+<span class="fc" id="L125">    @JsonProperty(&quot;source_partition_offset_end&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @Clarification(deprecated = true)
+<span class="fc" id="L128">    private Map&lt;Integer, Long&gt; sourcePartitionOffsetEnd = Maps.newHashMap();</span>
+
+    @JsonProperty(&quot;stream_source_checkpoint&quot;)
+    @Clarification(deprecated = true)
+    private String streamSourceCheckpoint;
+
+<span class="fc" id="L134">    @JsonProperty(&quot;additionalInfo&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map&lt;String, String&gt; additionalInfo = new LinkedHashMap&lt;String, String&gt;();
+
+<span class="fc" id="L138">    @JsonProperty(&quot;dimension_range_info_map&quot;)</span>
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+<span class="fc" id="L140">    private Map&lt;String, DimensionRangeInfo&gt; dimensionRangeInfoMap = Maps.newHashMap();</span>
+
+<span class="fc" id="L142">    private Map&lt;Long, Short&gt; cuboidBaseShards = Maps.newConcurrentMap(); // cuboid id ==&gt; base(starting) shard for this cuboid</span>
+
+    // lazy init
+<span class="fc" id="L145">    transient volatile ISegmentAdvisor advisor = null;</span>
+
+    public CubeDesc getCubeDesc() {
+<span class="fc" id="L148">        return getCubeInstance().getDescriptor();</span>
+    }
+
+    public CuboidScheduler getCuboidScheduler() {
+<span class="nc" id="L152">        return getCubeInstance().getCuboidScheduler();</span>
+    }
+
+    public static String makeSegmentName(TSRange tsRange, SegmentRange segRange, DataModelDesc modelDesc) {
+<span class="fc bfc" id="L156" title="All 4 branches covered.">        if (tsRange == null &amp;&amp; segRange == null) {</span>
+<span class="fc" id="L157">            return &quot;FULL_BUILD&quot;;</span>
+        }
+
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (segRange != null) {</span>
+<span class="fc" id="L161">            return segRange.start.v + &quot;_&quot; + segRange.end.v;</span>
+        }
+
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (!modelDesc.isStandardPartitionedDateColumn()) {</span>
+<span class="nc" id="L165">            return tsRange.start.v + &quot;_&quot; + tsRange.end.v;</span>
+        }
+
+        // using time
+<span class="fc" id="L169">        SimpleDateFormat dateFormat = new SimpleDateFormat(&quot;yyyyMMddHHmmss&quot;, Locale.ROOT);</span>
+<span class="fc" id="L170">        dateFormat.setTimeZone(TimeZone.getTimeZone(&quot;GMT&quot;));</span>
+<span class="fc" id="L171">        return dateFormat.format(tsRange.start.v) + &quot;_&quot; + dateFormat.format(tsRange.end.v);</span>
+    }
+
+    public static Pair&lt;Long, Long&gt; parseSegmentName(String segmentName) {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (&quot;FULL&quot;.equals(segmentName)) {</span>
+<span class="nc" id="L176">            return new Pair&lt;&gt;(0L, 0L);</span>
+        }
+<span class="nc" id="L178">        String[] startEnd = segmentName.split(&quot;_&quot;);</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (startEnd.length != 2) {</span>
+<span class="nc" id="L180">            throw new IllegalArgumentException(&quot;the segmentName is illegal: &quot; + segmentName);</span>
+        }
+<span class="nc" id="L182">        SimpleDateFormat dateFormat = new SimpleDateFormat(&quot;yyyyMMddHHmmss&quot;, Locale.ROOT);</span>
+<span class="nc" id="L183">        dateFormat.setTimeZone(TimeZone.getTimeZone(&quot;GMT&quot;));</span>
+
+        try {
+<span class="nc" id="L186">            long dateRangeStart = dateFormat.parse(startEnd[0]).getTime();</span>
+<span class="nc" id="L187">            long dateRangeEnd = dateFormat.parse(startEnd[1]).getTime();</span>
+<span class="nc" id="L188">            return new Pair&lt;&gt;(dateRangeStart, dateRangeEnd);</span>
+<span class="nc" id="L189">        } catch (ParseException e) {</span>
+<span class="nc" id="L190">            throw new IllegalArgumentException(&quot;Invalid segmentName for CubeSegment, segmentName = &quot; + segmentName);</span>
+        }
+    }
+
+    // ============================================================================
+
+    public KylinConfig getConfig() {
+<span class="fc" id="L197">        return cubeInstance.getConfig();</span>
+    }
+
+    public String getUuid() {
+<span class="fc" id="L201">        return uuid;</span>
+    }
+
+    public void setUuid(String id) {
+<span class="fc" id="L205">        this.uuid = id;</span>
+<span class="fc" id="L206">    }</span>
+
+    public String getName() {
+<span class="nc" id="L209">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="fc" id="L213">        this.name = name;</span>
+<span class="fc" id="L214">    }</span>
+
+    public SegmentStatusEnum getStatus() {
+<span class="fc" id="L217">        return status;</span>
+    }
+
+    @Override
+    public DataModelDesc getModel() {
+<span class="fc" id="L222">        return this.getCubeDesc().getModel();</span>
+    }
+
+    public void setStatus(SegmentStatusEnum status) {
+<span class="fc" id="L226">        this.status = status;</span>
+<span class="fc" id="L227">    }</span>
+
+    public long getSizeKB() {
+<span class="nc" id="L230">        return sizeKB;</span>
+    }
+
+    public void setSizeKB(long sizeKB) {
+<span class="nc" id="L234">        this.sizeKB = sizeKB;</span>
+<span class="nc" id="L235">    }</span>
+
+    public boolean isMerged() {
+<span class="nc" id="L238">        return isMerged;</span>
+    }
+
+    public void setMerged(boolean isMerged) {
+<span class="fc" id="L242">        this.isMerged = isMerged;</span>
+<span class="fc" id="L243">    }</span>
+
+    public List&lt;Double&gt; getEstimateRatio() {
+<span class="nc" id="L246">        return estimateRatio;</span>
+    }
+
+    public void setEstimateRatio(List&lt;Double&gt; estimateRatio) {
+<span class="nc" id="L250">        this.estimateRatio = estimateRatio;</span>
+<span class="nc" id="L251">    }</span>
+
+    public long getInputRecords() {
+<span class="fc" id="L254">        return inputRecords;</span>
+    }
+
+    public void setInputRecords(long inputRecords) {
+<span class="fc" id="L258">        this.inputRecords = inputRecords;</span>
+<span class="fc" id="L259">    }</span>
+
+    public long getInputRecordsSize() {
+<span class="nc" id="L262">        return inputRecordsSize;</span>
+    }
+
+    public void setInputRecordsSize(long inputRecordsSize) {
+<span class="nc" id="L266">        this.inputRecordsSize = inputRecordsSize;</span>
+<span class="nc" id="L267">    }</span>
+
+    @Override
+    public long getLastBuildTime() {
+<span class="nc" id="L271">        return lastBuildTime;</span>
+    }
+
+    public void setLastBuildTime(long lastBuildTime) {
+<span class="nc" id="L275">        this.lastBuildTime = lastBuildTime;</span>
+<span class="nc" id="L276">    }</span>
+
+    public String getLastBuildJobID() {
+<span class="fc" id="L279">        return lastBuildJobID;</span>
+    }
+
+    public void setLastBuildJobID(String lastBuildJobID) {
+<span class="fc" id="L283">        this.lastBuildJobID = lastBuildJobID;</span>
+<span class="fc" id="L284">    }</span>
+
+    public long getCreateTimeUTC() {
+<span class="nc" id="L287">        return createTimeUTC;</span>
+    }
+
+    public void setCreateTimeUTC(long createTimeUTC) {
+<span class="fc" id="L291">        this.createTimeUTC = createTimeUTC;</span>
+<span class="fc" id="L292">    }</span>
+
+    public String getBinarySignature() {
+<span class="nc" id="L295">        return binarySignature;</span>
+    }
+
+    public void setBinarySignature(String binarySignature) {
+<span class="nc" id="L299">        this.binarySignature = binarySignature;</span>
+<span class="nc" id="L300">    }</span>
+
+    public CubeInstance getCubeInstance() {
+<span class="fc" id="L303">        return cubeInstance;</span>
+    }
+
+    public void setCubeInstance(CubeInstance cubeInstance) {
+<span class="fc" id="L307">        this.cubeInstance = cubeInstance;</span>
+<span class="fc" id="L308">    }</span>
+
+    public String getStorageLocationIdentifier() {
+<span class="fc" id="L311">        return storageLocationIdentifier;</span>
+    }
+
+    public List&lt;Object[]&gt; getRowkeyStats() {
+<span class="nc" id="L315">        return rowkeyStats;</span>
+    }
+
+    public Map&lt;String, String&gt; getDictionaries() {
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (dictionaries == null)</span>
+<span class="nc" id="L320">            dictionaries = new ConcurrentHashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L321">        return dictionaries;</span>
+    }
+
+    public Map&lt;String, String&gt; getSnapshots() {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (snapshots == null)</span>
+<span class="nc" id="L326">            snapshots = new ConcurrentHashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L327">        return snapshots;</span>
+    }
+
+    public void resetSnapshots() {
+<span class="nc" id="L331">        snapshots = new ConcurrentHashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L332">    }</span>
+
+    public String getSnapshotResPath(String table) {
+<span class="nc" id="L335">        return getSnapshots().get(table);</span>
+    }
+
+    public void putSnapshotResPath(String table, String snapshotResPath) {
+<span class="nc" id="L339">        getSnapshots().put(table, snapshotResPath);</span>
+<span class="nc" id="L340">    }</span>
+
+    public Collection&lt;String&gt; getDictionaryPaths() {
+<span class="nc" id="L343">        return getDictionaries().values();</span>
+    }
+
+    public Collection&lt;String&gt; getSnapshotPaths() {
+<span class="nc" id="L347">        return getSnapshots().values();</span>
+    }
+
+    public String getDictResPath(TblColRef col) {
+        String r;
+<span class="nc" id="L352">        String dictKey = col.getIdentity();</span>
+<span class="nc" id="L353">        r = getDictionaries().get(dictKey);</span>
+
+        // try Kylin v1.x dict key as well
+<span class="nc bnc" id="L356" title="All 2 branches missed.">        if (r == null) {</span>
+<span class="nc" id="L357">            String v1DictKey = col.getTable() + &quot;/&quot; + col.getName();</span>
+<span class="nc" id="L358">            r = getDictionaries().get(v1DictKey);</span>
+        }
+
+<span class="nc" id="L361">        return r;</span>
+    }
+
+    public void putDictResPath(TblColRef col, String dictResPath) {
+<span class="nc" id="L365">        String dictKey = col.getIdentity();</span>
+<span class="nc" id="L366">        getDictionaries().put(dictKey, dictResPath);</span>
+<span class="nc" id="L367">    }</span>
+
+    public void setStorageLocationIdentifier(String storageLocationIdentifier) {
+<span class="fc" id="L370">        this.storageLocationIdentifier = storageLocationIdentifier;</span>
+<span class="fc" id="L371">    }</span>
+
+    public CubeDimEncMap getDimensionEncodingMap() {
+<span class="nc" id="L374">        return new CubeDimEncMap(this);</span>
+    }
+
+    // Hide the 4 confusing fields: dateRangeStart, dateRangeEnd, sourceOffsetStart, sourceOffsetEnd.
+    // They are now managed via SegmentRange and TSRange.
+    long _getDateRangeStart() {
+<span class="fc" id="L380">        return dateRangeStart;</span>
+    }
+
+    void _setDateRangeStart(long dateRangeStart) {
+<span class="fc" id="L384">        this.dateRangeStart = dateRangeStart;</span>
+<span class="fc" id="L385">    }</span>
+
+    long _getDateRangeEnd() {
+<span class="fc" id="L388">        return dateRangeEnd;</span>
+    }
+
+    void _setDateRangeEnd(long dateRangeEnd) {
+<span class="fc" id="L392">        this.dateRangeEnd = dateRangeEnd;</span>
+<span class="fc" id="L393">    }</span>
+
+    long _getSourceOffsetStart() {
+<span class="fc" id="L396">        return sourceOffsetStart;</span>
+    }
+
+    void _setSourceOffsetStart(long sourceOffsetStart) {
+<span class="fc" id="L400">        this.sourceOffsetStart = sourceOffsetStart;</span>
+<span class="fc" id="L401">    }</span>
+
+    long _getSourceOffsetEnd() {
+<span class="fc" id="L404">        return sourceOffsetEnd;</span>
+    }
+
+    void _setSourceOffsetEnd(long sourceOffsetEnd) {
+<span class="fc" id="L408">        this.sourceOffsetEnd = sourceOffsetEnd;</span>
+<span class="fc" id="L409">    }</span>
+
+    @Override
+    public SegmentRange getSegRange() {
+<span class="fc" id="L413">        return getAdvisor().getSegRange();</span>
+    }
+
+    public void setSegRange(SegmentRange range) {
+<span class="fc" id="L417">        getAdvisor().setSegRange(range);</span>
+<span class="fc" id="L418">    }</span>
+
+    @Override
+    public TSRange getTSRange() {
+<span class="fc" id="L422">        return getAdvisor().getTSRange();</span>
+    }
+
+    public void setTSRange(TSRange range) {
+<span class="fc" id="L426">        getAdvisor().setTSRange(range);</span>
+<span class="fc" id="L427">    }</span>
+
+    public boolean isOffsetCube() {
+<span class="fc" id="L430">        return getAdvisor().isOffsetCube();</span>
+    }
+
+    private ISegmentAdvisor getAdvisor() {
+<span class="fc bfc" id="L434" title="All 2 branches covered.">        if (advisor != null)</span>
+<span class="fc" id="L435">            return advisor;</span>
+
+<span class="fc" id="L437">        synchronized (this) {</span>
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">            if (advisor == null) {</span>
+<span class="fc" id="L439">                advisor = Segments.newSegmentAdvisor(this);</span>
+            }
+<span class="fc" id="L441">            return advisor;</span>
+        }
+    }
+
+    @Override
+    public void validate() throws IllegalStateException {
+<span class="fc bfc" id="L447" title="All 2 branches covered.">        if (cubeInstance.getDescriptor().getModel().getPartitionDesc().isPartitioned()) {</span>
+<span class="pc bpc" id="L448" title="1 of 4 branches missed.">            if (!isOffsetCube() &amp;&amp; dateRangeStart &gt;= dateRangeEnd)</span>
+<span class="nc" id="L449">                throw new IllegalStateException(&quot;Invalid segment, dateRangeStart(&quot; + dateRangeStart + &quot;) must be smaller than dateRangeEnd(&quot; + dateRangeEnd + &quot;) in segment &quot; + this);</span>
+<span class="pc bpc" id="L450" title="1 of 4 branches missed.">            if (isOffsetCube() &amp;&amp; sourceOffsetStart &gt;= sourceOffsetEnd)</span>
+<span class="nc" id="L451">                throw new IllegalStateException(&quot;Invalid segment, sourceOffsetStart(&quot; + sourceOffsetStart + &quot;) must be smaller than sourceOffsetEnd(&quot; + sourceOffsetEnd + &quot;) in segment &quot; + this);</span>
+        }
+<span class="fc" id="L453">    }</span>
+
+    public String getProject() {
+<span class="nc" id="L456">        return getCubeDesc().getProject();</span>
+    }
+
+    @Override
+    public int compareTo(ISegment other) {
+<span class="fc" id="L461">        int comp = this.getSegRange().start.compareTo(other.getSegRange().start);</span>
+<span class="fc bfc" id="L462" title="All 2 branches covered.">        if (comp != 0)</span>
+<span class="fc" id="L463">            return comp;</span>
+
+<span class="fc" id="L465">        return this.getSegRange().end.compareTo(other.getSegRange().end);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L470">        final int prime = 31;</span>
+<span class="nc" id="L471">        int result = 1;</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">        result = prime * result + ((cubeInstance == null) ? 0 : cubeInstance.hashCode());</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">        result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">        result = prime * result + ((status == null) ? 0 : status.hashCode());</span>
+<span class="nc" id="L475">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        if (this == obj)</span>
+<span class="fc" id="L481">            return true;</span>
+<span class="pc bpc" id="L482" title="1 of 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L483">            return false;</span>
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L485">            return false;</span>
+<span class="fc" id="L486">        CubeSegment other = (CubeSegment) obj;</span>
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">        if (cubeInstance == null) {</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">            if (other.cubeInstance != null)</span>
+<span class="nc" id="L489">                return false;</span>
+<span class="pc bpc" id="L490" title="1 of 2 branches missed.">        } else if (!cubeInstance.equals(other.cubeInstance))</span>
+<span class="nc" id="L491">            return false;</span>
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">        if (uuid == null) {</span>
+<span class="nc bnc" id="L493" title="All 2 branches missed.">            if (other.uuid != null)</span>
+<span class="nc" id="L494">                return false;</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        } else if (!uuid.equals(other.uuid))</span>
+<span class="fc" id="L496">            return false;</span>
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">        if (name == null) {</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">            if (other.name != null)</span>
+<span class="nc" id="L499">                return false;</span>
+<span class="pc bpc" id="L500" title="1 of 2 branches missed.">        } else if (!name.equals(other.name))</span>
+<span class="nc" id="L501">            return false;</span>
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">        if (status != other.status)</span>
+<span class="nc" id="L503">            return false;</span>
+<span class="fc" id="L504">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L509">        return cubeInstance.getName() + &quot;[&quot; + name + &quot;]&quot;;</span>
+    }
+
+    public void setDictionaries(ConcurrentHashMap&lt;String, String&gt; dictionaries) {
+<span class="nc" id="L513">        this.dictionaries = dictionaries;</span>
+<span class="nc" id="L514">    }</span>
+
+    public void setSnapshots(ConcurrentHashMap&lt;String, String&gt; snapshots) {
+<span class="nc" id="L517">        this.snapshots = snapshots;</span>
+<span class="nc" id="L518">    }</span>
+
+    public String getStatisticsResourcePath() {
+<span class="fc" id="L521">        return getStatisticsResourcePath(this.getCubeInstance().getName(), this.getUuid(), &quot;.seq&quot;);</span>
+    }
+
+    public String getPreciseStatisticsResourcePath() {
+<span class="nc" id="L525">        return getStatisticsResourcePath(this.getCubeInstance().getName(), this.getUuid(), &quot;&quot;);</span>
+    }
+
+    public static String getStatisticsResourcePath(String cubeName, String cubeSegmentId) {
+<span class="nc" id="L529">        return getStatisticsResourcePath(cubeName, cubeSegmentId, &quot;.seq&quot;);</span>
+    }
+
+    public static String getStatisticsResourcePath(String cubeName, String cubeSegmentId, String suffix) {
+<span class="fc" id="L533">        return ResourceStore.CUBE_STATISTICS_ROOT + &quot;/&quot; + cubeName + &quot;/&quot; + cubeSegmentId + suffix;</span>
+    }
+
+    @Override
+    public int getSourceType() {
+<span class="nc" id="L538">        return cubeInstance.getSourceType();</span>
+    }
+
+    @Override
+    public int getEngineType() {
+<span class="nc" id="L543">        return cubeInstance.getEngineType();</span>
+    }
+
+    @Override
+    public int getStorageType() {
+<span class="nc" id="L548">        return cubeInstance.getStorageType();</span>
+    }
+
+    public boolean isEnableSharding() {
+<span class="nc" id="L552">        return getCubeDesc().isEnableSharding();</span>
+    }
+
+    public Set&lt;TblColRef&gt; getShardByColumns() {
+<span class="nc" id="L556">        return getCubeDesc().getShardByColumns();</span>
+    }
+
+    public int getRowKeyPreambleSize() {
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        return isEnableSharding() ? RowConstants.ROWKEY_SHARD_AND_CUBOID_LEN : RowConstants.ROWKEY_CUBOIDID_LEN;</span>
+    }
+
+    /**
+     * get the number of shards where each cuboid will distribute
+     *
+     * @return
+     */
+    public Short getCuboidShardNum(Long cuboidId) {
+<span class="nc" id="L569">        Short ret = this.cuboidShardNums.get(cuboidId);</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">        if (ret == null) {</span>
+<span class="nc" id="L571">            return 1;</span>
+        } else {
+<span class="nc" id="L573">            return ret;</span>
+        }
+    }
+
+    public void setCuboidShardNums(Map&lt;Long, Short&gt; newCuboidShards) {
+<span class="nc" id="L578">        this.cuboidShardNums = newCuboidShards;</span>
+<span class="nc" id="L579">    }</span>
+
+    public Map&lt;Long, Short&gt; getCuboidShardNums() {
+<span class="nc" id="L582">        return this.cuboidShardNums;</span>
+    }
+
+    public int getTotalShards(long cuboidId) {
+<span class="nc bnc" id="L586" title="All 2 branches missed.">        if (totalShards &gt; 0) {</span>
+<span class="nc" id="L587">            return totalShards;</span>
+        } else {
+<span class="nc" id="L589">            int ret = getCuboidShardNum(cuboidId);</span>
+<span class="nc" id="L590">            return ret;</span>
+        }
+    }
+
+    public void setTotalShards(int totalShards) {
+<span class="nc" id="L595">        this.totalShards = totalShards;</span>
+<span class="nc" id="L596">    }</span>
+
+    public short getCuboidBaseShard(Long cuboidId) {
+<span class="nc bnc" id="L599" title="All 2 branches missed.">        if (totalShards == 0)</span>
+<span class="nc" id="L600">            return 0;</span>
+
+<span class="nc" id="L602">        Short ret = cuboidBaseShards.get(cuboidId);</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">        if (ret == null) {</span>
+<span class="nc" id="L604">            ret = ShardingHash.getShard(cuboidId, totalShards);</span>
+<span class="nc" id="L605">            cuboidBaseShards.put(cuboidId, ret);</span>
+        }
+
+<span class="nc" id="L608">        return ret;</span>
+    }
+
+    public List&lt;Long&gt; getBlackoutCuboids() {
+<span class="nc" id="L612">        return this.blackoutCuboids;</span>
+    }
+
+    public IRealization getRealization() {
+<span class="nc" id="L616">        return cubeInstance;</span>
+    }
+
+    public Map&lt;String, String&gt; getAdditionalInfo() {
+<span class="fc" id="L620">        return additionalInfo;</span>
+    }
+
+    public void setAdditionalInfo(Map&lt;String, String&gt; additionalInfo) {
+<span class="fc" id="L624">        this.additionalInfo = additionalInfo;</span>
+<span class="fc" id="L625">    }</span>
+
+    public Map&lt;Integer, Long&gt; getSourcePartitionOffsetEnd() {
+<span class="fc" id="L628">        return sourcePartitionOffsetEnd;</span>
+    }
+
+    public void setSourcePartitionOffsetEnd(Map&lt;Integer, Long&gt; sourcePartitionOffsetEnd) {
+<span class="fc" id="L632">        this.sourcePartitionOffsetEnd = sourcePartitionOffsetEnd;</span>
+<span class="fc" id="L633">    }</span>
+
+    public Map&lt;Integer, Long&gt; getSourcePartitionOffsetStart() {
+<span class="fc" id="L636">        return sourcePartitionOffsetStart;</span>
+    }
+
+    public void setSourcePartitionOffsetStart(Map&lt;Integer, Long&gt; sourcePartitionOffsetStart) {
+<span class="fc" id="L640">        this.sourcePartitionOffsetStart = sourcePartitionOffsetStart;</span>
+<span class="fc" id="L641">    }</span>
+
+    public Map&lt;String, DimensionRangeInfo&gt; getDimensionRangeInfoMap() {
+<span class="fc" id="L644">        return dimensionRangeInfoMap;</span>
+    }
+
+    public void setDimensionRangeInfoMap(Map&lt;String, DimensionRangeInfo&gt; dimensionRangeInfoMap) {
+<span class="fc" id="L648">        this.dimensionRangeInfoMap = dimensionRangeInfoMap;</span>
+<span class="fc" id="L649">    }</span>
+
+    public String getStreamSourceCheckpoint() {
+<span class="nc" id="L652">        return streamSourceCheckpoint;</span>
+    }
+
+    public void setStreamSourceCheckpoint(String streamSourceCheckpoint) {
+<span class="nc" id="L656">        this.streamSourceCheckpoint = streamSourceCheckpoint;</span>
+<span class="nc" id="L657">    }</span>
+
+    public static CubeSegment getCopyOf(CubeSegment other) {
+<span class="nc" id="L660">        CubeSegment copy = new CubeSegment();</span>
+<span class="nc" id="L661">        copy.cubeInstance = other.cubeInstance;</span>
+<span class="nc" id="L662">        copy.uuid = other.uuid;</span>
+<span class="nc" id="L663">        copy.name = other.name;</span>
+<span class="nc" id="L664">        copy.storageLocationIdentifier = other.storageLocationIdentifier;</span>
+<span class="nc" id="L665">        copy.dateRangeStart = other.dateRangeStart;</span>
+<span class="nc" id="L666">        copy.dateRangeEnd = other.dateRangeEnd;</span>
+<span class="nc" id="L667">        copy.sourceOffsetStart = other.sourceOffsetStart;</span>
+<span class="nc" id="L668">        copy.sourceOffsetEnd = other.sourceOffsetEnd;</span>
+<span class="nc" id="L669">        copy.status = other.status;</span>
+<span class="nc" id="L670">        copy.sizeKB = other.sizeKB;</span>
+<span class="nc" id="L671">        copy.isMerged = other.isMerged;</span>
+<span class="nc bnc" id="L672" title="All 2 branches missed.">        copy.estimateRatio = other.estimateRatio == null ? null : Lists.newArrayList(other.estimateRatio);</span>
+<span class="nc" id="L673">        copy.inputRecords = other.inputRecords;</span>
+<span class="nc" id="L674">        copy.inputRecordsSize = other.inputRecordsSize;</span>
+<span class="nc" id="L675">        copy.lastBuildTime = other.lastBuildTime;</span>
+<span class="nc" id="L676">        copy.lastBuildJobID = other.lastBuildJobID;</span>
+<span class="nc" id="L677">        copy.createTimeUTC = other.createTimeUTC;</span>
+<span class="nc" id="L678">        copy.cuboidShardNums.putAll(other.cuboidShardNums);</span>
+<span class="nc" id="L679">        copy.totalShards = other.totalShards;</span>
+<span class="nc" id="L680">        copy.blackoutCuboids.addAll(other.blackoutCuboids);</span>
+<span class="nc" id="L681">        copy.getDictionaries().putAll(other.getDictionaries());</span>
+<span class="nc" id="L682">        copy.getSnapshots().putAll(other.getSnapshots());</span>
+<span class="nc" id="L683">        copy.rowkeyStats.addAll(other.rowkeyStats);</span>
+<span class="nc" id="L684">        copy.sourcePartitionOffsetStart.putAll(other.sourcePartitionOffsetStart);</span>
+<span class="nc" id="L685">        copy.sourcePartitionOffsetEnd.putAll(other.sourcePartitionOffsetEnd);</span>
+<span class="nc bnc" id="L686" title="All 2 branches missed.">        if (other.streamSourceCheckpoint != null) {</span>
+<span class="nc" id="L687">            copy.streamSourceCheckpoint = other.streamSourceCheckpoint;</span>
+        }
+<span class="nc" id="L689">        copy.additionalInfo.putAll(other.additionalInfo);</span>
+<span class="nc bnc" id="L690" title="All 2 branches missed.">        copy.dimensionRangeInfoMap = other.dimensionRangeInfoMap == null ? null</span>
+<span class="nc" id="L691">                : Maps.newHashMap(other.dimensionRangeInfoMap);</span>
+<span class="nc" id="L692">        copy.binarySignature = other.binarySignature;</span>
+<span class="nc" id="L693">        return copy;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

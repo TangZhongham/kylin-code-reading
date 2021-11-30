@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ClassUtil.java</span></div><h1>ClassUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.net.URLDecoder;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+public class ClassUtil {
+
+<span class="fc" id="L37">    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(ClassUtil.class);</span>
+
+<span class="nc" id="L39">    private ClassUtil() {</span>
+<span class="nc" id="L40">        throw new IllegalStateException(&quot;Class ClassUtil is an utility class !&quot;);</span>
+    }
+
+    public static void addClasspath(String path) {
+<span class="nc" id="L44">        logger.info(&quot;Adding path &quot; + path + &quot; to class path&quot;);</span>
+<span class="nc" id="L45">        File file = new File(path);</span>
+
+        try {
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            if (file.exists()) {</span>
+<span class="nc" id="L49">                URLClassLoader urlClassLoader = (URLClassLoader) ClassLoader.getSystemClassLoader();</span>
+<span class="nc" id="L50">                Class&lt;URLClassLoader&gt; urlClass = URLClassLoader.class;</span>
+<span class="nc" id="L51">                Method method = urlClass.getDeclaredMethod(&quot;addURL&quot;, new Class[] { URL.class });</span>
+<span class="nc" id="L52">                method.setAccessible(true);</span>
+<span class="nc" id="L53">                method.invoke(urlClassLoader, new Object[] { file.toURI().toURL() });</span>
+            }
+<span class="nc" id="L55">        } catch (Exception e) {</span>
+<span class="nc" id="L56">            throw new RuntimeException(e);</span>
+<span class="nc" id="L57">        }</span>
+<span class="nc" id="L58">    }</span>
+
+    private static final Map&lt;String, String&gt; classRenameMap;
+    static {
+<span class="fc" id="L62">        classRenameMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L63">        classRenameMap.put(&quot;org.apache.kylin.job.common.HadoopShellExecutable&quot;, &quot;org.apache.kylin.engine.mr.common.HadoopShellExecutable&quot;);</span>
+<span class="fc" id="L64">        classRenameMap.put(&quot;org.apache.kylin.job.common.MapReduceExecutable&quot;, &quot;org.apache.kylin.engine.mr.common.MapReduceExecutable&quot;);</span>
+<span class="fc" id="L65">        classRenameMap.put(&quot;org.apache.kylin.job.cube.CubingJob&quot;, &quot;org.apache.kylin.engine.mr.CubingJob&quot;);</span>
+<span class="fc" id="L66">        classRenameMap.put(&quot;org.apache.kylin.job.cube.GarbageCollectionStep&quot;, &quot;org.apache.kylin.storage.hbase.steps.DeprecatedGCStep&quot;);</span>
+<span class="fc" id="L67">        classRenameMap.put(&quot;org.apache.kylin.job.cube.MergeDictionaryStep&quot;, &quot;org.apache.kylin.engine.mr.steps.MergeDictionaryStep&quot;);</span>
+<span class="fc" id="L68">        classRenameMap.put(&quot;org.apache.kylin.job.cube.UpdateCubeInfoAfterBuildStep&quot;, &quot;org.apache.kylin.engine.mr.steps.UpdateCubeInfoAfterBuildStep&quot;);</span>
+<span class="fc" id="L69">        classRenameMap.put(&quot;org.apache.kylin.job.cube.UpdateCubeInfoAfterMergeStep&quot;, &quot;org.apache.kylin.engine.mr.steps.UpdateCubeInfoAfterMergeStep&quot;);</span>
+<span class="fc" id="L70">        classRenameMap.put(&quot;org.apache.kylin.rest.util.KeywordDefaultDirtyHack&quot;, &quot;org.apache.kylin.query.util.KeywordDefaultDirtyHack&quot;);</span>
+<span class="fc" id="L71">    }</span>
+
+    public static &lt;T&gt; Class&lt;? extends T&gt; forName(String name, Class&lt;T&gt; clz) throws ClassNotFoundException {
+<span class="fc" id="L74">        name = forRenamedClass(name);</span>
+<span class="fc" id="L75">        return (Class&lt;? extends T&gt;) Class.forName(name);</span>
+    }
+
+    private static String forRenamedClass(String name) {
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (name.startsWith(&quot;com.kylinolap&quot;)) {</span>
+<span class="nc" id="L80">            name = &quot;org.apache.kylin&quot; + name.substring(&quot;com.kylinolap&quot;.length());</span>
+        }
+<span class="fc" id="L82">        String rename = classRenameMap.get(name);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        return rename == null ? name : rename;</span>
+    }
+
+    public static Object newInstance(String clz) {
+        try {
+<span class="fc" id="L88">            return forName(clz, Object.class).getDeclaredConstructor().newInstance();</span>
+<span class="fc" id="L89">        } catch (Exception e) {</span>
+<span class="fc" id="L90">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public static String findContainingJar(Class&lt;?&gt; clazz) {
+<span class="fc" id="L95">        return findContainingJar(clazz, null);</span>
+    }
+
+    /**
+     * Load the first jar library contains clazz with preferJarKeyword matched. If preferJarKeyword is null, just load the
+     * jar likes Hadoop Commons' ClassUtil
+     * @param clazz
+     * @param preferJarKeyWord
+     * @return
+     */
+    public static String findContainingJar(Class&lt;?&gt; clazz, String preferJarKeyWord) {
+<span class="fc" id="L106">        ClassLoader loader = clazz.getClassLoader();</span>
+<span class="fc" id="L107">        String classFile = clazz.getName().replaceAll(&quot;\\.&quot;, &quot;/&quot;) + &quot;.class&quot;;</span>
+
+        try {
+<span class="fc" id="L110">            Enumeration e = loader.getResources(classFile);</span>
+
+<span class="fc" id="L112">            URL url = null;</span>
+            do {
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                if (!e.hasMoreElements()) {</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                    if (url == null)</span>
+<span class="nc" id="L116">                        return null;</span>
+                    else
+                        break;
+                }
+
+<span class="fc" id="L121">                url = (URL) e.nextElement();</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                if (!&quot;jar&quot;.equals(url.getProtocol()))</span>
+<span class="nc" id="L123">                    break;</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">                if (preferJarKeyWord != null &amp;&amp; url.getPath().indexOf(preferJarKeyWord) != -1)</span>
+<span class="fc" id="L125">                    break;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                if (preferJarKeyWord == null)</span>
+<span class="fc" id="L127">                    break;</span>
+            } while (true);
+
+<span class="fc" id="L130">            String toReturn = url.getPath();</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (toReturn.startsWith(&quot;file:&quot;)) {</span>
+<span class="fc" id="L132">                toReturn = toReturn.substring(&quot;file:&quot;.length());</span>
+            }
+
+<span class="fc" id="L135">            toReturn = URLDecoder.decode(toReturn, &quot;UTF-8&quot;);</span>
+<span class="fc" id="L136">            return toReturn.replaceAll(&quot;!.*$&quot;, &quot;&quot;);</span>
+<span class="nc" id="L137">        } catch (IOException var6) {</span>
+<span class="nc" id="L138">            throw new RuntimeException(var6);</span>
+        }
+    }
+
+    public static String findContainingJar(String className, String perferLibraryName) {
+        try {
+<span class="nc" id="L144">            return findContainingJar(Class.forName(className), perferLibraryName);</span>
+<span class="nc" id="L145">        } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L146">            logger.warn(&quot;failed to locate jar for class &quot; + className + &quot;, ignore it&quot;);</span>
+        }
+
+<span class="nc" id="L149">        return &quot;&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

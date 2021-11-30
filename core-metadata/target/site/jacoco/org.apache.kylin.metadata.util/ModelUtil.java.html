@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ModelUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.util</a> &gt; <span class="el_source">ModelUtil.java</span></div><h1>ModelUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.util;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.parser.SqlParser;
+import org.apache.calcite.sql.util.SqlBasicVisitor;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Lists;
+
+<span class="nc" id="L40">public class ModelUtil {</span>
+
+<span class="nc" id="L42">    private static final Logger logger = LoggerFactory.getLogger(ModelUtil.class);</span>
+
+    public static void verifyFilterCondition(String project, TableMetadataManager tableManager, DataModelDesc modelDesc,
+            String filterCondition) throws Exception {
+<span class="nc" id="L46">        StringBuilder checkSql = new StringBuilder();</span>
+<span class="nc" id="L47">        checkSql.append(&quot;select * from &quot;).append(modelDesc.getRootFactTableName()).append(&quot; where &quot;)</span>
+<span class="nc" id="L48">                .append(filterCondition);</span>
+
+<span class="nc" id="L50">        SqlCall inputToNode = (SqlCall) parse(doubleQuoteKeywordDefault(checkSql.toString()));</span>
+<span class="nc" id="L51">        SqlVerify sqlVerify = new SqlVerify(project, tableManager, modelDesc);</span>
+<span class="nc" id="L52">        sqlVerify.visit(inputToNode);</span>
+<span class="nc" id="L53">    }</span>
+
+    public static SqlNode parse(String sql) throws Exception {
+<span class="nc" id="L56">        SqlParser.ConfigBuilder parserBuilder = SqlParser.configBuilder().setIdentifierMaxLength(300);</span>
+<span class="nc" id="L57">        SqlParser sqlParser = SqlParser.create(sql, parserBuilder.build());</span>
+<span class="nc" id="L58">        return sqlParser.parseQuery();</span>
+    }
+
+    private static class SqlVerify extends SqlBasicVisitor {
+
+        private DataModelDesc modelDesc;
+        private TableMetadataManager tableManager;
+        private String project;
+
+<span class="nc" id="L67">        SqlVerify(String project, TableMetadataManager tableManager, DataModelDesc modelDesc) {</span>
+<span class="nc" id="L68">            this.modelDesc = modelDesc;</span>
+<span class="nc" id="L69">            this.tableManager = tableManager;</span>
+<span class="nc" id="L70">            this.project = project;</span>
+<span class="nc" id="L71">        }</span>
+
+        @Override
+        public Object visit(SqlCall call) {
+<span class="nc" id="L75">            SqlSelect select = (SqlSelect) call;</span>
+<span class="nc" id="L76">            WhereColumnVerify.verify(project, select.getWhere(), modelDesc, tableManager);</span>
+<span class="nc" id="L77">            return null;</span>
+        }
+    }
+
+<span class="nc" id="L81">    private static class WhereColumnVerify extends SqlBasicVisitor {</span>
+
+<span class="nc" id="L83">        private List&lt;String&gt; allSqlIdentifier = Lists.newArrayList();</span>
+
+        static void verify(String project, SqlNode whereNode, DataModelDesc modelDesc,
+                TableMetadataManager tableManager) {
+<span class="nc" id="L87">            WhereColumnVerify whereColumnVerify = new WhereColumnVerify();</span>
+<span class="nc" id="L88">            whereNode.accept(whereColumnVerify);</span>
+
+<span class="nc" id="L90">            List&lt;ColumnDesc&gt; columnDesc = Arrays.stream(modelDesc.getJoinTables()).flatMap(table -&gt; {</span>
+<span class="nc" id="L91">                return Arrays.stream(tableManager.getTableDesc(table.getTable(), project).getColumns());</span>
+<span class="nc" id="L92">            }).collect(Collectors.toList());</span>
+<span class="nc" id="L93">            columnDesc.addAll(</span>
+<span class="nc" id="L94">                    Arrays.asList(tableManager.getTableDesc(modelDesc.getRootFactTableName(), project).getColumns()));</span>
+<span class="nc" id="L95">            List&lt;String&gt; allColumn = columnDesc.stream().map(cd -&gt; cd.getName().toLowerCase(Locale.ROOT))</span>
+<span class="nc" id="L96">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L97">            whereColumnVerify.allSqlIdentifier.stream().forEach(col -&gt; {</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">                if (!allColumn.contains(col.toLowerCase(Locale.ROOT))) {</span>
+<span class="nc" id="L99">                    String verifyError = String.format(Locale.ROOT,</span>
+                            &quot;filter condition col: %s is not a column in the table &quot;, col);
+<span class="nc" id="L101">                    logger.error(verifyError);</span>
+<span class="nc" id="L102">                    throw new IllegalArgumentException(verifyError);</span>
+                }
+<span class="nc" id="L104">            });</span>
+<span class="nc" id="L105">        }</span>
+
+        public Object visit(SqlIdentifier id) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            if (id.names.size() == 1) {</span>
+<span class="nc" id="L109">                allSqlIdentifier.add(id.names.get(0));</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            } else if (id.names.size() == 2) {</span>
+<span class="nc" id="L111">                allSqlIdentifier.add(id.names.get(1));</span>
+            }
+<span class="nc" id="L113">            return null;</span>
+        }
+    }
+
+    public static String doubleQuoteKeywordDefault(String sql) {
+<span class="nc" id="L118">        sql = sql.replaceAll(&quot;(?i)default\\.&quot;, &quot;\&quot;DEFAULT\&quot;.&quot;);</span>
+<span class="nc" id="L119">        sql = sql.replace(&quot;defaultCatalog.&quot;, &quot;&quot;);</span>
+<span class="nc" id="L120">        sql = sql.replace(&quot;\&quot;defaultCatalog\&quot;.&quot;, &quot;&quot;);</span>
+<span class="nc" id="L121">        return sql;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

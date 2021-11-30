@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BeelineHiveClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">BeelineHiveClient.java</span></div><h1>BeelineHiveClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.util.DBUtils;
+import org.apache.kylin.common.util.SourceConfigurationUtil;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+public class BeelineHiveClient implements IHiveClient {
+
+    private static final String HIVE_AUTH_USER = &quot;user&quot;;
+    private static final String HIVE_AUTH_PASSWD = &quot;password&quot;;
+    private Connection cnct;
+    private Statement stmt;
+    private DatabaseMetaData metaData;
+
+<span class="nc" id="L52">    public BeelineHiveClient(String beelineParams) {</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        if (StringUtils.isEmpty(beelineParams)) {</span>
+<span class="nc" id="L54">            throw new IllegalArgumentException(&quot;BeelineParames cannot be empty&quot;);</span>
+        }
+<span class="nc" id="L56">        String[] splits = StringUtils.split(beelineParams);</span>
+<span class="nc" id="L57">        String url = &quot;&quot;, username = &quot;&quot;, password = &quot;&quot;;</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        for (int i = 0; i &lt; splits.length - 1; i++) {</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">            if (&quot;-u&quot;.equals(splits[i])) {</span>
+<span class="nc" id="L60">                url = stripQuotes(splits[i + 1]);</span>
+            }
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (&quot;-n&quot;.equals(splits[i])) {</span>
+<span class="nc" id="L63">                username = stripQuotes(splits[i + 1]);</span>
+            }
+<span class="nc bnc" id="L65" title="All 2 branches missed.">            if (&quot;-p&quot;.equals(splits[i])) {</span>
+<span class="nc" id="L66">                password = stripQuotes(splits[i + 1]);</span>
+            }
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            if (&quot;-w&quot;.equals(splits[i])) {</span>
+<span class="nc" id="L69">                File file = new File(splits[i + 1]);</span>
+<span class="nc" id="L70">                BufferedReader br = null;</span>
+                try {
+<span class="nc" id="L72">                    br = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));</span>
+                    try {
+<span class="nc" id="L74">                        password = br.readLine();</span>
+                    } finally {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                        if (null != br) {</span>
+<span class="nc" id="L77">                            br.close();</span>
+                        }
+                    }
+<span class="nc" id="L80">                } catch (IOException e) {</span>
+<span class="nc" id="L81">                    throw new RuntimeException(e);</span>
+<span class="nc" id="L82">                }</span>
+            }
+        }
+<span class="nc" id="L85">        Properties jdbcProperties = SourceConfigurationUtil.loadHiveJDBCProperties();</span>
+<span class="nc" id="L86">        jdbcProperties.put(HIVE_AUTH_PASSWD, password);</span>
+<span class="nc" id="L87">        jdbcProperties.put(HIVE_AUTH_USER, username);</span>
+<span class="nc" id="L88">        this.init(url, jdbcProperties);</span>
+<span class="nc" id="L89">    }</span>
+
+    private void init(String url, Properties hiveProperties) {
+        try {
+<span class="nc" id="L93">            Class.forName(&quot;org.apache.hive.jdbc.HiveDriver&quot;);</span>
+<span class="nc" id="L94">            cnct = DriverManager.getConnection(url, hiveProperties);</span>
+<span class="nc" id="L95">            stmt = cnct.createStatement();</span>
+<span class="nc" id="L96">            metaData = cnct.getMetaData();</span>
+<span class="nc" id="L97">        } catch (SQLException | ClassNotFoundException e) {</span>
+<span class="nc" id="L98">            throw new RuntimeException(e);</span>
+<span class="nc" id="L99">        }</span>
+<span class="nc" id="L100">    }</span>
+
+    private String stripQuotes(String input) {
+<span class="nc bnc" id="L103" title="All 4 branches missed.">        if (input.startsWith(&quot;'&quot;) &amp;&amp; input.endsWith(&quot;'&quot;)) {</span>
+<span class="nc" id="L104">            return StringUtils.strip(input, &quot;'&quot;);</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">        } else if (input.startsWith(&quot;\&quot;&quot;) &amp;&amp; input.endsWith(&quot;\&quot;&quot;)) {</span>
+<span class="nc" id="L106">            return StringUtils.strip(input, &quot;\&quot;&quot;);</span>
+        } else {
+<span class="nc" id="L108">            return input;</span>
+        }
+    }
+
+    public List&lt;String&gt; getHiveDbNames() throws Exception {
+<span class="nc" id="L113">        List&lt;String&gt; ret = Lists.newArrayList();</span>
+<span class="nc" id="L114">        ResultSet schemas = metaData.getSchemas();</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        while (schemas.next()) {</span>
+<span class="nc" id="L116">            ret.add(String.valueOf(schemas.getObject(1)));</span>
+        }
+<span class="nc" id="L118">        DBUtils.closeQuietly(schemas);</span>
+<span class="nc" id="L119">        return ret;</span>
+    }
+
+    public List&lt;String&gt; getHiveTableNames(String database) throws Exception {
+<span class="nc" id="L123">        List&lt;String&gt; ret = Lists.newArrayList();</span>
+<span class="nc" id="L124">        ResultSet tables = metaData.getTables(null, database, null, null);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        while (tables.next()) {</span>
+<span class="nc" id="L126">            ret.add(String.valueOf(tables.getObject(3)));</span>
+        }
+<span class="nc" id="L128">        DBUtils.closeQuietly(tables);</span>
+<span class="nc" id="L129">        return ret;</span>
+    }
+
+    @Override
+    public long getHiveTableRows(String database, String tableName) throws Exception {
+<span class="nc" id="L134">        ResultSet resultSet = null;</span>
+<span class="nc" id="L135">        long count = 0;</span>
+        try {
+<span class="nc" id="L137">            String query = &quot;select count(*) from &quot;;</span>
+<span class="nc" id="L138">            resultSet = stmt.executeQuery(query.concat(database + &quot;.&quot; + tableName));</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">            if (resultSet.next()) {</span>
+<span class="nc" id="L140">                count = resultSet.getLong(1);</span>
+            }
+        } finally {
+<span class="nc" id="L143">            DBUtils.closeQuietly(resultSet);</span>
+        }
+<span class="nc" id="L145">        return count;</span>
+    }
+
+    @Override
+    public List&lt;Object[]&gt; getHiveResult(String hql) throws Exception {
+<span class="nc" id="L150">        ResultSet resultSet = null;</span>
+<span class="nc" id="L151">        List&lt;Object[]&gt; datas = new ArrayList&lt;&gt;();</span>
+        try {
+<span class="nc" id="L153">            resultSet = stmt.executeQuery(hql);</span>
+<span class="nc" id="L154">            int columnCtn = resultSet.getMetaData().getColumnCount();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            while (resultSet.next()) {</span>
+<span class="nc" id="L156">                Object[] data = new Object[columnCtn];</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                for (int i = 0; i &lt; columnCtn; i++) {</span>
+<span class="nc" id="L158">                    data[i] = resultSet.getObject(i + 1);</span>
+                }
+<span class="nc" id="L160">                datas.add(data);</span>
+<span class="nc" id="L161">            }</span>
+        } finally {
+<span class="nc" id="L163">            DBUtils.closeQuietly(resultSet);</span>
+        }
+<span class="nc" id="L165">        return datas;</span>
+    }
+
+    @Override
+    public void executeHQL(String hql) throws IOException {
+<span class="nc" id="L170">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public void executeHQL(String[] hqls) throws IOException {
+<span class="nc" id="L175">        throw new UnsupportedOperationException();</span>
+    }
+
+    public HiveTableMeta getHiveTableMeta(String database, String tableName) throws SQLException {
+<span class="nc" id="L179">        ResultSet columns = metaData.getColumns(null, database, tableName, null);</span>
+<span class="nc" id="L180">        HiveTableMetaBuilder builder = new HiveTableMetaBuilder();</span>
+<span class="nc" id="L181">        builder.setTableName(tableName);</span>
+
+<span class="nc" id="L183">        List&lt;HiveTableMeta.HiveTableColumnMeta&gt; allColumns = Lists.newArrayList();</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        while (columns.next()) {</span>
+<span class="nc" id="L185">            String columnName = columns.getString(4);</span>
+<span class="nc" id="L186">            String dataType = columns.getString(6);</span>
+<span class="nc" id="L187">            String comment = columns.getString(12);</span>
+<span class="nc" id="L188">            dataType = considerDataTypePrecision(dataType, columns.getString(7), columns.getString(9));</span>
+<span class="nc" id="L189">            allColumns.add(new HiveTableMeta.HiveTableColumnMeta(columnName, dataType, comment));</span>
+<span class="nc" id="L190">        }</span>
+<span class="nc" id="L191">        builder.setAllColumns(allColumns);</span>
+<span class="nc" id="L192">        DBUtils.closeQuietly(columns);</span>
+<span class="nc" id="L193">        String exe = &quot;use &quot;;</span>
+<span class="nc" id="L194">        stmt.execute(exe.concat(database));</span>
+<span class="nc" id="L195">        String des = &quot;describe formatted &quot;;</span>
+<span class="nc" id="L196">        ResultSet resultSet = stmt.executeQuery(des.concat(tableName));</span>
+<span class="nc" id="L197">        extractHiveTableMeta(resultSet, builder);</span>
+<span class="nc" id="L198">        DBUtils.closeQuietly(resultSet);</span>
+<span class="nc" id="L199">        return builder.createHiveTableMeta();</span>
+    }
+
+    public static String considerDataTypePrecision(String dataType, String precision, String scale) {
+<span class="fc bfc" id="L203" title="All 4 branches covered.">        if (&quot;VARCHAR&quot;.equalsIgnoreCase(dataType) || &quot;CHAR&quot;.equalsIgnoreCase(dataType)) {</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">            if (null != precision)</span>
+<span class="fc" id="L205">                dataType = new StringBuilder(dataType).append(&quot;(&quot;).append(precision).append(&quot;)&quot;).toString();</span>
+        }
+<span class="fc bfc" id="L207" title="All 4 branches covered.">        if (&quot;DECIMAL&quot;.equalsIgnoreCase(dataType) || &quot;NUMERIC&quot;.equalsIgnoreCase(dataType)) {</span>
+<span class="pc bpc" id="L208" title="2 of 4 branches missed.">            if (precision != null &amp;&amp; scale != null)</span>
+<span class="fc" id="L209">                dataType = new StringBuilder(dataType).append(&quot;(&quot;).append(precision).append(&quot;,&quot;).append(scale)</span>
+<span class="fc" id="L210">                        .append(&quot;)&quot;).toString();</span>
+        }
+<span class="fc" id="L212">        return dataType;</span>
+    }
+
+    private void extractHiveTableMeta(ResultSet resultSet, HiveTableMetaBuilder builder) throws SQLException {
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        while (resultSet.next()) {</span>
+<span class="nc" id="L217">            parseResultEntry(resultSet, builder);</span>
+        }
+<span class="nc" id="L219">    }</span>
+
+    private void parseResultEntry(ResultSet resultSet, HiveTableMetaBuilder builder) throws SQLException {
+<span class="nc" id="L222">        List&lt;HiveTableMeta.HiveTableColumnMeta&gt; partitionColumns = Lists.newArrayList();</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (&quot;# Partition Information&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L224">            resultSet.next();</span>
+<span class="nc" id="L225">            Preconditions.checkArgument(&quot;# col_name&quot;.equals(resultSet.getString(1).trim()));</span>
+<span class="nc" id="L226">            resultSet.next();</span>
+<span class="nc" id="L227">            Preconditions.checkArgument(&quot;&quot;.equals(resultSet.getString(1).trim()));</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            while (resultSet.next()) {</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">                if (&quot;&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L230">                    break;</span>
+                }
+<span class="nc" id="L232">                partitionColumns.add(new HiveTableMeta.HiveTableColumnMeta(resultSet.getString(1).trim(),</span>
+<span class="nc" id="L233">                        resultSet.getString(2).trim(), resultSet.getString(3).trim()));</span>
+            }
+<span class="nc" id="L235">            builder.setPartitionColumns(partitionColumns);</span>
+        }
+
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (&quot;Owner:&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L239">            builder.setOwner(resultSet.getString(2).trim());</span>
+        }
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        if (&quot;LastAccessTime:&quot;.equals(resultSet.getString(1).trim())) {</span>
+            try {
+<span class="nc" id="L243">                int i = Integer.parseInt(resultSet.getString(2).trim());</span>
+<span class="nc" id="L244">                builder.setLastAccessTime(i);</span>
+<span class="nc" id="L245">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L246">                builder.setLastAccessTime(0);</span>
+<span class="nc" id="L247">            }</span>
+        }
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (&quot;Location:&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L250">            builder.setSdLocation(resultSet.getString(2).trim());</span>
+        }
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        if (&quot;Table Type:&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L253">            builder.setTableType(resultSet.getString(2).trim());</span>
+        }
+<span class="nc bnc" id="L255" title="All 2 branches missed.">        if (&quot;Table Parameters:&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L256">            extractTableParam(resultSet, builder);</span>
+        }
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        if (&quot;InputFormat:&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L259">            builder.setSdInputFormat(resultSet.getString(2).trim());</span>
+        }
+<span class="nc bnc" id="L261" title="All 2 branches missed.">        if (&quot;OutputFormat:&quot;.equals(resultSet.getString(1).trim())) {</span>
+<span class="nc" id="L262">            builder.setSdOutputFormat(resultSet.getString(2).trim());</span>
+        }
+<span class="nc" id="L264">    }</span>
+
+    private void extractTableParam(ResultSet resultSet, HiveTableMetaBuilder builder) throws SQLException {
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        while (resultSet.next()) {</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            if (resultSet.getString(2) == null) {</span>
+<span class="nc" id="L269">                break;</span>
+            }
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (&quot;storage_handler&quot;.equals(resultSet.getString(2).trim())) {</span>
+<span class="nc" id="L272">                builder.setIsNative(false);//default is true</span>
+            }
+<span class="nc bnc" id="L274" title="All 2 branches missed.">            if (&quot;totalSize&quot;.equals(resultSet.getString(2).trim())) {</span>
+<span class="nc" id="L275">                builder.setFileSize(Long.parseLong(resultSet.getString(3).trim()));//default is false</span>
+            }
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            if (&quot;numFiles&quot;.equals(resultSet.getString(2).trim())) {</span>
+<span class="nc" id="L278">                builder.setFileNum(Long.parseLong(resultSet.getString(3).trim()));</span>
+            }
+<span class="nc bnc" id="L280" title="All 2 branches missed.">            if (&quot;skip.header.line.count&quot;.equals(resultSet.getString(2).trim())) {</span>
+<span class="nc" id="L281">                builder.setSkipHeaderLineCount(resultSet.getString(3).trim());</span>
+            }
+        }
+<span class="nc" id="L284">    }</span>
+
+    public void close() {
+<span class="nc" id="L287">        DBUtils.closeQuietly(stmt);</span>
+<span class="nc" id="L288">        DBUtils.closeQuietly(cnct);</span>
+<span class="nc" id="L289">    }</span>
+
+    public static void main(String[] args) throws SQLException {
+
+<span class="nc" id="L293">        BeelineHiveClient loader = new BeelineHiveClient(</span>
+                &quot;-n root --hiveconf hive.security.authorization.sqlstd.confwhitelist.append='mapreduce.job.*|dfs.*' -u 'jdbc:hive2://sandbox:10000'&quot;);
+        //BeelineHiveClient loader = new BeelineHiveClient(StringUtils.join(args, &quot; &quot;));
+<span class="nc" id="L296">        HiveTableMeta hiveTableMeta = loader.getHiveTableMeta(&quot;default&quot;, &quot;test_kylin_fact_part&quot;);</span>
+<span class="nc" id="L297">        System.out.println(hiveTableMeta);</span>
+<span class="nc" id="L298">        loader.close();</span>
+<span class="nc" id="L299">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

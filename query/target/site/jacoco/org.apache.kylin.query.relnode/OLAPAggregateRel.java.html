@@ -1,0 +1,699 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPAggregateRel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPAggregateRel.java</span></div><h1>OLAPAggregateRel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import static org.apache.kylin.metadata.expression.TupleExpression.ExpressionOperatorEnum.COLUMN;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.calcite.adapter.enumerable.EnumerableAggregate;
+import org.apache.calcite.adapter.enumerable.EnumerableConvention;
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.InvalidRelException;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.core.Aggregate;
+import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.schema.AggregateFunction;
+import org.apache.calcite.schema.FunctionParameter;
+import org.apache.calcite.schema.impl.AggregateFunctionImpl;
+import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.fun.SqlCountAggFunction;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.sql.fun.SqlSumAggFunction;
+import org.apache.calcite.sql.fun.SqlSumEmptyIsZeroAggFunction;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.InferTypes;
+import org.apache.calcite.sql.type.OperandTypes;
+import org.apache.calcite.sql.type.ReturnTypes;
+import org.apache.calcite.sql.type.SqlTypeFamily;
+import org.apache.calcite.sql.validate.SqlUserDefinedAggFunction;
+import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.calcite.util.Util;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.measure.ParamAsMeasureCount;
+import org.apache.kylin.metadata.expression.CaseTupleExpression;
+import org.apache.kylin.metadata.expression.ColumnTupleExpression;
+import org.apache.kylin.metadata.expression.ExpressionColCollector;
+import org.apache.kylin.metadata.expression.ExpressionCountDistributor;
+import org.apache.kylin.metadata.expression.NumberTupleExpression;
+import org.apache.kylin.metadata.expression.TupleExpression;
+import org.apache.kylin.metadata.filter.ColumnTupleFilter;
+import org.apache.kylin.metadata.filter.CompareTupleFilter;
+import org.apache.kylin.metadata.filter.TupleFilter;
+import org.apache.kylin.metadata.model.DynamicFunctionDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
+import org.apache.kylin.metadata.model.SumDynamicFunctionDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.SQLDigest.SQLCall;
+import org.apache.kylin.query.schema.OLAPTable;
+
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+
+/**
+ */
+public class OLAPAggregateRel extends Aggregate implements OLAPRel {
+
+<span class="nc" id="L94">    final static Map&lt;String, String&gt; AGGR_FUNC_MAP = new HashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L95">    final static Map&lt;String, Integer&gt; AGGR_FUNC_PARAM_AS_MEASURE_MAP = new HashMap&lt;String, Integer&gt;();</span>
+
+    static {
+<span class="nc" id="L98">        AGGR_FUNC_MAP.put(&quot;SUM&quot;, &quot;SUM&quot;);</span>
+<span class="nc" id="L99">        AGGR_FUNC_MAP.put(&quot;$SUM0&quot;, &quot;SUM&quot;);</span>
+<span class="nc" id="L100">        AGGR_FUNC_MAP.put(&quot;COUNT&quot;, &quot;COUNT&quot;);</span>
+<span class="nc" id="L101">        AGGR_FUNC_MAP.put(&quot;COUNT_DISTINCT&quot;, &quot;COUNT_DISTINCT&quot;);</span>
+<span class="nc" id="L102">        AGGR_FUNC_MAP.put(&quot;MAX&quot;, &quot;MAX&quot;);</span>
+<span class="nc" id="L103">        AGGR_FUNC_MAP.put(&quot;MIN&quot;, &quot;MIN&quot;);</span>
+<span class="nc" id="L104">        AGGR_FUNC_MAP.put(&quot;GROUPING&quot;, &quot;GROUPING&quot;);</span>
+
+<span class="nc" id="L106">        Map&lt;String, MeasureTypeFactory&gt; udafFactories = MeasureTypeFactory.getUDAFFactories();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (Map.Entry&lt;String, MeasureTypeFactory&gt; entry : udafFactories.entrySet()) {</span>
+<span class="nc" id="L108">            AGGR_FUNC_MAP.put(entry.getKey(), entry.getValue().getAggrFunctionName());</span>
+<span class="nc" id="L109">        }</span>
+
+<span class="nc" id="L111">        Map&lt;String, Class&lt;?&gt;&gt; udafs = MeasureTypeFactory.getUDAFs();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        for (String func : udafs.keySet()) {</span>
+            try {
+<span class="nc" id="L114">                AGGR_FUNC_PARAM_AS_MEASURE_MAP.put(func,</span>
+<span class="nc" id="L115">                        ((ParamAsMeasureCount) (udafs.get(func).getDeclaredConstructor().newInstance()))</span>
+<span class="nc" id="L116">                                .getParamAsMeasureCount());</span>
+<span class="nc" id="L117">            } catch (Exception e) {</span>
+<span class="nc" id="L118">                throw new RuntimeException(e);</span>
+<span class="nc" id="L119">            }</span>
+<span class="nc" id="L120">        }</span>
+<span class="nc" id="L121">    }</span>
+
+    OLAPContext context;
+    ColumnRowType columnRowType;
+    private boolean afterAggregate;
+    private Map&lt;Integer, AggregateCall&gt; hackAggCalls;
+    private List&lt;AggregateCall&gt; rewriteAggCalls;
+    private List&lt;TblColRef&gt; groups;
+    private List&lt;FunctionDesc&gt; aggregations;
+    private boolean rewriting;
+
+    public OLAPAggregateRel(RelOptCluster cluster, RelTraitSet traits, RelNode child, boolean indicator,
+            ImmutableBitSet groupSet, List&lt;ImmutableBitSet&gt; groupSets, List&lt;AggregateCall&gt; aggCalls)
+            throws InvalidRelException {
+<span class="nc" id="L135">        super(cluster, traits, child, indicator, groupSet, groupSets, aggCalls);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == OLAPRel.CONVENTION);</span>
+<span class="nc" id="L137">        this.afterAggregate = false;</span>
+<span class="nc" id="L138">        this.rewriteAggCalls = aggCalls;</span>
+<span class="nc" id="L139">        this.rowType = getRowType();</span>
+<span class="nc" id="L140">    }</span>
+
+    static String getSqlFuncName(AggregateCall aggCall) {
+<span class="nc" id="L143">        String sqlName = aggCall.getAggregation().getName();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (aggCall.isDistinct()) {</span>
+<span class="nc" id="L145">            sqlName = sqlName + &quot;_DISTINCT&quot;;</span>
+        }
+<span class="nc" id="L147">        return sqlName;</span>
+    }
+
+    public static String getAggrFuncName(AggregateCall aggCall) {
+<span class="nc" id="L151">        String sqlName = getSqlFuncName(aggCall);</span>
+<span class="nc" id="L152">        String funcName = AGGR_FUNC_MAP.get(sqlName);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (funcName == null) {</span>
+<span class="nc" id="L154">            throw new IllegalStateException(&quot;Non-support aggregation &quot; + sqlName);</span>
+        }
+<span class="nc" id="L156">        return funcName;</span>
+    }
+
+    @Override
+    public Aggregate copy(RelTraitSet traitSet, RelNode input, boolean indicator, ImmutableBitSet groupSet,
+            List&lt;ImmutableBitSet&gt; groupSets, List&lt;AggregateCall&gt; aggCalls) {
+        try {
+<span class="nc" id="L163">            return new OLAPAggregateRel(getCluster(), traitSet, input, indicator, groupSet, groupSets, aggCalls);</span>
+<span class="nc" id="L164">        } catch (InvalidRelException e) {</span>
+<span class="nc" id="L165">            throw new IllegalStateException(&quot;Can't create OLAPAggregateRel!&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Since the grouping aggregate will be expanded by {@link org.apache.kylin.query.optrule.AggregateMultipleExpandRule},
+     * made the cost of grouping aggregate more expensive to use the expanded aggregates
+     */
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+        RelOptCost cost;
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (getGroupType() == Group.SIMPLE) {</span>
+<span class="nc" id="L177">            cost = super.computeSelfCost(planner, mq).multiplyBy(.05);</span>
+        } else {
+<span class="nc" id="L179">            cost = super.computeSelfCost(planner, mq).multiplyBy(.05).plus(planner.getCost(getInput(), mq))</span>
+<span class="nc" id="L180">                    .multiplyBy(groupSets.size() * 1.5);</span>
+        }
+<span class="nc" id="L182">        return cost;</span>
+    }
+
+    @Override
+    public void implementOLAP(OLAPImplementor implementor) {
+<span class="nc" id="L187">        implementor.fixSharedOlapTableScan(this);</span>
+<span class="nc" id="L188">        implementor.visitChild(getInput(), this);</span>
+
+<span class="nc" id="L190">        this.context = implementor.getContext();</span>
+<span class="nc" id="L191">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L192">        this.afterAggregate = this.context.afterAggregate;</span>
+
+        // only translate the innermost aggregation
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (!this.afterAggregate) {</span>
+<span class="nc" id="L196">            addToContextGroupBy(this.groups);</span>
+<span class="nc" id="L197">            this.context.aggregations.addAll(this.aggregations);</span>
+<span class="nc" id="L198">            this.context.aggrOutCols</span>
+<span class="nc" id="L199">                    .addAll(columnRowType.getAllColumns().subList(groups.size(), columnRowType.getAllColumns().size()));</span>
+<span class="nc" id="L200">            this.context.afterAggregate = true;</span>
+
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if (this.context.afterLimit) {</span>
+<span class="nc" id="L203">                this.context.limitPrecedesAggr = true;</span>
+            }
+        } else {
+<span class="nc" id="L206">            this.context.afterOuterAggregate = true;</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            for (AggregateCall aggCall : aggCalls) {</span>
+                // check if supported by kylin
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                if (aggCall.isDistinct()) {</span>
+<span class="nc" id="L210">                    throw new IllegalStateException(&quot;Distinct count is only allowed in innermost sub-query.&quot;);</span>
+                }
+<span class="nc" id="L212">            }</span>
+        }
+<span class="nc" id="L214">    }</span>
+
+    ColumnRowType buildColumnRowType() {
+<span class="nc" id="L217">        buildGroups();</span>
+<span class="nc" id="L218">        buildAggregations();</span>
+
+<span class="nc" id="L220">        ColumnRowType inputColumnRowType = ((OLAPRel) getInput()).getColumnRowType();</span>
+<span class="nc" id="L221">        List&lt;TblColRef&gt; columns = new ArrayList&lt;TblColRef&gt;(this.rowType.getFieldCount());</span>
+<span class="nc" id="L222">        columns.addAll(this.groups);</span>
+
+        // Add group column indicators
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (indicator) {</span>
+<span class="nc" id="L226">            final Set&lt;String&gt; containedNames = Sets.newHashSet();</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            for (TblColRef groupCol : groups) {</span>
+<span class="nc" id="L228">                String base = &quot;i$&quot; + groupCol.getName();</span>
+<span class="nc" id="L229">                String name = base;</span>
+<span class="nc" id="L230">                int i = 0;</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">                while (containedNames.contains(name)) {</span>
+<span class="nc" id="L232">                    name = base + &quot;_&quot; + i++;</span>
+                }
+<span class="nc" id="L234">                containedNames.add(name);</span>
+<span class="nc" id="L235">                TblColRef indicatorCol = TblColRef.newInnerColumn(name, TblColRef.InnerDataTypeEnum.LITERAL);</span>
+<span class="nc" id="L236">                columns.add(indicatorCol);</span>
+<span class="nc" id="L237">            }</span>
+        }
+
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        for (int i = 0; i &lt; this.aggregations.size(); i++) {</span>
+<span class="nc" id="L241">            FunctionDesc aggFunc = this.aggregations.get(i);</span>
+            String aggOutName;
+<span class="nc bnc" id="L243" title="All 2 branches missed.">            if (aggFunc != null) {</span>
+<span class="nc" id="L244">                aggOutName = aggFunc.getRewriteFieldName();</span>
+            } else {
+<span class="nc" id="L246">                AggregateCall aggCall = this.rewriteAggCalls.get(i);</span>
+<span class="nc" id="L247">                int index = aggCall.getArgList().get(0);</span>
+<span class="nc" id="L248">                aggOutName = getSqlFuncName(aggCall) + &quot;_&quot;</span>
+<span class="nc" id="L249">                        + inputColumnRowType.getColumnByIndex(index).getIdentity().replace('.', '_') + &quot;_&quot;;</span>
+            }
+<span class="nc" id="L251">            TblColRef aggOutCol = TblColRef.newInnerColumn(aggOutName, TblColRef.InnerDataTypeEnum.LITERAL);</span>
+<span class="nc" id="L252">            aggOutCol.getColumnDesc().setId(&quot;&quot; + (i + 1)); // mark the index of aggregation</span>
+<span class="nc" id="L253">            columns.add(aggOutCol);</span>
+        }
+<span class="nc" id="L255">        return new ColumnRowType(columns);</span>
+    }
+
+    TblColRef buildRewriteColumn(FunctionDesc aggFunc) {
+        TblColRef colRef;
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (aggFunc.needRewriteField()) {</span>
+<span class="nc" id="L261">            String colName = aggFunc.getRewriteFieldName();</span>
+<span class="nc" id="L262">            colRef = this.context.firstTableScan.makeRewriteColumn(colName);</span>
+<span class="nc" id="L263">        } else {</span>
+<span class="nc" id="L264">            throw new IllegalStateException(&quot;buildRewriteColumn on a aggrFunc that does not need rewrite &quot; + aggFunc);</span>
+        }
+<span class="nc" id="L266">        return colRef;</span>
+    }
+
+    void buildGroups() {
+<span class="nc" id="L270">        ColumnRowType inputColumnRowType = ((OLAPRel) getInput()).getColumnRowType();</span>
+<span class="nc" id="L271">        this.groups = Lists.newArrayList();</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        for (int i = getGroupSet().nextSetBit(0); i &gt;= 0; i = getGroupSet().nextSetBit(i + 1)) {</span>
+<span class="nc" id="L273">            TupleExpression tupleExpression = inputColumnRowType.getTupleExpressionByIndex(i);</span>
+
+            // group by column with operator
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            if (this.context.groupByExpression == false</span>
+<span class="nc bnc" id="L277" title="All 4 branches missed.">                    &amp;&amp; !(COLUMN.equals(tupleExpression.getOperator()) &amp;&amp; tupleExpression.getChildren().isEmpty())) {</span>
+<span class="nc" id="L278">                this.context.groupByExpression = true;</span>
+            }
+
+<span class="nc" id="L281">            TblColRef groupOutCol = inputColumnRowType.getColumnByIndex(i);</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            if (tupleExpression instanceof ColumnTupleExpression) {</span>
+<span class="nc" id="L283">                this.groups.add(((ColumnTupleExpression) tupleExpression).getColumn());</span>
+<span class="nc bnc" id="L284" title="All 4 branches missed.">            } else if (this.context.isDynamicColumnEnabled() &amp;&amp; tupleExpression.ifForDynamicColumn()) {</span>
+<span class="nc" id="L285">                Pair&lt;Set&lt;TblColRef&gt;, Set&lt;TblColRef&gt;&gt; cols = ExpressionColCollector.collectColumnsPair(tupleExpression);</span>
+
+                // push down only available for the innermost aggregation
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                boolean ifPushDown = !afterAggregate;</span>
+
+                // if measure columns exist, don't do push down
+<span class="nc bnc" id="L291" title="All 4 branches missed.">                if (ifPushDown &amp;&amp; !cols.getSecond().isEmpty()) {</span>
+<span class="nc" id="L292">                    ifPushDown = false;</span>
+                }
+
+                // if existing a dimension which is a derived column, don't do push down
+<span class="nc bnc" id="L296" title="All 2 branches missed.">                if (ifPushDown) {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                    for (TblColRef dimCol : cols.getFirst()) {</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                        if (!this.context.belongToFactTableDims(dimCol)) {</span>
+<span class="nc" id="L299">                            ifPushDown = false;</span>
+<span class="nc" id="L300">                            break;</span>
+                        }
+<span class="nc" id="L302">                    }</span>
+                }
+
+<span class="nc bnc" id="L305" title="All 2 branches missed.">                if (ifPushDown) {</span>
+<span class="nc" id="L306">                    this.groups.add(groupOutCol);</span>
+<span class="nc" id="L307">                    this.context.dynGroupBy.put(groupOutCol, tupleExpression);</span>
+                } else {
+<span class="nc" id="L309">                    this.groups.addAll(cols.getFirst());</span>
+<span class="nc" id="L310">                    this.groups.addAll(cols.getSecond());</span>
+<span class="nc" id="L311">                    this.context.dynamicFields.remove(groupOutCol);</span>
+                }
+<span class="nc" id="L313">            } else {</span>
+<span class="nc" id="L314">                Set&lt;TblColRef&gt; srcCols = ExpressionColCollector.collectColumns(tupleExpression);</span>
+                // if no source columns, use target column instead
+<span class="nc bnc" id="L316" title="All 2 branches missed.">                if (srcCols.isEmpty()) {</span>
+<span class="nc" id="L317">                    srcCols.add(groupOutCol);</span>
+                }
+<span class="nc" id="L319">                this.groups.addAll(srcCols);</span>
+            }
+        }
+<span class="nc" id="L322">    }</span>
+
+    void buildAggregations() {
+<span class="nc" id="L325">        ColumnRowType inputColumnRowType = ((OLAPRel) getInput()).getColumnRowType();</span>
+<span class="nc" id="L326">        this.aggregations = Lists.newArrayList();</span>
+<span class="nc" id="L327">        this.hackAggCalls = Maps.newHashMap();</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        for (int i = 0; i &lt; this.rewriteAggCalls.size(); i++) {</span>
+<span class="nc" id="L329">            AggregateCall aggCall = this.rewriteAggCalls.get(i);</span>
+<span class="nc" id="L330">            ParameterDesc parameter = null;</span>
+<span class="nc" id="L331">            List&lt;Integer&gt; argList = aggCall.getArgList();</span>
+            // By default all args are included, UDFs can define their own in getParamAsMeasureCount method.
+<span class="nc bnc" id="L333" title="All 2 branches missed.">            if (!argList.isEmpty()) {</span>
+<span class="nc" id="L334">                List&lt;TblColRef&gt; columns = Lists.newArrayList();</span>
+<span class="nc" id="L335">                String funcName = getSqlFuncName(aggCall);</span>
+<span class="nc" id="L336">                int columnsCount = aggCall.getArgList().size();</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">                if (AGGR_FUNC_PARAM_AS_MEASURE_MAP.containsKey(funcName)) {</span>
+<span class="nc" id="L338">                    int asMeasureCnt = AGGR_FUNC_PARAM_AS_MEASURE_MAP.get(funcName);</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                    if (asMeasureCnt &gt; 0) {</span>
+<span class="nc" id="L340">                        columnsCount = asMeasureCnt;</span>
+                    } else {
+<span class="nc" id="L342">                        columnsCount += asMeasureCnt;</span>
+                    }
+                }
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                for (Integer index : aggCall.getArgList().subList(0, columnsCount)) {</span>
+<span class="nc" id="L346">                    TblColRef column = inputColumnRowType.getColumnByIndex(index);</span>
+<span class="nc" id="L347">                    columns.add(column);</span>
+<span class="nc" id="L348">                }</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">                if (!columns.isEmpty()) {</span>
+<span class="nc" id="L350">                    parameter = ParameterDesc.newInstance(columns.toArray(new TblColRef[columns.size()]));</span>
+                }
+            }
+            // Check dynamic aggregation
+<span class="nc bnc" id="L354" title="All 8 branches missed.">            if (this.context.isDynamicColumnEnabled() &amp;&amp; !afterAggregate &amp;&amp; !rewriting &amp;&amp; argList.size() == 1) {</span>
+<span class="nc" id="L355">                int iRowIdx = argList.get(0);</span>
+<span class="nc" id="L356">                TupleExpression tupleExpr = inputColumnRowType.getTupleExpressionByIndex(iRowIdx);</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                if (aggCall.getAggregation() instanceof SqlSumAggFunction</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">                        || aggCall.getAggregation() instanceof SqlSumEmptyIsZeroAggFunction) {</span>
+                    // sum (expression)
+<span class="nc bnc" id="L360" title="All 4 branches missed.">                    if (!(tupleExpr instanceof NumberTupleExpression || tupleExpr instanceof ColumnTupleExpression)) {</span>
+<span class="nc" id="L361">                        ColumnTupleExpression cntExpr = new ColumnTupleExpression(SumDynamicFunctionDesc.mockCntCol);</span>
+<span class="nc" id="L362">                        ExpressionCountDistributor cntDistributor = new ExpressionCountDistributor(cntExpr);</span>
+<span class="nc" id="L363">                        tupleExpr = tupleExpr.accept(cntDistributor);</span>
+<span class="nc" id="L364">                        SumDynamicFunctionDesc sumDynFunc = new SumDynamicFunctionDesc(parameter, tupleExpr);</span>
+<span class="nc" id="L365">                        this.aggregations.add(sumDynFunc);</span>
+<span class="nc" id="L366">                        continue;</span>
+                    }
+<span class="nc bnc" id="L368" title="All 4 branches missed.">                } else if (aggCall.getAggregation() instanceof SqlCountAggFunction &amp;&amp; !aggCall.isDistinct()) {</span>
+                    // count column
+<span class="nc bnc" id="L370" title="All 2 branches missed.">                    if (tupleExpr instanceof ColumnTupleExpression) {</span>
+<span class="nc" id="L371">                        TblColRef srcCol = ((ColumnTupleExpression) tupleExpr).getColumn();</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">                        if (this.context.belongToFactTableDims(srcCol)) {</span>
+<span class="nc" id="L373">                            tupleExpr = getCountColumnExpression(srcCol);</span>
+
+<span class="nc" id="L375">                            TblColRef column = TblColRef.newInnerColumn(tupleExpr.getDigest(),</span>
+                                    TblColRef.InnerDataTypeEnum.LITERAL);
+
+<span class="nc" id="L378">                            SumDynamicFunctionDesc sumDynFunc = new SumDynamicFunctionDesc(</span>
+<span class="nc" id="L379">                                    ParameterDesc.newInstance(column), tupleExpr);</span>
+
+<span class="nc" id="L381">                            inputColumnRowType.replaceColumnByIndex(iRowIdx, column, tupleExpr);</span>
+
+<span class="nc" id="L383">                            AggregateCall newAggCall = AggregateCall.create(SqlStdOperatorTable.SUM, false,</span>
+<span class="nc" id="L384">                                    aggCall.getArgList(), -1, aggCall.getType(), aggCall.getName());</span>
+<span class="nc" id="L385">                            this.hackAggCalls.put(i, newAggCall);</span>
+
+<span class="nc" id="L387">                            this.context.dynamicFields.put(column, aggCall.getType());</span>
+
+<span class="nc" id="L389">                            this.aggregations.add(sumDynFunc);</span>
+<span class="nc" id="L390">                            continue;</span>
+                        }
+                    }
+                }
+            }
+<span class="nc" id="L395">            String expression = getAggrFuncName(aggCall);</span>
+<span class="nc" id="L396">            FunctionDesc aggFunc = FunctionDesc.newInstance(expression, parameter, null);</span>
+<span class="nc" id="L397">            this.aggregations.add(aggFunc);</span>
+        }
+<span class="nc" id="L399">    }</span>
+
+    public boolean needRewrite() {
+<span class="nc bnc" id="L402" title="All 2 branches missed.">        boolean hasRealization = (null != this.context.realization);</span>
+<span class="nc bnc" id="L403" title="All 4 branches missed.">        return hasRealization &amp;&amp; !this.afterAggregate;</span>
+    }
+
+    @Override
+    public void implementRewrite(RewriteImplementor implementor) {
+        // only rewrite the innermost aggregation
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        if (needRewrite()) {</span>
+<span class="nc" id="L410">            translateAggregation();</span>
+<span class="nc" id="L411">            buildRewriteFieldsAndMetricsColumns();</span>
+        }
+
+<span class="nc" id="L414">        implementor.visitChild(this, getInput());</span>
+
+<span class="nc" id="L416">        this.rewriting = true;</span>
+
+        // only rewrite the innermost aggregation
+<span class="nc bnc" id="L419" title="All 2 branches missed.">        if (needRewrite()) {</span>
+            // rewrite the aggCalls
+<span class="nc" id="L421">            this.rewriteAggCalls = Lists.newArrayListWithExpectedSize(aggCalls.size());</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">            for (int i = 0; i &lt; this.aggCalls.size(); i++) {</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">                AggregateCall aggCall = this.hackAggCalls.get(i) != null ? this.hackAggCalls.get(i)</span>
+<span class="nc" id="L424">                        : this.aggCalls.get(i);</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">                if (SqlStdOperatorTable.GROUPING == aggCall.getAggregation()) {</span>
+<span class="nc" id="L426">                    this.rewriteAggCalls.add(aggCall);</span>
+<span class="nc" id="L427">                    continue;</span>
+                }
+
+<span class="nc" id="L430">                FunctionDesc cubeFunc = this.context.aggregations.get(i);</span>
+                // filter needn,t rewrite aggfunc
+                // if it's not a cube, then the &quot;needRewriteField func&quot; should not resort to any rewrite fields,
+                // which do not exist at all
+<span class="nc bnc" id="L434" title="All 4 branches missed.">                if (!(noPrecaculatedFieldsAvailable() &amp;&amp; cubeFunc.needRewriteField())) {</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">                    if (cubeFunc.needRewrite()) {</span>
+<span class="nc" id="L436">                        aggCall = rewriteAggregateCall(aggCall, cubeFunc);</span>
+                    }
+
+                    //if not dim as measure (using some measure), differentiate it with a new class
+<span class="nc bnc" id="L440" title="All 2 branches missed.">                    if (cubeFunc.getMeasureType() != null &amp;&amp;</span>
+                    // DimCountDistinct case
+<span class="nc bnc" id="L442" title="All 2 branches missed.">                            cubeFunc.getMeasureType().needRewriteField()) {</span>
+<span class="nc" id="L443">                        aggCall = new KylinAggregateCall(aggCall, cubeFunc);</span>
+                    }
+                } else {
+<span class="nc" id="L446">                    logger.info(aggCall + &quot;skip rewriteAggregateCall because no pre-aggregated field available&quot;);</span>
+                }
+
+<span class="nc" id="L449">                this.rewriteAggCalls.add(aggCall);</span>
+<span class="nc" id="L450">                this.context.aggrSqlCalls.add(toSqlCall(aggCall));</span>
+            }
+        }
+
+        // rebuild rowType &amp; columnRowType
+<span class="nc" id="L455">        this.rowType = this.deriveRowType();</span>
+<span class="nc" id="L456">        this.columnRowType = this.buildColumnRowType();</span>
+
+<span class="nc" id="L458">        this.rewriting = false;</span>
+<span class="nc" id="L459">    }</span>
+
+    SQLCall toSqlCall(AggregateCall aggCall) {
+<span class="nc" id="L462">        ColumnRowType inputColumnRowType = ((OLAPRel) getInput()).getColumnRowType();</span>
+
+<span class="nc" id="L464">        String function = getSqlFuncName(aggCall);</span>
+<span class="nc" id="L465">        List&lt;Object&gt; args = Lists.newArrayList();</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">        for (Integer index : aggCall.getArgList()) {</span>
+<span class="nc" id="L467">            TblColRef col = inputColumnRowType.getColumnByIndexNullable(index);</span>
+<span class="nc" id="L468">            args.add(col);</span>
+<span class="nc" id="L469">        }</span>
+<span class="nc" id="L470">        return new SQLCall(function, args);</span>
+    }
+
+    void translateAggregation() {
+<span class="nc bnc" id="L474" title="All 2 branches missed.">        if (!noPrecaculatedFieldsAvailable()) {</span>
+            // now the realization is known, replace aggregations with what's defined on MeasureDesc
+<span class="nc" id="L476">            List&lt;MeasureDesc&gt; measures = this.context.realization.getMeasures();</span>
+<span class="nc" id="L477">            List&lt;FunctionDesc&gt; newAggrs = Lists.newArrayList();</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            for (FunctionDesc aggFunc : this.aggregations) {</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">                if (aggFunc instanceof DynamicFunctionDesc) {</span>
+<span class="nc" id="L480">                    DynamicFunctionDesc rtAggFunc = (DynamicFunctionDesc) aggFunc;</span>
+<span class="nc" id="L481">                    Map&lt;TblColRef, FunctionDesc&gt; innerOldAggrs = rtAggFunc.getRuntimeFuncMap();</span>
+<span class="nc" id="L482">                    Map&lt;TblColRef, FunctionDesc&gt; innerNewAggrs = Maps.newHashMapWithExpectedSize(innerOldAggrs.size());</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">                    for (TblColRef key : innerOldAggrs.keySet()) {</span>
+<span class="nc" id="L484">                        innerNewAggrs.put(key, findInMeasures(innerOldAggrs.get(key), measures));</span>
+<span class="nc" id="L485">                    }</span>
+<span class="nc" id="L486">                    rtAggFunc.setRuntimeFuncMap(innerNewAggrs);</span>
+<span class="nc" id="L487">                    newAggrs.add(rtAggFunc);</span>
+<span class="nc" id="L488">                } else {</span>
+<span class="nc" id="L489">                    newAggrs.add(findInMeasures(aggFunc, measures));</span>
+                }
+<span class="nc" id="L491">            }</span>
+<span class="nc" id="L492">            this.aggregations.clear();</span>
+<span class="nc" id="L493">            this.aggregations.addAll(newAggrs);</span>
+<span class="nc" id="L494">            this.context.aggregations.clear();</span>
+<span class="nc" id="L495">            this.context.aggregations.addAll(newAggrs);</span>
+        } else {
+            //the realization is not contributing pre-calculated fields at all
+        }
+<span class="nc" id="L499">    }</span>
+
+    FunctionDesc findInMeasures(FunctionDesc aggFunc, List&lt;MeasureDesc&gt; measures) {
+<span class="nc bnc" id="L502" title="All 2 branches missed.">        for (MeasureDesc m : measures) {</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">            if (aggFunc.equals(m.getFunction())) {</span>
+<span class="nc" id="L504">                return m.getFunction();</span>
+            }
+<span class="nc" id="L506">        }</span>
+
+        // no count(col) measure found, use count(1) to replace it.
+<span class="nc bnc" id="L509" title="All 2 branches missed.">        if (aggFunc.isCount()) {</span>
+<span class="nc" id="L510">            FunctionDesc func = findCountConstantFunc(measures);</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">            if (func != null)</span>
+<span class="nc" id="L512">                return func;</span>
+        }
+
+<span class="nc" id="L515">        return aggFunc;</span>
+    }
+
+    private FunctionDesc findCountConstantFunc(List&lt;MeasureDesc&gt; measures) {
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        for (MeasureDesc measure : measures) {</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">            if (measure.getFunction().isCountConstant()) {</span>
+<span class="nc" id="L521">                return measure.getFunction();</span>
+            }
+<span class="nc" id="L523">        }</span>
+<span class="nc" id="L524">        return null;</span>
+    }
+
+    void buildRewriteFieldsAndMetricsColumns() {
+<span class="nc" id="L528">        ColumnRowType inputColumnRowType = ((OLAPRel) getInput()).getColumnRowType();</span>
+<span class="nc" id="L529">        RelDataTypeFactory typeFactory = getCluster().getTypeFactory();</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">        for (int i = 0; i &lt; this.aggregations.size(); i++) {</span>
+<span class="nc" id="L531">            FunctionDesc aggFunc = this.aggregations.get(i);</span>
+
+<span class="nc bnc" id="L533" title="All 2 branches missed.">            if (aggFunc.isDimensionAsMetric()) {</span>
+<span class="nc" id="L534">                addToContextGroupBy(aggFunc.getParameter().getColRefs());</span>
+<span class="nc" id="L535">                continue; // skip rewrite, let calcite handle</span>
+            }
+
+<span class="nc bnc" id="L538" title="All 2 branches missed.">            if (aggFunc.needRewriteField()) {</span>
+<span class="nc" id="L539">                String rewriteFieldName = aggFunc.getRewriteFieldName();</span>
+<span class="nc" id="L540">                RelDataType rewriteFieldType = OLAPTable.createSqlType(typeFactory, aggFunc.getRewriteFieldType(),</span>
+                        true);
+<span class="nc" id="L542">                this.context.rewriteFields.put(rewriteFieldName, rewriteFieldType);</span>
+
+<span class="nc" id="L544">                TblColRef column = buildRewriteColumn(aggFunc);</span>
+<span class="nc" id="L545">                this.context.metricsColumns.add(column);</span>
+            }
+
+<span class="nc" id="L548">            AggregateCall aggCall = this.rewriteAggCalls.get(i);</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">            if (!aggCall.getArgList().isEmpty()) {</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">                for (Integer index : aggCall.getArgList()) {</span>
+<span class="nc" id="L551">                    TblColRef column = inputColumnRowType.getColumnByIndex(index);</span>
+<span class="nc bnc" id="L552" title="All 4 branches missed.">                    if (!column.isInnerColumn() &amp;&amp; this.context.belongToContextTables(column)) {</span>
+<span class="nc" id="L553">                        this.context.metricsColumns.add(column);</span>
+                    }
+<span class="nc" id="L555">                }</span>
+            }
+        }
+<span class="nc" id="L558">    }</span>
+
+    void addToContextGroupBy(List&lt;TblColRef&gt; colRefs) {
+<span class="nc bnc" id="L561" title="All 2 branches missed.">        for (TblColRef col : colRefs) {</span>
+<span class="nc bnc" id="L562" title="All 4 branches missed.">            if (!col.isInnerColumn() &amp;&amp; this.context.belongToContextTables(col))</span>
+<span class="nc" id="L563">                this.context.groupByColumns.add(col);</span>
+<span class="nc" id="L564">        }</span>
+<span class="nc" id="L565">    }</span>
+
+    public boolean noPrecaculatedFieldsAvailable() {
+<span class="nc bnc" id="L568" title="All 4 branches missed.">        return !this.context.hasPrecalculatedFields() || !RewriteImplementor.needRewrite(this.context);</span>
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    private AggregateCall rewriteAggregateCall(AggregateCall aggCall, FunctionDesc func) {
+        // rebuild function
+<span class="nc" id="L574">        String callName = getSqlFuncName(aggCall);</span>
+<span class="nc" id="L575">        RelDataType fieldType = aggCall.getType();</span>
+<span class="nc" id="L576">        SqlAggFunction newAgg = aggCall.getAggregation();</span>
+
+<span class="nc" id="L578">        Map&lt;String, Class&lt;?&gt;&gt; udafMap = func.getMeasureType().getRewriteCalciteAggrFunctions();</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">        if (func.isCount()) {</span>
+<span class="nc" id="L580">            newAgg = SqlStdOperatorTable.SUM0;</span>
+<span class="nc bnc" id="L581" title="All 4 branches missed.">        } else if (udafMap != null &amp;&amp; udafMap.containsKey(callName)) {</span>
+<span class="nc" id="L582">            newAgg = createCustomAggFunction(callName, fieldType, udafMap.get(callName));</span>
+        }
+
+        // rebuild parameters
+<span class="nc" id="L586">        List&lt;Integer&gt; newArgList = Lists.newArrayList(aggCall.getArgList());</span>
+<span class="nc bnc" id="L587" title="All 4 branches missed.">        if (udafMap != null &amp;&amp; udafMap.containsKey(callName)) {</span>
+<span class="nc" id="L588">            newArgList = truncArgList(newArgList, udafMap.get(callName));</span>
+        }
+<span class="nc bnc" id="L590" title="All 2 branches missed.">        if (func.needRewriteField()) {</span>
+<span class="nc" id="L591">            RelDataTypeField field = getInput().getRowType().getField(func.getRewriteFieldName(), true, false);</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">            if (newArgList.isEmpty()) {</span>
+<span class="nc" id="L593">                newArgList.add(field.getIndex());</span>
+            } else {
+                // TODO: only the first column got overwritten
+<span class="nc" id="L596">                newArgList.set(0, field.getIndex());</span>
+            }
+        }
+
+        // rebuild aggregate call
+<span class="nc" id="L601">        AggregateCall newAggCall = new AggregateCall(newAgg, false, newArgList, fieldType, callName);</span>
+
+<span class="nc" id="L603">        return newAggCall;</span>
+    }
+
+    /**
+     * truncate Arg List according to UDAF's &quot;add&quot; method parameter count
+     */
+    List&lt;Integer&gt; truncArgList(List&lt;Integer&gt; argList, Class&lt;?&gt; udafClazz) {
+<span class="nc" id="L610">        int argListLength = argList.size();</span>
+<span class="nc bnc" id="L611" title="All 2 branches missed.">        for (Method method : udafClazz.getMethods()) {</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">            if (method.getName().equals(&quot;add&quot;)) {</span>
+<span class="nc" id="L613">                argListLength = Math.min(method.getParameterTypes().length - 1, argListLength);</span>
+            }
+        }
+<span class="nc" id="L616">        return argList.subList(0, argListLength);</span>
+    }
+
+    SqlAggFunction createCustomAggFunction(String funcName, RelDataType returnType, Class&lt;?&gt; customAggFuncClz) {
+<span class="nc" id="L620">        RelDataTypeFactory typeFactory = getCluster().getTypeFactory();</span>
+<span class="nc" id="L621">        SqlIdentifier sqlIdentifier = new SqlIdentifier(funcName, new SqlParserPos(1, 1));</span>
+<span class="nc" id="L622">        AggregateFunction aggFunction = AggregateFunctionImpl.create(customAggFuncClz);</span>
+<span class="nc" id="L623">        List&lt;RelDataType&gt; argTypes = new ArrayList&lt;RelDataType&gt;();</span>
+<span class="nc" id="L624">        List&lt;SqlTypeFamily&gt; typeFamilies = new ArrayList&lt;SqlTypeFamily&gt;();</span>
+<span class="nc bnc" id="L625" title="All 2 branches missed.">        for (FunctionParameter o : aggFunction.getParameters()) {</span>
+<span class="nc" id="L626">            final RelDataType type = o.getType(typeFactory);</span>
+<span class="nc" id="L627">            argTypes.add(type);</span>
+<span class="nc" id="L628">            typeFamilies.add(Util.first(type.getSqlTypeName().getFamily(), SqlTypeFamily.ANY));</span>
+<span class="nc" id="L629">        }</span>
+<span class="nc" id="L630">        return new SqlUserDefinedAggFunction(sqlIdentifier, ReturnTypes.explicit(returnType),</span>
+<span class="nc" id="L631">                InferTypes.explicit(argTypes), OperandTypes.family(typeFamilies), aggFunction, false, false,</span>
+                typeFactory);
+    }
+
+    @Override
+    public EnumerableRel implementEnumerable(List&lt;EnumerableRel&gt; inputs) {
+        try {
+<span class="nc" id="L638">            return new EnumerableAggregate(getCluster(), getCluster().traitSetOf(EnumerableConvention.INSTANCE), //</span>
+<span class="nc" id="L639">                    sole(inputs), indicator, this.groupSet, this.groupSets, rewriteAggCalls);</span>
+<span class="nc" id="L640">        } catch (InvalidRelException e) {</span>
+<span class="nc" id="L641">            throw new IllegalStateException(&quot;Can't create EnumerableAggregate!&quot;, e);</span>
+        }
+    }
+
+    @Override
+    public OLAPContext getContext() {
+<span class="nc" id="L647">        return context;</span>
+    }
+
+    @Override
+    public ColumnRowType getColumnRowType() {
+<span class="nc" id="L652">        return columnRowType;</span>
+    }
+
+
+    @Override
+    public boolean hasSubQuery() {
+<span class="nc" id="L658">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L659">        return olapChild.hasSubQuery();</span>
+    }
+
+    @Override
+    public RelTraitSet replaceTraitSet(RelTrait trait) {
+<span class="nc" id="L664">        RelTraitSet oldTraitSet = this.traitSet;</span>
+<span class="nc" id="L665">        this.traitSet = this.traitSet.replace(trait);</span>
+<span class="nc" id="L666">        return oldTraitSet;</span>
+    }
+
+    public List&lt;AggregateCall&gt; getRewriteAggCalls() {
+<span class="nc" id="L670">        return rewriteAggCalls;</span>
+    }
+
+    @Override
+    public RelWriter explainTerms(RelWriter pw) {
+<span class="nc bnc" id="L675" title="All 2 branches missed.">        return super.explainTerms(pw).item(&quot;ctx&quot;,</span>
+<span class="nc" id="L676">                context == null ? &quot;&quot; : String.valueOf(context.id) + &quot;@&quot; + context.realization);</span>
+    }
+
+    private TupleExpression getCountColumnExpression(TblColRef colRef) {
+<span class="nc" id="L680">        List&lt;Pair&lt;TupleFilter, TupleExpression&gt;&gt; whenList = Lists.newArrayListWithExpectedSize(1);</span>
+<span class="nc" id="L681">        TupleFilter whenFilter = new CompareTupleFilter(TupleFilter.FilterOperatorEnum.ISNULL);</span>
+<span class="nc" id="L682">        whenFilter.addChild(new ColumnTupleFilter(colRef));</span>
+<span class="nc" id="L683">        whenList.add(new Pair&lt;TupleFilter, TupleExpression&gt;(whenFilter, new NumberTupleExpression(0)));</span>
+
+<span class="nc" id="L685">        TupleExpression elseExpr = new ColumnTupleExpression(SumDynamicFunctionDesc.mockCntCol);</span>
+<span class="nc" id="L686">        TupleExpression ret = new CaseTupleExpression(whenList, elseExpr);</span>
+<span class="nc" id="L687">        ret.setDigest(&quot;_KY_COUNT(&quot; + colRef.getName() + &quot;)&quot;);</span>
+<span class="nc" id="L688">        return ret;</span>
+    }
+
+    public List&lt;TblColRef&gt; getGroups() {
+<span class="nc" id="L692">        return groups;</span>
+    }
+
+    public void setGroups(List&lt;TblColRef&gt; groups) {
+<span class="nc" id="L696">        this.groups = groups;</span>
+<span class="nc" id="L697">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

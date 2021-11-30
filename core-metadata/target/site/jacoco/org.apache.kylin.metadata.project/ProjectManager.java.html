@@ -1,0 +1,507 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProjectManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.project</a> &gt; <span class="el_source">ProjectManager.java</span></div><h1>ProjectManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.project;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.util.AutoReadWriteLock;
+import org.apache.kylin.common.util.AutoReadWriteLock.AutoLock;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.badquery.BadQueryHistoryManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CachedCrudAssist;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.ExternalFilterDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.RealizationType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class ProjectManager {
+<span class="fc" id="L56">    private static final Logger logger = LoggerFactory.getLogger(ProjectManager.class);</span>
+
+    public static ProjectManager getInstance(KylinConfig config) {
+<span class="fc" id="L59">        return config.getManager(ProjectManager.class);</span>
+    }
+
+    // called by reflection
+    static ProjectManager newInstance(KylinConfig config) throws IOException {
+<span class="fc" id="L64">        return new ProjectManager(config);</span>
+    }
+
+    // ============================================================================
+
+    private KylinConfig config;
+    private ProjectL2Cache l2Cache;
+
+    // project name =&gt; ProjectInstance
+    private CaseInsensitiveStringCache&lt;ProjectInstance&gt; projectMap;
+    private CachedCrudAssist&lt;ProjectInstance&gt; crud;
+
+    // protects concurrent operations around the cached map, to avoid for example
+    // writing an entity in the middle of reloading it (dirty read)
+<span class="fc" id="L78">    private AutoReadWriteLock prjMapLock = new AutoReadWriteLock();</span>
+
+<span class="fc" id="L80">    private ProjectManager(KylinConfig config) throws IOException {</span>
+<span class="fc" id="L81">        logger.info(&quot;Initializing ProjectManager with metadata url &quot; + config);</span>
+<span class="fc" id="L82">        this.config = config;</span>
+<span class="fc" id="L83">        this.projectMap = new CaseInsensitiveStringCache&lt;ProjectInstance&gt;(config, &quot;project&quot;);</span>
+<span class="fc" id="L84">        this.l2Cache = new ProjectL2Cache(this);</span>
+<span class="fc" id="L85">        this.crud = new CachedCrudAssist&lt;ProjectInstance&gt;(getStore(), ResourceStore.PROJECT_RESOURCE_ROOT,</span>
+<span class="fc" id="L86">                ProjectInstance.class, projectMap) {</span>
+            @Override
+            protected ProjectInstance initEntityAfterReload(ProjectInstance prj, String resourceName) {
+<span class="fc" id="L89">                prj.init();</span>
+<span class="fc" id="L90">                return prj;</span>
+            }
+        };
+
+        // touch lower level metadata before registering my listener
+<span class="fc" id="L95">        crud.reloadAll();</span>
+<span class="fc" id="L96">        Broadcaster.getInstance(config).registerListener(new ProjectSyncListener(), &quot;project&quot;);</span>
+<span class="fc" id="L97">    }</span>
+
+<span class="fc" id="L99">    private class ProjectSyncListener extends Broadcaster.Listener {</span>
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L104">            String project = cacheKey;</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (event == Event.DROP) {</span>
+<span class="nc" id="L107">                removeProjectLocal(project);</span>
+<span class="nc" id="L108">                return;</span>
+            }
+
+<span class="nc" id="L111">            reloadProjectQuietly(project);</span>
+<span class="nc" id="L112">            broadcaster.notifyProjectSchemaUpdate(project);</span>
+<span class="nc" id="L113">            broadcaster.notifyProjectDataUpdate(project);</span>
+<span class="nc" id="L114">        }</span>
+    }
+
+    public void clearL2Cache(String projectname) {
+<span class="nc" id="L118">        l2Cache.clear(projectname);</span>
+<span class="nc" id="L119">    }</span>
+
+    public void reloadProjectL2Cache(String project) {
+<span class="nc" id="L122">        l2Cache.reloadCacheByProject(project);</span>
+<span class="nc" id="L123">    }</span>
+
+    public ProjectInstance reloadProjectQuietly(String project) throws IOException {
+<span class="nc" id="L126">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L127">            ProjectInstance prj = crud.reloadQuietly(project);</span>
+<span class="nc" id="L128">            clearL2Cache(project);</span>
+<span class="nc" id="L129">            return prj;</span>
+        }
+    }
+
+    public void reloadAll() throws IOException {
+<span class="nc" id="L134">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L135">            crud.reloadAll();</span>
+<span class="nc" id="L136">            clearL2Cache(null);</span>
+        }
+<span class="nc" id="L138">    }</span>
+
+    public List&lt;ProjectInstance&gt; listAllProjects() {
+<span class="nc" id="L141">        try (AutoLock lock = prjMapLock.lockForRead()) {</span>
+<span class="nc" id="L142">            return new ArrayList&lt;ProjectInstance&gt;(projectMap.values());</span>
+        }
+    }
+
+    public ProjectInstance getProject(String projectName) {
+        // Null check is needed for ConcurrentMap does not supporting .get(null)
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        if (projectName == null)</span>
+<span class="nc" id="L149">            return null;</span>
+
+<span class="fc" id="L151">        try (AutoLock lock = prjMapLock.lockForRead()) {</span>
+<span class="fc" id="L152">            return projectMap.get(projectName);</span>
+        }
+    }
+
+    public ProjectInstance getPrjByUuid(String uuid) {
+<span class="nc" id="L157">        try (AutoLock lock = prjMapLock.lockForRead()) {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            for (ProjectInstance prj : projectMap.values()) {</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">                if (uuid.equals(prj.getUuid()))</span>
+<span class="nc" id="L160">                    return prj;</span>
+<span class="nc" id="L161">            }</span>
+<span class="nc" id="L162">            return null;</span>
+        }
+    }
+
+    public ProjectInstance createProject(String projectName, String owner, String description,
+            LinkedHashMap&lt;String, String&gt; overrideProps) throws IOException {
+<span class="nc" id="L168">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L169">            logger.info(&quot;Creating project &quot; + projectName);</span>
+
+<span class="nc" id="L171">            ProjectInstance currentProject = getProject(projectName);</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            if (currentProject == null) {</span>
+<span class="nc" id="L173">                currentProject = ProjectInstance.create(projectName, owner, description, overrideProps, null, null);</span>
+            } else {
+<span class="nc" id="L175">                throw new IllegalStateException(&quot;The project named &quot; + projectName + &quot;already exists&quot;);</span>
+            }
+<span class="nc" id="L177">            checkOverrideProps(currentProject);</span>
+
+<span class="nc" id="L179">            return save(currentProject);</span>
+        }
+    }
+
+    private void checkOverrideProps(ProjectInstance prj) throws IOException {
+<span class="nc" id="L184">        LinkedHashMap&lt;String, String&gt; overrideProps = prj.getOverrideKylinProps();</span>
+
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (overrideProps != null) {</span>
+<span class="nc" id="L187">            Iterator&lt;Map.Entry&lt;String, String&gt;&gt; iterator = overrideProps.entrySet().iterator();</span>
+
+<span class="nc bnc" id="L189" title="All 2 branches missed.">            while (iterator.hasNext()) {</span>
+<span class="nc" id="L190">                Map.Entry&lt;String, String&gt; entry = iterator.next();</span>
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">                if (StringUtils.isAnyBlank(entry.getKey(), entry.getValue())) {</span>
+<span class="nc" id="L193">                    throw new IllegalStateException(&quot;Property key/value must not be blank&quot;);</span>
+                }
+<span class="nc" id="L195">            }</span>
+        }
+<span class="nc" id="L197">    }</span>
+
+    public ProjectInstance dropProject(String projectName) throws IOException {
+<span class="nc" id="L200">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            if (projectName == null)</span>
+<span class="nc" id="L202">                throw new IllegalArgumentException(&quot;Project name not given&quot;);</span>
+
+<span class="nc" id="L204">            ProjectInstance projectInstance = getProject(projectName);</span>
+
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            if (projectInstance == null) {</span>
+<span class="nc" id="L207">                throw new IllegalStateException(&quot;The project named &quot; + projectName + &quot; does not exist&quot;);</span>
+            }
+
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (projectInstance.getRealizationCount(null) != 0) {</span>
+<span class="nc" id="L211">                throw new IllegalStateException(&quot;The project named &quot; + projectName</span>
+                        + &quot; can not be deleted because there's still realizations in it. Delete them first.&quot;);
+            }
+
+<span class="nc" id="L215">            logger.info(&quot;Dropping project '&quot; + projectInstance.getName() + &quot;'&quot;);</span>
+
+<span class="nc" id="L217">            crud.delete(projectInstance);</span>
+<span class="nc" id="L218">            BadQueryHistoryManager.getInstance(config).removeBadQueryHistory(projectName);</span>
+
+<span class="nc" id="L220">            clearL2Cache(projectName);</span>
+<span class="nc" id="L221">            return projectInstance;</span>
+        }
+    }
+
+    // update project itself
+    public ProjectInstance updateProject(ProjectInstance project, String newName, String newDesc,
+            LinkedHashMap&lt;String, String&gt; overrideProps) throws IOException {
+<span class="nc" id="L228">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L229">            Preconditions.checkArgument(project.getName().equals(newName));</span>
+<span class="nc" id="L230">            project.setName(newName);</span>
+<span class="nc" id="L231">            project.setDescription(newDesc);</span>
+<span class="nc" id="L232">            project.setOverrideKylinProps(overrideProps);</span>
+
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (project.getUuid() == null)</span>
+<span class="nc" id="L235">                project.updateRandomUuid();</span>
+
+<span class="nc" id="L237">            return save(project);</span>
+        }
+    }
+
+    // update project itself
+    public ProjectInstance updateProjectOwner(ProjectInstance project, String newOwner) throws IOException {
+<span class="nc" id="L243">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L244">            project.setOwner(newOwner);</span>
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">            if (project.getUuid() == null)</span>
+<span class="nc" id="L247">                project.updateRandomUuid();</span>
+
+<span class="nc" id="L249">            return save(project);</span>
+        }
+    }
+
+    public void removeProjectLocal(String proj) {
+<span class="nc" id="L254">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L255">            projectMap.removeLocal(proj);</span>
+<span class="nc" id="L256">            clearL2Cache(proj);</span>
+        }
+<span class="nc" id="L258">    }</span>
+
+    public ProjectInstance addModelToProject(String modelName, String newProjectName) throws IOException {
+<span class="nc" id="L261">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L262">            removeModelFromProjects(modelName);</span>
+
+<span class="nc" id="L264">            ProjectInstance prj = getProject(newProjectName);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            if (prj == null) {</span>
+<span class="nc" id="L266">                throw new IllegalArgumentException(&quot;Project &quot; + newProjectName + &quot; does not exist.&quot;);</span>
+            }
+<span class="nc" id="L268">            prj.addModel(modelName);</span>
+
+<span class="nc" id="L270">            return save(prj);</span>
+        }
+    }
+
+    public void removeModelFromProjects(String modelName) throws IOException {
+<span class="nc" id="L275">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            for (ProjectInstance projectInstance : findProjectsByModel(modelName)) {</span>
+<span class="nc" id="L277">                projectInstance.removeModel(modelName);</span>
+<span class="nc" id="L278">                save(projectInstance);</span>
+<span class="nc" id="L279">            }</span>
+        }
+<span class="nc" id="L281">    }</span>
+
+    public ProjectInstance moveRealizationToProject(RealizationType type, String realizationName, String newProjectName,
+            String owner) throws IOException {
+<span class="nc" id="L285">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L286">            removeRealizationsFromProjects(type, realizationName);</span>
+<span class="nc" id="L287">            return addRealizationToProject(type, realizationName, newProjectName, owner);</span>
+        }
+    }
+
+    private ProjectInstance addRealizationToProject(RealizationType type, String realizationName, String project,
+            String user) throws IOException {
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (StringUtils.isEmpty(project)) {</span>
+<span class="nc" id="L294">            throw new IllegalArgumentException(&quot;Project name should not be empty.&quot;);</span>
+        }
+<span class="nc" id="L296">        ProjectInstance newProject = getProject(project);</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        if (newProject == null) {</span>
+<span class="nc" id="L298">            newProject = this.createProject(project, user,</span>
+                    &quot;This is a project automatically added when adding realization &quot; + realizationName + &quot;(&quot; + type
+                            + &quot;)&quot;,
+                    null);
+        }
+<span class="nc" id="L303">        newProject.addRealizationEntry(type, realizationName);</span>
+<span class="nc" id="L304">        save(newProject);</span>
+
+<span class="nc" id="L306">        return newProject;</span>
+    }
+
+    public void removeRealizationsFromProjects(RealizationType type, String realizationName) throws IOException {
+<span class="nc" id="L310">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">            for (ProjectInstance projectInstance : findProjects(type, realizationName)) {</span>
+<span class="nc" id="L312">                projectInstance.removeRealization(type, realizationName);</span>
+<span class="nc" id="L313">                save(projectInstance);</span>
+<span class="nc" id="L314">            }</span>
+        }
+<span class="nc" id="L316">    }</span>
+
+    public ProjectInstance addTableDescToProject(String[] tableIdentities, String projectName) throws IOException {
+<span class="nc" id="L319">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L320">            TableMetadataManager metaMgr = getTableManager();</span>
+<span class="nc" id="L321">            ProjectInstance projectInstance = getProject(projectName);</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            for (String tableId : tableIdentities) {</span>
+<span class="nc" id="L323">                TableDesc table = metaMgr.getTableDesc(tableId, projectName);</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">                if (table == null) {</span>
+<span class="nc" id="L325">                    throw new IllegalStateException(&quot;Cannot find table '&quot; + tableId + &quot;' in metadata manager&quot;);</span>
+                }
+<span class="nc" id="L327">                projectInstance.addTable(table.getIdentity());</span>
+            }
+
+<span class="nc" id="L330">            return save(projectInstance);</span>
+        }
+    }
+
+    public void removeTableDescFromProject(String tableId, String projectName) throws IOException {
+<span class="nc" id="L335">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L336">            TableMetadataManager metaMgr = getTableManager();</span>
+<span class="nc" id="L337">            ProjectInstance projectInstance = getProject(projectName);</span>
+<span class="nc" id="L338">            TableDesc table = metaMgr.getTableDesc(tableId, projectName);</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if (table == null) {</span>
+<span class="nc" id="L340">                throw new IllegalStateException(&quot;Cannot find table '&quot; + tableId + &quot;' in metadata manager&quot;);</span>
+            }
+
+<span class="nc" id="L343">            projectInstance.removeTable(table.getIdentity());</span>
+<span class="nc" id="L344">            save(projectInstance);</span>
+        }
+<span class="nc" id="L346">    }</span>
+
+    public ProjectInstance addExtFilterToProject(String[] filters, String projectName) throws IOException {
+<span class="nc" id="L349">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L350">            TableMetadataManager metaMgr = getTableManager();</span>
+<span class="nc" id="L351">            ProjectInstance projectInstance = getProject(projectName);</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">            for (String filterName : filters) {</span>
+<span class="nc" id="L353">                ExternalFilterDesc extFilter = metaMgr.getExtFilterDesc(filterName);</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                if (extFilter == null) {</span>
+<span class="nc" id="L355">                    throw new IllegalStateException(</span>
+                            &quot;Cannot find external filter '&quot; + filterName + &quot;' in metadata manager&quot;);
+                }
+<span class="nc" id="L358">                projectInstance.addExtFilter(filterName);</span>
+            }
+
+<span class="nc" id="L361">            return save(projectInstance);</span>
+        }
+    }
+
+    public void removeExtFilterFromProject(String filterName, String projectName) throws IOException {
+<span class="nc" id="L366">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L367">            TableMetadataManager metaMgr = getTableManager();</span>
+<span class="nc" id="L368">            ProjectInstance projectInstance = getProject(projectName);</span>
+<span class="nc" id="L369">            ExternalFilterDesc filter = metaMgr.getExtFilterDesc(filterName);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            if (filter == null) {</span>
+<span class="nc" id="L371">                throw new IllegalStateException(&quot;Cannot find external filter '&quot; + filterName + &quot;' in metadata manager&quot;);</span>
+            }
+
+<span class="nc" id="L374">            projectInstance.removeExtFilter(filterName);</span>
+<span class="nc" id="L375">            save(projectInstance);</span>
+        }
+<span class="nc" id="L377">    }</span>
+
+    /**
+     * change the last project modify time
+     * @param projectName
+     * @throws IOException
+     */
+    public void touchProject(String projectName) throws IOException {
+<span class="nc" id="L385">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L386">            ProjectInstance projectInstance = getProject(projectName);</span>
+<span class="nc" id="L387">            save(projectInstance);</span>
+        }
+<span class="nc" id="L389">    }</span>
+
+    private ProjectInstance save(ProjectInstance prj) throws IOException {
+<span class="nc" id="L392">        crud.save(prj);</span>
+<span class="nc" id="L393">        clearL2Cache(prj.getName());</span>
+<span class="nc" id="L394">        return prj;</span>
+    }
+
+    public ProjectInstance getProjectOfModel(String model) {
+<span class="fc" id="L398">        try (AutoLock lock = prjMapLock.lockForRead()) {</span>
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">            for (ProjectInstance prj : projectMap.values()) {</span>
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">                if (prj.getModels().contains(model))</span>
+<span class="fc" id="L401">                    return prj;</span>
+<span class="nc" id="L402">            }</span>
+<span class="nc" id="L403">            throw new IllegalStateException(&quot;No project found for model &quot; + model);</span>
+        }
+    }
+
+    public List&lt;ProjectInstance&gt; findProjects(RealizationType type, String realizationName) {
+<span class="nc" id="L408">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L409">            List&lt;ProjectInstance&gt; result = Lists.newArrayList();</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">            for (ProjectInstance prj : projectMap.values()) {</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">                for (RealizationEntry entry : prj.getRealizationEntries()) {</span>
+<span class="nc bnc" id="L412" title="All 4 branches missed.">                    if (entry.getType().equals(type) &amp;&amp; entry.getRealization().equals(realizationName)) {</span>
+<span class="nc" id="L413">                        result.add(prj);</span>
+<span class="nc" id="L414">                        break;</span>
+                    }
+<span class="nc" id="L416">                }</span>
+<span class="nc" id="L417">            }</span>
+<span class="nc" id="L418">            return result;</span>
+        }
+    }
+
+    public List&lt;ProjectInstance&gt; findProjectsByModel(String modelName) {
+<span class="nc" id="L423">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L424">            List&lt;ProjectInstance&gt; projects = new ArrayList&lt;ProjectInstance&gt;();</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">            for (ProjectInstance projectInstance : projectMap.values()) {</span>
+<span class="nc bnc" id="L426" title="All 2 branches missed.">                if (projectInstance.containsModel(modelName)) {</span>
+<span class="nc" id="L427">                    projects.add(projectInstance);</span>
+                }
+<span class="nc" id="L429">            }</span>
+<span class="nc" id="L430">            return projects;</span>
+        }
+    }
+
+    public List&lt;ProjectInstance&gt; findProjectsByTable(String tableIdentity) {
+<span class="nc" id="L435">        try (AutoLock lock = prjMapLock.lockForWrite()) {</span>
+<span class="nc" id="L436">            List&lt;ProjectInstance&gt; projects = new ArrayList&lt;ProjectInstance&gt;();</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">            for (ProjectInstance projectInstance : projectMap.values()) {</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">                if (projectInstance.containsTable(tableIdentity)) {</span>
+<span class="nc" id="L439">                    projects.add(projectInstance);</span>
+                }
+<span class="nc" id="L441">            }</span>
+<span class="nc" id="L442">            return projects;</span>
+        }
+    }
+
+    public Map&lt;String, ExternalFilterDesc&gt; listExternalFilterDescs(String project) {
+<span class="nc" id="L447">        return l2Cache.listExternalFilterDesc(project);</span>
+    }
+
+    public List&lt;TableDesc&gt; listDefinedTables(String project) {
+<span class="nc" id="L451">        return l2Cache.listDefinedTables(project);</span>
+    }
+
+    private Collection&lt;TableDesc&gt; listExposedTablesByRealizations(String project) {
+<span class="nc" id="L455">        return l2Cache.listExposedTables(project);</span>
+    }
+
+    public Collection&lt;TableDesc&gt; listExposedTables(String project, boolean exposeMore) {
+<span class="nc bnc" id="L459" title="All 2 branches missed.">        if (exposeMore) {</span>
+<span class="nc" id="L460">            return listDefinedTables(project);</span>
+        } else {
+<span class="nc" id="L462">            return listExposedTablesByRealizations(project);</span>
+        }
+    }
+
+    public List&lt;ColumnDesc&gt; listExposedColumns(String project, TableDesc tableDesc, boolean exposeMore) {
+<span class="nc" id="L467">        Set&lt;ColumnDesc&gt; exposedColumns = l2Cache.listExposedColumns(project, tableDesc.getIdentity());</span>
+
+<span class="nc bnc" id="L469" title="All 2 branches missed.">        if (exposeMore) {</span>
+<span class="nc" id="L470">            Set&lt;ColumnDesc&gt; dedup = Sets.newHashSet(tableDesc.getColumns());</span>
+<span class="nc" id="L471">            dedup.addAll(exposedColumns);</span>
+<span class="nc" id="L472">            return Lists.newArrayList(dedup);</span>
+        } else {
+<span class="nc" id="L474">            return Lists.newArrayList(exposedColumns);</span>
+        }
+    }
+
+    public Set&lt;IRealization&gt; listAllRealizations(String project) {
+<span class="nc" id="L479">        return l2Cache.listAllRealizations(project);</span>
+    }
+
+    public Set&lt;IRealization&gt; getRealizationsByTable(String project, String tableName) {
+<span class="nc" id="L483">        return l2Cache.getRealizationsByTable(project, tableName.toUpperCase(Locale.ROOT));</span>
+    }
+
+    public List&lt;MeasureDesc&gt; listEffectiveRewriteMeasures(String project, String factTable) {
+<span class="nc" id="L487">        return l2Cache.listEffectiveRewriteMeasures(project, factTable.toUpperCase(Locale.ROOT), true);</span>
+    }
+
+    public List&lt;MeasureDesc&gt; listEffectiveMeasures(String project, String factTable) {
+<span class="nc" id="L491">        return l2Cache.listEffectiveRewriteMeasures(project, factTable.toUpperCase(Locale.ROOT), false);</span>
+    }
+
+    KylinConfig getConfig() {
+<span class="nc" id="L495">        return config;</span>
+    }
+
+    ResourceStore getStore() {
+<span class="fc" id="L499">        return ResourceStore.getStore(this.config);</span>
+    }
+
+    TableMetadataManager getTableManager() {
+<span class="nc" id="L503">        return TableMetadataManager.getInstance(config);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryInterceptor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.security</a> &gt; <span class="el_source">QueryInterceptor.java</span></div><h1>QueryInterceptor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.security;
+
+import java.util.Collection;
+import java.util.List;
+
+import java.util.Locale;
+import org.apache.kylin.query.relnode.OLAPContext;
+
+<span class="nc" id="L27">public abstract class QueryInterceptor {</span>
+
+    public void intercept(List&lt;OLAPContext&gt; contexts) {
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        if (!isEnabled()) {</span>
+<span class="nc" id="L31">            return;</span>
+        }
+<span class="nc" id="L33">        Collection&lt;String&gt; userIdentifierBlackList = getIdentifierBlackList(contexts);</span>
+<span class="nc" id="L34">        intercept(contexts, userIdentifierBlackList);</span>
+<span class="nc" id="L35">    }</span>
+
+    private void intercept(List&lt;OLAPContext&gt; contexts, Collection&lt;String&gt; blackList) {
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        if (blackList.isEmpty()) {</span>
+<span class="nc" id="L39">            return;</span>
+        }
+
+<span class="nc" id="L42">        Collection&lt;String&gt; queryCols = getQueryIdentifiers(contexts);</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        for (String id : blackList) {</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">            if (queryCols.contains(id.toUpperCase(Locale.ROOT))) {</span>
+<span class="nc" id="L45">                throw new AccessDeniedException(getIdentifierType() + &quot;:&quot; + id);</span>
+            }
+<span class="nc" id="L47">        }</span>
+<span class="nc" id="L48">    }</span>
+
+    protected abstract boolean isEnabled();
+
+    protected abstract Collection&lt;String&gt; getQueryIdentifiers(List&lt;OLAPContext&gt; contexts);
+
+    protected abstract Collection&lt;String&gt; getIdentifierBlackList(List&lt;OLAPContext&gt; contexts);
+
+    protected abstract String getIdentifierType();
+
+    protected String getProject(List&lt;OLAPContext&gt; contexts) {
+<span class="nc" id="L59">        return contexts.get(0).olapSchema.getProjectName();</span>
+    }
+
+    protected String getUser(List&lt;OLAPContext&gt; contexts) {
+<span class="nc" id="L63">        return contexts.get(0).olapAuthen.getUsername();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JoinDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">JoinDesc.java</span></div><h1>JoinDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Arrays;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+/**
+ */
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
+<span class="fc" id="L33">public class JoinDesc implements Serializable {</span>
+
+    // inner, left, right, outer...
+    @JsonProperty(&quot;type&quot;)
+    private String type;
+    @JsonProperty(&quot;primary_key&quot;)
+    private String[] primaryKey;
+    @JsonProperty(&quot;foreign_key&quot;)
+    private String[] foreignKey;
+
+    private TblColRef[] primaryKeyColumns;
+    private TblColRef[] foreignKeyColumns;
+
+    public void swapPKFK() {
+<span class="nc" id="L47">        String[] t = primaryKey;</span>
+<span class="nc" id="L48">        primaryKey = foreignKey;</span>
+<span class="nc" id="L49">        foreignKey = t;</span>
+
+<span class="nc" id="L51">        TblColRef[] tt = primaryKeyColumns;</span>
+<span class="nc" id="L52">        primaryKeyColumns = foreignKeyColumns;</span>
+<span class="nc" id="L53">        foreignKeyColumns = tt;</span>
+<span class="nc" id="L54">    }</span>
+
+    public boolean isInnerJoin() {
+<span class="fc" id="L57">        return &quot;INNER&quot;.equalsIgnoreCase(type);</span>
+    }
+    
+    public boolean isLeftJoin() {
+<span class="fc" id="L61">        return &quot;LEFT&quot;.equalsIgnoreCase(type);</span>
+    }
+    
+    public String getType() {
+<span class="fc" id="L65">        return type;</span>
+    }
+    
+    public void setType(String type) {
+<span class="nc" id="L69">        this.type = type;</span>
+<span class="nc" id="L70">    }</span>
+
+    public String[] getPrimaryKey() {
+<span class="fc" id="L73">        return primaryKey;</span>
+    }
+
+    public void setPrimaryKey(String[] primaryKey) {
+<span class="nc" id="L77">        this.primaryKey = primaryKey;</span>
+<span class="nc" id="L78">    }</span>
+
+    public String[] getForeignKey() {
+<span class="fc" id="L81">        return foreignKey;</span>
+    }
+
+    public void setForeignKey(String[] foreignKey) {
+<span class="nc" id="L85">        this.foreignKey = foreignKey;</span>
+<span class="nc" id="L86">    }</span>
+
+    public TblColRef[] getPrimaryKeyColumns() {
+<span class="fc" id="L89">        return primaryKeyColumns;</span>
+    }
+
+    public void setPrimaryKeyColumns(TblColRef[] primaryKeyColumns) {
+<span class="fc" id="L93">        checkSameTable(primaryKeyColumns);</span>
+<span class="fc" id="L94">        this.primaryKeyColumns = primaryKeyColumns;</span>
+<span class="fc" id="L95">    }</span>
+
+    public TblColRef[] getForeignKeyColumns() {
+<span class="fc" id="L98">        return foreignKeyColumns;</span>
+    }
+
+    public void setForeignKeyColumns(TblColRef[] foreignKeyColumns) {
+<span class="fc" id="L102">        checkSameTable(primaryKeyColumns);</span>
+<span class="fc" id="L103">        this.foreignKeyColumns = foreignKeyColumns;</span>
+<span class="fc" id="L104">    }</span>
+
+    private void checkSameTable(TblColRef[] cols) {
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">        if (cols == null || cols.length == 0)</span>
+<span class="nc" id="L108">            return;</span>
+        
+<span class="fc" id="L110">        TableRef tableRef = cols[0].getTableRef();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (int i = 1; i &lt; cols.length; i++)</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            Preconditions.checkState(tableRef == cols[i].getTableRef());</span>
+<span class="fc" id="L113">    }</span>
+
+    public TableRef getPKSide() {
+<span class="fc" id="L116">        return primaryKeyColumns[0].getTableRef();</span>
+    }
+    
+    public TableRef getFKSide() {
+<span class="fc" id="L120">        return foreignKeyColumns[0].getTableRef();</span>
+    }
+
+    public void sortByFK() {
+<span class="pc bpc" id="L124" title="3 of 6 branches missed.">        Preconditions.checkState(primaryKey.length == foreignKey.length &amp;&amp; primaryKey.length == primaryKeyColumns.length &amp;&amp; foreignKey.length == foreignKeyColumns.length);</span>
+<span class="fc" id="L125">        boolean cont = true;</span>
+<span class="fc" id="L126">        int n = foreignKey.length;</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">        for (int i = 0; i &lt; n - 1 &amp;&amp; cont; i++) {</span>
+<span class="fc" id="L128">            cont = false;</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            for (int j = 0; j &lt; n - 1 - i; j++) {</span>
+<span class="fc" id="L130">                int jj = j + 1;</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (foreignKey[j].compareTo(foreignKey[jj]) &gt; 0) {</span>
+<span class="nc" id="L132">                    swap(foreignKey, j, jj);</span>
+<span class="nc" id="L133">                    swap(primaryKey, j, jj);</span>
+<span class="nc" id="L134">                    swap(foreignKeyColumns, j, jj);</span>
+<span class="nc" id="L135">                    swap(primaryKeyColumns, j, jj);</span>
+<span class="nc" id="L136">                    cont = true;</span>
+                }
+            }
+        }
+<span class="fc" id="L140">    }</span>
+
+    private void swap(String[] arr, int j, int jj) {
+<span class="nc" id="L143">        String tmp = arr[j];</span>
+<span class="nc" id="L144">        arr[j] = arr[jj];</span>
+<span class="nc" id="L145">        arr[jj] = tmp;</span>
+<span class="nc" id="L146">    }</span>
+    
+    private void swap(TblColRef[] arr, int j, int jj) {
+<span class="nc" id="L149">        TblColRef tmp = arr[j];</span>
+<span class="nc" id="L150">        arr[j] = arr[jj];</span>
+<span class="nc" id="L151">        arr[jj] = tmp;</span>
+<span class="nc" id="L152">    }</span>
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L156">        final int prime = 31;</span>
+<span class="nc" id="L157">        int result = 1;</span>
+<span class="nc" id="L158">        result = prime * result + Arrays.hashCode(primaryKeyColumns);</span>
+<span class="nc" id="L159">        result = prime * result + Arrays.hashCode(foreignKeyColumns);</span>
+<span class="nc" id="L160">        result = prime * result + this.type.hashCode();</span>
+<span class="nc" id="L161">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L167">            return true;</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L169">            return false;</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L171">            return false;</span>
+<span class="nc" id="L172">        JoinDesc other = (JoinDesc) obj;</span>
+
+
+        // note pk/fk are sorted, sortByFK()
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (!Arrays.equals(foreignKey, other.foreignKey))</span>
+<span class="nc" id="L177">            return false;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (!Arrays.equals(primaryKey, other.primaryKey))</span>
+<span class="nc" id="L179">            return false;</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (!Arrays.equals(foreignKeyColumns, other.foreignKeyColumns))</span>
+<span class="nc" id="L181">            return false;</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (!Arrays.equals(primaryKeyColumns, other.primaryKeyColumns))</span>
+<span class="nc" id="L183">            return false;</span>
+
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (!this.type.equalsIgnoreCase(other.getType()))</span>
+<span class="nc" id="L186">            return false;</span>
+<span class="nc" id="L187">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L192">        return &quot;JoinDesc [type=&quot; + type + &quot;, primary_key=&quot; + Arrays.toString(primaryKey) + &quot;, foreign_key=&quot; + Arrays.toString(foreignKey) + &quot;]&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

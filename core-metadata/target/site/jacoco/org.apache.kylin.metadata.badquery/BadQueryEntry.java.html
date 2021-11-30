@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BadQueryEntry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.badquery</a> &gt; <span class="el_source">BadQueryEntry.java</span></div><h1>BadQueryEntry.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.badquery;
+
+import java.util.Objects;
+
+import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.DateFormat;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+@SuppressWarnings(&quot;serial&quot;)
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE, setterVisibility = JsonAutoDetect.Visibility.NONE)
+public class BadQueryEntry extends RootPersistentEntity implements Comparable&lt;BadQueryEntry&gt; {
+    
+    public static final String ADJ_SLOW = &quot;Slow&quot;;
+    public static final String ADJ_PUSHDOWN = &quot;Pushdown&quot;;
+
+    @JsonProperty(&quot;adj&quot;)
+    private String adj;
+    @JsonProperty(&quot;sql&quot;)
+    private String sql;
+    @JsonProperty(&quot;start_time&quot;)
+    private long startTime;
+    @JsonProperty(&quot;running_seconds&quot;)
+    private float runningSec;
+    @JsonProperty(&quot;server&quot;)
+    private String server;
+    @JsonProperty(&quot;thread&quot;)
+    private String thread;
+    @JsonProperty(&quot;user&quot;)
+    private String user;
+    @JsonProperty(&quot;query_id&quot;)
+    private String queryId;
+    @JsonProperty(&quot;cube&quot;)
+    private String cube;
+
+    public BadQueryEntry(String sql, String adj, long startTime, float runningSec, String server, String thread,
+<span class="fc" id="L56">            String user, String queryId, String cube) {</span>
+<span class="fc" id="L57">        this.updateRandomUuid();</span>
+<span class="fc" id="L58">        this.adj = adj;</span>
+<span class="fc" id="L59">        this.sql = sql;</span>
+<span class="fc" id="L60">        this.startTime = startTime;</span>
+<span class="fc" id="L61">        this.runningSec = runningSec;</span>
+<span class="fc" id="L62">        this.server = server;</span>
+<span class="fc" id="L63">        this.thread = thread;</span>
+<span class="fc" id="L64">        this.user = user;</span>
+<span class="fc" id="L65">        this.queryId = queryId;</span>
+<span class="fc" id="L66">        this.cube = cube;</span>
+<span class="fc" id="L67">    }</span>
+
+<span class="fc" id="L69">    public BadQueryEntry() {</span>
+
+<span class="fc" id="L71">    }</span>
+
+    public String getQueryId() {
+<span class="nc" id="L74">        return queryId;</span>
+    }
+
+    public void setQueryId(String queryId) {
+<span class="nc" id="L78">        this.queryId = queryId;</span>
+<span class="nc" id="L79">    }</span>
+
+    public String getUser() {
+<span class="fc" id="L82">        return user;</span>
+    }
+
+    public void setUser(String user) {
+<span class="nc" id="L86">        this.user = user;</span>
+<span class="nc" id="L87">    }</span>
+
+    public float getRunningSec() {
+<span class="fc" id="L90">        return runningSec;</span>
+    }
+
+    public void setRunningSec(float runningSec) {
+<span class="nc" id="L94">        this.runningSec = runningSec;</span>
+<span class="nc" id="L95">    }</span>
+
+    public String getAdj() {
+<span class="fc" id="L98">        return adj;</span>
+    }
+
+    public void setAdj(String adj) {
+<span class="nc" id="L102">        this.adj = adj;</span>
+<span class="nc" id="L103">    }</span>
+
+    public String getSql() {
+<span class="fc" id="L106">        return sql;</span>
+    }
+
+    public void setSql(String sql) {
+<span class="nc" id="L110">        this.sql = sql;</span>
+<span class="nc" id="L111">    }</span>
+
+    public long getStartTime() {
+<span class="fc" id="L114">        return startTime;</span>
+    }
+
+    public void setStartTime(long startTime) {
+<span class="nc" id="L118">        this.startTime = startTime;</span>
+<span class="nc" id="L119">    }</span>
+
+    public String getServer() {
+<span class="fc" id="L122">        return server;</span>
+    }
+
+    public void setServer(String server) {
+<span class="nc" id="L126">        this.server = server;</span>
+<span class="nc" id="L127">    }</span>
+
+    public String getThread() {
+<span class="fc" id="L130">        return thread;</span>
+    }
+
+    public void setThread(String thread) {
+<span class="nc" id="L134">        this.thread = thread;</span>
+<span class="nc" id="L135">    }</span>
+
+    public String getCube() {
+<span class="nc" id="L138">        return cube;</span>
+    }
+
+    public void setCube(String cube) {
+<span class="nc" id="L142">        this.cube = cube;</span>
+<span class="nc" id="L143">    }</span>
+
+    @Override
+    public int compareTo(BadQueryEntry obj) {
+<span class="fc" id="L147">        int comp = Long.compare(this.startTime, obj.startTime);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (comp != 0)</span>
+<span class="fc" id="L149">            return comp;</span>
+        else
+<span class="fc" id="L151">            return this.sql.compareTo(obj.sql);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L156">        return Objects.hash(sql, startTime);</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (this == o)</span>
+<span class="nc" id="L162">            return true;</span>
+<span class="nc bnc" id="L163" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L164">            return false;</span>
+
+<span class="nc" id="L166">        BadQueryEntry entry = (BadQueryEntry) o;</span>
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (startTime != entry.startTime)</span>
+<span class="nc" id="L169">            return false;</span>
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (!sql.equals(entry.sql))</span>
+<span class="nc" id="L172">            return false;</span>
+
+<span class="nc" id="L174">        return true;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L179">        return &quot;BadQueryEntry [ adj=&quot; + adj + &quot;, server=&quot; + server + &quot;, startTime=&quot; + DateFormat.formatToTimeStr(startTime) + &quot; ]&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuboidUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid</a> &gt; <span class="el_source">CuboidUtil.java</span></div><h1>CuboidUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.cuboid;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.cube.cuboid.algorithm.CuboidStatsUtil;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+<span class="nc" id="L33">public class CuboidUtil {</span>
+
+    public static Integer[][] getCuboidBitSet(Long[] cuboidIds, int nRowKey) {
+<span class="nc bnc" id="L36" title="All 2 branches missed.">        Preconditions.checkArgument(nRowKey &lt; Long.SIZE,</span>
+                &quot;the size of row key could not be large than &quot; + (Long.SIZE - 1));
+
+<span class="nc" id="L39">        Integer[][] allCuboidsBitSet = new Integer[cuboidIds.length][];</span>
+
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        for (int j = 0; j &lt; cuboidIds.length; j++) {</span>
+<span class="nc" id="L42">            Long cuboidId = cuboidIds[j];</span>
+
+<span class="nc" id="L44">            allCuboidsBitSet[j] = new Integer[Long.bitCount(cuboidId)];</span>
+
+<span class="nc" id="L46">            long mask = 1L &lt;&lt; (nRowKey - 1);</span>
+<span class="nc" id="L47">            int position = 0;</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            for (int i = 0; i &lt; nRowKey; i++) {</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">                if ((mask &amp; cuboidId) &gt; 0) {</span>
+<span class="nc" id="L50">                    allCuboidsBitSet[j][position] = i;</span>
+<span class="nc" id="L51">                    position++;</span>
+                }
+<span class="nc" id="L53">                mask = mask &gt;&gt; 1;</span>
+            }
+        }
+<span class="nc" id="L56">        return allCuboidsBitSet;</span>
+    }
+
+    public static int getLongestDepth(Set&lt;Long&gt; cuboidSet) {
+<span class="fc" id="L60">        Map&lt;Long, List&lt;Long&gt;&gt; directChildrenCache = CuboidStatsUtil.createDirectChildrenCache(cuboidSet);</span>
+<span class="fc" id="L61">        List&lt;Long&gt; cuboids = Lists.newArrayList(cuboidSet);</span>
+<span class="fc" id="L62">        Collections.sort(cuboids, new Comparator&lt;Long&gt;() {</span>
+            @Override
+            public int compare(Long o1, Long o2) {
+<span class="fc" id="L65">                return -Long.compare(o1, o2);</span>
+            }
+        });
+
+<span class="fc" id="L69">        int longestDepth = 0;</span>
+<span class="fc" id="L70">        Map&lt;Long, Integer&gt; cuboidDepthMap = Maps.newHashMap();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (Long cuboid : cuboids) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            int parentDepth = cuboidDepthMap.get(cuboid) == null ? 0 : cuboidDepthMap.get(cuboid);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            for (Long childCuboid : directChildrenCache.get(cuboid)) {</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">                if (cuboidDepthMap.get(childCuboid) == null || cuboidDepthMap.get(childCuboid) &lt; parentDepth + 1) {</span>
+<span class="fc" id="L75">                    cuboidDepthMap.put(childCuboid, parentDepth + 1);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                    if (longestDepth &lt; parentDepth + 1) {</span>
+<span class="fc" id="L77">                        longestDepth = parentDepth + 1;</span>
+                    }
+                }
+<span class="fc" id="L80">            }</span>
+<span class="fc" id="L81">        }</span>
+
+<span class="fc" id="L83">        return longestDepth;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,252 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,SortedGTRecordGenerator,129,0,16,0,29,0,15,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,GTScannerBenchmark2,783,0,10,0,109,0,24,0,19,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,SortedGTRecordGenerator.BytesRandomizer,24,0,0,0,6,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,GTScannerBenchmark,778,0,10,0,109,0,24,0,19,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,SortedGTRecordGenerator.Generator.new Iterator() {...},163,0,16,0,21,0,14,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,SortedGTRecordGenerator.Distribution,178,0,24,0,28,0,16,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,GTScannerBenchmark2.new SortedGTRecordGenerator.Randomizer() {...},43,0,0,0,9,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,SortedGTRecordGenerator.ColSpec,6,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.benchmark,SortedGTRecordGenerator.Generator,71,0,2,0,13,0,5,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,ComparatorEx,81,0,16,0,18,0,14,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,CubeGridTable,103,0,2,0,20,0,4,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,RecordComparator,57,0,10,0,12,0,8,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,TrimmedCubeCodeSystem.new BytesSerializer() {...},104,3,8,0,21,1,6,1,2,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,TrimmedDimensionSerializer,23,0,0,0,8,0,6,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,CuboidToGridTableMapping,579,0,58,0,110,0,47,0,18,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,CuboidToGridTableMapping.new Comparator() {...},20,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,ScanRangePlannerBase,230,0,42,0,67,0,28,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,CuboidToGridTableMappingExt,212,0,14,0,46,0,16,0,9,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,TrimmedDimEnc,36,0,0,0,13,0,8,0,8,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,SegmentGTStartAndEnd,145,0,14,0,28,0,11,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,CubeCodeSystem,354,6,39,1,76,1,34,1,14,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,RecordComparators,27,0,0,0,4,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,TrimmedCubeCodeSystem,39,56,3,3,12,17,5,3,2,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,RecordComparators.new ComparatorEx() {...},27,0,6,0,8,0,5,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,RecordComparators.new ComparatorEx() {...},53,0,12,0,14,0,9,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,RecordComparators.new ComparatorEx() {...},20,0,4,0,4,0,4,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,ScanRangePlannerBase.ColumnRange,348,0,53,0,66,0,37,0,9,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.gridtable,AsymmetricRecordComparator,24,0,0,0,7,0,6,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeInstance.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeInstance.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeManager,633,716,58,44,135,144,57,45,21,30
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeSegmentAdvisor,0,140,0,14,0,31,0,14,0,7
+Apache Kylin - Core Cube,org.apache.kylin.cube,DimensionRangeInfo,35,126,6,16,7,28,8,12,3,6
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeUpdate,32,102,0,2,14,36,7,19,7,18
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeCapabilityChecker,613,0,88,0,158,0,53,0,9,0
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeSegment,632,392,50,32,146,114,80,58,49,48
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeManager.new CachedCrudAssist() {...},0,38,0,2,0,6,0,3,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeDescManager,373,209,29,9,68,45,22,12,4,11
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeManager.SegmentAssist,804,487,77,41,139,104,52,22,6,9
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeCapabilityChecker.new CapabilityResult.CapabilityInfluence() {...},7,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeInstance,766,492,113,37,179,131,109,55,42,46
+Apache Kylin - Core Cube,org.apache.kylin.cube,RawQueryLastHacker,140,0,24,0,27,0,15,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeDescManager.new CachedCrudAssist() {...},14,39,1,1,1,8,1,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeDescManager.CubeDescSyncListener,77,6,10,0,16,1,7,1,2,1
+Apache Kylin - Core Cube,org.apache.kylin.cube,CubeManager.CubeSyncListener,68,6,8,0,15,1,6,1,2,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation.rule,RowKeyAttrRule,10,40,4,8,4,10,4,4,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation.rule,AggregationGroupRule,200,428,23,49,29,68,20,20,0,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation.rule,StreamingCubeRule,71,18,14,2,15,5,8,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation.rule,DictionaryRule,0,8,0,0,0,3,0,3,0,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation.rule,FunctionRule,186,138,20,18,32,40,15,9,0,5
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,DoggedCubeBuilder.Merger,232,0,20,0,52,0,15,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,DoggedCubeBuilder.MergeSlot,165,0,26,0,35,0,19,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InputConverterUnitForBaseCuboid,42,0,4,0,12,0,10,0,8,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,DoggedCubeBuilder.BuildOnce,254,0,26,0,70,0,19,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InMemCubeBuilder.new MemoryBudgetController.MemoryConsumer() {...},14,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InMemCubeBuilder.new InMemCubeBuilder.ICuboidCollector() {...},29,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.Reader.new Iterator() {...},22,97,4,6,7,18,4,5,1,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.Reader.new InputStream() {...},30,192,6,12,9,28,6,7,1,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InMemCubeBuilder,1093,0,76,0,205,0,63,0,25,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConsumeBlockingQueueController,20,74,1,3,7,19,4,4,3,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.MemPart,99,329,19,39,31,78,18,25,3,11
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.DiskPart,51,142,9,5,9,34,8,9,1,9
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConcurrentDiskStore.Reader,4,46,0,0,1,11,1,3,1,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConcurrentDiskStore,75,216,12,14,11,57,15,16,4,14
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.Writer.new OutputStream() {...},13,92,0,6,3,17,1,5,1,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InMemCubeBuilderUtils,94,0,6,0,21,0,6,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InputConverter,24,0,0,0,8,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,AbstractInMemCubeBuilder.new Runnable() {...},32,0,0,0,6,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InputConverter.new Iterator() {...},31,0,0,0,5,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,DoggedCubeBuilder,32,0,2,0,8,0,4,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,DoggedCubeBuilder.SplitThread,65,0,2,0,15,0,3,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InMemCubeBuilder.CuboidTaskThread,113,0,18,0,27,0,11,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.Reader,4,65,0,0,1,17,1,3,1,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.MemPart.new Thread() {...},5,54,1,3,2,14,1,3,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConcurrentDiskStore.Reader.new Iterator() {...},22,97,4,6,7,18,4,5,1,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConcurrentDiskStore.Reader.new InputStream() {...},18,70,3,3,5,14,3,4,1,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,RecordConsumeBlockingQueueController,15,80,4,10,4,24,5,8,1,5
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConcurrentDiskStore.Writer.new OutputStream() {...},13,46,0,2,3,9,1,3,1,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ICuboidGTTableWriter,63,0,2,0,10,0,4,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.Writer,6,137,3,7,0,31,3,6,0,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InputConverterUnitForRawData,146,0,6,0,29,0,12,0,9,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,CompoundCuboidWriter,70,0,8,0,19,0,9,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,ConcurrentDiskStore.Writer,0,70,0,0,0,15,0,3,0,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore,45,94,4,2,9,21,8,7,5,7
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,CuboidResult,18,0,0,0,7,0,1,0,1,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,InMemCubeBuilder.CuboidTask,58,0,12,0,11,0,10,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,AbstractInMemCubeBuilder,134,0,8,0,30,0,12,0,8,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing,MemDiskStore.MemChunk,2,25,1,1,0,4,1,4,0,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.greedy,GreedyAlgorithm,358,0,40,0,71,0,25,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cli,CubeSignatureRefresher,267,0,24,0,65,0,19,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cli,DumpDictionaryCLI,3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,DictionaryDesc,139,28,21,1,27,8,21,4,10,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,AggregationGroup,160,1190,41,135,38,227,38,85,5,30
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeBuildTypeEnum,54,0,0,0,6,0,1,0,1,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,HBaseMappingDesc,171,61,14,4,29,9,13,5,6,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,HierarchyDesc,41,0,0,0,11,0,8,0,8,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,HBaseColumnDesc,158,29,30,0,35,13,23,8,8,8
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeDesc.DeriveInfo,28,15,0,0,1,6,1,1,1,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,DimensionDesc,206,136,41,21,36,26,32,17,10,8
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,AggregationGroup.HierarchyMask,0,3,0,0,0,1,0,1,0,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeDesc.CannotFilterExtendedColumnException,9,0,2,0,2,0,2,0,1,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,SelectRule,138,3,26,0,23,1,17,1,4,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,SnapshotTableDesc,112,12,14,0,22,4,16,1,9,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,AggregationGroup.new Function() {...},0,10,0,0,0,2,0,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeJoinedFlatTableEnrich,174,0,10,0,40,0,20,0,15,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeDesc.DeriveType,0,34,0,0,0,2,0,1,0,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeDescTiretreeGlobalDomainDictUtil.GlobalDict,27,0,0,0,10,0,5,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,RowKeyColDesc,134,147,19,13,29,31,25,14,13,10
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,TooManyCuboidException,0,4,0,0,0,2,0,1,0,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeJoinedFlatTableDesc,320,0,32,0,76,0,35,0,19,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeDescTiretreeGlobalDomainDictUtil,340,0,16,0,64,0,12,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,RowKeyDesc,44,156,1,13,8,34,7,15,6,9
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,HBaseColumnFamilyDesc,117,13,16,0,16,5,13,4,5,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.model,CubeDesc,1378,2541,249,209,278,528,187,174,37,95
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation,ResultLevel,0,37,0,0,0,6,0,3,0,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation,SourceTableMetadataValidator,5,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation,ValidateContext,6,68,0,4,2,16,1,7,1,5
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation,CubeMetadataValidator,48,93,2,4,7,12,2,4,0,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.model.validation,ValidateContext.Result,3,15,0,0,1,5,1,2,1,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.SplitMerger,218,0,18,0,50,0,14,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,InMemCubeBuilder2,832,0,40,0,158,0,41,0,21,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DefaultCuboidCollectorWithCallBack,45,0,2,0,11,0,5,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.BuildOnce.new Runnable() {...},13,0,0,0,3,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.BuildOnce.new ForkJoinPool.ForkJoinWorkerThreadFactory() {...},23,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.BuildOnce,205,0,12,0,47,0,10,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,CuboidTask,43,0,4,0,10,0,5,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,InMemCubeBuilder2.new ForkJoinPool.ForkJoinWorkerThreadFactory() {...},23,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,InMemCubeBuilder2.new Runnable() {...},10,0,0,0,3,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,InMemCubeBuilder2.new MemoryBudgetController.MemoryConsumer() {...},14,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.CuboidResultWatcher,271,0,36,0,65,0,22,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2,20,0,0,0,5,0,3,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.BaseCuboidTask,106,0,2,0,19,0,5,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.inmemcubing2,DoggedCubeBuilder2.ResultMergeSlot,123,0,16,0,27,0,12,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFilterScanner.new IEvaluatableTuple() {...},14,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTRowBlock,358,0,30,0,67,0,34,0,19,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTScanRange,196,36,40,4,36,10,26,3,4,3
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.DumpMerger,136,0,8,0,22,0,7,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.HavingFilterTuple,30,0,0,0,6,0,6,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTScanRequestBuilder,60,203,7,13,22,47,18,13,11,10
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTInfo.Builder,12,74,0,2,4,20,2,9,2,8
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTScanRequest.new BytesSerializer() {...},434,3,24,0,94,1,16,1,4,1
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,UnitTestSupport,3,1049,0,6,1,75,1,12,1,9
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTScanRequest.new SerializeToByteBuffer.IWriter() {...},12,0,0,0,3,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.SimpleEntry,23,0,0,0,9,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTUtil,155,0,2,0,28,0,14,0,13,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.DumpMerger.new Comparator() {...},19,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTStreamAggregateScanner.AbstractStreamMergeIterator,191,0,16,0,32,0,15,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.DumpMerger.new Iterator() {...},89,0,6,0,13,0,8,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTRecord.new Comparator() {...},21,0,4,0,4,0,4,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTBuilder,0,42,0,2,0,14,0,6,0,5
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTScanRequest,315,307,36,26,68,71,47,24,22,18
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTStreamAggregateScanner.StreamMergeGTRecordIterator,86,0,4,0,16,0,5,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTRecord,403,388,41,29,68,70,45,24,19,15
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GridTable,9,51,2,0,3,12,2,8,1,8
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.Dump,292,0,22,0,57,0,17,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner,34,219,4,8,12,45,9,12,5,10
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,StorageLimitLevel,0,34,0,0,0,4,0,1,0,1
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTRowBlock.Writer,119,0,10,0,19,0,9,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTStreamAggregateScanner.StreamMergeValuesIterator,126,0,8,0,21,0,8,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTUtil.new IFilterCodeSystem() {...},40,0,2,0,8,0,6,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTUtil.new TupleExpressionSerializer.Decorator() {...},67,0,4,0,7,0,6,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,StorageSideBehavior,27,64,6,0,3,7,6,1,3,1
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,EmptyGTScanner.new Iterator() {...},11,0,0,0,4,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFunctionScanner,47,0,0,0,13,0,5,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.Dump.new Iterator() {...},77,0,2,0,15,0,5,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTInfo,169,240,25,25,38,49,32,17,14,10
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.HavingFilterCodeSys,109,0,22,0,24,0,16,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTSampleCodeSystem,22,108,3,7,5,21,7,10,4,8
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFunctionScanner.new Iterator() {...},105,0,10,0,23,0,10,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFunctionScanner.new IEvaluatableTuple() {...},29,0,2,0,3,0,3,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,DefaultGTComparator,12,3,0,0,2,1,2,1,2,1
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.HavingFilterChecker,56,0,2,0,8,0,3,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTStreamAggregateScanner,33,0,0,0,6,0,3,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFilterScanner.FilterResultCache,119,44,19,1,23,11,12,2,2,2
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTUtil.GTConvertDecorator,438,0,62,0,109,0,41,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTInfo.new BytesSerializer() {...},256,3,14,0,54,1,9,1,2,1
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFilterScanner,32,24,3,1,8,8,4,2,2,2
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.new Comparator() {...},0,54,0,8,0,13,0,6,0,2
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.new Iterator() {...},17,69,2,8,2,11,3,6,1,3
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTSampleCodeSystem.new BytesSerializer() {...},5,3,0,0,2,1,2,1,2,1
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.ByPassChecker,188,0,20,0,38,0,14,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,EmptyGTScanner,11,0,0,0,5,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTForwardingScanner,0,21,0,0,0,7,0,4,0,4
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache.ReturningRecord,0,130,0,6,0,19,0,5,0,2
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTRowBlock.Reader,84,0,8,0,15,0,7,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTAggregateScanner.AggregationCache,230,342,31,31,44,66,24,19,2,10
+Apache Kylin - Core Cube,org.apache.kylin.gridtable,GTFilterScanner.GTFilterScannerIterator,50,88,10,8,13,18,9,5,1,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidRecommender.new Callable() {...},72,0,2,0,13,0,3,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidRecommender.CuboidRecommenderSyncListener,13,0,0,0,5,0,3,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,AbstractRecommendAlgorithm,92,0,8,0,27,0,9,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidBenefitModel.BenefitModel,26,0,0,0,5,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,SPBPUSCalculator,22,0,0,0,6,0,4,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidStats,417,0,26,0,71,0,30,0,17,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidBenefitModel,53,0,4,0,10,0,7,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidRecommender,279,0,24,0,64,0,19,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidStatsUtil,65,723,19,91,14,150,19,46,1,9
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidStatsUtil.new Comparator() {...},0,23,0,2,0,3,0,3,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,BPUSCalculator,382,0,32,0,76,0,31,0,15,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidStatsUtil.new Comparator() {...},0,38,0,2,0,7,0,3,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidStats.Builder,212,0,12,0,48,0,16,0,10,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,PBPUSCalculator,49,0,2,0,10,0,7,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm,CuboidBenefitModel.CuboidModel,50,0,0,0,8,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.util,CubingUtils,196,0,16,0,40,0,11,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.util,KeyValueBuilder,181,0,22,0,42,0,17,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,BitsChromosomeHelper.CuboidEncoder,81,0,14,0,16,0,11,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,RouletteWheelSelection,86,0,10,0,19,0,8,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,BitsChromosomeHelper,108,0,14,0,21,0,15,0,8,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,BitsChromosome,151,0,22,0,29,0,20,0,9,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,BitsOnePointCrossover,118,0,6,0,25,0,6,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,GeneticAlgorithm,263,0,16,0,52,0,12,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,BitsMutation,45,0,4,0,9,0,4,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid.algorithm.generic,CombinedStoppingCondition,26,0,4,0,8,0,4,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,CuboidUtil,70,84,8,12,14,15,6,7,2,1
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,CuboidManager,41,79,5,3,9,20,4,7,1,6
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,TreeCuboidScheduler.CuboidCostComparator,6,43,3,3,1,8,3,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,CuboidCLI,100,252,13,35,16,62,14,15,2,3
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,DefaultCuboidScheduler.new Predicate() {...},0,46,0,8,0,8,0,6,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,DefaultCuboidScheduler.new Predicate() {...},1,16,1,1,0,2,1,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,DefaultCuboidScheduler.new Predicate() {...},0,17,0,0,0,2,0,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,DefaultCuboidScheduler.new Predicate() {...},1,16,1,1,0,2,1,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,TreeCuboidScheduler,53,0,0,0,10,0,8,0,8,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,TreeCuboidScheduler.CuboidTree,54,332,5,29,8,73,6,28,2,15
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,TreeCuboidScheduler.CuboidTree.new Comparator() {...},0,17,0,0,0,2,0,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,TreeCuboidScheduler.CuboidTree.new Comparator() {...},0,9,0,0,0,2,0,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,CuboidScheduler,10,147,3,7,2,32,4,9,1,7
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,DefaultCuboidScheduler,164,654,27,75,30,133,21,54,4,20
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,CuboidModeEnum,102,0,6,0,13,0,7,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,TreeCuboidScheduler.TreeNode,71,24,10,0,20,8,10,2,5,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,CuboidUtil.new Comparator() {...},0,10,0,0,0,2,0,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,Cuboid.new Comparator() {...},0,16,0,0,0,2,0,2,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.cuboid,Cuboid,185,245,21,23,45,51,27,23,16,12
+Apache Kylin - Core Cube,org.apache.kylin.cube.common,TupleFilterNode,36,110,11,19,7,28,8,9,0,2
+Apache Kylin - Core Cube,org.apache.kylin.cube.common,RowKeySplitter,226,0,12,0,45,0,16,0,10,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.common,FuzzyValueCombination,213,0,24,0,52,0,19,0,7,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.common,SegmentPruner,89,221,22,40,20,45,16,26,1,8
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.memstore,GTSimpleMemStore.new IGTScanner() {...},0,19,0,0,0,5,0,4,0,4
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.memstore,GTSimpleMemStore,41,35,2,0,13,9,6,5,5,5
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.memstore,GTSimpleMemStore.1.new Iterator() {...},4,50,0,0,1,8,1,3,1,3
+Apache Kylin - Core Cube,org.apache.kylin.gridtable.memstore,GTSimpleMemStore.Writer,10,41,5,5,0,7,5,4,0,4
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,FuzzyKeyEncoder,17,0,2,0,6,0,4,0,3,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,RowKeyColumnIO,48,0,2,0,12,0,6,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,CubeDimEncMap,107,0,6,0,26,0,8,0,5,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,RowKeyEncoder,425,0,28,0,77,0,28,0,14,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,FuzzyMaskEncoder,110,0,8,0,27,0,8,0,4,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,RowKeyDecoder,156,0,8,0,35,0,13,0,9,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,RowConstants,14,0,0,0,3,0,2,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,RowKeyEncoderProvider,36,0,2,0,9,0,3,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,AbstractRowKeyEncoder,34,0,0,0,12,0,6,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.kv,LazyRowKeyEncoder,15,0,2,0,5,0,3,0,2,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.upgrade.common,CubeMetadataUpgrade,230,0,16,0,62,0,14,0,6,0
+Apache Kylin - Core Cube,org.apache.kylin.cube.upgrade.common,MetadataVersionRefresher,120,0,12,0,27,0,10,0,4,0

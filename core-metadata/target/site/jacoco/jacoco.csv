@@ -1,0 +1,349 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,TableACL.TableBlackList,0,33,0,0,0,9,0,6,0,6
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,TableACLManager.new CachedCrudAssist() {...},17,0,0,0,3,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,TableACL.TableACLEntry,56,156,8,16,11,36,8,14,2,8
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,TableACL,42,103,2,4,8,23,7,11,6,9
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,UserGroup,69,0,4,0,12,0,7,0,5,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,TableACLManager.TableACLSyncListener,32,0,2,0,7,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.acl,TableACLManager,206,0,4,0,43,0,15,0,13,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,DoubleDeltaSerializer,29,426,12,34,2,94,12,23,1,11
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNMeasureType,721,12,106,0,152,5,73,3,20,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNCounter,134,405,26,42,26,104,26,29,3,18
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNMeasureType.Factory,0,14,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNCounterSerializer,76,143,4,6,14,32,8,5,5,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNMeasureType.new MeasureType.IAdvMeasureFiller() {...},105,0,4,0,18,0,6,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNMeasureType.new MeasureIngester() {...},372,0,28,0,65,0,19,0,5,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNMeasureType.new CapabilityResult.CapabilityInfluence() {...},14,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNMeasureType.new CapabilityResult.CapabilityInfluence() {...},31,0,4,0,7,0,5,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,TopNAggregator,90,0,2,0,24,0,8,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.topn,Counter,46,23,0,0,13,10,5,5,5,5
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.util,ModelUtil,69,0,0,0,16,0,5,0,5,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.util,ModelUtil.WhereColumnVerify,117,0,6,0,23,0,9,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.util,ModelUtil.SqlVerify,26,0,0,0,8,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster.Listener,5,3,0,0,5,1,5,1,5,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster,149,373,24,29,43,79,27,24,7,16
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster.BroadcastEvent,97,40,16,0,23,11,13,6,5,6
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster.DefaultSyncErrorHandler,35,3,2,0,10,1,3,1,2,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster.1.new Runnable() {...},2,63,0,0,1,8,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster.new Runnable() {...},5,110,5,9,1,20,4,5,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,Broadcaster.Event,25,48,4,0,4,6,3,3,1,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,CaseInsensitiveStringCache,0,19,0,0,0,6,0,3,0,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,AbstractCache,0,13,0,0,0,5,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,SingleValueCache,18,96,1,3,5,23,4,11,3,10
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.cachesync,CachedCrudAssist,261,359,18,16,42,69,21,15,6,13
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,DenseRegister,28,200,8,26,8,44,9,20,1,11
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,SingleValueRegister,45,105,11,15,11,32,12,15,2,12
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,RegisterType,0,34,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCAggregator,50,27,7,1,15,8,8,3,4,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCounter.HLLCSnapshot,0,158,0,12,0,27,0,8,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,SparseRegister,38,184,15,21,10,40,14,16,1,11
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLDistinctCountAggFunc,83,0,12,0,23,0,13,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCSerializer,108,0,6,0,27,0,11,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCounterOld.HLLCSnapshot,9,106,3,5,2,17,2,4,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCMeasureType.Factory,0,14,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCounter,230,712,30,81,44,163,34,59,9,27
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLDistinctCountAggFunc.FixedValueHLLCMockup,128,0,10,0,32,0,15,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCMeasureType,52,20,8,0,12,7,9,5,5,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCounterOld,502,253,65,29,112,61,53,23,18,11
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HLLCMeasureType.new MeasureIngester() {...},10,76,0,12,2,15,1,8,1,2
+Apache Kylin - Core Metadata,org.apache.kylin.measure.hllc,HyperLogLogPlusTable,15,23105,3,9,2,27,4,10,2,6
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,RoaringBitmapCounterFactory,5,24,0,0,1,6,1,4,1,4
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapAggregator,17,32,5,3,6,11,4,7,1,6
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapMeasureType.Factory,0,13,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapIntersectValueAggFunc,25,0,0,0,7,0,6,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapSerializer,70,35,4,2,22,12,8,5,5,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapMeasureType,121,16,18,0,28,5,16,4,7,4
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,RetentionPartialResult,268,0,44,0,52,0,32,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapMeasureType.new MeasureIngester() {...},85,0,8,0,17,0,8,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapDistinctCountAggFunc,36,0,4,0,10,0,7,0,5,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,BitmapIntersectDistinctCountAggFunc,25,0,0,0,7,0,6,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.bitmap,RoaringBitmapCounter,68,143,7,9,12,39,10,15,4,13
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,TimeConditionLiteralsReplacer,153,0,28,0,33,0,17,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,BuiltInFunctionTupleFilter,378,0,46,0,83,0,43,0,20,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,UnsupportedTupleFilter,19,0,0,0,7,0,6,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,DynamicTupleFilter,55,0,0,0,13,0,9,0,9,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,StringCodeSystem,10,15,2,0,2,6,3,4,2,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,ExtractTupleFilter,245,0,18,0,46,0,18,0,9,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,FunctionTupleFilter,5,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,ConstantTupleFilter,40,113,1,13,7,30,6,15,5,9
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,CompareTupleFilter,577,291,148,47,107,51,111,14,14,10
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,FilterCodeSystemFactory.IntegerCodeSystem,28,0,2,0,7,0,5,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,LogicalTupleFilter,186,161,36,20,40,33,34,13,10,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,TsConditionEraser,80,0,18,0,22,0,12,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,TupleFilterSerializer,116,217,17,22,31,64,16,16,1,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,ColumnTupleFilter,96,101,3,3,23,31,9,4,6,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,CompareTupleFilter.CompareResultType,0,34,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,FilterCodeSystemFactory.DecimalCodeSystem,28,0,2,0,7,0,5,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,FilterCodeSystemFactory,58,0,6,0,13,0,6,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,TupleFilter,203,664,38,68,41,156,33,48,6,21
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,FilterOptimizeTransformer,91,111,17,25,26,37,13,14,1,5
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,CaseTupleFilter,210,0,14,0,50,0,20,0,13,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter,TupleFilter.FilterOperatorEnum,0,257,0,0,0,6,0,3,0,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeSerializer,74,102,4,0,17,23,10,3,8,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder,32,146,11,25,10,39,9,17,0,8
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataType.new BytesSerializer() {...},29,3,0,0,8,1,2,1,2,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder.DecimalOrder,12,0,4,0,3,0,3,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,StringSerializer,57,0,2,0,14,0,8,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder.StringOrder,0,2,0,0,0,1,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,IntMutable,63,0,8,0,17,0,12,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,BooleanSerializer,53,0,2,0,13,0,9,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataType,164,714,21,49,33,137,30,43,13,25
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DateTimeSerializer,23,0,0,0,9,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,BigDecimalSerializer,32,144,1,9,9,28,5,8,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder.DoubleOrder,2,9,2,2,1,2,2,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder.DateTimeOrder,2,9,2,2,1,2,2,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DynamicDimSerializer,38,0,0,0,11,0,8,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DoubleMutable,62,0,8,0,15,0,12,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder.IntegerOrder,2,9,2,2,1,2,2,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,LongMutable,68,0,8,0,17,0,12,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DataTypeOrder.BooleanOrder,2,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,LongSerializer,37,0,0,0,13,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,Int4Serializer,24,0,0,0,9,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,Long8Serializer,22,0,0,0,9,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.datatype,DoubleSerializer,23,0,0,0,9,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnMeasureType,145,22,16,0,35,7,14,5,6,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnSerializer,9,59,2,4,2,16,3,6,1,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnMeasureType.new CapabilityResult.CapabilityInfluence() {...},14,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnMeasureType.new MeasureIngester() {...},29,91,9,9,11,20,7,6,1,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnMeasureType.new MeasureType.IAdvMeasureFiller() {...},33,0,2,0,10,0,5,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnMeasureType.new MeasureAggregator() {...},44,27,13,1,16,7,10,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.extendedcolumn,ExtendedColumnMeasureType.Factory,0,14,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.tuple,Tuple,448,0,77,0,94,0,68,0,25,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.tuple,ITupleIterator,0,5,0,0,0,1,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.tuple,ITupleIterator.new ITupleIterator() {...},1,8,0,0,1,4,1,4,1,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.tuple,CompoundTupleIterator,53,0,6,0,13,0,9,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.tuple,TupleInfo,173,0,10,0,34,0,18,0,13,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.tuple,SimpleTupleIterator,20,0,0,0,7,0,5,0,5,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.dim,DimCountDistinctCounter,103,0,4,0,24,0,11,0,9,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.dim,DimCountDistincSerializer,70,0,0,0,20,0,6,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.dim,DimCountDistinctAggFunc,41,0,4,0,13,0,9,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.dim,DimCountDistinctMeasureType,37,12,2,0,8,4,5,4,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.measure.dim,DimCountDistinctMeasureType.Factory,0,13,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.dim,DimCountDistinctAggregator,37,0,2,0,13,0,7,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.source,SourceManager,218,0,6,0,46,0,16,0,13,0
+Apache Kylin - Core Metadata,org.apache.kylin.source,SourceManager.new ISourceAware() {...},13,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.source,SourceManager.new RemovalListener() {...},24,0,2,0,8,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.source,IReadableTable.TableSignature,156,0,18,0,40,0,20,0,11,0
+Apache Kylin - Core Metadata,org.apache.kylin.source,SourcePartition,102,0,4,0,29,0,14,0,12,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.draft,DraftManager,39,116,4,10,14,29,7,11,3,8
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.draft,Draft,0,63,0,0,0,14,0,10,0,10
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.streaming,StreamingManager.new CachedCrudAssist() {...},0,12,0,0,0,2,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.streaming,StreamingManager,50,162,6,6,8,28,7,10,1,10
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.streaming,StreamingManager.StreamingSyncListener,25,6,2,0,6,1,2,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.streaming,StreamingConfig,44,29,0,0,7,10,3,7,3,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,FunctionDesc,438,160,73,17,104,41,62,18,23,12
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,Segments,1363,0,238,0,270,0,145,0,26,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,PartitionDesc.CustomYearMonthDayFieldPartitionConditionBuilder,33,110,3,3,3,19,3,3,0,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SegmentStatusEnum,34,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SumDynamicFunctionDesc,82,0,4,0,18,0,10,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,JoinsTree,170,261,24,28,36,48,23,16,6,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,MeasureDesc,108,0,20,0,24,0,20,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,JoinTableDesc,150,33,32,0,27,13,21,9,5,9
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TableExtDesc,195,142,23,7,43,35,33,14,20,12
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,JoinDesc,207,152,24,14,52,30,25,17,9,14
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,CsvColumnDesc,99,0,12,0,18,0,16,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,PartitionDesc.YearMonthDayPartitionConditionBuilder,92,0,2,0,14,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TableRef,95,140,20,8,18,24,16,11,5,8
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TableDesc,377,412,62,24,77,86,55,29,18,23
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,ModelDimensionDesc,111,64,24,6,24,14,20,5,6,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DynamicFunctionDesc,70,0,2,0,20,0,10,0,9,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,PartitionDesc.PartitionType,0,24,0,0,0,3,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,ColumnDesc,152,233,21,15,40,60,28,21,12,19
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TblColRef,255,280,38,16,48,65,39,25,14,23
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SegmentRange.TSRange,30,49,5,7,3,4,8,3,3,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,PartitionDesc.DefaultPartitionConditionBuilder,109,326,9,19,19,66,10,10,2,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DataModelDesc.TableKind,0,24,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TableExtDesc.ColumnStats,2,91,0,0,1,38,1,22,1,22
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TableDesc.TableProject,8,15,0,0,4,6,2,3,2,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,ParameterDesc.PlainParameter,149,0,26,0,41,0,20,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DataModelManager.DataModelSyncListener,90,6,6,0,15,1,5,1,2,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,JoinsTree.Chain,11,29,2,4,3,8,5,2,3,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,ExternalFilterDesc,88,9,2,0,25,3,17,2,16,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SegmentRange,198,54,46,6,35,13,35,3,9,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,PartitionDesc,275,168,60,12,63,53,42,22,10,18
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TblColRef.InnerDataTypeEnum,2,49,2,2,0,7,2,4,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SegmentRange.Endpoint.new Comparator() {...},0,8,0,0,0,2,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SegmentRange.Endpoint.new Comparator() {...},32,30,14,6,5,7,10,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,ParameterDesc,250,93,61,9,53,28,45,8,13,5
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DataModelManager.new CachedCrudAssist() {...},9,34,3,1,4,6,2,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DataModelManager,350,175,22,2,60,32,23,11,11,11
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DataModelDesc.RealizationCapacity,0,34,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DataModelDesc,812,1133,157,101,164,248,132,72,38,37
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,SegmentRange.Endpoint,119,28,22,0,24,8,14,4,3,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,DatabaseDesc,65,29,6,2,14,5,5,5,2,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,JoinsTree.DefaultJoinDescMatcher,24,61,12,10,7,12,10,5,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model,TableDesc.new Comparator() {...},0,20,0,0,0,4,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,Like,655,0,95,0,129,0,60,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,LikeMatchers.ThreePercentSignLikeMatcher,50,0,8,0,7,0,6,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,LikeMatchers.DefaultLikeMatcher,21,0,0,0,6,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,Functions.FilterTableType,0,24,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,LikeMatchers,77,0,20,0,13,0,12,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,BuiltInMethod.new InternalThreadLocal() {...},7,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,LikeMatchers.OnePercentSignLikeMatcher,73,0,14,0,15,0,10,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,Functions,56,0,4,0,12,0,5,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,LikeMatchers.OnePercentSignLikeMatcher.SignPosition,34,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,BuiltInMethod,366,0,50,0,58,0,34,0,9,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.function,LikeMatchers.TwoPercentSignLikeMatcher,24,0,2,0,5,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.badquery,BadQueryHistoryManager,21,126,4,6,5,25,5,9,1,8
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.badquery,BadQueryHistory,36,23,0,0,10,5,5,3,5,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.badquery,BadQueryEntry,92,95,10,2,31,26,18,12,13,11
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,TupleExpression.ExpressionOperatorEnum,0,141,0,0,0,11,0,4,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,RexCallTupleExpression,24,0,0,0,8,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,TupleExpressionSerializer,79,157,11,11,21,45,10,10,1,6
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,TupleExpression,65,19,12,0,17,7,13,3,7,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,TupleExpressionSerializer.Serializer,125,45,8,2,22,13,9,4,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,StringTupleExpression,83,0,12,0,20,0,17,0,11,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,CaseTupleExpression,185,187,39,17,39,42,29,12,5,8
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,NoneTupleExpression,24,0,0,0,8,0,7,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,ExpressionColCollector,75,89,5,5,19,25,10,7,6,6
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,BinaryTupleExpression,119,145,23,23,22,32,24,17,7,9
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,ExpressionCountDistributor,25,231,4,21,4,51,7,16,3,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,NumberTupleExpression,24,65,8,4,5,17,9,9,3,9
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.expression,ColumnTupleExpression,70,122,11,7,19,35,12,7,3,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.filter.UDF,MassInTupleFilter,319,0,28,0,75,0,33,0,19,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,TableMetaWithType,45,0,0,0,16,0,3,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,ColumnMetaWithType,84,0,0,0,29,0,3,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,SelectedColumnMeta,117,0,0,0,40,0,20,0,20,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,ColumnMeta,236,0,0,0,96,0,48,0,48,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,TableMetaWithType.tableTypeEnum,24,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,TableMeta,129,0,0,0,50,0,25,0,25,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.querymeta,ColumnMetaWithType.columnTypeEnum,44,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectTable,102,0,14,0,30,0,16,0,9,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectL2Cache,730,16,80,0,139,5,60,2,20,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectManager.new CachedCrudAssist() {...},0,14,0,0,0,3,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectManager,935,124,67,3,185,21,72,7,37,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectInstance.new Predicate() {...},27,0,4,0,2,0,4,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectInstance.new Predicate() {...},18,0,2,0,2,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectInstance.new Predicate() {...},18,0,2,0,2,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectInstance.new Predicate() {...},27,0,4,0,2,0,4,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectL2Cache.TableCache,15,0,0,0,6,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectManager.ProjectSyncListener,22,6,2,0,8,1,2,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectInstance,319,51,23,5,90,16,52,7,38,7
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,RealizationEntry,107,3,18,0,24,1,17,1,8,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectStatusEnum,0,24,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.project,ProjectL2Cache.ProjectCache,18,0,0,0,7,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureIngester,34,3,2,0,8,1,4,1,3,1
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureAggregator,6,9,0,0,2,4,2,4,2,4
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureTypeFactory,133,277,11,23,20,65,12,14,2,7
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureAggregators,292,0,48,0,44,0,34,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureType,23,5,0,0,11,2,10,2,10,2
+Apache Kylin - Core Metadata,org.apache.kylin.measure,BufferedMeasureCodec,162,0,12,0,38,0,16,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureCodec,180,0,16,0,39,0,19,0,11,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure,MeasureTypeFactory.NeedRewriteOnlyMeasureType,61,0,6,0,13,0,8,0,5,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TempStatementManager,46,188,3,3,8,40,2,16,0,15
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,ModifiedOrder,10,0,0,0,3,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager.ExtFilterSyncListener,23,6,2,0,5,1,2,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager.SrcTableExtSyncListener,23,6,2,0,5,1,2,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TempStatementManager.TempStatementSyncListener,23,6,2,0,5,1,2,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TempStatementManager.new CachedCrudAssist() {...},0,12,0,0,0,2,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager.new CachedCrudAssist() {...},0,22,0,0,0,4,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager.new CachedCrudAssist() {...},0,27,0,2,0,6,0,3,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager.new CachedCrudAssist() {...},0,12,0,0,0,2,0,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager,237,538,21,23,53,110,25,26,10,19
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TableMetadataManager.SrcTableSyncListener,58,6,6,0,13,1,4,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata,TempStatementManager.TempStatementEntity,48,39,0,0,12,9,9,4,9,4
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.OrderFilter,8,56,1,7,2,11,2,5,1,2
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.CardinalityFilter,70,0,10,0,14,0,9,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ModelDataGenerator,64,744,10,64,15,144,10,51,2,22
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,Util,9,108,1,15,2,22,2,12,1,5
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator,9,122,1,13,1,19,1,8,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,TableGenConfig,1,53,4,12,1,11,4,5,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenConfig,43,260,0,26,7,41,2,18,2,5
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.RandomGen,16,306,9,29,3,59,10,19,1,9
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.Base,4,3,0,0,1,1,1,1,1,1
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.AddNullFilter,2,44,1,3,1,12,2,3,1,2
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.IDGen,4,29,1,1,1,6,1,3,0,3
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.new Comparator() {...},8,26,4,4,2,6,3,3,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.source.datagen,ColumnGenerator.DiscreteGen,6,44,1,1,2,10,2,3,1,3
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model.tool,CalciteParser.new SqlBasicVisitor() {...},22,0,2,0,4,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model.tool,CalciteParser.new Comparator() {...},2,21,1,1,1,4,1,2,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model.tool,CalciteParser.new SqlBasicVisitor() {...},0,32,0,2,0,5,0,3,0,2
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model.tool,CalciteParser.new SqlBasicVisitor() {...},15,0,2,0,4,0,3,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.model.tool,CalciteParser,214,234,13,19,41,52,14,13,5,6
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawMeasureType,204,9,24,0,44,4,25,3,13,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawSerializer,31,127,6,14,7,31,7,10,2,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawAggregator,59,27,8,4,16,8,7,5,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawMeasureType.Factory,0,13,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawMeasureType.new MeasureIngester() {...},139,0,6,0,30,0,7,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawMeasureType.new CapabilityResult.CapabilityInfluence() {...},14,0,0,0,3,0,3,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.raw,RawMeasureType.new MeasureType.IAdvMeasureFiller() {...},70,0,2,0,14,0,5,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,RealizationStatusEnum,34,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,IRealizationConstants,3,0,0,0,1,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,SQLDigest.SQLCall,10,0,0,0,4,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,SQLDigest,137,0,6,0,34,0,7,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,CapabilityResult,7,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,CapabilityResult.IncapableType,74,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,CapabilityResult.IncapableCause,57,0,0,0,21,0,10,0,10,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,CapabilityResult.DimensionAsMeasure,13,0,0,0,6,0,4,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,StreamSQLDigest,305,0,68,0,38,0,38,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,RealizationRegistry,186,0,10,0,32,0,12,0,7,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,NoRealizationFoundException,9,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,RealizationType,0,24,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,SQLDigest.OrderEnum,24,0,0,0,2,0,1,0,1,0
+Apache Kylin - Core Metadata,org.apache.kylin.metadata.realization,RoutingIndicatorException,9,0,0,0,4,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.source.adhocquery,IPushDownConverter,0,3333,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.source.adhocquery,HivePushDownConverter,104,372,19,35,29,90,21,20,4,8
+Apache Kylin - Core Metadata,org.apache.kylin.source.adhocquery,AbstractPushdownRunner,50,0,4,0,10,0,5,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},10,15,0,0,1,3,1,3,1,3
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},10,15,0,0,1,3,1,3,1,3
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},0,25,0,0,0,4,0,4,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},0,30,0,0,0,6,0,4,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},10,15,0,0,1,3,1,3,1,3
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},0,30,0,0,0,6,0,4,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType.new TimeDerivedColumnType() {...},0,30,0,0,0,6,0,4,0,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,FixedLenDimEnc.FixedLenSerializer,75,0,4,0,18,0,10,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DimensionEncoding,67,23,9,5,8,6,6,4,1,2
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DimensionEncodingFactory.new Predicate() {...},13,0,0,0,2,0,2,0,2,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,IntDimEnc.Factory,32,0,4,0,7,0,6,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DimensionEncodingFactory,277,0,26,0,55,0,21,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,FixedLenHexDimEnc,57,470,9,31,15,93,10,22,5,7
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DateDimEnc.Factory,31,0,6,0,11,0,7,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,AbstractDateDimEnc,31,57,1,5,10,16,5,6,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DictionaryDimEnc.DictionarySerializer,56,0,2,0,9,0,7,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,IntegerDimEnc.Factory,32,0,4,0,7,0,6,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDimEnc,0,7,0,0,0,2,0,1,0,1
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,BooleanDimEnc.Factory,11,0,0,0,4,0,4,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,OneMoreByteVLongDimEnc.Factory,32,0,4,0,7,0,6,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,FixedLenHexDimEnc.Factory,28,0,2,0,7,0,5,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDimEnc.new AbstractDateDimEnc.IValueCodec() {...},0,15,0,0,0,4,0,3,0,3
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,IntegerDimEnc.IntegerSerializer,14,61,0,4,4,14,4,6,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,AbstractDateDimEnc.new DataTypeSerializer() {...},75,0,4,0,18,0,10,0,8,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,IntDimEnc,45,153,9,11,13,23,10,11,5,6
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,OneMoreByteVLongDimEnc.VLongSerializer,14,61,0,4,4,14,4,6,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,FixedLenDimEnc.Factory,28,0,2,0,7,0,5,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,IntDimEnc.IntegerSerializer,14,61,0,4,4,14,4,6,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,FixedLenHexDimEnc.FixedLenSerializer,14,61,0,4,4,14,4,6,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,BooleanDimEnc,33,190,7,9,11,23,8,10,4,6
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDimEnc.Factory,11,0,0,0,4,0,4,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,BooleanDimEnc.BooleanSerializer,14,61,0,4,4,14,4,6,4,4
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DateDimEnc.DateDimValueCodec,17,23,6,2,2,9,4,3,0,3
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,TimeDerivedColumnType,64,193,7,9,11,34,8,9,4,5
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DateDimEnc,40,24,6,0,8,5,5,3,2,3
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,IntegerDimEnc,48,332,11,21,13,37,12,15,5,6
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,OneMoreByteVLongDimEnc,45,273,8,18,13,31,9,15,5,6
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,FixedLenDimEnc,175,0,22,0,38,0,22,0,11,0
+Apache Kylin - Core Metadata,org.apache.kylin.dimension,DictionaryDimEnc,204,0,8,0,46,0,18,0,14,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,DoubleMinAggregator,24,16,3,1,6,6,5,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,DoubleSumAggregator,17,21,0,0,4,5,3,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,BigDecimalMaxAggregator,31,16,9,1,12,6,8,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,LongMinAggregator,24,16,3,1,6,6,5,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,BasicMeasureType,267,9,48,0,48,4,32,1,8,1
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,LongIngester,31,0,6,0,7,0,6,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,DoubleMaxAggregator,24,16,3,1,6,6,5,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,LongMaxAggregator,24,16,3,1,6,6,5,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,BigDecimalSumAggregator,20,26,6,2,9,8,7,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,LongSumAggregator,17,21,0,0,4,5,3,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,DoubleIngester,32,0,6,0,7,0,6,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,BigDecimalMinAggregator,31,16,9,1,12,6,8,3,3,3
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,BasicMeasureType.Factory,6,9,0,0,3,2,3,2,3,2
+Apache Kylin - Core Metadata,org.apache.kylin.measure.basic,BigDecimalIngester,33,0,6,0,7,0,6,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.util,BitSetSerializer,69,0,6,0,16,0,7,0,4,0
+Apache Kylin - Core Metadata,org.apache.kylin.util,KryoUtils,75,0,2,0,18,0,7,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileSerializer,14,57,2,2,3,17,5,5,3,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileAggFunc,40,0,4,0,12,0,8,0,6,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileAggregator,26,31,4,2,8,11,4,5,2,4
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileMeasureType.Factory,0,14,0,0,0,5,0,5,0,5
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileCounter,40,131,7,9,13,35,11,17,4,14
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileMeasureType.new MeasureIngester() {...},56,0,4,0,10,0,5,0,3,0
+Apache Kylin - Core Metadata,org.apache.kylin.measure.percentile,PercentileMeasureType,13,17,0,0,2,6,2,4,2,4
+Apache Kylin - Core Metadata,org.apache.kylin.exception,QueryOnCubeException,12,4,0,0,6,2,3,1,3,1

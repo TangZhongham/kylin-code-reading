@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ModelDimensionDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">ModelDimensionDesc.java</span></div><h1>ModelDimensionDesc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Arrays;
+import java.util.List;
+
+import java.util.Locale;
+import java.util.Objects;
+
+import org.apache.kylin.common.util.StringUtil;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+/**
+ */
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.NONE, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE, setterVisibility = JsonAutoDetect.Visibility.NONE)
+<span class="fc" id="L36">public class ModelDimensionDesc implements Serializable {</span>
+    private static final long serialVersionUID = 1L;
+
+    @JsonProperty(&quot;table&quot;)
+    private String table;
+    @JsonProperty(&quot;columns&quot;)
+    private String[] columns;
+
+    public String getTable() {
+<span class="fc" id="L45">        return table;</span>
+    }
+
+    public void setTable(String table) {
+<span class="nc" id="L49">        this.table = table;</span>
+<span class="nc" id="L50">    }</span>
+
+    public String[] getColumns() {
+<span class="fc" id="L53">        return columns;</span>
+    }
+
+    public void setColumns(String[] columns) {
+<span class="nc" id="L57">        this.columns = columns;</span>
+<span class="nc" id="L58">    }</span>
+
+    void init(DataModelDesc model) {
+<span class="fc" id="L61">        table = table.toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (columns != null) {</span>
+<span class="fc" id="L63">            StringUtil.toUpperCaseArray(columns, columns);</span>
+        }
+
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (model != null) {</span>
+<span class="fc" id="L67">            table = model.findTable(table).getAlias();</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (columns != null) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                for (int i = 0; i &lt; columns.length; i++) {</span>
+<span class="fc" id="L70">                    TblColRef column = model.findColumn(table, columns[i]);</span>
+
+<span class="pc bpc" id="L72" title="3 of 4 branches missed.">                    if (column.getColumnDesc().isComputedColumn() &amp;&amp; !model.isFactTable(column.getTableRef())) {</span>
+<span class="nc" id="L73">                        throw new RuntimeException(&quot;Computed Column on lookup table is not allowed&quot;);</span>
+                    }
+
+<span class="fc" id="L76">                    columns[i] = column.getName();</span>
+                }
+            }
+        }
+<span class="fc" id="L80">    }</span>
+
+    public static void capicalizeStrings(List&lt;ModelDimensionDesc&gt; dimensions) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (dimensions != null) {</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            for (ModelDimensionDesc modelDimensionDesc : dimensions) {</span>
+<span class="nc" id="L85">                modelDimensionDesc.init(null);</span>
+<span class="nc" id="L86">            }</span>
+        }
+<span class="nc" id="L88">    }</span>
+
+    public static int getColumnCount(List&lt;ModelDimensionDesc&gt; modelDimensionDescs) {
+<span class="nc" id="L91">        int count = 0;</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        for (ModelDimensionDesc modelDimensionDesc : modelDimensionDescs) {</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (modelDimensionDesc.getColumns() != null) {</span>
+<span class="nc" id="L94">                count += modelDimensionDesc.getColumns().length;</span>
+            }
+<span class="nc" id="L96">        }</span>
+<span class="nc" id="L97">        return count;</span>
+    }
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (this == o) return true;</span>
+<span class="nc bnc" id="L103" title="All 4 branches missed.">        if (o == null || getClass() != o.getClass()) return false;</span>
+<span class="nc" id="L104">        ModelDimensionDesc that = (ModelDimensionDesc) o;</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        return Objects.equals(table, that.table) &amp;&amp;</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">                Arrays.equals(columns, that.columns);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L111">        int result = Objects.hash(table);</span>
+<span class="nc" id="L112">        result = 31 * result + Arrays.hashCode(columns);</span>
+<span class="nc" id="L113">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

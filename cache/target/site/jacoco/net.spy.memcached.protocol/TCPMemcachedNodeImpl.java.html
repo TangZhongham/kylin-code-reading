@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TCPMemcachedNodeImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Cache</a> &gt; <a href="index.source.html" class="el_package">net.spy.memcached.protocol</a> &gt; <span class="el_source">TCPMemcachedNodeImpl.java</span></div><h1>TCPMemcachedNodeImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.spy.memcached.protocol;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.UnsupportedAddressTypeException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import net.spy.memcached.ConnectionFactory;
+import net.spy.memcached.FailureMode;
+import net.spy.memcached.MemcachedConnection;
+import net.spy.memcached.MemcachedNode;
+import net.spy.memcached.compat.SpyObject;
+import net.spy.memcached.ops.Operation;
+import net.spy.memcached.ops.OperationState;
+import net.spy.memcached.protocol.binary.TapAckOperationImpl;
+
+/**
+ * Represents a node with the memcached cluster, along with buffering and
+ * operation queues.
+ *
+ * This is a modified version of the net.spy.memcached.protocol.TCPMemcachedNodeImpl
+ * Override the final method getSocketAddress() to refresh SocketAddress to achieve same hostname with ip changing
+ */
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">public abstract class TCPMemcachedNodeImpl extends SpyObject implements MemcachedNode {</span>
+
+    private final SocketAddress socketAddress;
+    private final ByteBuffer rbuf;
+    private final ByteBuffer wbuf;
+    protected final BlockingQueue&lt;Operation&gt; writeQ;
+    private final BlockingQueue&lt;Operation&gt; readQ;
+    private final BlockingQueue&lt;Operation&gt; inputQueue;
+    private final long opQueueMaxBlockTime;
+    private final long authWaitTime;
+    private final ConnectionFactory connectionFactory;
+<span class="fc" id="L62">    private AtomicInteger reconnectAttempt = new AtomicInteger(1);</span>
+    private SocketChannel channel;
+<span class="fc" id="L64">    private int toWrite = 0;</span>
+<span class="fc" id="L65">    protected Operation optimizedOp = null;</span>
+<span class="fc" id="L66">    private volatile SelectionKey sk = null;</span>
+<span class="fc" id="L67">    private boolean shouldAuth = false;</span>
+    private CountDownLatch authLatch;
+    private ArrayList&lt;Operation&gt; reconnectBlocked;
+    private long defaultOpTimeout;
+<span class="fc" id="L71">    private volatile long lastReadTimestamp = System.nanoTime();</span>
+    private MemcachedConnection connection;
+
+    // operation Future.get timeout counter
+<span class="fc" id="L75">    private final AtomicInteger continuousTimeout = new AtomicInteger(0);</span>
+
+    public TCPMemcachedNodeImpl(SocketAddress sa, SocketChannel c, int bufSize, BlockingQueue&lt;Operation&gt; rq,
+            BlockingQueue&lt;Operation&gt; wq, BlockingQueue&lt;Operation&gt; iq, long opQueueMaxBlockTime, boolean waitForAuth,
+            long dt, long authWaitTime, ConnectionFactory fact) {
+<span class="fc" id="L80">        super();</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">        assert sa != null : &quot;No SocketAddress&quot;;</span>
+<span class="pc bpc" id="L82" title="2 of 4 branches missed.">        assert c != null : &quot;No SocketChannel&quot;;</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">        assert bufSize &gt; 0 : &quot;Invalid buffer size: &quot; + bufSize;</span>
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">        assert rq != null : &quot;No operation read queue&quot;;</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        assert wq != null : &quot;No operation write queue&quot;;</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">        assert iq != null : &quot;No input queue&quot;;</span>
+<span class="fc" id="L87">        socketAddress = sa;</span>
+<span class="fc" id="L88">        connectionFactory = fact;</span>
+<span class="fc" id="L89">        this.authWaitTime = authWaitTime;</span>
+<span class="fc" id="L90">        setChannel(c);</span>
+        // Since these buffers are allocated rarely (only on client creation
+        // or reconfigure), and are passed to Channel.read() and Channel.write(),
+        // use direct buffers to avoid
+        //   http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6214569
+<span class="fc" id="L95">        rbuf = ByteBuffer.allocateDirect(bufSize);</span>
+<span class="fc" id="L96">        wbuf = ByteBuffer.allocateDirect(bufSize);</span>
+<span class="fc" id="L97">        getWbuf().clear();</span>
+<span class="fc" id="L98">        readQ = rq;</span>
+<span class="fc" id="L99">        writeQ = wq;</span>
+<span class="fc" id="L100">        inputQueue = iq;</span>
+<span class="fc" id="L101">        this.opQueueMaxBlockTime = opQueueMaxBlockTime;</span>
+<span class="fc" id="L102">        shouldAuth = waitForAuth;</span>
+<span class="fc" id="L103">        defaultOpTimeout = dt;</span>
+<span class="fc" id="L104">        setupForAuth();</span>
+<span class="fc" id="L105">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#copyInputQueue()
+     */
+    public final void copyInputQueue() {
+<span class="nc" id="L113">        Collection&lt;Operation&gt; tmp = new ArrayList&lt;Operation&gt;();</span>
+
+        // don't drain more than we have space to place
+<span class="nc" id="L116">        inputQueue.drainTo(tmp, writeQ.remainingCapacity());</span>
+<span class="nc" id="L117">        writeQ.addAll(tmp);</span>
+<span class="nc" id="L118">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#destroyInputQueue()
+     */
+    public Collection&lt;Operation&gt; destroyInputQueue() {
+<span class="fc" id="L126">        Collection&lt;Operation&gt; rv = new ArrayList&lt;Operation&gt;();</span>
+<span class="fc" id="L127">        inputQueue.drainTo(rv);</span>
+<span class="fc" id="L128">        return rv;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#setupResend()
+     */
+    public final void setupResend() {
+        // First, reset the current write op, or cancel it if we should
+        // be authenticating
+<span class="fc" id="L139">        Operation op = getCurrentWriteOp();</span>
+<span class="pc bpc" id="L140" title="3 of 4 branches missed.">        if (shouldAuth &amp;&amp; op != null) {</span>
+<span class="nc" id="L141">            op.cancel();</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        } else if (op != null) {</span>
+<span class="nc" id="L143">            ByteBuffer buf = op.getBuffer();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            if (buf != null) {</span>
+<span class="nc" id="L145">                buf.reset();</span>
+            } else {
+<span class="nc" id="L147">                getLogger().info(&quot;No buffer for current write op, removing&quot;);</span>
+<span class="nc" id="L148">                removeCurrentWriteOp();</span>
+            }
+        }
+        // Now cancel all the pending read operations. Might be better to
+        // to requeue them.
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        while (hasReadOp()) {</span>
+<span class="nc" id="L154">            op = removeCurrentReadOp();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (op != getCurrentWriteOp()) {</span>
+<span class="nc" id="L156">                getLogger().warn(&quot;Discarding partially completed op: %s&quot;, op);</span>
+<span class="nc" id="L157">                op.cancel();</span>
+            }
+        }
+
+<span class="pc bpc" id="L161" title="3 of 4 branches missed.">        while (shouldAuth &amp;&amp; hasWriteOp()) {</span>
+<span class="nc" id="L162">            op = removeCurrentWriteOp();</span>
+<span class="nc" id="L163">            getLogger().warn(&quot;Discarding partially completed op: %s&quot;, op);</span>
+<span class="nc" id="L164">            op.cancel();</span>
+        }
+
+<span class="fc" id="L167">        getWbuf().clear();</span>
+<span class="fc" id="L168">        getRbuf().clear();</span>
+<span class="fc" id="L169">        toWrite = 0;</span>
+<span class="fc" id="L170">    }</span>
+
+    // Prepare the pending operations. Return true if there are any pending
+    // ops
+    private boolean preparePending() {
+        // Copy the input queue into the write queue.
+<span class="nc" id="L176">        copyInputQueue();</span>
+
+        // Now check the ops
+<span class="nc" id="L179">        Operation nextOp = getCurrentWriteOp();</span>
+<span class="nc bnc" id="L180" title="All 4 branches missed.">        while (nextOp != null &amp;&amp; nextOp.isCancelled()) {</span>
+<span class="nc" id="L181">            getLogger().info(&quot;Removing cancelled operation: %s&quot;, nextOp);</span>
+<span class="nc" id="L182">            removeCurrentWriteOp();</span>
+<span class="nc" id="L183">            nextOp = getCurrentWriteOp();</span>
+        }
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        return nextOp != null;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#fillWriteBuffer(boolean)
+     */
+    public final void fillWriteBuffer(boolean shouldOptimize) {
+<span class="nc bnc" id="L194" title="All 4 branches missed.">        if (toWrite == 0 &amp;&amp; readQ.remainingCapacity() &gt; 0) {</span>
+<span class="nc" id="L195">            getWbuf().clear();</span>
+<span class="nc" id="L196">            Operation o = getNextWritableOp();</span>
+
+<span class="nc bnc" id="L198" title="All 4 branches missed.">            while (o != null &amp;&amp; toWrite &lt; getWbuf().capacity()) {</span>
+<span class="nc" id="L199">                synchronized (o) {</span>
+<span class="nc bnc" id="L200" title="All 4 branches missed.">                    assert o.getState() == OperationState.WRITING;</span>
+
+<span class="nc" id="L202">                    ByteBuffer obuf = o.getBuffer();</span>
+<span class="nc bnc" id="L203" title="All 4 branches missed.">                    assert obuf != null : &quot;Didn't get a write buffer from &quot; + o;</span>
+<span class="nc" id="L204">                    int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());</span>
+<span class="nc" id="L205">                    byte[] b = new byte[bytesToCopy];</span>
+<span class="nc" id="L206">                    obuf.get(b);</span>
+<span class="nc" id="L207">                    getWbuf().put(b);</span>
+<span class="nc" id="L208">                    getLogger().debug(&quot;After copying stuff from %s: %s&quot;, o, getWbuf());</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                    if (!o.getBuffer().hasRemaining()) {</span>
+<span class="nc" id="L210">                        o.writeComplete();</span>
+<span class="nc" id="L211">                        transitionWriteItem();</span>
+
+<span class="nc" id="L213">                        preparePending();</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">                        if (shouldOptimize) {</span>
+<span class="nc" id="L215">                            optimize();</span>
+                        }
+
+<span class="nc" id="L218">                        o = getNextWritableOp();</span>
+                    }
+<span class="nc" id="L220">                    toWrite += bytesToCopy;</span>
+<span class="nc" id="L221">                }</span>
+            }
+<span class="nc" id="L223">            getWbuf().flip();</span>
+<span class="nc bnc" id="L224" title="All 4 branches missed.">            assert toWrite &lt;= getWbuf().capacity() : &quot;toWrite exceeded capacity: &quot; + this;</span>
+<span class="nc bnc" id="L225" title="All 4 branches missed.">            assert toWrite == getWbuf().remaining() : &quot;Expected &quot; + toWrite + &quot; remaining, got &quot;</span>
+<span class="nc" id="L226">                    + getWbuf().remaining();</span>
+<span class="nc" id="L227">        } else {</span>
+<span class="nc" id="L228">            getLogger().debug(&quot;Buffer is full, skipping&quot;);</span>
+        }
+<span class="nc" id="L230">    }</span>
+
+    private Operation getNextWritableOp() {
+<span class="nc" id="L233">        Operation o = getCurrentWriteOp();</span>
+<span class="nc bnc" id="L234" title="All 4 branches missed.">        while (o != null &amp;&amp; o.getState() == OperationState.WRITE_QUEUED) {</span>
+<span class="nc" id="L235">            synchronized (o) {</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                if (o.isCancelled()) {</span>
+<span class="nc" id="L237">                    getLogger().debug(&quot;Not writing cancelled op.&quot;);</span>
+<span class="nc" id="L238">                    Operation cancelledOp = removeCurrentWriteOp();</span>
+<span class="nc bnc" id="L239" title="All 4 branches missed.">                    assert o == cancelledOp;</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">                } else if (o.isTimedOut(defaultOpTimeout)) {</span>
+<span class="nc" id="L241">                    getLogger().debug(&quot;Not writing timed out op.&quot;);</span>
+<span class="nc" id="L242">                    Operation timedOutOp = removeCurrentWriteOp();</span>
+<span class="nc bnc" id="L243" title="All 4 branches missed.">                    assert o == timedOutOp;</span>
+<span class="nc" id="L244">                } else {</span>
+<span class="nc" id="L245">                    o.writing();</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">                    if (!(o instanceof TapAckOperationImpl)) {</span>
+<span class="nc" id="L247">                        readQ.add(o);</span>
+                    }
+<span class="nc" id="L249">                    return o;</span>
+                }
+<span class="nc" id="L251">                o = getCurrentWriteOp();</span>
+<span class="nc" id="L252">            }</span>
+        }
+<span class="nc" id="L254">        return o;</span>
+    }
+
+    /* (non-Javadoc)
+     * @see net.spy.memcached.MemcachedNode#transitionWriteItem()
+     */
+    public final void transitionWriteItem() {
+<span class="nc" id="L261">        Operation op = removeCurrentWriteOp();</span>
+<span class="nc bnc" id="L262" title="All 4 branches missed.">        assert op != null : &quot;There is no write item to transition&quot;;</span>
+<span class="nc" id="L263">        getLogger().debug(&quot;Finished writing %s&quot;, op);</span>
+<span class="nc" id="L264">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#optimize()
+     */
+    protected abstract void optimize();
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getCurrentReadOp()
+     */
+    public final Operation getCurrentReadOp() {
+<span class="fc" id="L279">        return readQ.peek();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#removeCurrentReadOp()
+     */
+    public final Operation removeCurrentReadOp() {
+<span class="nc" id="L288">        return readQ.remove();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getCurrentWriteOp()
+     */
+    public final Operation getCurrentWriteOp() {
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">        return optimizedOp == null ? writeQ.peek() : optimizedOp;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#removeCurrentWriteOp()
+     */
+    public final Operation removeCurrentWriteOp() {
+<span class="nc" id="L306">        Operation rv = optimizedOp;</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        if (rv == null) {</span>
+<span class="nc" id="L308">            rv = writeQ.remove();</span>
+        } else {
+<span class="nc" id="L310">            optimizedOp = null;</span>
+        }
+<span class="nc" id="L312">        return rv;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#hasReadOp()
+     */
+    public final boolean hasReadOp() {
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">        return !readQ.isEmpty();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#hasWriteOp()
+     */
+    public final boolean hasWriteOp() {
+<span class="nc bnc" id="L330" title="All 4 branches missed.">        return !(optimizedOp == null &amp;&amp; writeQ.isEmpty());</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#addOp(net.spy.memcached.ops.Operation)
+     */
+    public final void addOp(Operation op) {
+        try {
+<span class="nc bnc" id="L340" title="All 2 branches missed.">            if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L341">                FailureMode mode = connectionFactory.getFailureMode();</span>
+<span class="nc bnc" id="L342" title="All 4 branches missed.">                if (mode == FailureMode.Redistribute || mode == FailureMode.Retry) {</span>
+<span class="nc" id="L343">                    getLogger().debug(&quot;Redistributing Operation &quot; + op + &quot; because auth &quot; + &quot;latch taken longer than &quot;</span>
+<span class="nc" id="L344">                            + authWaitTime + &quot; milliseconds to &quot; + &quot;complete on node &quot; + getSocketAddress());</span>
+<span class="nc" id="L345">                    connection.retryOperation(op);</span>
+                } else {
+<span class="nc" id="L347">                    op.cancel();</span>
+<span class="nc" id="L348">                    getLogger().warn(&quot;Operation canceled because authentication &quot;</span>
+                            + &quot;or reconnection and authentication has &quot; + &quot;taken more than &quot; + authWaitTime
+                            + &quot; milliseconds to &quot; + &quot;complete on node &quot; + this);
+<span class="nc" id="L351">                    getLogger().debug(&quot;Canceled operation %s&quot;, op.toString());</span>
+                }
+<span class="nc" id="L353">                return;</span>
+            }
+<span class="nc bnc" id="L355" title="All 2 branches missed.">            if (!inputQueue.offer(op, opQueueMaxBlockTime, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L356">                throw new IllegalStateException(</span>
+                        &quot;Timed out waiting to add &quot; + op + &quot;(max wait=&quot; + opQueueMaxBlockTime + &quot;ms)&quot;);
+            }
+<span class="nc" id="L359">        } catch (InterruptedException e) {</span>
+            // Restore the interrupted status
+<span class="nc" id="L361">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L362">            throw new IllegalStateException(&quot;Interrupted while waiting to add &quot; + op);</span>
+<span class="nc" id="L363">        }</span>
+<span class="nc" id="L364">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see
+     * net.spy.memcached.MemcachedNode#insertOp(net.spy.memcached.ops.Operation)
+     */
+    public final void insertOp(Operation op) {
+<span class="nc" id="L373">        ArrayList&lt;Operation&gt; tmp = new ArrayList&lt;Operation&gt;(inputQueue.size() + 1);</span>
+<span class="nc" id="L374">        tmp.add(op);</span>
+<span class="nc" id="L375">        inputQueue.drainTo(tmp);</span>
+<span class="nc" id="L376">        inputQueue.addAll(tmp);</span>
+<span class="nc" id="L377">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getSelectionOps()
+     */
+    public final int getSelectionOps() {
+<span class="nc" id="L385">        int rv = 0;</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">        if (getChannel().isConnected()) {</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">            if (hasReadOp()) {</span>
+<span class="nc" id="L388">                rv |= SelectionKey.OP_READ;</span>
+            }
+<span class="nc bnc" id="L390" title="All 4 branches missed.">            if (toWrite &gt; 0 || hasWriteOp()) {</span>
+<span class="nc" id="L391">                rv |= SelectionKey.OP_WRITE;</span>
+            }
+        } else {
+<span class="nc" id="L394">            rv = SelectionKey.OP_CONNECT;</span>
+        }
+<span class="nc" id="L396">        return rv;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getRbuf()
+     */
+    public final ByteBuffer getRbuf() {
+<span class="fc" id="L405">        return rbuf;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getWbuf()
+     */
+    public final ByteBuffer getWbuf() {
+<span class="fc" id="L414">        return wbuf;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getSocketAddress()
+     */
+    public final SocketAddress getSocketAddress() {
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">        if (!(socketAddress instanceof InetSocketAddress)) {</span>
+<span class="nc" id="L424">            throw new UnsupportedAddressTypeException();</span>
+        }
+<span class="fc" id="L426">        InetSocketAddress inetSocketAddress = (InetSocketAddress) socketAddress;</span>
+<span class="fc" id="L427">        return new InetSocketAddress(inetSocketAddress.getHostName(), inetSocketAddress.getPort());</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#isActive()
+     */
+    public final boolean isActive() {
+<span class="nc bnc" id="L436" title="All 6 branches missed.">        return reconnectAttempt.get() == 0 &amp;&amp; getChannel() != null &amp;&amp; getChannel().isConnected();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#isAuthenticated()
+     */
+    public boolean isAuthenticated() {
+<span class="nc bnc" id="L445" title="All 2 branches missed.">        return (0 == authLatch.getCount());</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#reconnecting()
+     */
+    public final void reconnecting() {
+<span class="fc" id="L454">        reconnectAttempt.incrementAndGet();</span>
+<span class="fc" id="L455">        continuousTimeout.set(0);</span>
+<span class="fc" id="L456">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#connected()
+     */
+    public final void connected() {
+<span class="nc" id="L464">        reconnectAttempt.set(0);</span>
+<span class="nc" id="L465">        continuousTimeout.set(0);</span>
+<span class="nc" id="L466">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getReconnectCount()
+     */
+    public final int getReconnectCount() {
+<span class="fc" id="L474">        return reconnectAttempt.get();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#toString()
+     */
+    @Override
+    public final String toString() {
+<span class="fc" id="L484">        int sops = 0;</span>
+<span class="pc bpc" id="L485" title="1 of 4 branches missed.">        if (getSk() != null &amp;&amp; getSk().isValid()) {</span>
+<span class="nc" id="L486">            sops = getSk().interestOps();</span>
+        }
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">        int rsize = readQ.size() + (optimizedOp == null ? 0 : 1);</span>
+<span class="fc" id="L489">        int wsize = writeQ.size();</span>
+<span class="fc" id="L490">        int isize = inputQueue.size();</span>
+<span class="fc" id="L491">        return &quot;{QA sa=&quot; + getSocketAddress() + &quot;, #Rops=&quot; + rsize + &quot;, #Wops=&quot; + wsize + &quot;, #iq=&quot; + isize + &quot;, topRop=&quot;</span>
+<span class="fc" id="L492">                + getCurrentReadOp() + &quot;, topWop=&quot; + getCurrentWriteOp() + &quot;, toWrite=&quot; + toWrite + &quot;, interested=&quot;</span>
+                + sops + &quot;}&quot;;
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see
+     * net.spy.memcached.MemcachedNode#registerChannel
+     * (java.nio.channels.SocketChannel, java.nio.channels.SelectionKey)
+     */
+    public final void registerChannel(SocketChannel ch, SelectionKey skey) {
+<span class="nc" id="L504">        setChannel(ch);</span>
+<span class="nc" id="L505">        setSk(skey);</span>
+<span class="nc" id="L506">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see
+     * net.spy.memcached.MemcachedNode#setChannel(java.nio.channels.SocketChannel)
+     */
+    public final void setChannel(SocketChannel to) {
+<span class="pc bpc" id="L515" title="2 of 6 branches missed.">        assert channel == null || !channel.isOpen() : &quot;Attempting to overwrite channel&quot;;</span>
+<span class="fc" id="L516">        channel = to;</span>
+<span class="fc" id="L517">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getChannel()
+     */
+    public final SocketChannel getChannel() {
+<span class="fc" id="L525">        return channel;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#setSk(java.nio.channels.SelectionKey)
+     */
+    public final void setSk(SelectionKey to) {
+<span class="fc" id="L534">        sk = to;</span>
+<span class="fc" id="L535">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getSk()
+     */
+    public final SelectionKey getSk() {
+<span class="fc" id="L543">        return sk;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getBytesRemainingInBuffer()
+     */
+    public final int getBytesRemainingToWrite() {
+<span class="nc" id="L552">        return toWrite;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#writeSome()
+     */
+    public final int writeSome() throws IOException {
+<span class="nc" id="L561">        int wrote = channel.write(wbuf);</span>
+<span class="nc bnc" id="L562" title="All 4 branches missed.">        assert wrote &gt;= 0 : &quot;Wrote negative bytes?&quot;;</span>
+<span class="nc" id="L563">        toWrite -= wrote;</span>
+<span class="nc bnc" id="L564" title="All 4 branches missed.">        assert toWrite &gt;= 0 : &quot;toWrite went negative after writing &quot; + wrote + &quot; bytes for &quot; + this;</span>
+<span class="nc" id="L565">        getLogger().debug(&quot;Wrote %d bytes&quot;, wrote);</span>
+<span class="nc" id="L566">        return wrote;</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#setContinuousTimeout
+     */
+    public void setContinuousTimeout(boolean timedOut) {
+<span class="nc bnc" id="L575" title="All 4 branches missed.">        if (timedOut &amp;&amp; isActive()) {</span>
+<span class="nc" id="L576">            continuousTimeout.incrementAndGet();</span>
+        } else {
+<span class="nc" id="L578">            continuousTimeout.set(0);</span>
+        }
+<span class="nc" id="L580">    }</span>
+
+    /*
+     * (non-Javadoc)
+     *
+     * @see net.spy.memcached.MemcachedNode#getContinuousTimeout
+     */
+    public int getContinuousTimeout() {
+<span class="fc" id="L588">        return continuousTimeout.get();</span>
+    }
+
+    public final void fixupOps() {
+        // As the selection key can be changed at any point due to node
+        // failure, we'll grab the current volatile value and configure it.
+<span class="fc" id="L594">        SelectionKey s = sk;</span>
+<span class="pc bpc" id="L595" title="2 of 4 branches missed.">        if (s != null &amp;&amp; s.isValid()) {</span>
+<span class="nc" id="L596">            int iops = getSelectionOps();</span>
+<span class="nc" id="L597">            getLogger().debug(&quot;Setting interested opts to %d&quot;, iops);</span>
+<span class="nc" id="L598">            s.interestOps(iops);</span>
+<span class="nc" id="L599">        } else {</span>
+<span class="fc" id="L600">            getLogger().debug(&quot;Selection key is not valid.&quot;);</span>
+        }
+<span class="fc" id="L602">    }</span>
+
+    public final void authComplete() {
+<span class="nc bnc" id="L605" title="All 4 branches missed.">        if (reconnectBlocked != null &amp;&amp; reconnectBlocked.size() &gt; 0) {</span>
+<span class="nc" id="L606">            inputQueue.addAll(reconnectBlocked);</span>
+        }
+<span class="nc" id="L608">        authLatch.countDown();</span>
+<span class="nc" id="L609">    }</span>
+
+    public final void setupForAuth() {
+<span class="pc bpc" id="L612" title="1 of 2 branches missed.">        if (shouldAuth) {</span>
+<span class="nc" id="L613">            authLatch = new CountDownLatch(1);</span>
+<span class="nc bnc" id="L614" title="All 2 branches missed.">            if (inputQueue.size() &gt; 0) {</span>
+<span class="nc" id="L615">                reconnectBlocked = new ArrayList&lt;Operation&gt;(inputQueue.size() + 1);</span>
+<span class="nc" id="L616">                inputQueue.drainTo(reconnectBlocked);</span>
+            }
+<span class="nc bnc" id="L618" title="All 4 branches missed.">            assert (inputQueue.size() == 0);</span>
+<span class="nc" id="L619">            setupResend();</span>
+        } else {
+<span class="fc" id="L621">            authLatch = new CountDownLatch(0);</span>
+        }
+<span class="fc" id="L623">    }</span>
+
+    /**
+     * Number of milliseconds since the last read of this node completed.
+     *
+     * @return milliseconds since last read.
+     */
+    public long lastReadDelta() {
+<span class="nc" id="L631">        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastReadTimestamp);</span>
+    }
+
+    /**
+     * Mark this node as having just completed a read.
+     */
+    public void completedRead() {
+<span class="nc" id="L638">        lastReadTimestamp = System.nanoTime();</span>
+<span class="nc" id="L639">    }</span>
+
+    @Override
+    public MemcachedConnection getConnection() {
+<span class="nc" id="L643">        return connection;</span>
+    }
+
+    @Override
+    public void setConnection(MemcachedConnection connection) {
+<span class="fc" id="L648">        this.connection = connection;</span>
+<span class="fc" id="L649">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

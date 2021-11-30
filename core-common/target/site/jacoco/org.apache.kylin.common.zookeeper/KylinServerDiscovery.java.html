@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KylinServerDiscovery.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.zookeeper</a> &gt; <span class="el_source">KylinServerDiscovery.java</span></div><h1>KylinServerDiscovery.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.zookeeper;
+
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.state.ConnectionState;
+import org.apache.curator.x.discovery.ServiceCache;
+import org.apache.curator.x.discovery.ServiceDiscovery;
+import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
+import org.apache.curator.x.discovery.ServiceInstance;
+import org.apache.curator.x.discovery.details.InstanceSerializer;
+import org.apache.curator.x.discovery.details.ServiceCacheListener;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.common.util.ZKUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Maps;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
+public class KylinServerDiscovery implements Closeable {
+
+<span class="fc" id="L54">    private static final Logger logger = LoggerFactory.getLogger(KylinServerDiscovery.class);</span>
+
+    public static final String SERVICE_PATH = &quot;/service&quot;;
+    public static final String SERVICE_NAME = &quot;cluster_servers&quot;;
+    public static final String SERVICE_PAYLOAD_DESCRIPTION = &quot;description&quot;;
+
+    private static class SingletonHolder {
+<span class="nc" id="L61">        private static final KylinServerDiscovery INSTANCE = new KylinServerDiscovery();</span>
+    }
+
+    public static KylinServerDiscovery getInstance() {
+<span class="nc" id="L65">        return SingletonHolder.INSTANCE;</span>
+    }
+
+    private final KylinConfig kylinConfig;
+    private final CuratorFramework curator;
+    private final ServiceDiscovery&lt;LinkedHashMap&gt; serviceDiscovery;
+    private final ServiceCache&lt;LinkedHashMap&gt; serviceCache;
+
+    private KylinServerDiscovery() {
+<span class="nc" id="L74">        this(KylinConfig.getInstanceFromEnv());</span>
+<span class="nc" id="L75">    }</span>
+
+    @VisibleForTesting
+<span class="fc" id="L78">    protected KylinServerDiscovery(KylinConfig kylinConfig) {</span>
+<span class="fc" id="L79">        this.kylinConfig = kylinConfig;</span>
+<span class="fc" id="L80">        this.curator = ZKUtil.getZookeeperClient(kylinConfig);</span>
+        try {
+<span class="fc" id="L82">            final JsonInstanceSerializer&lt;LinkedHashMap&gt; serializer = new JsonInstanceSerializer&lt;&gt;(LinkedHashMap.class);</span>
+<span class="fc" id="L83">            serviceDiscovery = ServiceDiscoveryBuilder.builder(LinkedHashMap.class).client(curator)</span>
+<span class="fc" id="L84">                    .basePath(SERVICE_PATH).serializer(serializer).build();</span>
+<span class="fc" id="L85">            serviceDiscovery.start();</span>
+
+<span class="fc" id="L87">            serviceCache = serviceDiscovery.serviceCacheBuilder().name(SERVICE_NAME)</span>
+<span class="fc" id="L88">                    .threadFactory(</span>
+<span class="fc" id="L89">                            new ThreadFactoryBuilder().setDaemon(true).setNameFormat(&quot;KylinServerTracker-%d&quot;).build())</span>
+<span class="fc" id="L90">                    .build();</span>
+
+<span class="fc" id="L92">            final AtomicBoolean isFinishInit = new AtomicBoolean(false);</span>
+<span class="fc" id="L93">            serviceCache.addListener(new ServiceCacheListener() {</span>
+                @Override
+                public void stateChanged(CuratorFramework curatorFramework, ConnectionState connectionState) {
+<span class="nc" id="L96">                }</span>
+
+                @Override
+                public void cacheChanged() {
+<span class="fc" id="L100">                    logger.info(&quot;Service discovery get cacheChanged notification&quot;);</span>
+<span class="fc" id="L101">                    final List&lt;ServiceInstance&lt;LinkedHashMap&gt;&gt; instances = serviceCache.getInstances();</span>
+<span class="fc" id="L102">                    Map&lt;String, String&gt; instanceNodes = Maps.newHashMapWithExpectedSize(instances.size());</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                    for (ServiceInstance&lt;LinkedHashMap&gt; entry : instances) {</span>
+<span class="fc" id="L104">                        instanceNodes.put(entry.getAddress() + &quot;:&quot; + entry.getPort(),</span>
+<span class="fc" id="L105">                                (String) entry.getPayload().get(SERVICE_PAYLOAD_DESCRIPTION));</span>
+<span class="fc" id="L106">                    }</span>
+
+<span class="fc" id="L108">                    logger.info(&quot;kylin.server.cluster-servers update to &quot; + instanceNodes);</span>
+                    // update cluster servers
+<span class="fc" id="L110">                    System.setProperty(&quot;kylin.server.cluster-servers&quot;, StringUtil.join(instanceNodes.keySet(), &quot;,&quot;));</span>
+
+                    // get servers and its mode(query, job, all)
+<span class="fc" id="L113">                    final String restServersInClusterWithMode = StringUtil.join(instanceNodes.entrySet().stream()</span>
+<span class="fc" id="L114">                            .map(input -&gt; input.getKey() + &quot;:&quot; + input.getValue()).collect(Collectors.toList()), &quot;,&quot;);</span>
+<span class="fc" id="L115">                    logger.info(&quot;kylin.server.cluster-servers-with-mode update to &quot; + restServersInClusterWithMode);</span>
+<span class="fc" id="L116">                    System.setProperty(&quot;kylin.server.cluster-servers-with-mode&quot;, restServersInClusterWithMode);</span>
+<span class="fc" id="L117">                    isFinishInit.set(true);</span>
+<span class="fc" id="L118">                }</span>
+            });
+<span class="fc" id="L120">            serviceCache.start();</span>
+
+<span class="fc" id="L122">            registerSelf();</span>
+<span class="fc" id="L123">            int i = 1;</span>
+<span class="fc" id="L124">            long maxWaitingTime = 60 * 1000L; // 1 min</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            while (!isFinishInit.get()) {</span>
+<span class="fc" id="L126">                logger.info(&quot;Haven't registered, waiting ...&quot;);</span>
+<span class="fc" id="L127">                long waitingTime = 100L * i * i;</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                if (waitingTime &gt; maxWaitingTime) {</span>
+<span class="nc" id="L129">                    waitingTime = maxWaitingTime;</span>
+                } else {
+<span class="fc" id="L131">                    i++;</span>
+                }
+<span class="fc" id="L133">                Thread.sleep(waitingTime);</span>
+<span class="fc" id="L134">            }</span>
+<span class="nc" id="L135">        } catch (Exception e) {</span>
+<span class="nc" id="L136">            throw new RuntimeException(&quot;Fail to initialize due to &quot;, e);</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">    }</span>
+
+    private void registerSelf() throws Exception {
+<span class="fc" id="L141">        String hostAddr = kylinConfig.getServerRestAddress();</span>
+<span class="fc" id="L142">        String[] hostAddrInfo = hostAddr.split(&quot;:&quot;);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (hostAddrInfo.length &lt; 2) {</span>
+<span class="nc" id="L144">            logger.error(&quot;kylin.server.host-address {} is not qualified &quot;, hostAddr);</span>
+<span class="nc" id="L145">            throw new RuntimeException(&quot;kylin.server.host-address &quot; + hostAddr + &quot; is not qualified&quot;);</span>
+        }
+<span class="fc" id="L147">        String host = hostAddrInfo[0];</span>
+<span class="fc" id="L148">        int port = Integer.parseInt(hostAddrInfo[1]);</span>
+
+<span class="fc" id="L150">        String serverMode = kylinConfig.getServerMode();</span>
+<span class="fc" id="L151">        registerServer(host, port, serverMode);</span>
+<span class="fc" id="L152">    }</span>
+
+    private void registerServer(String host, int port, String mode) throws Exception {
+<span class="fc" id="L155">        final LinkedHashMap&lt;String, String&gt; instanceDetail = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L156">        instanceDetail.put(SERVICE_PAYLOAD_DESCRIPTION, mode);</span>
+
+<span class="fc" id="L158">        ServiceInstance&lt;LinkedHashMap&gt; thisInstance = ServiceInstance.&lt;LinkedHashMap&gt; builder().name(SERVICE_NAME)</span>
+<span class="fc" id="L159">                .payload(instanceDetail).port(port).address(host).build();</span>
+
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (ServiceInstance&lt;LinkedHashMap&gt; instance : serviceCache.getInstances()) {</span>
+            // Check for registered instances to avoid being double registered
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (instance.getAddress().equals(thisInstance.getAddress())</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                    &amp;&amp; instance.getPort().equals(thisInstance.getPort())) {</span>
+<span class="nc" id="L165">                serviceDiscovery.unregisterService(instance);</span>
+            }
+<span class="fc" id="L167">        }</span>
+<span class="fc" id="L168">        serviceDiscovery.registerService(thisInstance);</span>
+<span class="fc" id="L169">    }</span>
+
+    @Override
+    public void close() throws IOException {
+<span class="fc" id="L173">        IOUtils.closeQuietly(serviceCache);</span>
+<span class="fc" id="L174">        IOUtils.closeQuietly(serviceDiscovery);</span>
+<span class="fc" id="L175">    }</span>
+
+    static class JsonInstanceSerializer&lt;T&gt; implements InstanceSerializer&lt;T&gt; {
+        private final ObjectMapper mapper;
+        private final Class&lt;T&gt; payloadClass;
+        private final JavaType type;
+
+<span class="fc" id="L182">        JsonInstanceSerializer(Class&lt;T&gt; payloadClass) {</span>
+<span class="fc" id="L183">            this.payloadClass = payloadClass;</span>
+<span class="fc" id="L184">            this.mapper = new ObjectMapper();</span>
+
+            // to bypass https://issues.apache.org/jira/browse/CURATOR-394
+<span class="fc" id="L187">            mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);</span>
+
+<span class="fc" id="L189">            this.type = this.mapper.getTypeFactory().constructType(ServiceInstance.class);</span>
+<span class="fc" id="L190">        }</span>
+
+        public ServiceInstance&lt;T&gt; deserialize(byte[] bytes) throws Exception {
+<span class="fc" id="L193">            ServiceInstance rawServiceInstance = this.mapper.readValue(bytes, this.type);</span>
+<span class="fc" id="L194">            this.payloadClass.cast(rawServiceInstance.getPayload());</span>
+<span class="fc" id="L195">            return rawServiceInstance;</span>
+        }
+
+        public byte[] serialize(ServiceInstance&lt;T&gt; instance) throws Exception {
+<span class="fc" id="L199">            ByteArrayOutputStream out = new ByteArrayOutputStream();</span>
+<span class="fc" id="L200">            mapper.convertValue(instance.getPayload(), payloadClass);</span>
+<span class="fc" id="L201">            this.mapper.writeValue(out, instance);</span>
+<span class="fc" id="L202">            return out.toByteArray();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

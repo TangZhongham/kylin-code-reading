@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentRange.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.model</a> &gt; <span class="el_source">SegmentRange.java</span></div><h1>SegmentRange.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.model;
+
+import java.io.Serializable;
+import java.util.Comparator;
+
+/**
+ * SegmentRange and TSRange seem similar but are different concepts.
+ * 
+ * - SegmentRange defines the range of a segment.
+ * - TSRange is the time series range of the segment data.
+ * - When segment range is defined by time, the two can be the same, in that case TSRange is a kind of SegmentRange.
+ * - Duration segment creation (build/refresh/merge), a new segment is defined by either one of the two, not both.
+ * - And the choice must be consistent across all following segment creation.
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class SegmentRange&lt;T extends Comparable&gt; implements Comparable&lt;SegmentRange&gt;, Serializable {
+
+    public final Endpoint&lt;T&gt; start;
+    public final Endpoint&lt;T&gt; end;
+
+<span class="fc" id="L39">    public SegmentRange(Endpoint start, Endpoint end) {</span>
+<span class="fc" id="L40">        this.start = start;</span>
+<span class="fc" id="L41">        this.end = end;</span>
+<span class="fc" id="L42">        checkState();</span>
+<span class="fc" id="L43">    }</span>
+
+<span class="fc" id="L45">    public SegmentRange(T start, T end) {</span>
+<span class="pc bpc" id="L46" title="3 of 6 branches missed.">        if (start != null &amp;&amp; end != null &amp;&amp; start.getClass() != end.getClass())</span>
+<span class="nc" id="L47">            throw new IllegalArgumentException();</span>
+
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        this.start = new Endpoint(start, start == null, false);</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        this.end = new Endpoint(end, false, end == null);</span>
+<span class="fc" id="L51">        checkState();</span>
+<span class="fc" id="L52">    }</span>
+
+    @Override
+    public int compareTo(SegmentRange o) {
+<span class="nc" id="L56">        int comp = this.start.compareTo(o.start);</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (comp != 0)</span>
+<span class="nc" id="L58">            return comp;</span>
+
+<span class="nc" id="L60">        return this.end.compareTo(o.end);</span>
+    }
+
+    private void checkState() {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (start.compareTo(end) &gt; 0)</span>
+<span class="nc" id="L65">            throw new IllegalStateException();</span>
+<span class="fc" id="L66">    }</span>
+
+    public boolean isInfinite() {
+<span class="nc bnc" id="L69" title="All 4 branches missed.">        return start.isMin &amp;&amp; end.isMax;</span>
+    }
+
+    public boolean contains(SegmentRange o) {
+<span class="nc bnc" id="L73" title="All 4 branches missed.">        return this.start.compareTo(o.start) &lt;= 0 &amp;&amp; o.end.compareTo(this.end) &lt;= 0;</span>
+    }
+
+    public boolean overlaps(SegmentRange o) {
+<span class="nc bnc" id="L77" title="All 4 branches missed.">        return this.start.compareTo(o.end) &lt; 0 &amp;&amp; o.start.compareTo(this.end) &lt; 0;</span>
+    }
+
+    public boolean connects(SegmentRange o) {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        return this.end.compareTo(o.start) == 0;</span>
+    }
+
+    public boolean apartBefore(SegmentRange o) {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        return this.end.compareTo(o.start) &lt; 0;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L90">        return this.getClass().getSimpleName() + &quot;[&quot; + start + &quot;,&quot; + end + &quot;)&quot;;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L95">        final int prime = 31;</span>
+<span class="nc" id="L96">        int result = 1;</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        result = prime * result + ((end == null) ? 0 : end.hashCode());</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        result = prime * result + ((start == null) ? 0 : start.hashCode());</span>
+<span class="nc" id="L99">        return result;</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L105">            return true;</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L107">            return false;</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L109">            return false;</span>
+<span class="nc" id="L110">        SegmentRange other = (SegmentRange) obj;</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (end == null) {</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if (other.end != null)</span>
+<span class="nc" id="L113">                return false;</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        } else if (!end.equals(other.end))</span>
+<span class="nc" id="L115">            return false;</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (start == null) {</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            if (other.start != null)</span>
+<span class="nc" id="L118">                return false;</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        } else if (!start.equals(other.start))</span>
+<span class="nc" id="L120">            return false;</span>
+<span class="nc" id="L121">        return true;</span>
+    }
+
+    // ============================================================================
+
+    public static class TSRange extends SegmentRange&lt;Long&gt; {
+
+        public TSRange(Long start, Long end) {
+            // [0, Long.MAX_VALUE) is full build (for historic reason)
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            super(new Endpoint(isInfinite(start, end) ? 0 : start, isInfinite(start, end), false), //</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                    new Endpoint(isInfinite(start, end) ? Long.MAX_VALUE : end, false, isInfinite(start, end)));</span>
+<span class="fc" id="L132">        }</span>
+
+        private static boolean isInfinite(Long start, Long end) {
+<span class="pc bpc" id="L135" title="3 of 8 branches missed.">            return (start == null || start &lt;= 0) &amp;&amp; (end == null || end == Long.MAX_VALUE);</span>
+        }
+
+        public long duration() {
+<span class="nc" id="L139">            return end.v - start.v;</span>
+        }
+
+        public long startValue() {
+<span class="nc" id="L143">            return start.v;</span>
+        }
+
+        public long endValue() {
+<span class="nc" id="L147">            return end.v;</span>
+        }
+    }
+
+    // ============================================================================
+
+    // immutable
+    public static class Endpoint&lt;T extends Comparable&gt; implements Comparable&lt;Endpoint&gt;, Serializable {
+
+<span class="fc" id="L156">        public static final Comparator&lt;Endpoint&gt; comparator = getComparator(new Comparator() {</span>
+            @Override
+            public int compare(Object o1, Object o2) {
+<span class="fc" id="L159">                return ((Comparable) o1).compareTo(o2);</span>
+            }
+        });
+
+        public static Comparator&lt;Endpoint&gt; getComparator(final Comparator valueComparator) {
+<span class="fc" id="L164">            return new Comparator&lt;Endpoint&gt;() {</span>
+                @Override
+                public int compare(Endpoint a, Endpoint b) {
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">                    if (a == null || b == null)</span>
+<span class="nc" id="L168">                        throw new IllegalStateException();</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                    if (a.isMin) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                        return b.isMin ? 0 : -1;</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                    } else if (b.isMin) {</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                        return a.isMin ? 0 : 1;</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                    } else if (a.isMax) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                        return b.isMax ? 0 : 1;</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                    } else if (b.isMax) {</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                        return a.isMax ? 0 : -1;</span>
+                    } else {
+<span class="fc" id="L178">                        return valueComparator.compare(a.v, b.v);</span>
+                    }
+                }
+            };
+        }
+
+        public final T v;
+        public final boolean isMin;
+        public final boolean isMax;
+
+<span class="fc" id="L188">        private Endpoint(T v, boolean isMin, boolean isMax) {</span>
+<span class="fc" id="L189">            this.v = v;</span>
+<span class="fc" id="L190">            this.isMin = isMin;</span>
+<span class="fc" id="L191">            this.isMax = isMax;</span>
+<span class="fc" id="L192">        }</span>
+
+        @Override
+        public int compareTo(Endpoint o) {
+<span class="fc" id="L196">            return comparator.compare(this, o);</span>
+        }
+        
+        @Override
+        public String toString() {
+<span class="nc" id="L201">            String s = &quot;&quot; + v;</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if (isMin)</span>
+<span class="nc" id="L203">                s += &quot;[min]&quot;;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">            if (isMax)</span>
+<span class="nc" id="L205">                s += &quot;[max]&quot;;</span>
+<span class="nc" id="L206">            return s;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L211">            final int prime = 31;</span>
+<span class="nc" id="L212">            int result = 1;</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            result = prime * result + (isMax ? 1231 : 1237);</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            result = prime * result + (isMin ? 1231 : 1237);</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">            result = prime * result + ((v == null) ? 0 : v.hashCode());</span>
+<span class="nc" id="L216">            return result;</span>
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            if (this == obj)</span>
+<span class="nc" id="L222">                return true;</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            if (obj == null)</span>
+<span class="nc" id="L224">                return false;</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">            if (getClass() != obj.getClass())</span>
+<span class="nc" id="L226">                return false;</span>
+<span class="nc" id="L227">            Endpoint other = (Endpoint) obj;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            if (isMax != other.isMax)</span>
+<span class="nc" id="L229">                return false;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            if (isMin != other.isMin)</span>
+<span class="nc" id="L231">                return false;</span>
+
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            return comparator.compare(this, other) == 0;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

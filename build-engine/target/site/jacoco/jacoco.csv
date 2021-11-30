@@ -1,0 +1,52 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,MRUtil,98,0,2,0,19,0,12,0,11,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,KylinReducer,169,0,2,0,60,0,10,0,9,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,SortedColumnDFSFileReader.new Comparator() {...},45,0,12,0,10,0,8,0,2,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,LookupMaterializeContext,101,0,6,0,24,0,8,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,DFSFileTableReader,370,0,44,0,75,0,33,0,11,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,DFSFileTable,134,0,4,0,33,0,10,0,8,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,CubingJob.CubingJobTypeEnum,101,0,6,0,14,0,8,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,JobBuilderSupport,431,0,20,0,67,0,41,0,31,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,LookupSnapshotBuildJob,148,0,6,0,28,0,12,0,9,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,CubingJob,874,0,64,0,170,0,62,0,30,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,SortedColumnDFSFileReader,101,0,12,0,27,0,10,0,4,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,BatchOptimizeJobCheckpointBuilder,160,0,6,0,28,0,6,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,ByteArrayWritable,249,0,24,0,54,0,30,0,18,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,SortedColumnDFSFile,127,0,8,0,27,0,11,0,7,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,KylinMapper,175,0,2,0,61,0,10,0,9,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,CubingJob.AlgorithmEnum,24,0,0,0,2,0,1,0,1,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,DFSFileTableReader.CsvRowReader,31,0,0,0,7,0,3,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,SortedColumnDFSFileReader.ReaderBuffer,46,0,6,0,16,0,9,0,6,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,DFSFileTableReader.SeqRowReader,60,0,2,0,11,0,4,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr,ByteArrayWritable.Comparator,19,0,0,0,4,0,2,0,2,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.steps,UpdateCubeInfoAfterCheckpointStep,57,0,2,0,17,0,4,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.steps,CubingExecutableUtil,197,0,8,0,46,0,22,0,18,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.steps,CubingExecutableUtil.new Function() {...},6,0,0,0,2,0,2,0,2,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.steps,CubingExecutableUtil.new Function() {...},6,0,0,0,2,0,2,0,2,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.exception,HadoopShellException,23,0,0,0,10,0,5,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.exception,MapReduceException,23,0,0,0,10,0,5,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.exception,SegmentNotFoundException,23,0,0,0,10,0,5,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,JobRelatedMetaUtil,185,0,6,0,37,0,7,0,4,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CuboidRecommenderUtil,272,0,32,0,64,0,21,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CuboidSchedulerUtil,67,0,8,0,12,0,8,0,4,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,MapReduceUtil,364,0,14,0,67,0,14,0,7,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CubeJobLockUtil,39,0,2,0,5,0,4,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,NDCuboidBuilder,170,0,10,0,36,0,11,0,6,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CubeStatsReader,1227,0,82,0,235,0,71,0,30,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,AbstractHadoopJob,1905,0,124,0,401,0,106,0,44,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,JobInfoConverter,525,0,56,0,129,0,42,0,9,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CuboidRecommenderUtil.new CuboidStats.Builder() {...},22,0,0,0,5,0,2,0,2,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,DefaultSslProtocolSocketFactory,115,0,10,0,24,0,15,0,10,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,StatisticsDecisionUtil,288,0,46,0,60,0,29,0,6,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CubeJobLockUtil.LockType,37,0,0,0,6,0,3,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,MapReduceExecutable,1161,0,118,0,261,0,86,0,27,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CubeStatsWriter,175,0,2,0,29,0,7,0,6,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,HadoopJobStatusChecker,65,0,10,0,24,0,10,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,HadoopCmdOutput,315,0,26,0,68,0,22,0,9,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CuboidStatsReaderUtil,463,0,46,0,86,0,32,0,9,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,DefaultX509TrustManager,100,0,14,0,28,0,14,0,7,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CubeStatsReader.CubeStatsResult,142,0,12,0,32,0,12,0,6,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,HadoopShellExecutable,156,0,2,0,35,0,8,0,7,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,CuboidShardUtil,72,0,4,0,16,0,5,0,3,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,SerializableConfiguration,32,0,0,0,12,0,5,0,5,0
+Apache Kylin - Build Engine,org.apache.kylin.engine.mr.common,MapReduceExecutable.CustomParser,34,0,2,0,10,0,4,0,3,0

@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Tuple.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.tuple</a> &gt; <span class="el_source">Tuple.java</span></div><h1>Tuple.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.metadata.tuple;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+import org.apache.kylin.common.util.DateFormat;
+import org.apache.kylin.metadata.datatype.DoubleMutable;
+import org.apache.kylin.metadata.datatype.LongMutable;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import net.sf.ehcache.pool.sizeof.annotations.IgnoreSizeOf;
+
+/**
+ * @author xjiang
+ */
+public class Tuple implements ITuple {
+
+    @IgnoreSizeOf
+    private final TupleInfo info;
+    private final Object[] values;
+
+<span class="nc" id="L40">    public Tuple(TupleInfo info) {</span>
+<span class="nc" id="L41">        this.info = info;</span>
+<span class="nc" id="L42">        this.values = new Object[info.size()];</span>
+<span class="nc" id="L43">    }</span>
+
+    public List&lt;String&gt; getAllFields() {
+<span class="nc" id="L46">        return info.getAllFields();</span>
+    }
+
+    public List&lt;TblColRef&gt; getAllColumns() {
+<span class="nc" id="L50">        return info.getAllColumns();</span>
+    }
+
+    public Object[] getAllValues() {
+<span class="nc" id="L54">        return values;</span>
+    }
+
+    @Override
+    public Object clone() {
+<span class="nc" id="L59">        return makeCopy();</span>
+    }
+
+    @Override
+    public ITuple makeCopy() {
+<span class="nc" id="L64">        Tuple ret = new Tuple(this.info);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        for (int i = 0; i &lt; this.values.length; ++i) {</span>
+<span class="nc" id="L66">            ret.values[i] = this.values[i];</span>
+        }
+<span class="nc" id="L68">        return ret;</span>
+    }
+
+    public TupleInfo getInfo() {
+<span class="nc" id="L72">        return info;</span>
+    }
+
+    public String getFieldName(TblColRef col) {
+<span class="nc" id="L76">        return info.getFieldName(col);</span>
+    }
+
+    public TblColRef getFieldColumn(String fieldName) {
+<span class="nc" id="L80">        return info.getColumn(fieldName);</span>
+    }
+
+    public Object getValue(String fieldName) {
+<span class="nc" id="L84">        int index = info.getFieldIndex(fieldName);</span>
+<span class="nc" id="L85">        return values[index];</span>
+    }
+
+    public Object getValue(TblColRef col) {
+<span class="nc" id="L89">        int index = info.getColumnIndex(col);</span>
+<span class="nc" id="L90">        return values[index];</span>
+    }
+
+    public String getDataTypeName(int idx) {
+<span class="nc" id="L94">        return info.getDataTypeName(idx);</span>
+    }
+
+    public void setDimensionValue(String fieldName, String fieldValue) {
+<span class="nc" id="L98">        setDimensionValue(info.getFieldIndex(fieldName), fieldValue);</span>
+<span class="nc" id="L99">    }</span>
+
+    public void setDimensionValue(int idx, String fieldValue) {
+<span class="nc" id="L102">        Object objectValue = convertOptiqCellValue(fieldValue, getDataTypeName(idx));</span>
+<span class="nc" id="L103">        values[idx] = objectValue;</span>
+<span class="nc" id="L104">    }</span>
+
+    public void setDimensionValueDirectly(int idx, Object objectValue) {
+<span class="nc" id="L107">        values[idx] = objectValue;</span>
+<span class="nc" id="L108">    }</span>
+
+    public void setMeasureValue(String fieldName, Object fieldValue) {
+<span class="nc" id="L111">        setMeasureValue(info.getFieldIndex(fieldName), fieldValue);</span>
+<span class="nc" id="L112">    }</span>
+
+    public void setMeasureValue(int idx, Object fieldValue) {
+<span class="nc" id="L115">        fieldValue = convertWritableToJava(fieldValue);</span>
+
+<span class="nc" id="L117">        String dataType = getDataTypeName(idx);</span>
+        // special handling for BigDecimal, allow double be aggregated as
+        // BigDecimal during cube build for best precision
+<span class="nc bnc" id="L120" title="All 4 branches missed.">        if (&quot;double&quot;.equals(dataType) &amp;&amp; fieldValue instanceof BigDecimal) {</span>
+<span class="nc" id="L121">            fieldValue = ((BigDecimal) fieldValue).doubleValue();</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        } else if (&quot;decimal&quot;.equals(dataType)) {</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (fieldValue instanceof BigDecimal) {</span>
+<span class="nc" id="L124">                fieldValue = normalizeDecimal((BigDecimal) fieldValue);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            } else if (fieldValue instanceof Number) {</span>
+<span class="nc" id="L126">                fieldValue = BigDecimal.valueOf(((Number) fieldValue).doubleValue());</span>
+            }
+<span class="nc bnc" id="L128" title="All 4 branches missed.">        } else if (&quot;float&quot;.equals(dataType) &amp;&amp; fieldValue instanceof BigDecimal) {</span>
+<span class="nc" id="L129">            fieldValue = ((BigDecimal) fieldValue).floatValue();</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">        } else if (&quot;integer&quot;.equals(dataType) &amp;&amp; fieldValue instanceof Number) {</span>
+<span class="nc" id="L131">            fieldValue = ((Number) fieldValue).intValue();</span>
+<span class="nc bnc" id="L132" title="All 4 branches missed.">        } else if (&quot;bigint&quot;.equals(dataType) &amp;&amp; fieldValue instanceof Number) {</span>
+<span class="nc" id="L133">            fieldValue = ((Number) fieldValue).longValue();</span>
+<span class="nc bnc" id="L134" title="All 4 branches missed.">        } else if (&quot;smallint&quot;.equals(dataType) &amp;&amp; fieldValue instanceof Number) {</span>
+<span class="nc" id="L135">            fieldValue = ((Number) fieldValue).shortValue();</span>
+<span class="nc bnc" id="L136" title="All 4 branches missed.">        } else if (&quot;tinyint&quot;.equals(dataType) &amp;&amp; fieldValue instanceof Number) {</span>
+<span class="nc" id="L137">            fieldValue = ((Number) fieldValue).byteValue();</span>
+<span class="nc bnc" id="L138" title="All 4 branches missed.">        } else if (&quot;date&quot;.equals(dataType) &amp;&amp; fieldValue instanceof Long) {</span>
+<span class="nc" id="L139">            long millis = (Long) fieldValue;</span>
+<span class="nc" id="L140">            fieldValue = (int) (millis / (1000 * 3600 * 24));</span>
+<span class="nc bnc" id="L141" title="All 6 branches missed.">        } else if ((!&quot;varchar&quot;.equals(dataType) || !&quot;char&quot;.equals(dataType)) &amp;&amp; fieldValue instanceof String) {</span>
+<span class="nc" id="L142">            fieldValue = convertOptiqCellValue((String) fieldValue, dataType);</span>
+        }
+
+<span class="nc" id="L145">        values[idx] = fieldValue;</span>
+<span class="nc" id="L146">    }</span>
+
+    private Object convertWritableToJava(Object o) {
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (o instanceof LongMutable)</span>
+<span class="nc" id="L150">            o = ((LongMutable) o).get();</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        else if (o instanceof DoubleMutable)</span>
+<span class="nc" id="L152">            o = ((DoubleMutable) o).get();</span>
+<span class="nc" id="L153">        return o;</span>
+    }
+
+    private static BigDecimal normalizeDecimal(BigDecimal input) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (input.scale() &lt; 0) {</span>
+<span class="nc" id="L158">            return input.setScale(0);</span>
+        } else {
+<span class="nc" id="L160">            return input;</span>
+        }
+    }
+
+    public boolean hasColumn(TblColRef column) {
+<span class="nc" id="L165">        return info.hasColumn(column);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L170">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        for (String field : info.getAllFields()) {</span>
+<span class="nc" id="L172">            sb.append(field);</span>
+<span class="nc" id="L173">            sb.append(&quot;=&quot;);</span>
+<span class="nc" id="L174">            sb.append(getValue(field));</span>
+<span class="nc" id="L175">            sb.append(&quot;,&quot;);</span>
+<span class="nc" id="L176">        }</span>
+<span class="nc" id="L177">        return sb.toString();</span>
+    }
+
+    public static long getTs(ITuple row, TblColRef partitionCol) {
+        //ts column type differentiate
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (partitionCol.getDatatype().equals(&quot;date&quot;)) {</span>
+<span class="nc" id="L183">            return epicDaysToMillis(Integer.parseInt(row.getValue(partitionCol).toString()));</span>
+        } else {
+<span class="nc" id="L185">            return Long.parseLong(row.getValue(partitionCol).toString());</span>
+        }
+    }
+
+    public static long epicDaysToMillis(int days) {
+<span class="nc" id="L190">        return 1L * days * (1000 * 3600 * 24);</span>
+    }
+
+    public static int millisToEpicDays(long millis) {
+<span class="nc" id="L194">        return (int) (millis / (1000 * 3600 * 24));</span>
+    }
+
+    public static Object convertOptiqCellValue(String strValue, String dataTypeName) {
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (strValue == null)</span>
+<span class="nc" id="L199">            return null;</span>
+
+<span class="nc bnc" id="L201" title="All 6 branches missed.">        if ((strValue.equals(&quot;&quot;) || strValue.equals(&quot;\\N&quot;)) &amp;&amp; !dataTypeName.equals(&quot;string&quot;)</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">                &amp;&amp; !dataTypeName.startsWith(&quot;varchar&quot;))</span>
+<span class="nc" id="L203">            return null;</span>
+
+<span class="nc bnc" id="L205" title="All 11 branches missed.">        switch (dataTypeName) {</span>
+        case &quot;date&quot;:
+            // convert epoch time
+<span class="nc" id="L208">            return millisToEpicDays(DateFormat.stringToMillis(strValue));// Optiq expects Integer instead of Long. by honma</span>
+        case &quot;datetime&quot;:
+        case &quot;timestamp&quot;:
+<span class="nc" id="L211">            return DateFormat.stringToMillis(strValue);</span>
+        case &quot;tinyint&quot;:
+<span class="nc" id="L213">            return Byte.valueOf(strValue);</span>
+        case &quot;smallint&quot;:
+<span class="nc" id="L215">            return Short.valueOf(strValue);</span>
+        case &quot;integer&quot;:
+<span class="nc" id="L217">            return Integer.valueOf(strValue);</span>
+        case &quot;bigint&quot;:
+<span class="nc" id="L219">            return Long.valueOf(strValue);</span>
+        case &quot;double&quot;:
+<span class="nc" id="L221">            return Double.valueOf(strValue);</span>
+        case &quot;decimal&quot;:
+<span class="nc" id="L223">            return normalizeDecimal(new BigDecimal(strValue));</span>
+        case &quot;float&quot;:
+<span class="nc" id="L225">            return Float.valueOf(strValue);</span>
+        case &quot;boolean&quot;:
+<span class="nc bnc" id="L227" title="All 4 branches missed.">            return Boolean.valueOf(strValue) || &quot;1&quot;.equals(strValue); // in some extended encodings boolean might be encoded as a number</span>
+        default:
+<span class="nc" id="L229">            return strValue;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

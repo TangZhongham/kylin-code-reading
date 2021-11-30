@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentCubeTupleIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Storage</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.storage.gtrecord</a> &gt; <span class="el_source">SegmentCubeTupleIterator.java</span></div><h1>SegmentCubeTupleIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *  
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.storage.gtrecord;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+import org.apache.kylin.common.annotation.Clarification;
+import org.apache.kylin.shaded.com.google.common.collect.UnmodifiableIterator;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.gridtable.CuboidToGridTableMapping;
+import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.gridtable.GTStreamAggregateScanner;
+import org.apache.kylin.gridtable.IGTScanner;
+import org.apache.kylin.measure.MeasureType.IAdvMeasureFiller;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.tuple.ITuple;
+import org.apache.kylin.metadata.tuple.ITupleIterator;
+import org.apache.kylin.metadata.tuple.Tuple;
+import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.apache.kylin.storage.StorageContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@Clarification(deprecated = true, msg = &quot;Only for HBase storage&quot;)
+public class SegmentCubeTupleIterator implements ITupleIterator {
+
+<span class="nc" id="L50">    private static final Logger logger = LoggerFactory.getLogger(SegmentCubeTupleIterator.class);</span>
+
+    protected final CubeSegmentScanner scanner;
+    protected final Cuboid cuboid;
+    protected final Set&lt;TblColRef&gt; selectedDimensions;
+    protected final Set&lt;FunctionDesc&gt; selectedMetrics;
+    protected final TupleInfo tupleInfo;
+    protected final Tuple tuple;
+    protected final StorageContext context;
+
+    protected Iterator&lt;Object[]&gt; gtValues;
+    protected ITupleConverter cubeTupleConverter;
+    protected Tuple next;
+
+    private List&lt;IAdvMeasureFiller&gt; advMeasureFillers;
+    private int advMeasureRowsRemaining;
+    private int advMeasureRowIndex;
+
+    public SegmentCubeTupleIterator(CubeSegmentScanner scanner, Cuboid cuboid, Set&lt;TblColRef&gt; selectedDimensions, //
+<span class="nc" id="L69">            Set&lt;FunctionDesc&gt; selectedMetrics, TupleInfo returnTupleInfo, StorageContext context) {</span>
+<span class="nc" id="L70">        this.scanner = scanner;</span>
+<span class="nc" id="L71">        this.cuboid = cuboid;</span>
+<span class="nc" id="L72">        this.selectedDimensions = selectedDimensions;</span>
+<span class="nc" id="L73">        this.selectedMetrics = selectedMetrics;</span>
+<span class="nc" id="L74">        this.tupleInfo = returnTupleInfo;</span>
+<span class="nc" id="L75">        this.tuple = new Tuple(returnTupleInfo);</span>
+<span class="nc" id="L76">        this.context = context;</span>
+
+<span class="nc" id="L78">        CuboidToGridTableMapping mapping = context.getMapping();</span>
+<span class="nc" id="L79">        int[] gtDimsIdx = mapping.getDimIndexes(selectedDimensions);</span>
+<span class="nc" id="L80">        int[] gtMetricsIdx = mapping.getMetricsIndexes(selectedMetrics);</span>
+        // gtColIdx = gtDimsIdx + gtMetricsIdx
+<span class="nc" id="L82">        int[] gtColIdx = new int[gtDimsIdx.length + gtMetricsIdx.length];</span>
+<span class="nc" id="L83">        System.arraycopy(gtDimsIdx, 0, gtColIdx, 0, gtDimsIdx.length);</span>
+<span class="nc" id="L84">        System.arraycopy(gtMetricsIdx, 0, gtColIdx, gtDimsIdx.length, gtMetricsIdx.length);</span>
+
+<span class="nc" id="L86">        this.gtValues = getGTValuesIterator(scanner.iterator(), scanner.getScanRequest(), gtDimsIdx, gtMetricsIdx);</span>
+<span class="nc" id="L87">        this.cubeTupleConverter = ((GTCubeStorageQueryBase) context.getStorageQuery()).newCubeTupleConverter(</span>
+                scanner.cubeSeg, cuboid, selectedDimensions, selectedMetrics, gtColIdx, tupleInfo);
+<span class="nc" id="L89">    }</span>
+
+    private Iterator&lt;Object[]&gt; getGTValuesIterator(
+            final Iterator&lt;GTRecord&gt; records, final GTScanRequest scanRequest,
+            final int[] gtDimsIdx, final int[] gtMetricsIdx) {
+
+<span class="nc" id="L95">        boolean hasMultiplePartitions = records instanceof SortMergedPartitionResultIterator;</span>
+<span class="nc bnc" id="L96" title="All 4 branches missed.">        if (hasMultiplePartitions &amp;&amp; context.isStreamAggregateEnabled()) {</span>
+<span class="nc" id="L97">            logger.info(&quot;Using GTStreamAggregateScanner to pre-aggregate storage partition.&quot;);</span>
+            // input records are ordered, leverage stream aggregator to produce possibly fewer records
+<span class="nc" id="L99">            IGTScanner inputScanner = new IGTScanner() {</span>
+                public GTInfo getInfo() {
+<span class="nc" id="L101">                    return scanRequest.getInfo();</span>
+                }
+
+                public void close() {
+                    // Underlying resource is hold by scanner and it will be closed at
+                    // SegmentCubeTupleIterator#close, caller is SequentialCubeTupleIterator
+<span class="nc" id="L107">                }</span>
+
+                public Iterator&lt;GTRecord&gt; iterator() {
+<span class="nc" id="L110">                    return records;</span>
+                }
+            };
+            Iterator&lt;Object[]&gt; result;
+<span class="nc" id="L114">            try (GTStreamAggregateScanner aggregator = new GTStreamAggregateScanner(inputScanner, scanRequest)) {</span>
+<span class="nc" id="L115">                result = aggregator.valuesIterator(gtDimsIdx, gtMetricsIdx);</span>
+<span class="nc" id="L116">            } catch (IOException ioe) {</span>
+                // implementation of close method of anonymous IGTScanner is empty, no way throw exception
+<span class="nc" id="L118">                throw new IllegalStateException(&quot;IOException is not expected here.&quot;, ioe);</span>
+<span class="nc" id="L119">            }</span>
+<span class="nc" id="L120">            return result;</span>
+        }
+
+        // simply decode records
+<span class="nc" id="L124">        return new UnmodifiableIterator&lt;Object[]&gt;() {</span>
+<span class="nc" id="L125">            Object[] result = new Object[gtDimsIdx.length + gtMetricsIdx.length];</span>
+
+            public boolean hasNext() {
+<span class="nc" id="L128">                return records.hasNext();</span>
+            }
+
+            public Object[] next() {
+<span class="nc" id="L132">                GTRecord record = records.next();</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                for (int i = 0; i &lt; gtDimsIdx.length; i++) {</span>
+<span class="nc" id="L134">                    result[i] = record.decodeValue(gtDimsIdx[i]);</span>
+                }
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                for (int i = 0; i &lt; gtMetricsIdx.length; i++) {</span>
+<span class="nc" id="L137">                    result[gtDimsIdx.length + i] = record.decodeValue(gtMetricsIdx[i]);</span>
+                }
+<span class="nc" id="L139">                return result;</span>
+            }
+        };
+    }
+
+    @Override
+    public boolean hasNext() {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (next != null)</span>
+<span class="nc" id="L147">            return true;</span>
+
+        // consume any left rows from advanced measure filler
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (advMeasureRowsRemaining &gt; 0) {</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">            for (IAdvMeasureFiller filler : advMeasureFillers) {</span>
+<span class="nc" id="L152">                filler.fillTuple(tuple, advMeasureRowIndex);</span>
+<span class="nc" id="L153">            }</span>
+<span class="nc" id="L154">            advMeasureRowIndex++;</span>
+<span class="nc" id="L155">            advMeasureRowsRemaining--;</span>
+<span class="nc" id="L156">            next = tuple;</span>
+<span class="nc" id="L157">            return true;</span>
+        }
+
+        // now we have a GTRecord
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (!gtValues.hasNext()) {</span>
+<span class="nc" id="L162">            return false;</span>
+        }
+<span class="nc" id="L164">        Object[] values = this.gtValues.next();</span>
+
+        // translate into tuple
+<span class="nc" id="L167">        advMeasureFillers = cubeTupleConverter.translateResult(values, tuple);</span>
+
+        // the simple case
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (advMeasureFillers == null) {</span>
+<span class="nc" id="L171">            next = tuple;</span>
+<span class="nc" id="L172">            return true;</span>
+        }
+
+        // advanced measure filling, like TopN, will produce multiple tuples out of one record
+<span class="nc" id="L176">        advMeasureRowsRemaining = -1;</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        for (IAdvMeasureFiller filler : advMeasureFillers) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (advMeasureRowsRemaining &lt; 0)</span>
+<span class="nc" id="L179">                advMeasureRowsRemaining = filler.getNumOfRows();</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">            if (advMeasureRowsRemaining != filler.getNumOfRows())</span>
+<span class="nc" id="L181">                throw new IllegalStateException();</span>
+<span class="nc" id="L182">        }</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (advMeasureRowsRemaining &lt; 0)</span>
+<span class="nc" id="L184">            throw new IllegalStateException();</span>
+
+<span class="nc" id="L186">        advMeasureRowIndex = 0;</span>
+<span class="nc" id="L187">        return hasNext();</span>
+    }
+
+    @Override
+    public ITuple next() {
+        // fetch next record
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (next == null) {</span>
+<span class="nc" id="L194">            hasNext();</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">            if (next == null)</span>
+<span class="nc" id="L196">                throw new NoSuchElementException();</span>
+        }
+
+<span class="nc" id="L199">        ITuple result = next;</span>
+<span class="nc" id="L200">        next = null;</span>
+<span class="nc" id="L201">        return result;</span>
+    }
+
+    @Override
+    public void remove() {
+<span class="nc" id="L206">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public void close() {
+<span class="nc" id="L211">        close(scanner);</span>
+<span class="nc" id="L212">    }</span>
+
+    protected void close(CubeSegmentScanner scanner) {
+        try {
+<span class="nc" id="L216">            scanner.close();</span>
+<span class="nc" id="L217">            cubeTupleConverter.close();</span>
+<span class="nc" id="L218">        } catch (IOException e) {</span>
+<span class="nc" id="L219">            logger.error(&quot;Exception when close CubeScanner&quot;, e);</span>
+<span class="nc" id="L220">        }</span>
+<span class="nc" id="L221">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

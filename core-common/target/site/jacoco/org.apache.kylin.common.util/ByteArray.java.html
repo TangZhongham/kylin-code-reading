@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ByteArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ByteArray.java</span></div><h1>ByteArray.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+
+/**
+ * @author yangli9
+ */
+public class ByteArray implements Comparable&lt;ByteArray&gt;, Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    public static ByteArray allocate(int length) {
+<span class="nc" id="L32">        return new ByteArray(new byte[length]);</span>
+    }
+
+    public static ByteArray copyOf(byte[] array, int offset, int length) {
+<span class="nc" id="L36">        byte[] space = new byte[length];</span>
+<span class="nc" id="L37">        System.arraycopy(array, offset, space, 0, length);</span>
+<span class="nc" id="L38">        return new ByteArray(space, 0, length);</span>
+    }
+
+    // ============================================================================
+
+    private byte[] data;
+    private int offset;
+    private int length;
+
+    public ByteArray() {
+<span class="nc" id="L48">        this(null, 0, 0);</span>
+<span class="nc" id="L49">    }</span>
+
+    public ByteArray(int capacity) {
+<span class="nc" id="L52">        this(new byte[capacity], 0, capacity);</span>
+<span class="nc" id="L53">    }</span>
+
+    public ByteArray(byte[] data) {
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        this(data, 0, data == null ? 0 : data.length);</span>
+<span class="fc" id="L57">    }</span>
+
+<span class="fc" id="L59">    public ByteArray(byte[] data, int offset, int length) {</span>
+<span class="fc" id="L60">        this.data = data;</span>
+<span class="fc" id="L61">        this.offset = offset;</span>
+<span class="fc" id="L62">        this.length = length;</span>
+<span class="fc" id="L63">    }</span>
+
+    public byte[] array() {
+<span class="fc" id="L66">        return data;</span>
+    }
+
+    public int offset() {
+<span class="nc" id="L70">        return offset;</span>
+    }
+
+    public int length() {
+<span class="nc" id="L74">        return length;</span>
+    }
+
+    //notice this will have a length header
+    public void exportData(ByteBuffer out) {
+<span class="nc" id="L79">        BytesUtil.writeByteArray(this.data, this.offset, this.length, out);</span>
+<span class="nc" id="L80">    }</span>
+
+    public static ByteArray importData(ByteBuffer in) {
+<span class="nc" id="L83">        byte[] bytes = BytesUtil.readByteArray(in);</span>
+<span class="nc" id="L84">        return new ByteArray(bytes);</span>
+    }
+
+    public ByteBuffer asBuffer() {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (data == null)</span>
+<span class="nc" id="L89">            return null;</span>
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">        else if (offset == 0 &amp;&amp; length == data.length)</span>
+<span class="fc" id="L91">            return ByteBuffer.wrap(data);</span>
+        else
+<span class="nc" id="L93">            return ByteBuffer.wrap(data, offset, length).slice();</span>
+    }
+
+    public byte[] toBytes() {
+<span class="nc" id="L97">        return Bytes.copy(this.array(), this.offset(), this.length());</span>
+    }
+
+    public void setLength(int pos) {
+<span class="nc" id="L101">        this.length = pos;</span>
+<span class="nc" id="L102">    }</span>
+
+    public void reset(byte[] data, int offset, int len) {
+<span class="nc" id="L105">        this.data = data;</span>
+<span class="nc" id="L106">        this.offset = offset;</span>
+<span class="nc" id="L107">        this.length = len;</span>
+<span class="nc" id="L108">    }</span>
+
+    public byte get(int i) {
+<span class="nc" id="L111">        return data[offset + i];</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (data == null) {</span>
+<span class="nc" id="L117">            return 0;</span>
+        } else {
+<span class="nc bnc" id="L119" title="All 4 branches missed.">            if (length &lt;= Bytes.SIZEOF_LONG &amp;&amp; length &gt; 0) {</span>
+                // to avoid hash collision of byte arrays those are converted from nearby integers/longs, which is the case for kylin dictionary
+<span class="nc" id="L121">                long value = BytesUtil.readLong(data, offset, length);</span>
+<span class="nc" id="L122">                return (int) (value ^ (value &gt;&gt;&gt; 32));</span>
+            }
+<span class="nc" id="L124">            return Bytes.hashCode(data, offset, length);</span>
+        }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L131">            return true;</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L133">            return false;</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L135">            return false;</span>
+<span class="nc" id="L136">        ByteArray o = (ByteArray) obj;</span>
+<span class="nc bnc" id="L137" title="All 4 branches missed.">        if (this.data == null &amp;&amp; o.data == null)</span>
+<span class="nc" id="L138">            return true;</span>
+<span class="nc bnc" id="L139" title="All 4 branches missed.">        else if (this.data == null || o.data == null)</span>
+<span class="nc" id="L140">            return false;</span>
+        else
+<span class="nc" id="L142">            return Bytes.equals(this.data, this.offset, this.length, o.data, o.offset, o.length);</span>
+    }
+
+    @Override
+    public int compareTo(ByteArray o) {
+<span class="nc bnc" id="L147" title="All 4 branches missed.">        if (this.data == null &amp;&amp; o.data == null)</span>
+<span class="nc" id="L148">            return 0;</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        else if (this.data == null)</span>
+<span class="nc" id="L150">            return -1;</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        else if (o.data == null)</span>
+<span class="nc" id="L152">            return 1;</span>
+        else
+<span class="nc" id="L154">            return Bytes.compareTo(this.data, this.offset, this.length, o.data, o.offset, o.length);</span>
+    }
+
+    public String toReadableText() {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (data == null) {</span>
+<span class="nc" id="L159">            return null;</span>
+        } else {
+<span class="nc" id="L161">            return BytesUtil.toHex(data, offset, length);</span>
+        }
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (data == null)</span>
+<span class="nc" id="L168">            return &quot;&quot;;</span>
+        else
+<span class="nc" id="L170">            return Bytes.toStringBinary(data, offset, length);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

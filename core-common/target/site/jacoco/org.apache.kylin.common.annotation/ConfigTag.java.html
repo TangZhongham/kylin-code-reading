@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigTag.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.annotation</a> &gt; <span class="el_source">ConfigTag.java</span></div><h1>ConfigTag.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.common.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Standardize and clarify config property of KylinConfig,
+ * which helps to make them easy to understand.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER,
+        ElementType.CONSTRUCTOR, ElementType.LOCAL_VARIABLE, ElementType.PACKAGE})
+public @interface ConfigTag {
+
+    Tag[] value();
+
+<span class="nc" id="L36">    enum Tag {</span>
+
+        // =============== basic classification ===============
+
+        /**
+         * Out of date, indicate this property will be removed soon, most of them are from Kylin 3.X.
+         */
+<span class="nc" id="L43">        DEPRECATED,</span>
+
+        /**
+         * Not well tested/supported for now.
+         */
+<span class="nc" id="L48">        NOT_CLEAR,</span>
+
+        /**
+         * The implementation is not complement
+         */
+<span class="nc" id="L53">        NOT_IMPLEMENTED,</span>
+
+        /**
+         * For hacker or developer, not for user
+         */
+<span class="nc" id="L58">        DEBUG_HACK,</span>
+
+        // =============== configuration level ===============
+
+        /**
+         * Support thread/local level configuration (BackdoorToggles)
+         */
+<span class="nc" id="L65">        THREAD_LEVEL,</span>
+
+        /**
+         * Support cube level configuration (CubeInstance)
+         */
+<span class="nc" id="L70">        CUBE_LEVEL,</span>
+
+        /**
+         * Support project level configuration (ProjectInstance)
+         */
+<span class="nc" id="L75">        PROJECT_LEVEL,</span>
+
+        /**
+         * Only support global level configuration, require restart Kylin instance (kylin.properties)
+         */
+<span class="nc" id="L80">        GLOBAL_LEVEL,</span>
+
+        // =============== importance level ===============
+
+<span class="nc" id="L84">        MAJOR,</span>
+
+<span class="nc" id="L86">        MINOR</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

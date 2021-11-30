@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeUpdate.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">CubeUpdate.java</span></div><h1>CubeUpdate.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube;
+
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.kylin.metadata.realization.RealizationStatusEnum;
+
+/**
+ * Hold changes to a cube so that they can be applied as one unit.
+ */
+public class CubeUpdate {
+    private CubeInstance cubeInstance;
+<span class="fc" id="L31">    private CubeSegment[] toAddSegs = null;</span>
+<span class="fc" id="L32">    private CubeSegment[] toRemoveSegs = null;</span>
+<span class="fc" id="L33">    private CubeSegment[] toUpdateSegs = null;</span>
+    private RealizationStatusEnum status;
+    private String owner;
+<span class="fc" id="L36">    private int cost = -1;</span>
+<span class="fc" id="L37">    private Map&lt;Long, Long&gt; cuboids = null;</span>
+<span class="fc" id="L38">    private Set&lt;Long&gt; cuboidsRecommend = null;</span>
+<span class="fc" id="L39">    private Map&lt;String, String&gt; updateTableSnapshotPath = null;</span>
+<span class="fc" id="L40">    private long createTimeUTC = -1;</span>
+<span class="fc" id="L41">    private long cuboidLastOptimized = -1;</span>
+
+<span class="fc" id="L43">    public CubeUpdate(CubeInstance cubeInstance) {</span>
+<span class="fc" id="L44">        setCubeInstance(cubeInstance);</span>
+<span class="fc" id="L45">    }</span>
+
+    public CubeInstance getCubeInstance() {
+<span class="fc" id="L48">        return cubeInstance;</span>
+    }
+
+    public CubeUpdate setCubeInstance(CubeInstance cubeInstance) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (cubeInstance.isCachedAndShared())</span>
+<span class="fc" id="L53">            throw new IllegalArgumentException();</span>
+
+<span class="fc" id="L55">        this.cubeInstance = cubeInstance;</span>
+<span class="fc" id="L56">        return this;</span>
+    }
+
+    public CubeSegment[] getToAddSegs() {
+<span class="fc" id="L60">        return toAddSegs;</span>
+    }
+
+    public CubeUpdate setToAddSegs(CubeSegment... toAddSegs) {
+<span class="fc" id="L64">        this.toAddSegs = toAddSegs;</span>
+<span class="fc" id="L65">        return this;</span>
+    }
+
+    public CubeSegment[] getToRemoveSegs() {
+<span class="fc" id="L69">        return toRemoveSegs;</span>
+    }
+
+    public CubeUpdate setToRemoveSegs(CubeSegment... toRemoveSegs) {
+<span class="fc" id="L73">        this.toRemoveSegs = toRemoveSegs;</span>
+<span class="fc" id="L74">        return this;</span>
+    }
+
+    public CubeSegment[] getToUpdateSegs() {
+<span class="fc" id="L78">        return toUpdateSegs;</span>
+    }
+
+    public CubeUpdate setToUpdateSegs(CubeSegment... toUpdateSegs) {
+<span class="fc" id="L82">        this.toUpdateSegs = toUpdateSegs;</span>
+<span class="fc" id="L83">        return this;</span>
+    }
+
+    public RealizationStatusEnum getStatus() {
+<span class="fc" id="L87">        return status;</span>
+    }
+
+    public CubeUpdate setStatus(RealizationStatusEnum status) {
+<span class="fc" id="L91">        this.status = status;</span>
+<span class="fc" id="L92">        return this;</span>
+    }
+
+    public String getOwner() {
+<span class="fc" id="L96">        return owner;</span>
+    }
+
+    public CubeUpdate setOwner(String owner) {
+<span class="nc" id="L100">        this.owner = owner;</span>
+<span class="nc" id="L101">        return this;</span>
+    }
+
+    public int getCost() {
+<span class="fc" id="L105">        return cost;</span>
+    }
+
+    public CubeUpdate setCost(int cost) {
+<span class="nc" id="L109">        this.cost = cost;</span>
+<span class="nc" id="L110">        return this;</span>
+    }
+
+    public Map&lt;Long, Long&gt; getCuboids() {
+<span class="fc" id="L114">        return cuboids;</span>
+    }
+
+    public CubeUpdate setCuboids(Map&lt;Long, Long&gt; cuboids) {
+<span class="nc" id="L118">        this.cuboids = cuboids;</span>
+<span class="nc" id="L119">        return this;</span>
+    }
+
+    public Set&lt;Long&gt; getCuboidsRecommend() {
+<span class="fc" id="L123">        return cuboidsRecommend;</span>
+    }
+
+    public CubeUpdate setCuboidsRecommend(Set&lt;Long&gt; cuboidsRecommend) {
+<span class="nc" id="L127">        this.cuboidsRecommend = cuboidsRecommend;</span>
+<span class="nc" id="L128">        return this;</span>
+    }
+
+    public Map&lt;String, String&gt; getUpdateTableSnapshotPath() {
+<span class="fc" id="L132">        return updateTableSnapshotPath;</span>
+    }
+
+    public void setUpdateTableSnapshotPath(Map&lt;String, String&gt; updateTableSnapshotPath) {
+<span class="nc" id="L136">        this.updateTableSnapshotPath = updateTableSnapshotPath;</span>
+<span class="nc" id="L137">    }</span>
+
+    public long getCreateTimeUTC() {
+<span class="fc" id="L140">        return createTimeUTC;</span>
+    }
+
+    public void setCreateTimeUTC(long createTimeUTC) {
+<span class="nc" id="L144">        this.createTimeUTC = createTimeUTC;</span>
+<span class="nc" id="L145">    }</span>
+
+    public long getCuboidLastOptimized() {
+<span class="fc" id="L148">        return cuboidLastOptimized;</span>
+    }
+
+    public void setCuboidLastOptimized(long cuboidLastOptimized) {
+<span class="nc" id="L152">        this.cuboidLastOptimized = cuboidLastOptimized;</span>
+<span class="nc" id="L153">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

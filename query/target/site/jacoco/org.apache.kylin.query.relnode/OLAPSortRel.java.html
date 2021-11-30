@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPSortRel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.relnode</a> &gt; <span class="el_source">OLAPSortRel.java</span></div><h1>OLAPSortRel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.relnode;
+
+import java.util.List;
+
+import org.apache.calcite.adapter.enumerable.EnumerableConvention;
+import org.apache.calcite.adapter.enumerable.EnumerableRel;
+import org.apache.calcite.adapter.enumerable.EnumerableSort;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelCollation;
+import org.apache.calcite.rel.RelFieldCollation;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.core.Sort;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rex.RexNode;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.realization.SQLDigest;
+
+import com.google.common.base.Preconditions;
+
+/**
+ */
+public class OLAPSortRel extends Sort implements OLAPRel {
+
+    ColumnRowType columnRowType;
+    OLAPContext context;
+
+    public OLAPSortRel(RelOptCluster cluster, RelTraitSet traitSet, RelNode child, RelCollation collation,
+            RexNode offset, RexNode fetch) {
+<span class="nc" id="L53">        super(cluster, traitSet, child, collation, offset, fetch);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == OLAPRel.CONVENTION);</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        Preconditions.checkArgument(getConvention() == child.getConvention());</span>
+<span class="nc" id="L56">    }</span>
+
+    @Override
+    public OLAPSortRel copy(RelTraitSet traitSet, RelNode newInput, RelCollation newCollation, RexNode offset,
+            RexNode fetch) {
+<span class="nc" id="L61">        return new OLAPSortRel(getCluster(), traitSet, newInput, newCollation, offset, fetch);</span>
+    }
+
+    @Override
+    public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+<span class="nc" id="L66">        return super.computeSelfCost(planner, mq).multiplyBy(.05);</span>
+    }
+
+    @Override
+    public void implementOLAP(OLAPImplementor implementor) {
+<span class="nc" id="L71">        implementor.fixSharedOlapTableScan(this);</span>
+<span class="nc" id="L72">        implementor.visitChild(getInput(), this);</span>
+
+<span class="nc" id="L74">        this.context = implementor.getContext();</span>
+<span class="nc" id="L75">        this.columnRowType = buildColumnRowType();</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        for (RelFieldCollation fieldCollation : this.collation.getFieldCollations()) {</span>
+<span class="nc" id="L78">            int index = fieldCollation.getFieldIndex();</span>
+<span class="nc" id="L79">            SQLDigest.OrderEnum order = getOrderEnum(fieldCollation.getDirection());</span>
+<span class="nc" id="L80">            OLAPRel olapChild = (OLAPRel) this.getInput();</span>
+<span class="nc" id="L81">            TblColRef orderCol = olapChild.getColumnRowType().getAllColumns().get(index);</span>
+<span class="nc" id="L82">            this.context.addSort(orderCol, order);</span>
+<span class="nc" id="L83">            this.context.storageContext.markSort();</span>
+
+<span class="nc" id="L85">        }</span>
+<span class="nc" id="L86">    }</span>
+
+    ColumnRowType buildColumnRowType() {
+<span class="nc" id="L89">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L90">        ColumnRowType inputColumnRowType = olapChild.getColumnRowType();</span>
+<span class="nc" id="L91">        return inputColumnRowType;</span>
+    }
+
+    @Override
+    public void implementRewrite(RewriteImplementor implementor) {
+<span class="nc" id="L96">        implementor.visitChild(this, getInput());</span>
+
+        // No need to rewrite &quot;order by&quot; applied on non-olap context.
+        // Occurs in sub-query like &quot;select ... from (...) inner join (...) order by ...&quot;
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (this.context.realization == null)</span>
+<span class="nc" id="L101">            return;</span>
+
+<span class="nc" id="L103">        this.rowType = this.deriveRowType();</span>
+<span class="nc" id="L104">        this.columnRowType = buildColumnRowType();</span>
+<span class="nc" id="L105">    }</span>
+
+    SQLDigest.OrderEnum getOrderEnum(RelFieldCollation.Direction direction) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (direction == RelFieldCollation.Direction.DESCENDING) {</span>
+<span class="nc" id="L109">            return SQLDigest.OrderEnum.DESCENDING;</span>
+        } else {
+<span class="nc" id="L111">            return SQLDigest.OrderEnum.ASCENDING;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;unused&quot;)
+    MeasureDesc findMeasure(TblColRef col) {
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        for (MeasureDesc measure : this.context.realization.getMeasures()) {</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">            if (col.getName().equals(measure.getFunction().getRewriteFieldName())) {</span>
+<span class="nc" id="L119">                return measure;</span>
+            }
+<span class="nc" id="L121">        }</span>
+<span class="nc" id="L122">        return null;</span>
+    }
+
+    @Override
+    public EnumerableRel implementEnumerable(List&lt;EnumerableRel&gt; inputs) {
+<span class="nc" id="L127">        return new EnumerableSort(getCluster(),</span>
+<span class="nc" id="L128">                getCluster().traitSetOf(EnumerableConvention.INSTANCE).replace(collation), //</span>
+<span class="nc" id="L129">                sole(inputs), collation, offset, fetch);</span>
+    }
+
+    @Override
+    public OLAPContext getContext() {
+<span class="nc" id="L134">        return context;</span>
+    }
+
+    @Override
+    public ColumnRowType getColumnRowType() {
+<span class="nc" id="L139">        return columnRowType;</span>
+    }
+
+    @Override
+    public boolean hasSubQuery() {
+<span class="nc" id="L144">        OLAPRel olapChild = (OLAPRel) getInput();</span>
+<span class="nc" id="L145">        return olapChild.hasSubQuery();</span>
+    }
+
+    @Override
+    public RelTraitSet replaceTraitSet(RelTrait trait) {
+<span class="nc" id="L150">        RelTraitSet oldTraitSet = this.traitSet;</span>
+<span class="nc" id="L151">        this.traitSet = this.traitSet.replace(trait);</span>
+<span class="nc" id="L152">        return oldTraitSet;</span>
+    }
+
+    @Override
+    public RelWriter explainTerms(RelWriter pw) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        return super.explainTerms(pw).item(&quot;ctx&quot;,</span>
+<span class="nc" id="L158">                context == null ? &quot;&quot; : String.valueOf(context.id) + &quot;@&quot; + context.realization);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

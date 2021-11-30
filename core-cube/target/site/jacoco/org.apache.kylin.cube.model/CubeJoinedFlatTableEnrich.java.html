@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeJoinedFlatTableEnrich.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.model</a> &gt; <span class="el_source">CubeJoinedFlatTableEnrich.java</span></div><h1>CubeJoinedFlatTableEnrich.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.cube.model;
+
+import java.io.Serializable;
+import java.util.List;
+
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.ISegment;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.TblColRef;
+
+/**
+ * An enrich of IJoinedFlatTableDesc for cubes
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class CubeJoinedFlatTableEnrich implements IJoinedFlatTableDesc, Serializable {
+
+    private CubeDesc cubeDesc;
+    private IJoinedFlatTableDesc flatDesc;
+    private int[] rowKeyColumnIndexes; // the column index on flat table
+    private int[][] measureColumnIndexes; // [i] is the i.th measure related column index on flat table
+
+<span class="nc" id="L44">    public CubeJoinedFlatTableEnrich(IJoinedFlatTableDesc flatDesc, CubeDesc cubeDesc) {</span>
+        // != works due to object cache
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        if (cubeDesc.getModel() != flatDesc.getDataModel())</span>
+<span class="nc" id="L47">            throw new IllegalArgumentException();</span>
+
+<span class="nc" id="L49">        this.cubeDesc = cubeDesc;</span>
+<span class="nc" id="L50">        this.flatDesc = flatDesc;</span>
+<span class="nc" id="L51">        parseCubeDesc();</span>
+<span class="nc" id="L52">    }</span>
+
+    // check what columns from hive tables are required, and index them
+    private void parseCubeDesc() {
+<span class="nc" id="L56">        Cuboid baseCuboid = Cuboid.getBaseCuboid(cubeDesc);</span>
+
+        // build index for rowkey columns
+<span class="nc" id="L59">        List&lt;TblColRef&gt; cuboidColumns = baseCuboid.getColumns();</span>
+<span class="nc" id="L60">        int rowkeyColCount = cubeDesc.getRowkey().getRowKeyColumns().length;</span>
+<span class="nc" id="L61">        rowKeyColumnIndexes = new int[rowkeyColCount];</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        for (int i = 0; i &lt; rowkeyColCount; i++) {</span>
+<span class="nc" id="L63">            TblColRef col = cuboidColumns.get(i);</span>
+<span class="nc" id="L64">            rowKeyColumnIndexes[i] = flatDesc.getColumnIndex(col);</span>
+        }
+
+<span class="nc" id="L67">        List&lt;MeasureDesc&gt; measures = cubeDesc.getMeasures();</span>
+<span class="nc" id="L68">        int measureSize = measures.size();</span>
+<span class="nc" id="L69">        measureColumnIndexes = new int[measureSize][];</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        for (int i = 0; i &lt; measureSize; i++) {</span>
+<span class="nc" id="L71">            FunctionDesc func = measures.get(i).getFunction();</span>
+<span class="nc" id="L72">            List&lt;TblColRef&gt; colRefs = func.getParameter().getColRefs();</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (colRefs == null) {</span>
+<span class="nc" id="L74">                measureColumnIndexes[i] = null;</span>
+            } else {
+<span class="nc" id="L76">                measureColumnIndexes[i] = new int[colRefs.size()];</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">                for (int j = 0; j &lt; colRefs.size(); j++) {</span>
+<span class="nc" id="L78">                    TblColRef c = colRefs.get(j);</span>
+<span class="nc" id="L79">                    measureColumnIndexes[i][j] = flatDesc.getColumnIndex(c);</span>
+                }
+            }
+        }
+<span class="nc" id="L83">    }</span>
+
+    public CubeDesc getCubeDesc() {
+<span class="nc" id="L86">        return cubeDesc;</span>
+    }
+
+    public int[] getRowKeyColumnIndexes() {
+<span class="nc" id="L90">        return rowKeyColumnIndexes;</span>
+    }
+
+    public int[][] getMeasureColumnIndexes() {
+<span class="nc" id="L94">        return measureColumnIndexes;</span>
+    }
+
+    @Override
+    public String getTableName() {
+<span class="nc" id="L99">        return flatDesc.getTableName();</span>
+    }
+
+    @Override
+    public List&lt;TblColRef&gt; getAllColumns() {
+<span class="nc" id="L104">        return flatDesc.getAllColumns();</span>
+    }
+
+    @Override
+    public List&lt;TblColRef&gt; getFactColumns() {
+<span class="nc" id="L109">        return flatDesc.getFactColumns();</span>
+    }
+
+    @Override
+    public DataModelDesc getDataModel() {
+<span class="nc" id="L114">        return flatDesc.getDataModel();</span>
+    }
+
+    @Override
+    public int getColumnIndex(TblColRef colRef) {
+<span class="nc" id="L119">        return flatDesc.getColumnIndex(colRef);</span>
+    }
+
+    @Override
+    public SegmentRange getSegRange() {
+<span class="nc" id="L124">        return flatDesc.getSegRange();</span>
+    }
+
+    @Override
+    public TblColRef getDistributedBy() {
+<span class="nc" id="L129">        return flatDesc.getDistributedBy();</span>
+    }
+
+    @Override
+    public ISegment getSegment() {
+<span class="nc" id="L134">        return flatDesc.getSegment();</span>
+    }
+
+    @Override
+    public boolean useAlias() {
+<span class="nc" id="L139">        return flatDesc.useAlias();</span>
+    }
+
+    @Override
+    public TblColRef getClusterBy() {
+<span class="nc" id="L144">        return flatDesc.getClusterBy();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

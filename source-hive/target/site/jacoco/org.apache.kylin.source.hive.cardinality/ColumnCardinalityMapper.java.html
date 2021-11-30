@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColumnCardinalityMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive.cardinality</a> &gt; <span class="el_source">ColumnCardinalityMapper.java</span></div><h1>ColumnCardinalityMapper.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.source.hive.cardinality;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.engine.mr.IMRInput.IMRTableInputFormat;
+import org.apache.kylin.engine.mr.KylinMapper;
+import org.apache.kylin.engine.mr.MRUtil;
+import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
+import org.apache.kylin.engine.mr.common.BatchConstants;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.apache.kylin.measure.hllc.HLLCounter;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+
+/**
+ * @author Jack
+ *
+ */
+<span class="nc" id="L48">public class ColumnCardinalityMapper&lt;T&gt; extends KylinMapper&lt;T, Object, IntWritable, BytesWritable&gt; {</span>
+
+<span class="nc" id="L50">    private Map&lt;Integer, HLLCounter&gt; hllcMap = new HashMap&lt;Integer, HLLCounter&gt;();</span>
+    public static final String DEFAULT_DELIM = &quot;,&quot;;
+
+<span class="nc" id="L53">    private int counter = 0;</span>
+
+    private TableDesc tableDesc;
+    private IMRTableInputFormat tableInputFormat;
+
+    @Override
+    protected void doSetup(Context context) throws IOException {
+<span class="nc" id="L60">        Configuration conf = context.getConfiguration();</span>
+<span class="nc" id="L61">        bindCurrentConfiguration(conf);</span>
+<span class="nc" id="L62">        KylinConfig config = AbstractHadoopJob.loadKylinPropsAndMetadata();</span>
+
+<span class="nc" id="L64">        String project = conf.get(BatchConstants.CFG_PROJECT_NAME);</span>
+<span class="nc" id="L65">        String tableName = conf.get(BatchConstants.CFG_TABLE_NAME);</span>
+<span class="nc" id="L66">        tableDesc = TableMetadataManager.getInstance(config).getTableDesc(tableName, project);</span>
+<span class="nc" id="L67">        tableInputFormat = MRUtil.getTableInputFormat(tableDesc, conf.get(BatchConstants.ARG_CUBING_JOB_ID));</span>
+<span class="nc" id="L68">    }</span>
+
+    @Override
+    public void doMap(T key, Object value, Context context) throws IOException, InterruptedException {
+<span class="nc" id="L72">        ColumnDesc[] columns = tableDesc.getColumns();</span>
+<span class="nc" id="L73">        Collection&lt;String[]&gt; valuesCollection = tableInputFormat.parseMapperInput(value);</span>
+
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        for (String[] values: valuesCollection) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            for (int m = 0; m &lt; columns.length; m++) {</span>
+<span class="nc" id="L77">                String field = columns[m].getName();</span>
+<span class="nc" id="L78">                String fieldValue = values[m];</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                if (fieldValue == null)</span>
+<span class="nc" id="L80">                    fieldValue = &quot;NULL&quot;;</span>
+
+<span class="nc bnc" id="L82" title="All 4 branches missed.">                if (counter &lt; 5 &amp;&amp; m &lt; 10) {</span>
+<span class="nc" id="L83">                    System.out.println(&quot;Get row &quot; + counter + &quot; column '&quot; + field + &quot;'  value: &quot; + fieldValue);</span>
+                }
+
+<span class="nc" id="L86">                getHllc(m).add(Bytes.toBytes(fieldValue.toString()));</span>
+            }
+
+<span class="nc" id="L89">            counter++;</span>
+<span class="nc" id="L90">        }</span>
+<span class="nc" id="L91">    }</span>
+
+    private HLLCounter getHllc(Integer key) {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (!hllcMap.containsKey(key)) {</span>
+<span class="nc" id="L95">            hllcMap.put(key, new HLLCounter());</span>
+        }
+<span class="nc" id="L97">        return hllcMap.get(key);</span>
+    }
+
+    @Override
+    protected void doCleanup(Context context) throws IOException, InterruptedException {
+<span class="nc" id="L102">        Iterator&lt;Integer&gt; it = hllcMap.keySet().iterator();</span>
+<span class="nc" id="L103">        ByteBuffer buf = ByteBuffer.allocate(BufferedMeasureCodec.DEFAULT_BUFFER_SIZE);</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L105">            int key = it.next();</span>
+<span class="nc" id="L106">            HLLCounter hllc = hllcMap.get(key);</span>
+<span class="nc" id="L107">            buf.clear();</span>
+<span class="nc" id="L108">            hllc.writeRegisters(buf);</span>
+<span class="nc" id="L109">            buf.flip();</span>
+<span class="nc" id="L110">            context.write(new IntWritable(key), new BytesWritable(buf.array(), buf.limit()));</span>
+<span class="nc" id="L111">        }</span>
+<span class="nc" id="L112">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

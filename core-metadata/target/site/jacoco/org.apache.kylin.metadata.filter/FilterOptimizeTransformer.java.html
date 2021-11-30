@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FilterOptimizeTransformer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.metadata.filter</a> &gt; <span class="el_source">FilterOptimizeTransformer.java</span></div><h1>FilterOptimizeTransformer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.metadata.filter;
+
+import java.util.List;
+import java.util.ListIterator;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+
+/**
+ * optimize the filter if possible, not limited to:
+ * 
+ * 1. replace filters like (a = 10 OR 1 = 1) to ConstantTupleFilter.TRUE
+ * 2. replace filters like (a = 10 AND 1 = 2) to ConstantTupleFilter.FALSE
+ * 
+ * 3. replace filter like (a = 10 AND ConstantTupleFilter.TRUE) to (a = 10)
+ * 4. replace filter like (a = 10 OR ConstantTupleFilter.FALSE) to (a = 10)
+ * 
+ * is a first type transformer defined in ITupleFilterTransformer
+ */
+<span class="fc" id="L40">public class FilterOptimizeTransformer implements ITupleFilterTransformer {</span>
+<span class="fc" id="L41">    public static final Logger logger = LoggerFactory.getLogger(FilterOptimizeTransformer.class);</span>
+
+    @Override
+    public TupleFilter transform(TupleFilter tupleFilter) {
+<span class="pc bpc" id="L45" title="2 of 4 branches missed.">        if (tupleFilter == null || !(tupleFilter instanceof IOptimizeableTupleFilter))</span>
+<span class="nc" id="L46">            return tupleFilter;</span>
+        else
+<span class="fc" id="L48">            return ((IOptimizeableTupleFilter) tupleFilter).acceptOptimizeTransformer(this);</span>
+    }
+
+    public TupleFilter visit(CompareTupleFilter compareTupleFilter) {
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (compareTupleFilter != null) {</span>
+<span class="fc" id="L53">            CompareTupleFilter.CompareResultType compareResultType = compareTupleFilter.getCompareResultType();</span>
+
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            if (compareResultType == CompareTupleFilter.CompareResultType.AlwaysTrue) {</span>
+<span class="nc" id="L56">                logger.debug(&quot;Optimize CompareTupleFilter {{}} to ConstantTupleFilter.TRUE&quot;, compareTupleFilter);</span>
+<span class="nc" id="L57">                return ConstantTupleFilter.TRUE;</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            } else if (compareResultType == CompareTupleFilter.CompareResultType.AlwaysFalse) {</span>
+<span class="nc" id="L59">                logger.debug(&quot;Optimize CompareTupleFilter {{}} to ConstantTupleFilter.FALSE&quot;, compareTupleFilter);</span>
+<span class="nc" id="L60">                return ConstantTupleFilter.FALSE;</span>
+            }
+        }
+
+<span class="fc" id="L64">        return compareTupleFilter;</span>
+    }
+
+    public TupleFilter visit(LogicalTupleFilter logicalTupleFilter) {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (logicalTupleFilter == null) {</span>
+<span class="nc" id="L69">            return null;</span>
+        }
+
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (logicalTupleFilter.getOperator() == TupleFilter.FilterOperatorEnum.OR) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L74">            ListIterator&lt;TupleFilter&gt; childIterator = (ListIterator&lt;TupleFilter&gt;) logicalTupleFilter.getChildren()</span>
+<span class="fc" id="L75">                    .listIterator();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            while (childIterator.hasNext()) {</span>
+<span class="fc" id="L77">                TupleFilter next = childIterator.next();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                if (ConstantTupleFilter.TRUE.equals(next)) {</span>
+<span class="fc" id="L79">                    logger.debug(&quot;Optimized {{}} to ConstantTupleFilter.TRUE&quot;, logicalTupleFilter);</span>
+<span class="fc" id="L80">                    return ConstantTupleFilter.TRUE;</span>
+                }
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                if (ConstantTupleFilter.FALSE.equals(next)) {</span>
+<span class="fc" id="L84">                    childIterator.remove();</span>
+                }
+<span class="fc" id="L86">            }</span>
+
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (logicalTupleFilter.getChildren().size() == 0) {</span>
+<span class="fc" id="L89">                return ConstantTupleFilter.FALSE;</span>
+            }
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        } else if (logicalTupleFilter.getOperator() == TupleFilter.FilterOperatorEnum.AND) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L93">            ListIterator&lt;TupleFilter&gt; childIterator = (ListIterator&lt;TupleFilter&gt;) logicalTupleFilter.getChildren()</span>
+<span class="fc" id="L94">                    .listIterator();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            while (childIterator.hasNext()) {</span>
+<span class="fc" id="L96">                TupleFilter next = childIterator.next();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                if (ConstantTupleFilter.FALSE.equals(next)) {</span>
+<span class="fc" id="L98">                    logger.debug(&quot;Optimized {{}} to ConstantTupleFilter.FALSE&quot;, logicalTupleFilter);</span>
+<span class="fc" id="L99">                    return ConstantTupleFilter.FALSE;</span>
+                }
+
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (ConstantTupleFilter.TRUE.equals(next)) {</span>
+<span class="fc" id="L103">                    childIterator.remove();</span>
+                }
+<span class="fc" id="L105">            }</span>
+
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (logicalTupleFilter.getChildren().size() == 0) {</span>
+<span class="fc" id="L108">                return ConstantTupleFilter.TRUE;</span>
+            }
+        }
+
+<span class="fc" id="L112">        return logicalTupleFilter;</span>
+    }
+
+    public TupleFilter visit(CaseTupleFilter caseTupleFilter) {
+
+<span class="nc" id="L117">        List&lt;TupleFilter&gt; whenFilters = caseTupleFilter.getWhenFilters();</span>
+<span class="nc" id="L118">        List&lt;TupleFilter&gt; thenFilters = caseTupleFilter.getThenFilters();</span>
+<span class="nc" id="L119">        List&lt;TupleFilter&gt; newFilters = Lists.newArrayList();</span>
+<span class="nc" id="L120">        boolean changed = false;</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        for (int i = 0; i &lt; whenFilters.size(); i++) {</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">            if (whenFilters.get(i) == ConstantTupleFilter.TRUE) {</span>
+<span class="nc" id="L123">                return thenFilters.get(i);</span>
+            }
+
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            if (whenFilters.get(i) == ConstantTupleFilter.FALSE) {</span>
+<span class="nc" id="L127">                changed = true;</span>
+<span class="nc" id="L128">                continue;</span>
+            }
+
+<span class="nc" id="L131">            newFilters.add(whenFilters.get(i));</span>
+<span class="nc" id="L132">            newFilters.add(thenFilters.get(i));</span>
+        }
+<span class="nc" id="L134">        newFilters.add(caseTupleFilter.getElseFilter());</span>
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (!changed) {</span>
+<span class="nc" id="L137">            return caseTupleFilter;</span>
+        } else {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">            if (newFilters.size() == 1) {</span>
+<span class="nc" id="L140">                return newFilters.get(0);</span>
+            }
+
+<span class="nc" id="L143">            CaseTupleFilter newCaseTupleFilter = new CaseTupleFilter();</span>
+<span class="nc" id="L144">            newCaseTupleFilter.addChildren(newFilters);</span>
+<span class="nc" id="L145">            return newCaseTupleFilter;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

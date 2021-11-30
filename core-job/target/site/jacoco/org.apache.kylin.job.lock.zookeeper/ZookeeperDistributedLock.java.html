@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZookeeperDistributedLock.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.lock.zookeeper</a> &gt; <span class="el_source">ZookeeperDistributedLock.java</span></div><h1>ZookeeperDistributedLock.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.lock.zookeeper;
+
+import java.io.Closeable;
+import java.nio.charset.StandardCharsets;
+import java.util.Random;
+import java.util.concurrent.Executor;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.imps.CuratorFrameworkState;
+import org.apache.curator.framework.recipes.cache.PathChildrenCache;
+import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
+import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.lock.DistributedLock;
+import org.apache.kylin.common.lock.DistributedLockFactory;
+import org.apache.kylin.common.util.ZKUtil;
+import org.apache.kylin.job.lock.JobLock;
+import org.apache.kylin.job.lock.zookeeper.exception.ZkAcquireLockException;
+import org.apache.kylin.job.lock.zookeeper.exception.ZkPeekLockException;
+import org.apache.kylin.job.lock.zookeeper.exception.ZkPeekLockInterruptException;
+import org.apache.kylin.job.lock.zookeeper.exception.ZkReleaseLockException;
+import org.apache.kylin.job.lock.zookeeper.exception.ZkReleaseLockInterruptException;
+import org.apache.kylin.job.util.ThrowableUtils;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+
+/**
+ * A distributed lock based on zookeeper. Every instance is owned by a client, on whose behalf locks are acquired and/or released.
+ * 
+ * All &lt;code&gt;lockPath&lt;/code&gt; will be prefix-ed with &quot;/kylin/metadata-prefix&quot; automatically.
+ */
+public class ZookeeperDistributedLock implements DistributedLock, JobLock {
+<span class="fc" id="L55">    private static Logger logger = LoggerFactory.getLogger(ZookeeperDistributedLock.class);</span>
+<span class="fc" id="L56">    private static final Random random = new Random();</span>
+
+    public static class Factory extends DistributedLockFactory {
+        final CuratorFramework curator;
+
+        public Factory() {
+<span class="fc" id="L62">            this(KylinConfig.getInstanceFromEnv());</span>
+<span class="fc" id="L63">        }</span>
+
+        public Factory(KylinConfig config) {
+<span class="fc" id="L66">            this(ZKUtil.getZookeeperClient(config));</span>
+<span class="fc" id="L67">        }</span>
+
+<span class="fc" id="L69">        public Factory(CuratorFramework curator) {</span>
+<span class="fc" id="L70">            this.curator = curator;</span>
+<span class="fc" id="L71">        }</span>
+
+        @Override
+        public DistributedLock lockForClient(String client) {
+<span class="fc" id="L75">            return new ZookeeperDistributedLock(curator, client);</span>
+        }
+    }
+
+    // ============================================================================
+
+    private CuratorFramework curator;
+    final String client;
+    final byte[] clientBytes;
+
+<span class="fc" id="L85">    private ZookeeperDistributedLock(CuratorFramework curator, String client) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (client == null)</span>
+<span class="nc" id="L87">            throw new NullPointerException(&quot;client must not be null&quot;);</span>
+
+<span class="fc" id="L89">        this.curator = curator;</span>
+<span class="fc" id="L90">        this.client = client;</span>
+<span class="fc" id="L91">        this.clientBytes = client.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L92">    }</span>
+
+    @Override
+    public String getClient() {
+<span class="fc" id="L96">        return client;</span>
+    }
+
+    @Override
+    public boolean lock(String lockPath) {
+<span class="fc" id="L101">        logger.debug(&quot;{} trying to lock {}&quot;, client, lockPath);</span>
+
+        // curator closed in some case(like Expired),restart it
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if (curator.getState() != CuratorFrameworkState.STARTED) {</span>
+<span class="nc" id="L105">            curator = ZKUtil.getZookeeperClient(KylinConfig.getInstanceFromEnv());</span>
+        }
+
+<span class="fc" id="L108">        lockInternal(lockPath);</span>
+
+        String lockOwner;
+        try {
+<span class="fc" id="L112">            lockOwner = peekLock(lockPath);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (client.equals(lockOwner)) {</span>
+<span class="fc" id="L114">                logger.info(&quot;{} acquired lock at {}&quot;, client, lockPath);</span>
+<span class="fc" id="L115">                return true;</span>
+            } else {
+<span class="fc" id="L117">                logger.debug(&quot;{} failed to acquire lock at {}, which is held by {}&quot;, client, lockPath, lockOwner);</span>
+<span class="fc" id="L118">                return false;</span>
+            }
+<span class="fc" id="L120">        } catch (ZkPeekLockInterruptException zpie) {</span>
+<span class="fc" id="L121">            logger.error(&quot;{} peek owner of lock interrupt while acquire lock at {}, check to release lock&quot;, client,</span>
+                    lockPath);
+<span class="fc" id="L123">            lockOwner = peekLock(lockPath);</span>
+
+            try {
+<span class="fc" id="L126">                unlockInternal(lockOwner, lockPath);</span>
+<span class="fc" id="L127">            } catch (Exception anyEx) {</span>
+                // it's safe to swallow any exception here because here already been interrupted
+<span class="fc" id="L129">                logger.warn(&quot;Exception caught to release lock when lock operation has been interrupted.&quot;, anyEx);</span>
+<span class="fc" id="L130">            }</span>
+<span class="fc" id="L131">            throw zpie;</span>
+        }
+    }
+
+    @Override
+    public boolean globalPermanentLock(String lockPath) {
+<span class="nc" id="L137">        logger.debug(&quot;{} trying to lock {}&quot;, client, lockPath);</span>
+
+        // curator closed in some case(like Expired),restart it
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (curator.getState() != CuratorFrameworkState.STARTED) {</span>
+<span class="nc" id="L141">            curator = ZKUtil.getZookeeperClient(KylinConfig.getInstanceFromEnv());</span>
+        }
+
+        try {
+<span class="nc" id="L145">            curator.create().creatingParentsIfNeeded().withMode(CreateMode.PERSISTENT).forPath(lockPath, clientBytes);</span>
+<span class="nc" id="L146">        } catch (KeeperException.NodeExistsException ex) {</span>
+<span class="nc" id="L147">            logger.debug(&quot;{} see {} is already locked&quot;, client, lockPath);</span>
+<span class="nc" id="L148">        } catch (Exception ex) {</span>
+<span class="nc" id="L149">            throw new IllegalStateException(&quot;Error while &quot; + client + &quot; trying to lock &quot; + lockPath, ex);</span>
+<span class="nc" id="L150">        }</span>
+
+<span class="nc" id="L152">        String lockOwner = peekLock(lockPath);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (client.equals(lockOwner)) {</span>
+<span class="nc" id="L154">            logger.info(&quot;{} acquired lock at {}&quot;, client, lockPath);</span>
+<span class="nc" id="L155">            return true;</span>
+        } else {
+<span class="nc" id="L157">            logger.debug(&quot;{} failed to acquire lock at {}, which is held by {}&quot;, client, lockPath, lockOwner);</span>
+<span class="nc" id="L158">            return false;</span>
+        }
+    }
+
+
+    private void lockInternal(String lockPath) {
+        try {
+<span class="fc" id="L165">            curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath(lockPath, clientBytes);</span>
+<span class="fc" id="L166">        } catch (KeeperException.NodeExistsException ex) {</span>
+<span class="fc" id="L167">            logger.debug(&quot;{} see {} is already locked&quot;, client, lockPath);</span>
+<span class="nc" id="L168">        } catch (Exception ex) {</span>
+            // don't need to catch interrupt exception when locking, it's safe to throw the exception directly
+<span class="nc" id="L170">            throw new ZkAcquireLockException(&quot;Error occurs while &quot; + client + &quot; trying to lock &quot; + lockPath, ex);</span>
+<span class="fc" id="L171">        }</span>
+<span class="fc" id="L172">    }</span>
+
+    @Override
+    public boolean lock(String lockPath, long timeout) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (lock(lockPath))</span>
+<span class="nc" id="L177">            return true;</span>
+
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (timeout &lt;= 0)</span>
+<span class="nc" id="L180">            timeout = Long.MAX_VALUE;</span>
+
+<span class="nc" id="L182">        logger.debug(&quot;{} will wait for lock path {}&quot;, client, lockPath);</span>
+<span class="nc" id="L183">        long waitStart = System.currentTimeMillis();</span>
+<span class="nc" id="L184">        long sleep = 10 * 1000L; // 10 seconds</span>
+
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        while (System.currentTimeMillis() - waitStart &lt;= timeout) {</span>
+            try {
+<span class="nc" id="L188">                Thread.sleep((long) (1000 + sleep * random.nextDouble()));</span>
+<span class="nc" id="L189">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L190">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L191">                return false;</span>
+<span class="nc" id="L192">            }</span>
+
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            if (lock(lockPath)) {</span>
+<span class="nc" id="L195">                logger.debug(&quot;{} waited {} ms for lock path {}&quot;, client, (System.currentTimeMillis() - waitStart),</span>
+                        lockPath);
+<span class="nc" id="L197">                return true;</span>
+            }
+        }
+
+        // timeout
+<span class="nc" id="L202">        return false;</span>
+    }
+
+    @Override
+    public String peekLock(String lockPath) {
+        try {
+<span class="fc" id="L208">            return peekLockInternal(lockPath);</span>
+<span class="nc" id="L209">        } catch (Exception ex) {</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (ThrowableUtils.isInterruptedException(ex)) {</span>
+<span class="nc" id="L211">                throw new ZkPeekLockInterruptException(&quot;Peeking owner of lock was interrupted at&quot; + lockPath, ex);</span>
+            } else {
+<span class="nc" id="L213">                throw new ZkPeekLockException(&quot;Error while peeking at &quot; + lockPath, ex);</span>
+            }
+        }
+    }
+
+    private String peekLockInternal(String lockPath) throws Exception {
+        try {
+<span class="fc" id="L220">            byte[] bytes = curator.getData().forPath(lockPath);</span>
+<span class="fc" id="L221">            return new String(bytes, StandardCharsets.UTF_8);</span>
+<span class="fc" id="L222">        } catch (KeeperException.NoNodeException ex) {</span>
+<span class="fc" id="L223">            return null;</span>
+        }
+    }
+
+    @Override
+    public boolean isLocked(String lockPath) {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        return peekLock(lockPath) != null;</span>
+    }
+
+    @Override
+    public boolean isLockedByMe(String lockPath) {
+<span class="fc" id="L234">        return client.equals(peekLock(lockPath));</span>
+    }
+
+    @Override
+    public void unlock(String lockPath) {
+<span class="fc" id="L239">        logger.debug(&quot;{} trying to unlock {}&quot;, client, lockPath);</span>
+
+        // peek owner first
+        String owner;
+<span class="fc" id="L243">        ZkPeekLockInterruptException peekLockInterruptException = null;</span>
+        try {
+<span class="fc" id="L245">            owner = peekLock(lockPath);</span>
+<span class="fc" id="L246">        } catch (ZkPeekLockInterruptException zie) {</span>
+            // re-peek owner of lock when interrupted
+<span class="fc" id="L248">            owner = peekLock(lockPath);</span>
+<span class="fc" id="L249">            peekLockInterruptException = zie;</span>
+<span class="nc" id="L250">        } catch (ZkPeekLockException ze) {</span>
+            // this exception should be thrown to diagnose even it may cause unlock failed
+<span class="nc" id="L252">            logger.error(&quot;{} failed to peekLock when unlock at {}&quot;, client, lockPath, ze);</span>
+<span class="nc" id="L253">            throw ze;</span>
+<span class="fc" id="L254">        }</span>
+
+        // then unlock
+<span class="fc" id="L257">        ZkReleaseLockInterruptException unlockInterruptException = null;</span>
+        try {
+<span class="fc" id="L259">            unlockInternal(owner, lockPath);</span>
+<span class="fc" id="L260">        } catch (ZkReleaseLockInterruptException zlie) {</span>
+            // re-unlock once when interrupted
+<span class="fc" id="L262">            unlockInternal(owner, lockPath);</span>
+<span class="fc" id="L263">            unlockInterruptException = zlie;</span>
+<span class="fc" id="L264">        } catch (Exception ex) {</span>
+<span class="fc" id="L265">            throw new ZkReleaseLockException(&quot;Error while &quot; + client + &quot; trying to unlock &quot; + lockPath, ex);</span>
+<span class="fc" id="L266">        }</span>
+
+        // need re-throw interrupt exception to avoid swallowing it
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (peekLockInterruptException != null) {</span>
+<span class="fc" id="L270">            throw peekLockInterruptException;</span>
+        }
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (unlockInterruptException != null) {</span>
+<span class="fc" id="L273">            throw unlockInterruptException;</span>
+        }
+<span class="fc" id="L275">    }</span>
+
+    /**
+     * May throw ZkReleaseLockException or ZkReleaseLockInterruptException
+     */
+    private void unlockInternal(String owner, String lockPath) {
+        // only unlock the lock belongs itself
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">        if (owner == null)</span>
+<span class="nc" id="L283">            throw new IllegalStateException(</span>
+                    client + &quot; cannot unlock path &quot; + lockPath + &quot; which is not locked currently&quot;);
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        if (!client.equals(owner))</span>
+<span class="fc" id="L286">            throw new IllegalStateException(</span>
+                    client + &quot; cannot unlock path &quot; + lockPath + &quot; which is locked by &quot; + owner);
+<span class="fc" id="L288">        purgeLockInternal(lockPath);</span>
+<span class="fc" id="L289">        logger.info(&quot;{} released lock at {}&quot;, client, lockPath);</span>
+<span class="fc" id="L290">    }</span>
+
+    @Override
+    public void purgeLocks(String lockPathRoot) {
+        try {
+<span class="fc" id="L295">            purgeLockInternal(lockPathRoot);</span>
+<span class="fc" id="L296">            logger.info(&quot;{} purged all locks under {}&quot;, client, lockPathRoot);</span>
+<span class="nc" id="L297">        } catch (ZkReleaseLockException zpe) {</span>
+<span class="nc" id="L298">            throw zpe;</span>
+<span class="nc" id="L299">        } catch (ZkReleaseLockInterruptException zpie) {</span>
+            // re-purge lock once when interrupted
+<span class="nc" id="L301">            purgeLockInternal(lockPathRoot);</span>
+<span class="nc" id="L302">            throw zpie;</span>
+<span class="fc" id="L303">        }</span>
+<span class="fc" id="L304">    }</span>
+
+    @VisibleForTesting
+    void purgeLockInternal(String lockPath) {
+        try {
+<span class="fc" id="L309">            curator.delete().guaranteed().deletingChildrenIfNeeded().forPath(lockPath);</span>
+<span class="nc" id="L310">        } catch (KeeperException.NoNodeException ex) {</span>
+            // it's safe to purge a lock when there is no node found in lockPath
+<span class="nc" id="L312">            logger.warn(&quot;No node found when purge lock in Lock path: {}&quot;, lockPath, ex);</span>
+<span class="nc" id="L313">        } catch (Exception e) {</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (ThrowableUtils.isInterruptedException(e))</span>
+<span class="nc" id="L315">                throw new ZkReleaseLockInterruptException(&quot;Purge lock was interrupted at &quot; + lockPath, e);</span>
+            else
+<span class="nc" id="L317">                throw new ZkReleaseLockException(&quot;Error while &quot; + client + &quot; trying to purge &quot; + lockPath, e);</span>
+<span class="pc" id="L318">        }</span>
+<span class="fc" id="L319">    }</span>
+
+    @Override
+    public Closeable watchLocks(String lockPathRoot, Executor executor, final Watcher watcher) {
+<span class="nc" id="L323">        PathChildrenCache cache = new PathChildrenCache(curator, lockPathRoot, true);</span>
+        try {
+<span class="nc" id="L325">            cache.start();</span>
+<span class="nc" id="L326">            cache.getListenable().addListener(new PathChildrenCacheListener() {</span>
+                @Override
+                public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception {
+<span class="nc bnc" id="L329" title="All 3 branches missed.">                    switch (event.getType()) {</span>
+                    case CHILD_ADDED:
+<span class="nc" id="L331">                        watcher.onLock(event.getData().getPath(),</span>
+<span class="nc" id="L332">                                new String(event.getData().getData(), StandardCharsets.UTF_8));</span>
+<span class="nc" id="L333">                        break;</span>
+                    case CHILD_REMOVED:
+<span class="nc" id="L335">                        watcher.onUnlock(event.getData().getPath(),</span>
+<span class="nc" id="L336">                                new String(event.getData().getData(), StandardCharsets.UTF_8));</span>
+<span class="nc" id="L337">                        break;</span>
+                    default:
+                        break;
+                    }
+<span class="nc" id="L341">                }</span>
+            }, executor);
+<span class="nc" id="L343">        } catch (Exception ex) {</span>
+<span class="nc" id="L344">            logger.error(&quot;Error to watch lock path &quot; + lockPathRoot, ex);</span>
+<span class="nc" id="L345">        }</span>
+<span class="nc" id="L346">        return cache;</span>
+    }
+
+    // ============================================================================
+
+    @Override
+    public boolean lockJobEngine() {
+<span class="nc" id="L353">        String path = jobEngineLockPath();</span>
+<span class="nc" id="L354">        return lock(path, 3000);</span>
+    }
+
+    @Override
+    public void unlockJobEngine() {
+<span class="nc" id="L359">        unlock(jobEngineLockPath());</span>
+<span class="nc" id="L360">    }</span>
+
+    private String jobEngineLockPath() {
+<span class="nc" id="L363">        return &quot;/job_engine/global_job_engine_lock&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

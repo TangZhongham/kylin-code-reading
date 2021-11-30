@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="kylin-spark-common" />
+        <module name="kylin-server" />
+        <module name="kylin-core-common" />
+        <module name="kylin-jdbc" />
+        <module name="kylin-spark-classloader" />
+        <module name="kylin-core-metrics" />
+        <module name="kylin-core-job" />
+        <module name="kylin-spark-engine" />
+        <module name="kylin-tool-assembly" />
+        <module name="kylin-cache" />
+        <module name="kylin-spark-metadata" />
+        <module name="kylin-source-hive" />
+        <module name="kylin-query" />
+        <module name="kylin-server-base" />
+        <module name="kylin-metrics-reporter-hive" />
+        <module name="parquet-assembly" />
+        <module name="kylin-tool" />
+        <module name="kylin-spark-test" />
+        <module name="kylin-build-engine" />
+        <module name="kylin-metrics-reporter-kafka" />
+        <module name="kylin-core-cube" />
+        <module name="kylin-core-metadata" />
+        <module name="kylin-metastore-hbase" />
+        <module name="kylin-core-storage" />
+        <module name="kylin-spark-query" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="kylin" target="1.8" />
+      <module name="kylin-build-engine" target="1.8" />
+      <module name="kylin-cache" target="1.8" />
+      <module name="kylin-core-common" target="1.8" />
+      <module name="kylin-core-cube" target="1.8" />
+      <module name="kylin-core-job" target="1.8" />
+      <module name="kylin-core-metadata" target="1.8" />
+      <module name="kylin-core-metrics" target="1.8" />
+      <module name="kylin-core-storage" target="1.8" />
+      <module name="kylin-jdbc" target="1.8" />
+      <module name="kylin-metastore-hbase" target="1.8" />
+      <module name="kylin-metrics-reporter-hive" target="1.8" />
+      <module name="kylin-metrics-reporter-kafka" target="1.8" />
+      <module name="kylin-query" target="1.8" />
+      <module name="kylin-server" target="1.8" />
+      <module name="kylin-server-base" target="1.8" />
+      <module name="kylin-source-hive" target="1.8" />
+      <module name="kylin-spark-classloader" target="8" />
+      <module name="kylin-spark-common" target="8" />
+      <module name="kylin-spark-engine" target="8" />
+      <module name="kylin-spark-metadata" target="8" />
+      <module name="kylin-spark-project" target="8" />
+      <module name="kylin-spark-query" target="8" />
+      <module name="kylin-spark-test" target="8" />
+      <module name="kylin-tool" target="1.8" />
+      <module name="kylin-tool-assembly" target="1.8" />
+      <module name="parquet-assembly" target="1.8" />
+    </bytecodeTargetLevel>
+  </component>
+</project>

@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DistributedScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.impl.threadpool</a> &gt; <span class="el_source">DistributedScheduler.java</span></div><h1>DistributedScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.impl.threadpool;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.lock.DistributedLock;
+import org.apache.kylin.common.util.ServerMode;
+import org.apache.kylin.common.util.SetThreadName;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.common.util.ToolUtil;
+import org.apache.kylin.job.Scheduler;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.job.exception.ExecuteException;
+import org.apache.kylin.job.exception.PersistentException;
+import org.apache.kylin.job.exception.SchedulerException;
+import org.apache.kylin.job.execution.AbstractExecutable;
+import org.apache.kylin.job.execution.DefaultChainedExecutable;
+import org.apache.kylin.job.execution.Executable;
+import org.apache.kylin.job.execution.ExecutableManager;
+import org.apache.kylin.job.execution.ExecutableState;
+import org.apache.kylin.job.execution.Output;
+import org.apache.kylin.job.lock.JobLock;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * schedule the cubing jobs when several job server running with the same metadata.
+ *
+ * to enable the distributed job server, you need to set and update three configs in the kylin.properties:
+ *  1. kylin.job.scheduler.default=2
+ *  2. add all the job servers and query servers to the kylin.server.cluster-servers
+ */
+<span class="nc" id="L62">public class DistributedScheduler implements Scheduler&lt;AbstractExecutable&gt; {</span>
+    public static final String ZOOKEEPER_LOCK_PATH = &quot;/job_engine/lock&quot;; // note ZookeeperDistributedLock will ensure zk path prefix: /${kylin.env.zookeeper-base-path}/metadata
+<span class="nc" id="L64">    private static final Logger logger = LoggerFactory.getLogger(DistributedScheduler.class);</span>
+    //keep all running job
+<span class="nc" id="L66">    private final Set&lt;String&gt; jobWithLocks = new CopyOnWriteArraySet&lt;&gt;();</span>
+    private ExecutableManager executableManager;
+
+    // ============================================================================
+    private FetcherRunner fetcher;
+    private ScheduledExecutorService fetcherPool;
+    private ExecutorService watchPool;
+    private ExecutorService jobPool;
+    private DefaultContext context;
+    private DistributedLock jobLock;
+    private Closeable lockWatch;
+<span class="nc" id="L77">    private volatile boolean initialized = false;</span>
+<span class="nc" id="L78">    private volatile boolean hasStarted = false;</span>
+    private JobEngineConfig jobEngineConfig;
+    private String serverName;
+
+    public static DistributedScheduler getInstance(KylinConfig config) {
+<span class="nc" id="L83">        return config.getManager(DistributedScheduler.class);</span>
+    }
+
+    // called by reflection
+    static DistributedScheduler newInstance(KylinConfig config) throws IOException {
+<span class="nc" id="L88">        return new DistributedScheduler();</span>
+    }
+
+    public static String getLockPath(String pathName) {
+<span class="nc" id="L92">        return dropDoubleSlash(ZOOKEEPER_LOCK_PATH + &quot;/&quot; + pathName);</span>
+    }
+
+    private static String getWatchPath() {
+<span class="nc" id="L96">        return dropDoubleSlash(ZOOKEEPER_LOCK_PATH);</span>
+    }
+
+    public static String dropDoubleSlash(String path) {
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        for (int n = Integer.MAX_VALUE; n &gt; path.length();) {</span>
+<span class="nc" id="L101">            n = path.length();</span>
+<span class="nc" id="L102">            path = path.replace(&quot;//&quot;, &quot;/&quot;);</span>
+        }
+<span class="nc" id="L104">        return path;</span>
+    }
+
+    @Override
+    public synchronized void init(JobEngineConfig jobEngineConfig, JobLock jobLock) throws SchedulerException {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (!ServerMode.SERVER_MODE.canServeJobBuild()) {</span>
+<span class="nc" id="L110">            logger.info(</span>
+<span class="nc" id="L111">                    &quot;server mode: &quot; + jobEngineConfig.getConfig().getServerMode() + &quot;, no need to run job scheduler&quot;);</span>
+<span class="nc" id="L112">            return;</span>
+        }
+<span class="nc" id="L114">        logger.info(&quot;Initializing Job Engine ....&quot;);</span>
+
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (!initialized) {</span>
+<span class="nc" id="L117">            initialized = true;</span>
+        } else {
+<span class="nc" id="L119">            return;</span>
+        }
+
+<span class="nc" id="L122">        this.jobEngineConfig = jobEngineConfig;</span>
+<span class="nc" id="L123">        this.jobLock = (DistributedLock) jobLock;</span>
+<span class="nc" id="L124">        this.serverName = this.jobLock.getClient(); // the lock's client string contains node name of this server</span>
+
+<span class="nc" id="L126">        executableManager = ExecutableManager.getInstance(jobEngineConfig.getConfig());</span>
+        //load all executable, set them to a consistent status
+<span class="nc" id="L128">        fetcherPool = Executors.newScheduledThreadPool(1);</span>
+
+        //watch the zookeeper node change, so that when one job server is down, other job servers can take over.
+<span class="nc" id="L131">        watchPool = Executors.newFixedThreadPool(1);</span>
+<span class="nc" id="L132">        WatcherProcessImpl watcherProcess = new WatcherProcessImpl(this.serverName);</span>
+<span class="nc" id="L133">        lockWatch = this.jobLock.watchLocks(getWatchPath(), watchPool, watcherProcess);</span>
+
+<span class="nc" id="L135">        int corePoolSize = jobEngineConfig.getMaxConcurrentJobLimit();</span>
+<span class="nc" id="L136">        jobPool = new ThreadPoolExecutor(corePoolSize, corePoolSize, Long.MAX_VALUE, TimeUnit.DAYS,</span>
+                new SynchronousQueue&lt;Runnable&gt;());
+<span class="nc" id="L138">        context = new DefaultContext(Maps.&lt;String, Executable&gt; newConcurrentMap(), jobEngineConfig.getConfig());</span>
+
+<span class="nc" id="L140">        int pollSecond = jobEngineConfig.getPollIntervalSecond();</span>
+<span class="nc" id="L141">        logger.info(&quot;Fetching jobs every {} seconds&quot;, pollSecond);</span>
+<span class="nc" id="L142">        JobExecutor jobExecutor = new JobExecutor() {</span>
+            @Override
+            public void execute(AbstractExecutable executable) {
+<span class="nc" id="L145">                jobPool.execute(new JobRunner(executable));</span>
+<span class="nc" id="L146">            }</span>
+        };
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        fetcher = jobEngineConfig.getJobPriorityConsidered()</span>
+                ? new PriorityFetcherRunner(jobEngineConfig, context, jobExecutor)
+                : new DefaultFetcherRunner(jobEngineConfig, context, jobExecutor);
+<span class="nc" id="L151">        fetcherPool.scheduleAtFixedRate(fetcher, pollSecond / 10, pollSecond, TimeUnit.SECONDS);</span>
+<span class="nc" id="L152">        hasStarted = true;</span>
+
+<span class="nc" id="L154">        resumeAllRunningJobs();</span>
+<span class="nc" id="L155">    }</span>
+
+    private void resumeAllRunningJobs() {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        for (final String id : executableManager.getAllJobIds()) {</span>
+<span class="nc" id="L159">            final Output output = executableManager.getOutput(id);</span>
+<span class="nc" id="L160">            AbstractExecutable executable = executableManager.getJob(id);</span>
+<span class="nc bnc" id="L161" title="All 4 branches missed.">            if (output.getState() == ExecutableState.RUNNING &amp;&amp; executable instanceof DefaultChainedExecutable) {</span>
+                try {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                    if (!jobLock.isLocked(getLockPath(executable.getId()))) {</span>
+<span class="nc" id="L164">                        executableManager.resumeRunningJobForce(executable.getId());</span>
+<span class="nc" id="L165">                        fetcherPool.schedule(fetcher, 0, TimeUnit.SECONDS);</span>
+                    }
+<span class="nc" id="L167">                } catch (Exception e) {</span>
+<span class="nc" id="L168">                    logger.error(&quot;resume the job &quot; + id + &quot; fail in server: &quot; + serverName, e);</span>
+<span class="nc" id="L169">                }</span>
+            }
+<span class="nc" id="L171">        }</span>
+<span class="nc" id="L172">    }</span>
+
+    @Override
+    public void shutdown() throws SchedulerException {
+<span class="nc" id="L176">        logger.info(&quot;Will shut down Job Engine ....&quot;);</span>
+
+        try {
+<span class="nc" id="L179">            lockWatch.close();</span>
+<span class="nc" id="L180">        } catch (IOException e) {</span>
+<span class="nc" id="L181">            throw new SchedulerException(e);</span>
+<span class="nc" id="L182">        }</span>
+
+<span class="nc" id="L184">        releaseAllLocks();</span>
+<span class="nc" id="L185">        logger.info(&quot;The all locks has released&quot;);</span>
+
+<span class="nc" id="L187">        fetcherPool.shutdown();</span>
+<span class="nc" id="L188">        logger.info(&quot;The fetcherPool has down&quot;);</span>
+
+<span class="nc" id="L190">        jobPool.shutdown();</span>
+<span class="nc" id="L191">        logger.info(&quot;The jobPoll has down&quot;);</span>
+<span class="nc" id="L192">    }</span>
+
+    private void releaseAllLocks() {
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        for (String jobId : jobWithLocks) {</span>
+<span class="nc" id="L196">            jobLock.unlock(getLockPath(jobId));</span>
+<span class="nc" id="L197">        }</span>
+<span class="nc" id="L198">    }</span>
+
+    @Override
+    public boolean hasStarted() {
+<span class="nc" id="L202">        return this.hasStarted;</span>
+    }
+
+    private class JobRunner implements Runnable {
+
+        private final AbstractExecutable executable;
+
+<span class="nc" id="L209">        public JobRunner(AbstractExecutable executable) {</span>
+<span class="nc" id="L210">            this.executable = executable;</span>
+<span class="nc" id="L211">        }</span>
+
+        @Override
+        public void run() {
+<span class="nc" id="L215">            try (SetThreadName ignored = new SetThreadName(&quot;Scheduler %s Job %s&quot;,</span>
+<span class="nc" id="L216">                    System.identityHashCode(DistributedScheduler.this), executable.getId())) {</span>
+
+<span class="nc" id="L218">                boolean isAssigned = true;</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                if (!StringUtils.isEmpty(executable.getCubeName())) {</span>
+<span class="nc" id="L220">                    KylinConfig config = executable.getCubeSpecificConfig();</span>
+<span class="nc" id="L221">                    isAssigned = config.isOnAssignedServer(ToolUtil.getHostName(),</span>
+<span class="nc" id="L222">                            ToolUtil.getFirstIPV4NonLoopBackAddress().getHostAddress());</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                    logger.debug(&quot;cube = &quot; + executable.getCubeName() + &quot;; jobId=&quot; + executable.getId()</span>
+                            + (isAssigned ? &quot; is &quot; : &quot; is not &quot;) + &quot;assigned on this server : &quot;
+<span class="nc" id="L225">                            + ToolUtil.getHostName());</span>
+                }
+
+<span class="nc bnc" id="L228" title="All 4 branches missed.">                if (isAssigned &amp;&amp; jobLock.lock(getLockPath(executable.getId()))) {</span>
+<span class="nc" id="L229">                    logger.info(executable.toString() + &quot; scheduled in server: &quot; + serverName);</span>
+
+<span class="nc" id="L231">                    context.addRunningJob(executable);</span>
+<span class="nc" id="L232">                    jobWithLocks.add(executable.getId());</span>
+<span class="nc" id="L233">                    executable.execute(context);</span>
+                }
+<span class="nc" id="L235">            } catch (ExecuteException e) {</span>
+<span class="nc" id="L236">                logger.error(&quot;ExecuteException job:&quot; + executable.getId() + &quot; in server: &quot; + serverName, e);</span>
+<span class="nc" id="L237">            } catch (Exception e) {</span>
+<span class="nc" id="L238">                logger.error(&quot;unknown error execute job:&quot; + executable.getId() + &quot; in server: &quot; + serverName, e);</span>
+            } finally {
+<span class="nc" id="L240">                context.removeRunningJob(executable);</span>
+<span class="nc" id="L241">                releaseJobLock(executable);</span>
+                // trigger the next step asap
+<span class="nc" id="L243">                fetcherPool.schedule(fetcher, 0, TimeUnit.SECONDS);</span>
+            }
+<span class="nc" id="L245">        }</span>
+
+        //release job lock when job state is ready or running and the job server keep the cube lock.
+        private void releaseJobLock(AbstractExecutable executable) {
+<span class="nc bnc" id="L249" title="All 2 branches missed.">            if (executable instanceof DefaultChainedExecutable) {</span>
+<span class="nc" id="L250">                ExecutableState state = executable.getStatus();</span>
+
+<span class="nc bnc" id="L252" title="All 4 branches missed.">                if (state != ExecutableState.READY &amp;&amp; state != ExecutableState.RUNNING) {</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                    if (jobWithLocks.contains(executable.getId())) {</span>
+<span class="nc" id="L254">                        logger.info(</span>
+<span class="nc" id="L255">                                executable.toString() + &quot; will release the lock for the job: &quot; + executable.getId());</span>
+<span class="nc" id="L256">                        jobLock.unlock(getLockPath(executable.getId()));</span>
+<span class="nc" id="L257">                        jobWithLocks.remove(executable.getId());</span>
+                    }
+                }
+            }
+<span class="nc" id="L261">        }</span>
+    }
+
+    //when the job lock released but the related job still running, resume the job.
+    private class WatcherProcessImpl implements DistributedLock.Watcher {
+        private String serverName;
+
+<span class="nc" id="L268">        public WatcherProcessImpl(String serverName) {</span>
+<span class="nc" id="L269">            this.serverName = serverName;</span>
+<span class="nc" id="L270">        }</span>
+
+        @Override
+        public void onUnlock(String path, String nodeData) {
+<span class="nc" id="L274">            String[] paths = StringUtil.split(path, &quot;/&quot;);</span>
+<span class="nc" id="L275">            String jobId = paths[paths.length - 1];</span>
+
+            // Sync execute cache in case broadcast not available
+            try {
+<span class="nc" id="L279">                executableManager.syncDigestsOfJob(jobId);</span>
+<span class="nc" id="L280">            } catch (PersistentException e) {</span>
+<span class="nc" id="L281">                logger.error(&quot;Failed to sync cache of job: &quot; + jobId + &quot;, at server: &quot; + serverName);</span>
+<span class="nc" id="L282">            }</span>
+
+<span class="nc" id="L284">            final Output output = executableManager.getOutput(jobId);</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            if (output.getState() == ExecutableState.RUNNING) {</span>
+<span class="nc" id="L286">                AbstractExecutable executable = executableManager.getJob(jobId);</span>
+<span class="nc bnc" id="L287" title="All 4 branches missed.">                if (executable instanceof DefaultChainedExecutable &amp;&amp; !nodeData.equalsIgnoreCase(serverName)) {</span>
+                    try {
+<span class="nc" id="L289">                        logger.warn(nodeData + &quot; has released the lock for: &quot; + jobId</span>
+                                + &quot; but the job still running. so &quot; + serverName + &quot; resume the job&quot;);
+<span class="nc bnc" id="L291" title="All 2 branches missed.">                        if (!jobLock.isLocked(getLockPath(jobId))) {</span>
+<span class="nc" id="L292">                            executableManager.resumeRunningJobForce(executable.getId());</span>
+<span class="nc" id="L293">                            fetcherPool.schedule(fetcher, 0, TimeUnit.SECONDS);</span>
+                        }
+<span class="nc" id="L295">                    } catch (Exception e) {</span>
+<span class="nc" id="L296">                        logger.error(&quot;resume the job but fail in server: &quot; + serverName, e);</span>
+<span class="nc" id="L297">                    }</span>
+                }
+            }
+<span class="nc" id="L300">        }</span>
+
+        @Override
+        public void onLock(String lockPath, String client) {
+<span class="nc" id="L304">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

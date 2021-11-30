@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InputConverterUnitForRawData.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.inmemcubing</a> &gt; <span class="el_source">InputConverterUnitForRawData.java</span></div><h1>InputConverterUnitForRawData.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.kylin.cube.inmemcubing;
+
+import java.util.Map;
+
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.CubeJoinedFlatTableEnrich;
+import org.apache.kylin.cube.util.KeyValueBuilder;
+import org.apache.kylin.gridtable.GTRecord;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+public class InputConverterUnitForRawData implements InputConverterUnit&lt;String[]&gt; {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L39">    private static final Logger logger = LoggerFactory.getLogger(InputConverterUnitForRawData.class);</span>
+    
+<span class="nc" id="L41">    public static final String[] END_ROW = new String[0];</span>
+<span class="nc" id="L42">    public static final String[] CUT_ROW = { &quot;&quot; };</span>
+
+    private final CubeJoinedFlatTableEnrich flatDesc;
+    private final MeasureDesc[] measureDescs;
+    private final MeasureIngester&lt;?&gt;[] measureIngesters;
+    private final int measureCount;
+    private final Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap;
+    private final KeyValueBuilder kvBuilder;
+
+    public InputConverterUnitForRawData(CubeDesc cubeDesc, IJoinedFlatTableDesc flatDesc,
+<span class="nc" id="L52">            Map&lt;TblColRef, Dictionary&lt;String&gt;&gt; dictionaryMap) {</span>
+<span class="nc" id="L53">        this.flatDesc = new CubeJoinedFlatTableEnrich(flatDesc, cubeDesc);</span>
+<span class="nc" id="L54">        this.measureCount = cubeDesc.getMeasures().size();</span>
+<span class="nc" id="L55">        this.measureDescs = cubeDesc.getMeasures().toArray(new MeasureDesc[measureCount]);</span>
+<span class="nc" id="L56">        this.measureIngesters = MeasureIngester.create(cubeDesc.getMeasures());</span>
+<span class="nc" id="L57">        this.dictionaryMap = dictionaryMap;</span>
+<span class="nc" id="L58">        this.kvBuilder = new KeyValueBuilder(this.flatDesc);</span>
+<span class="nc" id="L59">    }</span>
+
+    @Override
+    public final void convert(String[] row, GTRecord record) {
+<span class="nc" id="L63">        Object[] dimensions = kvBuilder.buildKey(row);</span>
+<span class="nc" id="L64">        Object[] metricsValues = buildValue(row);</span>
+<span class="nc" id="L65">        Object[] recordValues = new Object[dimensions.length + metricsValues.length];</span>
+<span class="nc" id="L66">        System.arraycopy(dimensions, 0, recordValues, 0, dimensions.length);</span>
+<span class="nc" id="L67">        System.arraycopy(metricsValues, 0, recordValues, dimensions.length, metricsValues.length);</span>
+<span class="nc" id="L68">        record.setValues(recordValues);</span>
+<span class="nc" id="L69">    }</span>
+
+    @Override
+    public boolean ifEnd(String[] currentObject) {
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        return currentObject == END_ROW;</span>
+    }
+
+    @Override
+    public boolean ifCut(String[] currentObject) {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        return currentObject == CUT_ROW;</span>
+    }
+
+    @Override
+    public String[] getEndRow() {
+<span class="nc" id="L83">        return END_ROW;</span>
+    }
+
+    @Override
+    public String[] getCutRow() {
+<span class="nc" id="L88">        return CUT_ROW;</span>
+    }
+
+    @Override
+    public boolean ifChange() {
+<span class="nc" id="L93">        return true;</span>
+    }
+
+    private Object[] buildValue(String[] row) {
+<span class="nc" id="L97">        Object[] values = new Object[measureCount];</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        for (int i = 0; i &lt; measureCount; i++) {</span>
+<span class="nc" id="L99">            String[] colValues = kvBuilder.buildValueOf(i, row);</span>
+<span class="nc" id="L100">            MeasureDesc measure = measureDescs[i];</span>
+<span class="nc" id="L101">            values[i] = measureIngesters[i].valueOf(colValues, measure, dictionaryMap);</span>
+        }
+<span class="nc" id="L103">        return values;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

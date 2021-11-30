@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HDFSResourceStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">HDFSResourceStore.java</span></div><h1>HDFSResourceStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.IOException;
+import java.util.NavigableSet;
+import java.util.TreeSet;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.LocatedFileStatus;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.RemoteIterator;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+public class HDFSResourceStore extends ResourceStore {
+
+<span class="fc" id="L43">    private static final Logger logger = LoggerFactory.getLogger(HDFSResourceStore.class);</span>
+
+    private Path hdfsMetaPath;
+
+    private FileSystem fs;
+
+    public static final String HDFS_SCHEME = &quot;hdfs&quot;;
+
+    public HDFSResourceStore(KylinConfig kylinConfig) throws Exception {
+<span class="nc" id="L52">        this(kylinConfig, kylinConfig.getMetadataUrl());</span>
+<span class="nc" id="L53">    }</span>
+
+    public HDFSResourceStore(KylinConfig kylinConfig, StorageURL metadataUrl) throws Exception {
+<span class="fc" id="L56">        super(kylinConfig);</span>
+<span class="fc" id="L57">        Preconditions.checkState(HDFS_SCHEME.equals(metadataUrl.getScheme()));</span>
+
+<span class="fc" id="L59">        String path = metadataUrl.getParameter(&quot;path&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (path == null) {</span>
+            // missing path is not expected, but don't fail it
+<span class="fc" id="L62">            path = kylinConfig.getHdfsWorkingDirectory(null) + &quot;tmp_metadata&quot;;</span>
+<span class="fc" id="L63">            logger.warn(&quot;Missing path, fall back to {}. &quot;, path);</span>
+        }
+
+<span class="fc" id="L66">        fs = HadoopUtil.getFileSystem(path);</span>
+<span class="fc" id="L67">        Path metadataPath = new Path(path);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (!fs.exists(metadataPath)) {</span>
+<span class="fc" id="L69">            logger.warn(&quot;Path not exist in HDFS, create it: {}. &quot;, path);</span>
+<span class="fc" id="L70">            createMetaFolder(metadataPath);</span>
+        }
+
+<span class="fc" id="L73">        hdfsMetaPath = metadataPath;</span>
+<span class="fc" id="L74">        logger.info(&quot;hdfs meta path : {}&quot;, hdfsMetaPath);</span>
+
+<span class="fc" id="L76">    }</span>
+
+    private void createMetaFolder(Path metaDirName) throws Exception {
+        //create hdfs meta path
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (!fs.exists(metaDirName)) {</span>
+<span class="fc" id="L81">            fs.mkdirs(metaDirName);</span>
+        }
+
+<span class="fc" id="L84">        logger.info(&quot;hdfs meta path created: {}&quot;, metaDirName);</span>
+<span class="fc" id="L85">    }</span>
+
+    @Override
+    protected NavigableSet&lt;String&gt; listResourcesImpl(String folderPath) throws IOException {
+<span class="nc" id="L89">        return listResourcesImpl(folderPath, false);</span>
+    }
+
+    @Override
+    protected NavigableSet&lt;String&gt; listResourcesRecursivelyImpl(String folderPath) throws IOException {
+<span class="nc" id="L94">        return listResourcesImpl(folderPath, true);</span>
+    }
+
+    private NavigableSet&lt;String&gt; listResourcesImpl(String folderPath, boolean recursive) throws IOException {
+<span class="nc" id="L98">        Path p = getRealHDFSPath(folderPath);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        String prefix = folderPath.endsWith(&quot;/&quot;) ? folderPath : folderPath + &quot;/&quot;;</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">        if (!fs.exists(p) || !fs.isDirectory(p)) {</span>
+<span class="nc" id="L101">            return null;</span>
+        }
+        TreeSet&lt;String&gt; r;
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (recursive) {</span>
+<span class="nc" id="L106">            r = getAllFilePath(p, prefix);</span>
+        } else {
+<span class="nc" id="L108">            r = getFilePath(p, prefix);</span>
+        }
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        return r.isEmpty() ? null : r;</span>
+    }
+
+    private TreeSet&lt;String&gt; getFilePath(Path p, String resPathPrefix) throws IOException {
+<span class="nc" id="L114">        TreeSet&lt;String&gt; fileList = new TreeSet&lt;&gt;();</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        for (FileStatus fileStat : fs.listStatus(p)) {</span>
+<span class="nc" id="L116">            fileList.add(resPathPrefix + fileStat.getPath().getName());</span>
+        }
+<span class="nc" id="L118">        return fileList;</span>
+    }
+
+    TreeSet&lt;String&gt; getAllFilePath(Path filePath, String resPathPrefix) throws IOException {
+<span class="fc" id="L122">        String fsPathPrefix = filePath.toUri().getPath();</span>
+
+<span class="fc" id="L124">        TreeSet&lt;String&gt; fileList = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L125">        RemoteIterator&lt;LocatedFileStatus&gt; it = fs.listFiles(filePath, true);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L127">            String path = it.next().getPath().toUri().getPath();</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (!path.startsWith(fsPathPrefix))</span>
+<span class="nc" id="L129">                throw new IllegalStateException(&quot;File path &quot; + path + &quot; is supposed to start with &quot; + fsPathPrefix);</span>
+
+<span class="fc" id="L131">            String resPath = resPathPrefix + path.substring(fsPathPrefix.length() + 1);</span>
+<span class="fc" id="L132">            fileList.add(resPath);</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">        return fileList;</span>
+    }
+
+    @Override
+    protected void visitFolderImpl(String folderPath, boolean recursive, VisitFilter filter, boolean loadContent,
+            Visitor visitor) throws IOException {
+<span class="nc" id="L140">        Path p = getRealHDFSPath(folderPath);</span>
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (!fs.exists(p) || !fs.isDirectory(p)) {</span>
+<span class="nc" id="L142">            return;</span>
+        }
+
+<span class="nc" id="L145">        String fsPathPrefix = p.toUri().getPath();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        String resPathPrefix = folderPath.endsWith(&quot;/&quot;) ? folderPath : folderPath + &quot;/&quot;;</span>
+
+<span class="nc" id="L148">        RemoteIterator&lt;LocatedFileStatus&gt; it = fs.listFiles(p, recursive);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L150">            LocatedFileStatus status = it.next();</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">            if (status.isDirectory())</span>
+<span class="nc" id="L152">                continue;</span>
+
+<span class="nc" id="L154">            String path = status.getPath().toUri().getPath();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (!path.startsWith(fsPathPrefix))</span>
+<span class="nc" id="L156">                throw new IllegalStateException(&quot;File path &quot; + path + &quot; is supposed to start with &quot; + fsPathPrefix);</span>
+
+<span class="nc" id="L158">            String resPath = resPathPrefix + path.substring(fsPathPrefix.length() + 1);</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if (filter.matches(resPath, status.getModificationTime())) {</span>
+                RawResource raw;
+<span class="nc bnc" id="L162" title="All 2 branches missed.">                if (loadContent)</span>
+<span class="nc" id="L163">                    raw = new RawResource(resPath, status.getModificationTime(), fs.open(status.getPath()));</span>
+                else
+<span class="nc" id="L165">                    raw = new RawResource(resPath, status.getModificationTime());</span>
+
+                try {
+<span class="nc" id="L168">                    visitor.visit(raw);</span>
+                } finally {
+<span class="nc" id="L170">                    raw.close();</span>
+                }
+            }
+<span class="nc" id="L173">        }</span>
+<span class="nc" id="L174">    }</span>
+
+    @Override
+    protected boolean existsImpl(String resPath) throws IOException {
+<span class="nc" id="L178">        Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L179" title="All 4 branches missed.">        return fs.exists(p) &amp;&amp; fs.isFile(p);</span>
+    }
+
+    @Override
+    protected RawResource getResourceImpl(String resPath) throws IOException {
+<span class="nc" id="L184">        Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L185" title="All 4 branches missed.">        if (fs.exists(p) &amp;&amp; fs.isFile(p)) {</span>
+<span class="nc" id="L186">            FileStatus fileStatus = fs.getFileStatus(p);</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (fileStatus.getLen() == 0) {</span>
+<span class="nc" id="L188">                logger.warn(&quot;Zero length file: {}. &quot;, p);</span>
+            }
+<span class="nc" id="L190">            FSDataInputStream in = fs.open(p);</span>
+<span class="nc" id="L191">            long ts = fileStatus.getModificationTime();</span>
+<span class="nc" id="L192">            return new RawResource(resPath, ts, in);</span>
+        } else {
+<span class="nc" id="L194">            return null;</span>
+        }
+    }
+
+    @Override
+    protected long getResourceTimestampImpl(String resPath) throws IOException {
+<span class="nc" id="L200">        Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L201" title="All 4 branches missed.">        if (!fs.exists(p) || !fs.isFile(p)) {</span>
+<span class="nc" id="L202">            return 0;</span>
+        }
+        try {
+<span class="nc" id="L205">            return fs.getFileStatus(p).getModificationTime();</span>
+<span class="nc" id="L206">        } catch (Exception e) {</span>
+<span class="nc" id="L207">            throw new IOException(&quot;Put resource fail&quot;, e);</span>
+        }
+
+    }
+
+    @Override
+    protected void putResourceImpl(String resPath, ContentWriter content, long ts) throws IOException {
+<span class="nc" id="L214">        logger.trace(&quot;res path : {}. &quot;, resPath);</span>
+<span class="nc" id="L215">        Path p = getRealHDFSPath(resPath);</span>
+<span class="nc" id="L216">        logger.trace(&quot;put resource : {}. &quot;, p.toUri());</span>
+<span class="nc" id="L217">        FSDataOutputStream out = null;</span>
+        try {
+<span class="nc" id="L219">            out = fs.create(p, true);</span>
+<span class="nc" id="L220">            content.write(out);</span>
+<span class="nc" id="L221">        } catch (Exception e) {</span>
+<span class="nc" id="L222">            throw new IOException(&quot;Put resource fail&quot;, e);</span>
+        } finally {
+<span class="nc" id="L224">            IOUtils.closeQuietly(out);</span>
+<span class="nc" id="L225">            fs.setTimes(p, ts, -1);</span>
+        }
+<span class="nc" id="L227">    }</span>
+
+    @Override
+    protected long checkAndPutResourceImpl(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, WriteConflictException {
+<span class="nc" id="L232">        Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (!fs.exists(p)) {</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (oldTS != 0) {</span>
+<span class="nc" id="L235">                throw new IllegalStateException(</span>
+                        &quot;For not exist file. OldTS have to be 0. but Actual oldTS is : &quot; + oldTS);
+            }
+
+        } else {
+<span class="nc" id="L240">            long realLastModify = getResourceTimestamp(resPath);</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (realLastModify != oldTS) {</span>
+<span class="nc" id="L242">                throw new WriteConflictException(&quot;Overwriting conflict &quot; + resPath + &quot;, expect old TS &quot; + oldTS</span>
+                        + &quot;, but found &quot; + realLastModify);
+            }
+        }
+<span class="nc" id="L246">        putResourceImpl(resPath, ContentWriter.create(content), newTS);</span>
+<span class="nc" id="L247">        return newTS;</span>
+    }
+
+    @Override
+    protected void updateTimestampImpl(String resPath, long timestamp) throws IOException {
+        try {
+<span class="nc" id="L253">            Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">            if (fs.exists(p)) {</span>
+<span class="nc" id="L255">                fs.setTimes(p, timestamp, -1);</span>
+            }
+<span class="nc" id="L257">        } catch (Exception e) {</span>
+<span class="nc" id="L258">            throw new IOException(&quot;Update resource timestamp fail&quot;, e);</span>
+<span class="nc" id="L259">        }</span>
+<span class="nc" id="L260">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath) throws IOException {
+        try {
+<span class="nc" id="L265">            Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            if (fs.exists(p)) {</span>
+<span class="nc" id="L267">                fs.delete(p, true);</span>
+            }
+<span class="nc" id="L269">        } catch (Exception e) {</span>
+<span class="nc" id="L270">            throw new IOException(&quot;Delete resource fail&quot;, e);</span>
+<span class="nc" id="L271">        }</span>
+<span class="nc" id="L272">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath, long timestamp) throws IOException {
+        try {
+<span class="nc" id="L277">            Path p = getRealHDFSPath(resPath);</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (fs.exists(p)) {</span>
+<span class="nc" id="L279">                long origLastModified = fs.getFileStatus(p).getModificationTime();</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                if (checkTimeStampBeforeDelete(origLastModified, timestamp)) {</span>
+<span class="nc" id="L281">                    fs.delete(p, true);</span>
+                } else {
+<span class="nc" id="L283">                    throw new IOException(&quot;Resource &quot; + resPath + &quot; timestamp not match, [originLastModified: &quot;</span>
+                            + origLastModified + &quot;, timestampToDelete: &quot; + timestamp + &quot;]&quot;);
+                }
+
+            }
+<span class="nc" id="L288">        } catch (Exception e) {</span>
+<span class="nc" id="L289">            throw new IOException(&quot;Delete resource fail&quot;, e);</span>
+<span class="nc" id="L290">        }</span>
+<span class="nc" id="L291">    }</span>
+
+    @Override
+    protected String getReadableResourcePathImpl(String resPath) {
+<span class="nc" id="L295">        return getRealHDFSPath(resPath).toString();</span>
+    }
+
+    private Path getRealHDFSPath(String resourcePath) {
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (resourcePath.equals(&quot;/&quot;))</span>
+<span class="nc" id="L300">            return this.hdfsMetaPath;</span>
+<span class="nc bnc" id="L301" title="All 4 branches missed.">        if (resourcePath.startsWith(&quot;/&quot;) &amp;&amp; resourcePath.length() &gt; 1)</span>
+<span class="nc" id="L302">            resourcePath = resourcePath.substring(1, resourcePath.length());</span>
+<span class="nc" id="L303">        return new Path(this.hdfsMetaPath, resourcePath);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

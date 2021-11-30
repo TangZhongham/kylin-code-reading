@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImmutableBitSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">ImmutableBitSet.java</span></div><h1>ImmutableBitSet.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.kylin.common.util;
+
+import java.nio.ByteBuffer;
+import java.util.BitSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+public class ImmutableBitSet implements Iterable&lt;Integer&gt; {
+
+<span class="nc" id="L28">    public static final ImmutableBitSet EMPTY = new ImmutableBitSet(new BitSet());</span>
+
+    public static ImmutableBitSet valueOf(int... values) {
+<span class="nc" id="L31">        BitSet set = new BitSet();</span>
+<span class="nc bnc" id="L32" title="All 2 branches missed.">        for (int i : values)</span>
+<span class="nc" id="L33">            set.set(i);</span>
+<span class="nc" id="L34">        return new ImmutableBitSet(set);</span>
+    }
+
+    public static ImmutableBitSet valueOf(List&lt;Integer&gt; values) {
+<span class="nc" id="L38">        return new ImmutableBitSet(BitSets.valueOf(values.stream().mapToInt(i -&gt; i).toArray()), false);</span>
+
+    }
+
+    // ============================================================================
+
+    final private BitSet set;
+    final private int[] arr;
+
+    public ImmutableBitSet(int index) {
+<span class="nc" id="L48">        this(newBitSet(index));</span>
+<span class="nc" id="L49">    }</span>
+
+<span class="nc" id="L51">    public ImmutableBitSet(BitSet set) {</span>
+<span class="nc" id="L52">        this.set = (BitSet) set.clone();</span>
+<span class="nc" id="L53">        this.arr = new int[set.cardinality()];</span>
+
+<span class="nc" id="L55">        int j = 0;</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        for (int i = set.nextSetBit(0); i &gt;= 0; i = set.nextSetBit(i + 1)) {</span>
+<span class="nc" id="L57">            arr[j++] = i;</span>
+        }
+<span class="nc" id="L59">    }</span>
+
+<span class="nc" id="L61">    private ImmutableBitSet(BitSet set, boolean needClone) {</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (needClone) {</span>
+<span class="nc" id="L63">            this.set = (BitSet) set.clone();</span>
+        } else {
+<span class="nc" id="L65">            this.set = set;</span>
+        }
+<span class="nc" id="L67">        this.arr = new int[set.cardinality()];</span>
+
+<span class="nc" id="L69">        int j = 0;</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        for (int i = set.nextSetBit(0); i &gt;= 0; i = set.nextSetBit(i + 1)) {</span>
+<span class="nc" id="L71">            arr[j++] = i;</span>
+        }
+<span class="nc" id="L73">    }</span>
+
+    private static BitSet newBitSet(int index) {
+<span class="nc" id="L76">        BitSet set = new BitSet(index);</span>
+<span class="nc" id="L77">        set.set(index);</span>
+<span class="nc" id="L78">        return set;</span>
+    }
+
+    public ImmutableBitSet(int indexFrom, int indexTo) {
+<span class="nc" id="L82">        this(newBitSet(indexFrom, indexTo));</span>
+<span class="nc" id="L83">    }</span>
+
+    private static BitSet newBitSet(int indexFrom, int indexTo) {
+<span class="nc" id="L86">        BitSet set = new BitSet(indexTo);</span>
+<span class="nc" id="L87">        set.set(indexFrom, indexTo);</span>
+<span class="nc" id="L88">        return set;</span>
+    }
+
+    /** return number of true bits */
+    public int trueBitCount() {
+<span class="nc" id="L93">        return arr.length;</span>
+    }
+
+    /** return the i-th true bit */
+    public int trueBitAt(int i) {
+<span class="nc" id="L98">        return arr[i];</span>
+    }
+
+    /** return the bit's index among true bits */
+    public int trueBitIndexOf(int bitIndex) {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        for (int i = 0; i &lt; arr.length; i++) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (arr[i] == bitIndex)</span>
+<span class="nc" id="L105">                return i;</span>
+        }
+<span class="nc" id="L107">        return -1;</span>
+    }
+
+    public BitSet mutable() {
+<span class="nc" id="L111">        return (BitSet) set.clone();</span>
+    }
+
+    public ImmutableBitSet set(int bitIndex) {
+<span class="nc" id="L115">        return set(bitIndex, true);</span>
+    }
+
+    public ImmutableBitSet set(int bitIndex, boolean value) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (set.get(bitIndex) == value) {</span>
+<span class="nc" id="L120">            return this;</span>
+        } else {
+<span class="nc" id="L122">            BitSet mutable = mutable();</span>
+<span class="nc" id="L123">            mutable.set(bitIndex, value);</span>
+<span class="nc" id="L124">            return new ImmutableBitSet(mutable);</span>
+        }
+    }
+
+    public ImmutableBitSet or(ImmutableBitSet another) {
+<span class="nc" id="L129">        BitSet mutable = mutable();</span>
+<span class="nc" id="L130">        mutable.or(another.set);</span>
+<span class="nc" id="L131">        return new ImmutableBitSet(mutable);</span>
+    }
+
+    public ImmutableBitSet andNot(ImmutableBitSet another) {
+<span class="nc" id="L135">        BitSet mutable = mutable();</span>
+<span class="nc" id="L136">        mutable.andNot(another.set);</span>
+<span class="nc" id="L137">        return new ImmutableBitSet(mutable);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L142">        return set.hashCode();</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L148">            return true;</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L150">            return false;</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L152">            return false;</span>
+
+<span class="nc" id="L154">        ImmutableBitSet other = (ImmutableBitSet) obj;</span>
+<span class="nc" id="L155">        return this.set.equals(other.set);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L160">        return set.toString();</span>
+    }
+
+    // ============================================================================
+
+    public boolean get(int bitIndex) {
+<span class="nc" id="L166">        return set.get(bitIndex);</span>
+    }
+
+    public int cardinality() {
+<span class="nc" id="L170">        return set.cardinality();</span>
+    }
+
+    public boolean intersects(ImmutableBitSet another) {
+<span class="nc" id="L174">        return set.intersects(another.set);</span>
+    }
+
+    public boolean isEmpty() {
+<span class="nc" id="L178">        return set.isEmpty();</span>
+    }
+
+<span class="nc" id="L181">    public static final BytesSerializer&lt;ImmutableBitSet&gt; serializer = new BytesSerializer&lt;ImmutableBitSet&gt;() {</span>
+        @Override
+        public void serialize(ImmutableBitSet value, ByteBuffer out) {
+<span class="nc" id="L184">            BytesUtil.writeByteArray(value.set.toByteArray(), out);</span>
+<span class="nc" id="L185">        }</span>
+
+        @Override
+        public ImmutableBitSet deserialize(ByteBuffer in) {
+<span class="nc" id="L189">            BitSet bitSet = BitSet.valueOf(BytesUtil.readByteArray(in));</span>
+<span class="nc" id="L190">            return new ImmutableBitSet(bitSet);</span>
+        }
+    };
+
+    /**
+     * Iterate over the positions of true value.
+     * @return the iterator
+     */
+    @Override
+    public Iterator&lt;Integer&gt; iterator() {
+<span class="nc" id="L200">        return new Iterator&lt;Integer&gt;() {</span>
+<span class="nc" id="L201">            int index = 0;</span>
+
+            @Override
+            public boolean hasNext() {
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                return index &lt; arr.length;</span>
+            }
+
+            @Override
+            public Integer next() {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">                if (!hasNext()) {</span>
+<span class="nc" id="L211">                    throw new NoSuchElementException();</span>
+                }
+<span class="nc" id="L213">                return arr[index++];</span>
+            }
+
+            @Override
+            public void remove() {
+<span class="nc" id="L218">                throw new UnsupportedOperationException();</span>
+            }
+        };
+    }
+
+    public int size() {
+<span class="nc" id="L224">        return set.size();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

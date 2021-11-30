@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CuratorLeaderSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.impl.curator</a> &gt; <span class="el_source">CuratorLeaderSelector.java</span></div><h1>CuratorLeaderSelector.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.job.impl.curator;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.recipes.leader.LeaderSelector;
+import org.apache.curator.framework.recipes.leader.LeaderSelectorListenerAdapter;
+import org.apache.curator.framework.recipes.leader.Participant;
+import org.apache.kylin.job.engine.JobEngineConfig;
+import org.apache.kylin.job.impl.threadpool.DefaultScheduler;
+import org.apache.kylin.job.lock.MockJobLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class CuratorLeaderSelector extends LeaderSelectorListenerAdapter implements Closeable {
+<span class="fc" id="L38">    private static final Logger logger = LoggerFactory.getLogger(CuratorLeaderSelector.class);</span>
+    private final String name;
+    private final LeaderSelector leaderSelector;
+    private JobEngineConfig jobEngineConfig;
+<span class="fc" id="L42">    private DefaultScheduler defaultScheduler = null;</span>
+
+<span class="fc" id="L44">    CuratorLeaderSelector(CuratorFramework client, String path, String name, JobEngineConfig jobEngineConfig) {</span>
+<span class="fc" id="L45">        this.name = name;</span>
+<span class="fc" id="L46">        this.leaderSelector = new LeaderSelector(client, path, this);</span>
+<span class="fc" id="L47">        this.leaderSelector.setId(name);</span>
+<span class="fc" id="L48">        this.leaderSelector.autoRequeue();</span>
+<span class="fc" id="L49">        this.jobEngineConfig = jobEngineConfig;</span>
+<span class="fc" id="L50">        this.defaultScheduler = DefaultScheduler.getInstance();</span>
+<span class="fc" id="L51">    }</span>
+
+    public Participant getLeader() {
+        try {
+<span class="fc" id="L55">            return leaderSelector.getLeader();</span>
+<span class="nc" id="L56">        } catch (Exception e) {</span>
+<span class="nc" id="L57">            logger.error(&quot;Can not get leader.&quot;, e);</span>
+        }
+<span class="nc" id="L59">        return new Participant(&quot;&quot;, false);</span>
+    }
+
+    public Set&lt;Participant&gt; getParticipants() {
+<span class="fc" id="L63">        Set&lt;Participant&gt; r = new HashSet&lt;&gt;();</span>
+        try {
+<span class="fc" id="L65">            r.addAll(leaderSelector.getParticipants());</span>
+<span class="nc" id="L66">        } catch (Exception e) {</span>
+<span class="nc" id="L67">            logger.error(&quot;Can not get participants.&quot;, e);</span>
+<span class="fc" id="L68">        }</span>
+<span class="fc" id="L69">        return r;</span>
+    }
+
+    public boolean hasDefaultSchedulerStarted() {
+<span class="fc" id="L73">        return defaultScheduler.hasStarted();</span>
+    }
+
+    public void start() throws IOException {
+<span class="fc" id="L77">        leaderSelector.start();</span>
+<span class="fc" id="L78">    }</span>
+
+    public boolean hasLeadership() throws IOException {
+<span class="nc" id="L81">        return leaderSelector.hasLeadership();</span>
+    }
+
+    @Override
+    public void close() throws IOException {
+        try {
+<span class="fc" id="L87">            leaderSelector.close();</span>
+<span class="nc" id="L88">        } catch (IllegalStateException e) {</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">            if (e.getMessage().equals(&quot;Already closed or has not been started&quot;)) {</span>
+<span class="nc" id="L90">                logger.warn(&quot;LeaderSelector already closed or has not been started&quot;);</span>
+            } else {
+<span class="nc" id="L92">                throw e;</span>
+            }
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">        logger.info(name + &quot; is stopped&quot;);</span>
+<span class="fc" id="L96">    }</span>
+
+    @Override
+    public void takeLeadership(CuratorFramework client) throws Exception {
+<span class="fc" id="L100">        logger.info(name + &quot; is the leader for job engine now.&quot;);</span>
+        try {
+<span class="fc" id="L102">            defaultScheduler.init(jobEngineConfig, new MockJobLock());</span>
+            while (true) {
+<span class="nc" id="L104">                Thread.sleep(TimeUnit.SECONDS.toMillis(5L));</span>
+            }
+<span class="fc" id="L106">        } catch (InterruptedException ie) {</span>
+<span class="fc" id="L107">            logger.error(this.name + &quot; was interrupted.&quot;, ie);</span>
+<span class="nc" id="L108">        } catch (Throwable th) {</span>
+<span class="nc" id="L109">            logger.error(&quot;Other exception occurred when initialization DefaultScheduler:&quot;, th);</span>
+        } finally {
+<span class="fc" id="L111">            logger.warn(this.name + &quot; relinquishing leadership.&quot;);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (defaultScheduler != null)</span>
+<span class="fc" id="L113">                defaultScheduler.shutdown();</span>
+        }
+<span class="fc" id="L115">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

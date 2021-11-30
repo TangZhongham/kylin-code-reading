@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlatTableSqlQuoteUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.util</a> &gt; <span class="el_source">FlatTableSqlQuoteUtils.java</span></div><h1>FlatTableSqlQuoteUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.job.util;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.SourceDialect;
+import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.TableRef;
+import org.apache.kylin.metadata.model.TblColRef;
+
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+
+import static org.apache.calcite.sql.SqlDialect.EMPTY_CONTEXT;
+
+public class FlatTableSqlQuoteUtils {
+
+<span class="fc" id="L46">    private static KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+<span class="fc" id="L47">    private static final Map&lt;String, SqlDialect&gt; sqlDialectMap = new TreeMap&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="fc" id="L48">    private static SqlDialect defaultDialect = null;</span>
+<span class="fc" id="L49">    public static final SqlDialect NON_QUOTE_DIALECT = new SqlDialect(EMPTY_CONTEXT);</span>
+<span class="fc" id="L50">    static final SqlDialect HIVE_DIALECT = new SqlDialect(EMPTY_CONTEXT.withIdentifierQuoteString(&quot;`&quot;));</span>
+
+    static {
+<span class="fc" id="L53">        sqlDialectMap.put(&quot;default&quot;, SqlDialect.CALCITE);</span>
+<span class="fc" id="L54">        sqlDialectMap.put(&quot;calcite&quot;, SqlDialect.CALCITE);</span>
+<span class="fc" id="L55">        sqlDialectMap.put(&quot;greenplum&quot;, SqlDialect.DatabaseProduct.POSTGRESQL.getDialect());</span>
+<span class="fc" id="L56">        sqlDialectMap.put(&quot;postgresql&quot;, SqlDialect.DatabaseProduct.POSTGRESQL.getDialect());</span>
+<span class="fc" id="L57">        sqlDialectMap.put(&quot;mysql&quot;, SqlDialect.DatabaseProduct.MYSQL.getDialect());</span>
+<span class="fc" id="L58">        sqlDialectMap.put(&quot;mssql&quot;, SqlDialect.DatabaseProduct.MSSQL.getDialect());</span>
+<span class="fc" id="L59">        sqlDialectMap.put(&quot;oracle&quot;, SqlDialect.DatabaseProduct.ORACLE.getDialect());</span>
+<span class="fc" id="L60">        sqlDialectMap.put(&quot;vertica&quot;, SqlDialect.DatabaseProduct.VERTICA.getDialect());</span>
+<span class="fc" id="L61">        sqlDialectMap.put(&quot;redshift&quot;, SqlDialect.DatabaseProduct.REDSHIFT.getDialect());</span>
+<span class="fc" id="L62">        sqlDialectMap.put(&quot;hive&quot;, HIVE_DIALECT);</span>
+<span class="fc" id="L63">        sqlDialectMap.put(&quot;h2&quot;, SqlDialect.DatabaseProduct.H2.getDialect());</span>
+<span class="fc" id="L64">    }</span>
+
+    private FlatTableSqlQuoteUtils() {
+    }
+
+    private static synchronized void setQuote() {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (defaultDialect != null)</span>
+<span class="fc" id="L71">            return;</span>
+<span class="fc" id="L72">        defaultDialect = sqlDialectMap.getOrDefault(kylinConfig.getFactTableDialect(), NON_QUOTE_DIALECT);</span>
+<span class="fc" id="L73">    }</span>
+
+    public static String quoteIdentifier(SourceDialect sourceDialect, String identifier) {
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (!kylinConfig.enableHiveDdlQuote()) {</span>
+<span class="nc" id="L77">            return identifier;</span>
+        }
+<span class="fc" id="L79">        SqlDialect specificSqlDialect = sqlDialectMap.get(sourceDialect.name());</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (specificSqlDialect != null) {</span>
+<span class="fc" id="L81">            return specificSqlDialect.quoteIdentifier(identifier);</span>
+        }
+<span class="nc" id="L83">        setQuote();</span>
+<span class="nc" id="L84">        return defaultDialect.quoteIdentifier(identifier);</span>
+    }
+
+    /**
+     * If KylinConfig#enableHiveDdlQuote return false, disable quote.
+     * If SqlDialect is specific, use it; else use the KylinConfig#getFactTableDialect to quote identifier.
+     */
+    public static String quoteIdentifier(String identifier, SqlDialect specificSqlDialect) {
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (!kylinConfig.enableHiveDdlQuote()) {</span>
+<span class="nc" id="L93">            return identifier;</span>
+        }
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (specificSqlDialect != null) {</span>
+<span class="fc" id="L96">            return specificSqlDialect.quoteIdentifier(identifier);</span>
+        }
+<span class="fc" id="L98">        setQuote();</span>
+<span class="fc" id="L99">        return defaultDialect.quoteIdentifier(identifier);</span>
+    }
+
+    public static String quoteTableIdentity(TableRef tableRef, SqlDialect specificSqlDialect) {
+<span class="fc" id="L103">        return quoteTableIdentity(tableRef.getTableDesc().getDatabase(), tableRef.getTableName(), specificSqlDialect);</span>
+    }
+
+    public static String quoteTableIdentity(String database, String table, SqlDialect specificSqlDialect) {
+<span class="fc" id="L107">        String dbName = quoteIdentifier(database, specificSqlDialect);</span>
+<span class="fc" id="L108">        String tableName = quoteIdentifier(table, specificSqlDialect);</span>
+<span class="fc" id="L109">        return String.format(Locale.ROOT, &quot;%s.%s&quot;, dbName, tableName).toUpperCase(Locale.ROOT);</span>
+    }
+
+    /**
+     * Used for quote identifiers in Sql Filter Expression &amp; Computed Column Expression for flat table
+     */
+    public static String quoteIdentifierInSqlExpr(IJoinedFlatTableDesc flatDesc, String sqlExpr, SqlDialect sqlDialect) {
+<span class="fc" id="L116">        setQuote();</span>
+<span class="fc" id="L117">        Map&lt;String, String&gt; tabToAliasMap = buildTableToTableAliasMap(flatDesc);</span>
+<span class="fc" id="L118">        Map&lt;String, Map&lt;String, String&gt;&gt; tabToColsMap = buildTableToColumnsMap(flatDesc);</span>
+
+<span class="fc" id="L120">        boolean tableMatched = false;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        for (String table : tabToAliasMap.keySet()) {</span>
+<span class="fc" id="L122">            List&lt;String&gt; tabPatterns = getTableNameOrAliasPatterns(table);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">            if (isIdentifierNeedToQuote(sqlExpr, table, tabPatterns)) {</span>
+<span class="nc" id="L124">                sqlExpr = quoteIdentifier(sqlExpr, table, tabPatterns, sqlDialect);</span>
+<span class="nc" id="L125">                tableMatched = true;</span>
+            }
+
+<span class="fc" id="L128">            String tabAlias = tabToAliasMap.get(table);</span>
+<span class="fc" id="L129">            List&lt;String&gt; tabAliasPatterns = getTableNameOrAliasPatterns(tabAlias);</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if (isIdentifierNeedToQuote(sqlExpr, tabAlias, tabAliasPatterns)) {</span>
+<span class="nc" id="L131">                sqlExpr = quoteIdentifier(sqlExpr, tabAlias, tabAliasPatterns, sqlDialect);</span>
+<span class="nc" id="L132">                tableMatched = true;</span>
+            }
+
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (tableMatched) {</span>
+<span class="nc" id="L136">                Set&lt;String&gt; columns = listColumnsInTable(table, tabToColsMap);</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">                for (String column : columns) {</span>
+<span class="nc" id="L138">                    List&lt;String&gt; colPatterns = getColumnNameOrAliasPatterns(column);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">                    if (isIdentifierNeedToQuote(sqlExpr, column, colPatterns)) {</span>
+<span class="nc" id="L140">                        sqlExpr = quoteIdentifier(sqlExpr, column, colPatterns, sqlDialect);</span>
+                    }
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                    if (columnHasAlias(table, column, tabToColsMap)) {</span>
+<span class="nc" id="L143">                        String colAlias = getColumnAlias(table, column, tabToColsMap);</span>
+<span class="nc" id="L144">                        List&lt;String&gt; colAliasPattern = getColumnNameOrAliasPatterns(colAlias);</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">                        if (isIdentifierNeedToQuote(sqlExpr, colAlias, colAliasPattern)) {</span>
+<span class="nc" id="L146">                            sqlExpr = quoteIdentifier(sqlExpr, colAlias, colPatterns, sqlDialect);</span>
+                        }
+                    }
+<span class="nc" id="L149">                }</span>
+            }
+
+<span class="fc" id="L152">            tableMatched = false; //reset</span>
+<span class="fc" id="L153">        }</span>
+<span class="fc" id="L154">        return sqlExpr;</span>
+    }
+
+    /**
+     * Used to quote identifiers for JDBC ext job when quoting cc expr
+     * @param tableDesc
+     * @param sqlExpr
+     * @return
+     */
+    public static String quoteIdentifierInSqlExpr(TableDesc tableDesc, String sqlExpr, SqlDialect sqlDialect) {
+<span class="nc" id="L164">        String table = tableDesc.getName();</span>
+<span class="nc" id="L165">        boolean tableMatched = false;</span>
+<span class="nc" id="L166">        List&lt;String&gt; tabPatterns = getTableNameOrAliasPatterns(table);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (isIdentifierNeedToQuote(sqlExpr, table, tabPatterns)) {</span>
+<span class="nc" id="L168">            sqlExpr = quoteIdentifier(sqlExpr, table, tabPatterns, sqlDialect);</span>
+<span class="nc" id="L169">            tableMatched = true;</span>
+        }
+
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (tableMatched) {</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            for (ColumnDesc columnDesc : tableDesc.getColumns()) {</span>
+<span class="nc" id="L174">                String column = columnDesc.getName();</span>
+<span class="nc" id="L175">                List&lt;String&gt; colPatterns = getColumnNameOrAliasPatterns(column);</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                if (isIdentifierNeedToQuote(sqlExpr, column, colPatterns)) {</span>
+<span class="nc" id="L177">                    sqlExpr = quoteIdentifier(sqlExpr, column, colPatterns, sqlDialect);</span>
+                }
+            }
+        }
+
+<span class="nc" id="L182">        return sqlExpr;</span>
+    }
+
+    static List&lt;String&gt; getTableNameOrAliasPatterns(String tableName) {
+        // Pattern must contain three regex groups, and place identifier in sec group ($2)
+<span class="fc" id="L187">        List&lt;String&gt; patterns = Lists.newArrayList();</span>
+<span class="fc" id="L188">        patterns.add(&quot;([+\\-*/%&amp;|^=&gt;&lt;\\s,(])(&quot; + tableName.trim() + &quot;)(\\.)&quot;);</span>
+<span class="fc" id="L189">        patterns.add(&quot;([\\.\\s])(&quot; + tableName.trim() + &quot;)([,\\s)])&quot;);</span>
+<span class="fc" id="L190">        patterns.add(&quot;(^)(&quot; + tableName.trim() + &quot;)([\\.])&quot;);</span>
+<span class="fc" id="L191">        return patterns;</span>
+    }
+
+    static List&lt;String&gt; getColumnNameOrAliasPatterns(String colName) {
+        // Pattern must contain three regex groups, and place identifier in sec group ($2)
+<span class="fc" id="L196">        List&lt;String&gt; patterns = Lists.newArrayList();</span>
+<span class="fc" id="L197">        patterns.add(&quot;([\\.\\s(])(&quot; + colName.trim() + &quot;)([+\\-*/%&amp;|^=&gt;&lt;\\s,)])&quot;);</span>
+<span class="fc" id="L198">        patterns.add(&quot;(^)(&quot; + colName.trim() + &quot;)([+\\-*/%&amp;|^=&gt;&lt;\\s,)])&quot;);</span>
+<span class="fc" id="L199">        return patterns;</span>
+    }
+
+    // visible for test
+    static String quoteIdentifier(String sqlExpr, String identifier, List&lt;String&gt; identifierPatterns) {
+<span class="fc" id="L204">        return quoteIdentifier(sqlExpr, identifier, identifierPatterns, null);</span>
+    }
+
+    static String quoteIdentifier(String sqlExpr, String identifier, List&lt;String&gt; identifierPatterns, SqlDialect sqlDialect) {
+<span class="fc" id="L208">        String quotedIdentifier = quoteIdentifier(identifier.trim(), sqlDialect);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (String pattern : identifierPatterns) {</span>
+<span class="fc" id="L210">            Matcher matcher = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(sqlExpr);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            if (matcher.find()) {</span>
+<span class="fc" id="L212">                sqlExpr = matcher.replaceAll(&quot;$1&quot; + quotedIdentifier + &quot;$3&quot;);</span>
+            }
+<span class="fc" id="L214">        }</span>
+<span class="fc" id="L215">        return sqlExpr;</span>
+    }
+
+     static boolean isIdentifierNeedToQuote(String sqlExpr, String identifier, List&lt;String&gt; identifierPatterns) {
+<span class="pc bpc" id="L219" title="2 of 4 branches missed.">        if (StringUtils.isBlank(sqlExpr) || StringUtils.isBlank(identifier)) {</span>
+<span class="nc" id="L220">            return false;</span>
+        }
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        for (String pattern : identifierPatterns) {</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (Pattern.compile(pattern, Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(sqlExpr).find()) {</span>
+<span class="fc" id="L225">                return true;</span>
+            }
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">        return false;</span>
+    }
+
+    private static Map&lt;String, String&gt; buildTableToTableAliasMap(IJoinedFlatTableDesc flatDesc) {
+<span class="fc" id="L232">        Map&lt;String, String&gt; map = Maps.newHashMap();</span>
+<span class="fc" id="L233">        List&lt;TblColRef&gt; colRefs = flatDesc.getAllColumns();</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        for (TblColRef colRef : colRefs) {</span>
+<span class="fc" id="L235">            String tableName = colRef.getTableRef().getTableName();</span>
+<span class="fc" id="L236">            String alias = colRef.getTableAlias();</span>
+<span class="fc" id="L237">            map.put(tableName, alias);</span>
+<span class="fc" id="L238">        }</span>
+<span class="fc" id="L239">        return map;</span>
+    }
+
+    private static Map&lt;String, Map&lt;String, String&gt;&gt; buildTableToColumnsMap(IJoinedFlatTableDesc flatDesc) {
+<span class="fc" id="L243">        Map&lt;String, Map&lt;String, String&gt;&gt; map = Maps.newHashMap();</span>
+<span class="fc" id="L244">        List&lt;TblColRef&gt; colRefs = flatDesc.getAllColumns();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        for (TblColRef colRef : colRefs) {</span>
+<span class="fc" id="L246">            String colName = colRef.getName();</span>
+<span class="fc" id="L247">            String tableName = colRef.getTableRef().getTableName();</span>
+<span class="fc" id="L248">            String colAlias = colRef.getTableAlias() + &quot;_&quot; + colRef.getName();</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            if (map.containsKey(tableName)) {</span>
+<span class="fc" id="L250">                map.get(tableName).put(colName, colAlias);</span>
+            } else {
+<span class="fc" id="L252">                Map&lt;String, String&gt; colToAliasMap = Maps.newHashMap();</span>
+<span class="fc" id="L253">                colToAliasMap.put(colName, colAlias);</span>
+<span class="fc" id="L254">                map.put(tableName, colToAliasMap);</span>
+            }
+<span class="fc" id="L256">        }</span>
+<span class="fc" id="L257">        return map;</span>
+    }
+
+    private static Map&lt;String, String&gt; getColToColAliasMapInTable(String tableName,
+            Map&lt;String, Map&lt;String, String&gt;&gt; tableToColumnsMap) {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (tableToColumnsMap.containsKey(tableName)) {</span>
+<span class="nc" id="L263">            return tableToColumnsMap.get(tableName);</span>
+        }
+<span class="nc" id="L265">        return Maps.newHashMap();</span>
+    }
+
+    private static Set&lt;String&gt; listColumnsInTable(String tableName,
+            Map&lt;String, Map&lt;String, String&gt;&gt; tableToColumnsMap) {
+<span class="nc" id="L270">        Map&lt;String, String&gt; colToAliasMap = getColToColAliasMapInTable(tableName, tableToColumnsMap);</span>
+<span class="nc" id="L271">        return colToAliasMap.keySet();</span>
+    }
+
+    private static boolean columnHasAlias(String tableName, String columnName,
+            Map&lt;String, Map&lt;String, String&gt;&gt; tableToColumnsMap) {
+<span class="nc" id="L276">        Map&lt;String, String&gt; colToAliasMap = getColToColAliasMapInTable(tableName, tableToColumnsMap);</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        if (colToAliasMap.containsKey(columnName)) {</span>
+<span class="nc" id="L278">            return true;</span>
+        }
+<span class="nc" id="L280">        return false;</span>
+    }
+
+    private static String getColumnAlias(String tableName, String columnName,
+            Map&lt;String, Map&lt;String, String&gt;&gt; tableToColumnsMap) {
+<span class="nc" id="L285">        Map&lt;String, String&gt; colToAliasMap = getColToColAliasMapInTable(tableName, tableToColumnsMap);</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (colToAliasMap.containsKey(columnName)) {</span>
+<span class="nc" id="L287">            return colToAliasMap.get(columnName);</span>
+        }
+<span class="nc" id="L289">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

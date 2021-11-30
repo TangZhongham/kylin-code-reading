@@ -1,0 +1,754 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractHadoopJob.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Build Engine</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.engine.mr.common</a> &gt; <span class="el_source">AbstractHadoopJob.java</span></div><h1>AbstractHadoopJob.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.engine.mr.common;
+
+/**
+ * @author George Song (ysong1)
+ *
+ */
+
+import static org.apache.hadoop.util.StringUtils.formatTime;
+import static org.apache.kylin.engine.mr.common.JobRelatedMetaUtil.collectCubeMetadata;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapreduce.Counters;
+import org.apache.hadoop.mapreduce.InputFormat;
+import org.apache.hadoop.mapreduce.InputSplit;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.util.ClassUtil;
+import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.KylinConfig.SetAndUnsetThreadLocalConfig;
+import org.apache.kylin.common.KylinConfigExt;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.util.CliCommandExecutor;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.apache.kylin.common.util.OptionsHelper;
+import org.apache.kylin.common.util.StringSplitter;
+import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.model.CubeDescTiretreeGlobalDomainDictUtil;
+import org.apache.kylin.job.JobInstance;
+import org.apache.kylin.job.exception.JobException;
+import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Maps;
+
+@SuppressWarnings(&quot;static-access&quot;)
+public abstract class AbstractHadoopJob extends Configured implements Tool {
+<span class="nc" id="L84">    private static final Logger logger = LoggerFactory.getLogger(AbstractHadoopJob.class);</span>
+
+<span class="nc" id="L86">    protected static final Option OPTION_PROJECT = OptionBuilder.withArgName(BatchConstants.ARG_PROJECT).hasArg()</span>
+<span class="nc" id="L87">            .isRequired(true).withDescription(&quot;Project name.&quot;).create(BatchConstants.ARG_PROJECT);</span>
+<span class="nc" id="L88">    protected static final Option OPTION_JOB_NAME = OptionBuilder.withArgName(BatchConstants.ARG_JOB_NAME).hasArg()</span>
+<span class="nc" id="L89">            .isRequired(true).withDescription(&quot;Job name. For example, Kylin_Cuboid_Builder-clsfd_v2_Step_22-D)&quot;)</span>
+<span class="nc" id="L90">            .create(BatchConstants.ARG_JOB_NAME);</span>
+<span class="nc" id="L91">    protected static final Option OPTION_CUBE_NAME = OptionBuilder.withArgName(BatchConstants.ARG_CUBE_NAME).hasArg()</span>
+<span class="nc" id="L92">            .isRequired(true).withDescription(&quot;Cube name. For exmaple, flat_item_cube&quot;)</span>
+<span class="nc" id="L93">            .create(BatchConstants.ARG_CUBE_NAME);</span>
+<span class="nc" id="L94">    protected static final Option OPTION_CUBING_JOB_ID = OptionBuilder.withArgName(BatchConstants.ARG_CUBING_JOB_ID)</span>
+<span class="nc" id="L95">            .hasArg().isRequired(false).withDescription(&quot;ID of cubing job executable&quot;)</span>
+<span class="nc" id="L96">            .create(BatchConstants.ARG_CUBING_JOB_ID);</span>
+    //    @Deprecated
+<span class="nc" id="L98">    protected static final Option OPTION_SEGMENT_NAME = OptionBuilder.withArgName(BatchConstants.ARG_SEGMENT_NAME)</span>
+<span class="nc" id="L99">            .hasArg().isRequired(true).withDescription(&quot;Cube segment name&quot;).create(BatchConstants.ARG_SEGMENT_NAME);</span>
+<span class="nc" id="L100">    protected static final Option OPTION_SEGMENT_ID = OptionBuilder.withArgName(BatchConstants.ARG_SEGMENT_ID).hasArg()</span>
+<span class="nc" id="L101">            .isRequired(true).withDescription(&quot;Cube segment id&quot;).create(BatchConstants.ARG_SEGMENT_ID);</span>
+<span class="nc" id="L102">    protected static final Option OPTION_INPUT_PATH = OptionBuilder.withArgName(BatchConstants.ARG_INPUT).hasArg()</span>
+<span class="nc" id="L103">            .isRequired(true).withDescription(&quot;Input path&quot;).create(BatchConstants.ARG_INPUT);</span>
+<span class="nc" id="L104">    protected static final Option OPTION_INPUT_FORMAT = OptionBuilder.withArgName(BatchConstants.ARG_INPUT_FORMAT)</span>
+<span class="nc" id="L105">            .hasArg().isRequired(false).withDescription(&quot;Input format&quot;).create(BatchConstants.ARG_INPUT_FORMAT);</span>
+<span class="nc" id="L106">    protected static final Option OPTION_OUTPUT_PATH = OptionBuilder.withArgName(BatchConstants.ARG_OUTPUT).hasArg()</span>
+<span class="nc" id="L107">            .isRequired(true).withDescription(&quot;Output path&quot;).create(BatchConstants.ARG_OUTPUT);</span>
+<span class="nc" id="L108">    protected static final Option OPTION_DICT_PATH = OptionBuilder.withArgName(BatchConstants.ARG_DICT_PATH).hasArg()</span>
+<span class="nc" id="L109">            .isRequired(false).withDescription(&quot;Dict path&quot;).create(BatchConstants.ARG_DICT_PATH);</span>
+<span class="nc" id="L110">    protected static final Option OPTION_NCUBOID_LEVEL = OptionBuilder.withArgName(BatchConstants.ARG_LEVEL).hasArg()</span>
+<span class="nc" id="L111">            .isRequired(true).withDescription(&quot;N-Cuboid build level, e.g. 1, 2, 3...&quot;).create(BatchConstants.ARG_LEVEL);</span>
+<span class="nc" id="L112">    protected static final Option OPTION_PARTITION_FILE_PATH = OptionBuilder.withArgName(BatchConstants.ARG_PARTITION)</span>
+<span class="nc" id="L113">            .hasArg().isRequired(true).withDescription(&quot;Partition file path.&quot;).create(BatchConstants.ARG_PARTITION);</span>
+<span class="nc" id="L114">    protected static final Option OPTION_HTABLE_NAME = OptionBuilder.withArgName(BatchConstants.ARG_HTABLE_NAME)</span>
+<span class="nc" id="L115">            .hasArg().isRequired(true).withDescription(&quot;HTable name&quot;).create(BatchConstants.ARG_HTABLE_NAME);</span>
+<span class="nc" id="L116">    protected static final Option OPTION_DICTIONARY_SHRUNKEN_PATH = OptionBuilder</span>
+<span class="nc" id="L117">            .withArgName(BatchConstants.ARG_SHRUNKEN_DICT_PATH).hasArg().isRequired(false)</span>
+<span class="nc" id="L118">            .withDescription(&quot;Dictionary shrunken path&quot;).create(BatchConstants.ARG_SHRUNKEN_DICT_PATH);</span>
+
+<span class="nc" id="L120">    protected static final Option OPTION_STATISTICS_OUTPUT = OptionBuilder.withArgName(BatchConstants.ARG_STATS_OUTPUT)</span>
+<span class="nc" id="L121">            .hasArg().isRequired(false).withDescription(&quot;Statistics output&quot;).create(BatchConstants.ARG_STATS_OUTPUT);</span>
+<span class="nc" id="L122">    protected static final Option OPTION_STATISTICS_SAMPLING_PERCENT = OptionBuilder</span>
+<span class="nc" id="L123">            .withArgName(BatchConstants.ARG_STATS_SAMPLING_PERCENT).hasArg().isRequired(false)</span>
+<span class="nc" id="L124">            .withDescription(&quot;Statistics sampling percentage&quot;).create(BatchConstants.ARG_STATS_SAMPLING_PERCENT);</span>
+<span class="nc" id="L125">    protected static final Option OPTION_CUBOID_MODE = OptionBuilder.withArgName(BatchConstants.ARG_CUBOID_MODE)</span>
+<span class="nc" id="L126">            .hasArg().isRequired(false).withDescription(&quot;Cuboid Mode&quot;).create(BatchConstants.ARG_CUBOID_MODE);</span>
+<span class="nc" id="L127">    protected static final Option OPTION_NEED_UPDATE_BASE_CUBOID_SHARD = OptionBuilder</span>
+<span class="nc" id="L128">            .withArgName(BatchConstants.ARG_UPDATE_SHARD).hasArg().isRequired(false)</span>
+<span class="nc" id="L129">            .withDescription(&quot;If need to update base cuboid shard&quot;).create(BatchConstants.ARG_UPDATE_SHARD);</span>
+<span class="nc" id="L130">    protected static final Option OPTION_TABLE_NAME = OptionBuilder.withArgName(BatchConstants.ARG_TABLE_NAME).hasArg().isRequired(true).withDescription(&quot;Table name. For exmaple, default.table1&quot;).create(BatchConstants.ARG_TABLE_NAME);</span>
+<span class="nc" id="L131">    protected static final Option OPTION_LOOKUP_SNAPSHOT_ID = OptionBuilder.withArgName(BatchConstants.ARG_LOOKUP_SNAPSHOT_ID).hasArg()</span>
+<span class="nc" id="L132">            .isRequired(true).withDescription(&quot;Lookup table snapshotID&quot;)</span>
+<span class="nc" id="L133">            .create(BatchConstants.ARG_LOOKUP_SNAPSHOT_ID);</span>
+<span class="nc" id="L134">    protected static final Option OPTION_META_URL = OptionBuilder.withArgName(BatchConstants.ARG_META_URL)</span>
+<span class="nc" id="L135">            .hasArg().isRequired(true).withDescription(&quot;HDFS metadata url&quot;).create(BatchConstants.ARG_META_URL);</span>
+<span class="nc" id="L136">    public static final Option OPTION_HBASE_CONF_PATH = OptionBuilder.withArgName(BatchConstants.ARG_HBASE_CONF_PATH).hasArg()</span>
+<span class="nc" id="L137">            .isRequired(true).withDescription(&quot;HBase config file path&quot;).create(BatchConstants.ARG_HBASE_CONF_PATH);</span>
+
+    private static final String MAP_REDUCE_CLASSPATH = &quot;mapreduce.application.classpath&quot;;
+
+<span class="nc" id="L141">    private static final Map&lt;String, KylinConfig&gt; kylinConfigCache = Maps.newConcurrentMap();</span>
+
+    protected static void runJob(Tool job, String[] args) {
+        try {
+<span class="nc" id="L145">            int exitCode = ToolRunner.run(job, args);</span>
+<span class="nc" id="L146">            System.exit(exitCode);</span>
+<span class="nc" id="L147">        } catch (Exception e) {</span>
+<span class="nc" id="L148">            e.printStackTrace(System.err);</span>
+<span class="nc" id="L149">            System.exit(5);</span>
+<span class="nc" id="L150">        }</span>
+<span class="nc" id="L151">    }</span>
+
+    // ============================================================================
+
+    protected String name;
+<span class="nc" id="L156">    protected boolean isAsync = false;</span>
+<span class="nc" id="L157">    protected OptionsHelper optionsHelper = new OptionsHelper();</span>
+
+    protected Job job;
+
+    public AbstractHadoopJob() {
+<span class="nc" id="L162">        super(HadoopUtil.getCurrentConfiguration());</span>
+<span class="nc" id="L163">    }</span>
+
+    protected void parseOptions(Options options, String[] args) throws ParseException {
+<span class="nc" id="L166">        optionsHelper.parseOptions(options, args);</span>
+<span class="nc" id="L167">    }</span>
+
+    public void printUsage(Options options) {
+<span class="nc" id="L170">        optionsHelper.printUsage(getClass().getSimpleName(), options);</span>
+<span class="nc" id="L171">    }</span>
+
+    public Option[] getOptions() {
+<span class="nc" id="L174">        return optionsHelper.getOptions();</span>
+    }
+
+    public String getOptionsAsString() {
+<span class="nc" id="L178">        return optionsHelper.getOptionsAsString();</span>
+    }
+
+    protected String getOptionValue(Option option) {
+<span class="nc" id="L182">        return optionsHelper.getOptionValue(option);</span>
+    }
+
+    protected boolean hasOption(Option option) {
+<span class="nc" id="L186">        return optionsHelper.hasOption(option);</span>
+    }
+
+    protected int waitForCompletion(Job job) throws IOException, InterruptedException, ClassNotFoundException {
+<span class="nc" id="L190">        int retVal = 0;</span>
+<span class="nc" id="L191">        long start = System.nanoTime();</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (isAsync) {</span>
+<span class="nc" id="L193">            job.submit();</span>
+        } else {
+<span class="nc" id="L195">            job.waitForCompletion(true);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">            retVal = job.isSuccessful() ? 0 : 1;</span>
+<span class="nc" id="L197">            logger.debug(&quot;Job '&quot; + job.getJobName() + &quot;' finished &quot;</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">                    + (job.isSuccessful() ? &quot;successfully in &quot; : &quot;with failures.  Time taken &quot;)</span>
+<span class="nc" id="L199">                    + formatTime((System.nanoTime() - start) / 1000000L));</span>
+        }
+<span class="nc" id="L201">        return retVal;</span>
+    }
+
+    protected void setJobClasspath(Job job, KylinConfig kylinConf) {
+<span class="nc" id="L205">        String jarPath = kylinConf.getKylinJobJarPath();</span>
+<span class="nc" id="L206">        File jarFile = new File(jarPath);</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        if (jarFile.exists()) {</span>
+<span class="nc" id="L208">            job.setJar(jarPath);</span>
+<span class="nc" id="L209">            logger.trace(&quot;append job jar: &quot; + jarPath);</span>
+        } else {
+<span class="nc" id="L211">            job.setJarByClass(this.getClass());</span>
+        }
+
+<span class="nc" id="L214">        String kylinHiveDependency = System.getProperty(&quot;kylin.hive.dependency&quot;);</span>
+<span class="nc" id="L215">        String kylinKafkaDependency = System.getProperty(&quot;kylin.kafka.dependency&quot;);</span>
+
+<span class="nc" id="L217">        Configuration jobConf = job.getConfiguration();</span>
+
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (kylinConf.isUseLocalClasspathEnabled()) {</span>
+<span class="nc" id="L220">            String classpath = jobConf.get(MAP_REDUCE_CLASSPATH);</span>
+<span class="nc bnc" id="L221" title="All 4 branches missed.">            if (classpath == null || classpath.length() == 0) {</span>
+<span class="nc" id="L222">                logger.info(&quot;Didn't find &quot; + MAP_REDUCE_CLASSPATH</span>
+                    + &quot; in job configuration, will run 'mapred classpath' to get the default value.&quot;);
+<span class="nc" id="L224">                classpath = getDefaultMapRedClasspath();</span>
+<span class="nc" id="L225">                logger.info(&quot;The default mapred classpath is: &quot; + classpath);</span>
+            }
+
+<span class="nc" id="L228">            jobConf.set(MAP_REDUCE_CLASSPATH, classpath);</span>
+        }
+<span class="nc" id="L230">        logger.trace(&quot;Hadoop job classpath is: &quot; + job.getConfiguration().get(MAP_REDUCE_CLASSPATH));</span>
+
+        /*
+         *  set extra dependencies as tmpjars &amp; tmpfiles if configured
+         */
+<span class="nc" id="L235">        StringBuilder kylinDependency = new StringBuilder();</span>
+
+        // for hive dependencies
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (kylinHiveDependency != null) {</span>
+            // yarn classpath is comma separated
+<span class="nc" id="L240">            kylinHiveDependency = kylinHiveDependency.replace(&quot;:&quot;, &quot;,&quot;);</span>
+
+<span class="nc" id="L242">            logger.trace(&quot;Hive Dependencies Before Filtered: &quot; + kylinHiveDependency);</span>
+<span class="nc" id="L243">            String filteredHive = filterKylinHiveDependency(kylinHiveDependency, kylinConf);</span>
+<span class="nc" id="L244">            logger.trace(&quot;Hive Dependencies After Filtered: &quot; + filteredHive);</span>
+
+<span class="nc" id="L246">            StringUtil.appendWithSeparator(kylinDependency, filteredHive);</span>
+<span class="nc" id="L247">        } else {</span>
+
+<span class="nc" id="L249">            logger.debug(&quot;No hive dependency jars set in the environment, will find them from classpath:&quot;);</span>
+
+            try {
+<span class="nc" id="L252">                String hiveExecJarPath = ClassUtil.findContainingJar(Class.forName(&quot;org.apache.hadoop.hive.ql.Driver&quot;));</span>
+
+<span class="nc" id="L254">                StringUtil.appendWithSeparator(kylinDependency, hiveExecJarPath);</span>
+<span class="nc" id="L255">                logger.debug(&quot;hive-exec jar file: &quot; + hiveExecJarPath);</span>
+
+<span class="nc" id="L257">                String hiveHCatJarPath = ClassUtil</span>
+<span class="nc" id="L258">                        .findContainingJar(Class.forName(&quot;org.apache.hive.hcatalog.mapreduce.HCatInputFormat&quot;));</span>
+<span class="nc" id="L259">                StringUtil.appendWithSeparator(kylinDependency, hiveHCatJarPath);</span>
+<span class="nc" id="L260">                logger.debug(&quot;hive-catalog jar file: &quot; + hiveHCatJarPath);</span>
+
+<span class="nc" id="L262">                String hiveMetaStoreJarPath = ClassUtil</span>
+<span class="nc" id="L263">                        .findContainingJar(Class.forName(&quot;org.apache.hadoop.hive.metastore.api.Table&quot;));</span>
+<span class="nc" id="L264">                StringUtil.appendWithSeparator(kylinDependency, hiveMetaStoreJarPath);</span>
+<span class="nc" id="L265">                logger.debug(&quot;hive-metastore jar file: &quot; + hiveMetaStoreJarPath);</span>
+<span class="nc" id="L266">            } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L267">                logger.error(&quot;Cannot found hive dependency jars: &quot; + e);</span>
+<span class="nc" id="L268">            }</span>
+        }
+
+        // for kafka dependencies
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (kylinKafkaDependency != null) {</span>
+<span class="nc" id="L273">            kylinKafkaDependency = kylinKafkaDependency.replace(&quot;:&quot;, &quot;,&quot;);</span>
+<span class="nc" id="L274">            logger.trace(&quot;Kafka Dependencies: &quot; + kylinKafkaDependency);</span>
+<span class="nc" id="L275">            StringUtil.appendWithSeparator(kylinDependency, kylinKafkaDependency);</span>
+        } else {
+<span class="nc" id="L277">            logger.debug(&quot;No Kafka dependency jar set in the environment, will find them from classpath:&quot;);</span>
+            try {
+<span class="nc" id="L279">                String kafkaClientJarPath = ClassUtil</span>
+<span class="nc" id="L280">                        .findContainingJar(Class.forName(&quot;org.apache.kafka.clients.consumer.KafkaConsumer&quot;));</span>
+<span class="nc" id="L281">                StringUtil.appendWithSeparator(kylinDependency, kafkaClientJarPath);</span>
+<span class="nc" id="L282">                logger.debug(&quot;kafka jar file: &quot; + kafkaClientJarPath);</span>
+
+<span class="nc" id="L284">            } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L285">                logger.debug(&quot;Not found kafka client jar from classpath, it is optional for normal build: &quot; + e);</span>
+<span class="nc" id="L286">            }</span>
+        }
+
+        // for KylinJobMRLibDir
+<span class="nc" id="L290">        String mrLibDir = kylinConf.getKylinJobMRLibDir();</span>
+<span class="nc" id="L291">        logger.trace(&quot;MR additional lib dir: &quot; + mrLibDir);</span>
+<span class="nc" id="L292">        StringUtil.appendWithSeparator(kylinDependency, mrLibDir);</span>
+
+<span class="nc" id="L294">        setJobTmpJarsAndFiles(job, kylinDependency.toString());</span>
+<span class="nc" id="L295">    }</span>
+
+
+
+    private String filterKylinHiveDependency(String kylinHiveDependency, KylinConfig config) {
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (StringUtils.isBlank(kylinHiveDependency))</span>
+<span class="nc" id="L301">            return &quot;&quot;;</span>
+
+<span class="nc" id="L303">        StringBuilder jarList = new StringBuilder();</span>
+
+<span class="nc" id="L305">        Pattern hivePattern = Pattern.compile(config.getHiveDependencyFilterList());</span>
+<span class="nc" id="L306">        Matcher matcher = hivePattern.matcher(kylinHiveDependency);</span>
+
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        while (matcher.find()) {</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">            if (jarList.length() &gt; 0)</span>
+<span class="nc" id="L310">                jarList.append(&quot;,&quot;);</span>
+<span class="nc" id="L311">            jarList.append(matcher.group());</span>
+        }
+
+<span class="nc" id="L314">        return jarList.toString();</span>
+    }
+
+    private void setJobTmpJarsAndFiles(Job job, String kylinDependency) {
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        if (StringUtils.isBlank(kylinDependency))</span>
+<span class="nc" id="L319">            return;</span>
+
+<span class="nc" id="L321">        logger.trace(&quot;setJobTmpJarsAndFiles: &quot; + kylinDependency);</span>
+
+        try {
+<span class="nc" id="L324">            Configuration jobConf = job.getConfiguration();</span>
+<span class="nc" id="L325">            FileSystem localfs = FileSystem.getLocal(jobConf);</span>
+<span class="nc" id="L326">            FileSystem hdfs = HadoopUtil.getWorkingFileSystem(jobConf);</span>
+
+<span class="nc" id="L328">            StringBuilder jarList = new StringBuilder();</span>
+<span class="nc" id="L329">            StringBuilder fileList = new StringBuilder();</span>
+
+<span class="nc bnc" id="L331" title="All 2 branches missed.">            for (String fileName : StringUtil.splitAndTrim(kylinDependency, &quot;,&quot;)) {</span>
+<span class="nc" id="L332">                Path p = new Path(fileName);</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">                if (p.isAbsolute() == false) {</span>
+<span class="nc" id="L334">                    logger.warn(&quot;The directory of kylin dependency '&quot; + fileName + &quot;' is not absolute, skip&quot;);</span>
+<span class="nc" id="L335">                    continue;</span>
+                }
+                FileSystem fs;
+<span class="nc bnc" id="L338" title="All 2 branches missed.">                if (exists(hdfs, p)) {</span>
+<span class="nc" id="L339">                    fs = hdfs;</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">                } else if (exists(localfs, p)) {</span>
+<span class="nc" id="L341">                    fs = localfs;</span>
+                } else {
+<span class="nc" id="L343">                    logger.warn(&quot;The directory of kylin dependency '&quot; + fileName + &quot;' does not exist, skip&quot;);</span>
+<span class="nc" id="L344">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L347" title="All 2 branches missed.">                if (fs.getFileStatus(p).isDirectory()) {</span>
+<span class="nc" id="L348">                    logger.trace(&quot;Expanding depedency directory: &quot; + p);</span>
+<span class="nc" id="L349">                    appendTmpDir(job, fs, p, jarList, fileList);</span>
+<span class="nc" id="L350">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L353" title="All 2 branches missed.">                StringBuilder list = (p.getName().endsWith(&quot;.jar&quot;)) ? jarList : fileList;</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                if (list.length() &gt; 0)</span>
+<span class="nc" id="L355">                    list.append(&quot;,&quot;);</span>
+<span class="nc" id="L356">                list.append(fs.getFileStatus(p).getPath());</span>
+            }
+
+<span class="nc" id="L359">            appendTmpFiles(fileList.toString(), jobConf);</span>
+<span class="nc" id="L360">            appendTmpJars(jarList.toString(), jobConf);</span>
+<span class="nc" id="L361">        } catch (IOException e) {</span>
+<span class="nc" id="L362">            throw new RuntimeException(e);</span>
+<span class="nc" id="L363">        }</span>
+<span class="nc" id="L364">    }</span>
+
+    private void appendTmpDir(Job job, FileSystem fs, Path tmpDir, StringBuilder jarList, StringBuilder fileList) {
+        try {
+<span class="nc" id="L368">            FileStatus[] fList = fs.listStatus(tmpDir);</span>
+
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            for (FileStatus file : fList) {</span>
+<span class="nc" id="L371">                Path p = file.getPath();</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">                if (fs.getFileStatus(p).isDirectory()) {</span>
+<span class="nc" id="L373">                    appendTmpDir(job, fs, p, jarList, fileList);</span>
+<span class="nc" id="L374">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L377" title="All 2 branches missed.">                StringBuilder list = (p.getName().endsWith(&quot;.jar&quot;)) ? jarList : fileList;</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">                if (list.length() &gt; 0)</span>
+<span class="nc" id="L379">                    list.append(&quot;,&quot;);</span>
+<span class="nc" id="L380">                list.append(fs.getFileStatus(p).getPath().toString());</span>
+            }
+
+<span class="nc" id="L383">        } catch (IOException e) {</span>
+<span class="nc" id="L384">            throw new RuntimeException(e);</span>
+<span class="nc" id="L385">        }</span>
+<span class="nc" id="L386">    }</span>
+
+    private void appendTmpJars(String jarList, Configuration conf) {
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (StringUtils.isBlank(jarList))</span>
+<span class="nc" id="L390">            return;</span>
+
+<span class="nc" id="L392">        String tmpJars = conf.get(&quot;tmpjars&quot;, null);</span>
+<span class="nc bnc" id="L393" title="All 2 branches missed.">        if (tmpJars == null) {</span>
+<span class="nc" id="L394">            tmpJars = jarList;</span>
+        } else {
+<span class="nc" id="L396">            tmpJars += &quot;,&quot; + jarList;</span>
+        }
+<span class="nc" id="L398">        conf.set(&quot;tmpjars&quot;, tmpJars);</span>
+<span class="nc" id="L399">        logger.trace(&quot;Job 'tmpjars' updated -- &quot; + tmpJars);</span>
+<span class="nc" id="L400">    }</span>
+
+    private void appendTmpFiles(String fileList, Configuration conf) {
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        if (StringUtils.isBlank(fileList))</span>
+<span class="nc" id="L404">            return;</span>
+
+<span class="nc" id="L406">        String tmpFiles = conf.get(&quot;tmpfiles&quot;, null);</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (tmpFiles == null) {</span>
+<span class="nc" id="L408">            tmpFiles = fileList;</span>
+        } else {
+<span class="nc" id="L410">            tmpFiles += &quot;,&quot; + fileList;</span>
+        }
+<span class="nc" id="L412">        conf.set(&quot;tmpfiles&quot;, tmpFiles);</span>
+<span class="nc" id="L413">        logger.trace(&quot;Job 'tmpfiles' updated -- &quot; + tmpFiles);</span>
+<span class="nc" id="L414">    }</span>
+
+    private String getDefaultMapRedClasspath() {
+
+<span class="nc" id="L418">        String classpath = &quot;&quot;;</span>
+        try {
+<span class="nc" id="L420">            CliCommandExecutor executor = KylinConfig.getInstanceFromEnv().getCliCommandExecutor();</span>
+<span class="nc" id="L421">            String output = executor.execute(&quot;mapred classpath&quot;).getSecond();</span>
+<span class="nc" id="L422">            classpath = output.trim().replace(':', ',');</span>
+<span class="nc" id="L423">        } catch (IOException e) {</span>
+<span class="nc" id="L424">            logger.error(&quot;Failed to run: 'mapred classpath'.&quot;, e);</span>
+<span class="nc" id="L425">        }</span>
+
+<span class="nc" id="L427">        return classpath;</span>
+    }
+
+    private static boolean exists(FileSystem fs, Path p) throws IOException {
+        try {
+<span class="nc" id="L432">            return fs.exists(p);</span>
+<span class="nc" id="L433">        } catch (IllegalArgumentException ex) {</span>
+            // can happen when FS mismatch
+<span class="nc" id="L435">            return false;</span>
+        }
+    }
+
+    public static int addInputDirs(String input, Job job) throws IOException {
+<span class="nc" id="L440">        int folderNum = addInputDirs(StringSplitter.split(input, &quot;,&quot;), job);</span>
+<span class="nc" id="L441">        logger.info(&quot;Number of added folders:&quot; + folderNum);</span>
+<span class="nc" id="L442">        return folderNum;</span>
+    }
+
+    public static int addInputDirs(String[] inputs, Job job) throws IOException {
+<span class="nc" id="L446">        int ret = 0;//return number of added folders</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">        for (String inp : inputs) {</span>
+<span class="nc" id="L448">            inp = inp.trim();</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">            if (inp.endsWith(&quot;/*&quot;)) {</span>
+<span class="nc" id="L450">                inp = inp.substring(0, inp.length() - 2);</span>
+<span class="nc" id="L451">                FileSystem fs = HadoopUtil.getWorkingFileSystem(job.getConfiguration());</span>
+<span class="nc" id="L452">                Path path = new Path(inp);</span>
+
+<span class="nc bnc" id="L454" title="All 2 branches missed.">                if (!exists(fs, path)) {</span>
+<span class="nc" id="L455">                    logger.warn(&quot;Path not exist:&quot; + path.toString());</span>
+<span class="nc" id="L456">                    continue;</span>
+                }
+
+<span class="nc" id="L459">                FileStatus[] fileStatuses = fs.listStatus(path);</span>
+<span class="nc" id="L460">                boolean hasDir = false;</span>
+<span class="nc bnc" id="L461" title="All 2 branches missed.">                for (FileStatus stat : fileStatuses) {</span>
+<span class="nc bnc" id="L462" title="All 4 branches missed.">                    if (stat.isDirectory() &amp;&amp; !stat.getPath().getName().startsWith(&quot;_&quot;)) {</span>
+<span class="nc" id="L463">                        hasDir = true;</span>
+<span class="nc" id="L464">                        ret += addInputDirs(new String[] { stat.getPath().toString() }, job);</span>
+                    }
+                }
+<span class="nc bnc" id="L467" title="All 4 branches missed.">                if (fileStatuses.length &gt; 0 &amp;&amp; !hasDir) {</span>
+<span class="nc" id="L468">                    ret += addInputDirs(new String[] { path.toString() }, job);</span>
+                }
+<span class="nc" id="L470">            } else {</span>
+<span class="nc" id="L471">                logger.trace(&quot;Add input &quot; + inp);</span>
+<span class="nc" id="L472">                FileInputFormat.addInputPath(job, new Path(inp));</span>
+<span class="nc" id="L473">                ret++;</span>
+            }
+        }
+<span class="nc" id="L476">        return ret;</span>
+    }
+
+    public static KylinConfig loadKylinPropsAndMetadata() throws IOException {
+<span class="nc" id="L480">        File metaDir = new File(&quot;meta&quot;);</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        if (!metaDir.getAbsolutePath().equals(System.getProperty(KylinConfig.KYLIN_CONF))) {</span>
+<span class="nc" id="L482">            System.setProperty(KylinConfig.KYLIN_CONF, metaDir.getAbsolutePath());</span>
+<span class="nc" id="L483">            logger.info(&quot;The absolute path for meta dir is &quot; + metaDir.getAbsolutePath());</span>
+<span class="nc" id="L484">            KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();</span>
+<span class="nc" id="L485">            Map&lt;String, String&gt; paramsMap = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L486">            paramsMap.put(&quot;path&quot;, metaDir.getAbsolutePath());</span>
+<span class="nc" id="L487">            StorageURL storageURL = new StorageURL(kylinConfig.getMetadataUrl().getIdentifier(), &quot;ifile&quot;, paramsMap);</span>
+<span class="nc" id="L488">            kylinConfig.setMetadataUrl(storageURL.toString());</span>
+<span class="nc" id="L489">            return kylinConfig;</span>
+        } else {
+<span class="nc" id="L491">            return KylinConfig.getInstanceFromEnv();</span>
+        }
+    }
+
+    public static KylinConfig loadKylinConfigFromHdfs(SerializableConfiguration conf, String uri) {
+<span class="nc" id="L496">        HadoopUtil.setCurrentConfiguration(conf.get());</span>
+<span class="nc" id="L497">        KylinConfig config = loadKylinConfigFromHdfs(uri);</span>
+
+        // This is a bad example where the thread local KylinConfig cannot be auto-closed due to
+        // limitation of MR API. It works because MR task runs its own process. Do not copy.
+        @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L502">        SetAndUnsetThreadLocalConfig shouldAutoClose = KylinConfig.setAndUnsetThreadLocalConfig(config);</span>
+
+<span class="nc" id="L504">        return config;</span>
+    }
+
+    public static KylinConfig loadKylinConfigFromHdfs(String uri) {
+<span class="nc bnc" id="L508" title="All 2 branches missed.">        if (uri == null)</span>
+<span class="nc" id="L509">            throw new IllegalArgumentException(&quot;meta url should not be null&quot;);</span>
+
+<span class="nc bnc" id="L511" title="All 2 branches missed.">        if (!uri.contains(&quot;@hdfs&quot;))</span>
+<span class="nc" id="L512">            throw new IllegalArgumentException(&quot;meta url should like @hdfs schema&quot;);</span>
+
+<span class="nc bnc" id="L514" title="All 2 branches missed.">        if (kylinConfigCache.get(uri) != null) {</span>
+<span class="nc" id="L515">            logger.info(&quot;KylinConfig cached for : {}&quot;, uri);</span>
+<span class="nc" id="L516">            return kylinConfigCache.get(uri);</span>
+        }
+
+<span class="nc" id="L519">        logger.info(&quot;Ready to load KylinConfig from uri: {}&quot;, uri);</span>
+        KylinConfig config;
+        FileSystem fs;
+<span class="nc" id="L522">        String realHdfsPath = StorageURL.valueOf(uri).getParameter(&quot;path&quot;) + &quot;/&quot; + KylinConfig.KYLIN_CONF_PROPERTIES_FILE;</span>
+        try {
+<span class="nc" id="L524">            fs = HadoopUtil.getFileSystem(realHdfsPath);</span>
+<span class="nc" id="L525">            InputStream is = fs.open(new Path(realHdfsPath));</span>
+<span class="nc" id="L526">            Properties prop = KylinConfig.streamToProps(is);</span>
+<span class="nc" id="L527">            config = KylinConfig.createKylinConfig(prop);</span>
+<span class="nc" id="L528">        } catch (IOException e) {</span>
+<span class="nc" id="L529">            throw new RuntimeException(e);</span>
+<span class="nc" id="L530">        }</span>
+
+<span class="nc" id="L532">        kylinConfigCache.put(uri, config);</span>
+<span class="nc" id="L533">        return config;</span>
+    }
+
+    protected void attachTableMetadata(TableDesc table, Configuration conf) throws IOException {
+<span class="nc" id="L537">        Set&lt;String&gt; dumpList = new LinkedHashSet&lt;&gt;();</span>
+<span class="nc" id="L538">        dumpList.add(table.getResourcePath());</span>
+<span class="nc" id="L539">        dumpKylinPropsAndMetadata(table.getProject(), dumpList, KylinConfig.getInstanceFromEnv(), conf);</span>
+<span class="nc" id="L540">    }</span>
+
+    protected void attachCubeMetadata(CubeInstance cube, Configuration conf) throws IOException {
+<span class="nc" id="L543">        dumpKylinPropsAndMetadata(cube.getProject(), collectCubeMetadata(cube), cube.getConfig(),</span>
+                conf);
+<span class="nc" id="L545">    }</span>
+
+    protected void attachCubeMetadataWithDict(CubeInstance cube, Configuration conf) throws IOException {
+<span class="nc" id="L548">        Set&lt;String&gt; dumpList = new LinkedHashSet&lt;&gt;(collectCubeMetadata(cube));</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">        for (CubeSegment segment : cube.getSegments()) {</span>
+<span class="nc" id="L550">            dumpList.addAll(segment.getDictionaryPaths());</span>
+<span class="nc" id="L551">        }</span>
+<span class="nc" id="L552">        dumpKylinPropsAndMetadata(cube.getProject(), dumpList, cube.getConfig(), conf);</span>
+<span class="nc" id="L553">    }</span>
+
+    protected void attachSegmentsMetadataWithDict(List&lt;CubeSegment&gt; segments, Configuration conf) throws IOException {
+<span class="nc" id="L556">        CubeInstance cube = segments.get(0).getCubeInstance();</span>
+<span class="nc" id="L557">        Set&lt;String&gt; dumpList = new LinkedHashSet&lt;&gt;(collectCubeMetadata(cube));</span>
+<span class="nc bnc" id="L558" title="All 2 branches missed.">        for (CubeSegment segment : segments) {</span>
+<span class="nc" id="L559">            dumpList.addAll(segment.getDictionaryPaths());</span>
+<span class="nc" id="L560">        }</span>
+<span class="nc" id="L561">        dumpKylinPropsAndMetadata(cube.getProject(), dumpList, cube.getConfig(), conf);</span>
+<span class="nc" id="L562">    }</span>
+
+    protected void attachSegmentsMetadataWithDict(List&lt;CubeSegment&gt; segments, String metaUrl) throws IOException {
+<span class="nc" id="L565">        Set&lt;String&gt; dumpList = new LinkedHashSet&lt;&gt;(JobRelatedMetaUtil.collectCubeMetadata(segments.get(0).getCubeInstance()));</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">        for (CubeSegment segment : segments) {</span>
+<span class="nc" id="L567">            dumpList.addAll(segment.getDictionaryPaths());</span>
+<span class="nc" id="L568">            dumpList.add(segment.getStatisticsResourcePath());</span>
+<span class="nc" id="L569">        }</span>
+<span class="nc" id="L570">        JobRelatedMetaUtil.dumpAndUploadKylinPropsAndMetadata(dumpList, (KylinConfigExt) segments.get(0).getConfig(), metaUrl);</span>
+<span class="nc" id="L571">    }</span>
+
+    protected void attachSegmentMetadataWithDict(CubeSegment segment, Configuration conf) throws IOException {
+<span class="nc" id="L574">        attachSegmentMetadata(segment, conf, true, false);</span>
+<span class="nc" id="L575">    }</span>
+
+    protected void attachSegmentMetadataWithAll(CubeSegment segment, Configuration conf) throws IOException {
+<span class="nc" id="L578">        attachSegmentMetadata(segment, conf, true, true);</span>
+<span class="nc" id="L579">    }</span>
+
+    protected void attachSegmentMetadata(CubeSegment segment, Configuration conf, boolean ifDictIncluded,
+            boolean ifStatsIncluded) throws IOException {
+<span class="nc" id="L583">        Set&lt;String&gt; dumpList = new LinkedHashSet&lt;&gt;(collectCubeMetadata(segment.getCubeInstance()));</span>
+<span class="nc bnc" id="L584" title="All 2 branches missed.">        if (ifDictIncluded) {</span>
+<span class="nc" id="L585">            dumpList.addAll(segment.getDictionaryPaths());</span>
+        }
+<span class="nc bnc" id="L587" title="All 2 branches missed.">        if (ifStatsIncluded) {</span>
+<span class="nc" id="L588">            dumpList.add(segment.getStatisticsResourcePath());</span>
+        }
+        //tiretree global domain dic
+<span class="nc" id="L591">        CubeDescTiretreeGlobalDomainDictUtil.cuboidJob(segment.getCubeDesc(), dumpList);</span>
+
+<span class="nc" id="L593">        dumpKylinPropsAndMetadata(segment.getProject(), dumpList, segment.getConfig(), conf);</span>
+<span class="nc" id="L594">    }</span>
+
+    protected void dumpKylinPropsAndMetadata(String prj, Set&lt;String&gt; dumpList, KylinConfig kylinConfig,
+            Configuration conf) throws IOException {
+<span class="nc" id="L598">        File tmp = File.createTempFile(&quot;kylin_job_meta&quot;, &quot;&quot;);</span>
+<span class="nc" id="L599">        FileUtils.forceDelete(tmp); // we need a directory, so delete the file first</span>
+
+<span class="nc" id="L601">        File metaDir = new File(tmp, &quot;meta&quot;);</span>
+<span class="nc" id="L602">        metaDir.mkdirs();</span>
+
+        // write kylin.properties
+<span class="nc" id="L605">        File kylinPropsFile = new File(metaDir, &quot;kylin.properties&quot;);</span>
+<span class="nc" id="L606">        kylinConfig.exportToFile(kylinPropsFile);</span>
+
+<span class="nc bnc" id="L608" title="All 2 branches missed.">        if (prj != null) {</span>
+<span class="nc" id="L609">            dumpList.add(ProjectManager.getInstance(kylinConfig).getProject(prj).getResourcePath());</span>
+        }
+
+<span class="nc bnc" id="L612" title="All 2 branches missed.">        if (prj != null) {</span>
+<span class="nc" id="L613">            dumpList.add(ProjectManager.getInstance(kylinConfig).getProject(prj).getResourcePath());</span>
+        }
+
+        // write resources
+<span class="nc" id="L617">        JobRelatedMetaUtil.dumpResources(kylinConfig, metaDir, dumpList);</span>
+
+        // hadoop distributed cache
+<span class="nc" id="L620">        String hdfsMetaDir = OptionsHelper.convertToFileURL(metaDir.getAbsolutePath());</span>
+<span class="nc bnc" id="L621" title="All 2 branches missed.">        if (hdfsMetaDir.startsWith(&quot;/&quot;)) // note Path on windows is like &quot;d:/../...&quot;</span>
+<span class="nc" id="L622">            hdfsMetaDir = &quot;file://&quot; + hdfsMetaDir;</span>
+        else
+<span class="nc" id="L624">            hdfsMetaDir = &quot;file:///&quot; + hdfsMetaDir;</span>
+<span class="nc" id="L625">        logger.info(&quot;HDFS meta dir is: &quot; + hdfsMetaDir);</span>
+
+<span class="nc" id="L627">        appendTmpFiles(hdfsMetaDir, conf);</span>
+<span class="nc" id="L628">    }</span>
+
+    protected void cleanupTempConfFile(Configuration conf) {
+<span class="nc" id="L631">        String[] tempfiles = StringUtils.split(conf.get(&quot;tmpfiles&quot;), &quot;,&quot;);</span>
+<span class="nc bnc" id="L632" title="All 2 branches missed.">        if (tempfiles == null) {</span>
+<span class="nc" id="L633">            return;</span>
+        }
+<span class="nc bnc" id="L635" title="All 2 branches missed.">        for (String tempMetaFileString : tempfiles) {</span>
+<span class="nc" id="L636">            logger.trace(&quot;tempMetaFileString is : &quot; + tempMetaFileString);</span>
+<span class="nc bnc" id="L637" title="All 2 branches missed.">            if (tempMetaFileString != null) {</span>
+<span class="nc bnc" id="L638" title="All 2 branches missed.">                if (tempMetaFileString.startsWith(&quot;file://&quot;)) {</span>
+<span class="nc" id="L639">                    tempMetaFileString = tempMetaFileString.substring(&quot;file://&quot;.length());</span>
+<span class="nc" id="L640">                    File tempMetaFile = new File(tempMetaFileString);</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">                    if (tempMetaFile.exists()) {</span>
+                        try {
+<span class="nc" id="L643">                            FileUtils.forceDelete(tempMetaFile.getParentFile());</span>
+
+<span class="nc" id="L645">                        } catch (IOException e) {</span>
+<span class="nc" id="L646">                            logger.warn(&quot;error when deleting &quot; + tempMetaFile, e);</span>
+<span class="nc" id="L647">                        }</span>
+                    } else {
+<span class="nc" id="L649">                        logger.info(&quot;&quot; + tempMetaFileString + &quot; does not exist&quot;);</span>
+                    }
+<span class="nc" id="L651">                } else {</span>
+<span class="nc" id="L652">                    logger.info(&quot;tempMetaFileString is not starting with file:// :&quot; + tempMetaFileString);</span>
+                }
+            }
+        }
+<span class="nc" id="L656">    }</span>
+
+    protected void deletePath(Configuration conf, Path path) throws IOException {
+<span class="nc" id="L659">        HadoopUtil.deletePath(conf, path);</span>
+<span class="nc" id="L660">    }</span>
+
+    public static double getTotalMapInputMB(Job job)
+            throws ClassNotFoundException, IOException, InterruptedException, JobException {
+<span class="nc bnc" id="L664" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L665">            throw new JobException(&quot;Job is null&quot;);</span>
+        }
+
+<span class="nc" id="L668">        long mapInputBytes = 0;</span>
+<span class="nc" id="L669">        InputFormat&lt;?, ?&gt; input = ReflectionUtils.newInstance(job.getInputFormatClass(), job.getConfiguration());</span>
+<span class="nc bnc" id="L670" title="All 2 branches missed.">        for (InputSplit split : input.getSplits(job)) {</span>
+<span class="nc" id="L671">            mapInputBytes += split.getLength();</span>
+<span class="nc" id="L672">        }</span>
+        
+        // 0 input bytes is possible when the segment range hits no partition on a partitioned hive table (KYLIN-2470) 
+<span class="nc bnc" id="L675" title="All 2 branches missed.">        if (mapInputBytes == 0) {</span>
+<span class="nc" id="L676">            logger.warn(&quot;Map input splits are 0 bytes, something is wrong?&quot;);</span>
+        }
+        
+<span class="nc" id="L679">        double totalMapInputMB = (double) mapInputBytes / 1024 / 1024;</span>
+<span class="nc" id="L680">        return totalMapInputMB;</span>
+    }
+
+    protected double getTotalMapInputMB()
+            throws ClassNotFoundException, IOException, InterruptedException, JobException {
+<span class="nc" id="L685">        return getTotalMapInputMB(job);</span>
+    }
+
+    protected int getMapInputSplitCount()
+            throws ClassNotFoundException, JobException, IOException, InterruptedException {
+<span class="nc bnc" id="L690" title="All 2 branches missed.">        if (job == null) {</span>
+<span class="nc" id="L691">            throw new JobException(&quot;Job is null&quot;);</span>
+        }
+<span class="nc" id="L693">        InputFormat&lt;?, ?&gt; input = ReflectionUtils.newInstance(job.getInputFormatClass(), job.getConfiguration());</span>
+<span class="nc" id="L694">        return input.getSplits(job).size();</span>
+    }
+
+    public void kill() throws JobException {
+<span class="nc bnc" id="L698" title="All 2 branches missed.">        if (job != null) {</span>
+            try {
+<span class="nc" id="L700">                job.killJob();</span>
+<span class="nc" id="L701">            } catch (IOException e) {</span>
+<span class="nc" id="L702">                throw new JobException(e);</span>
+<span class="nc" id="L703">            }</span>
+        }
+<span class="nc" id="L705">    }</span>
+
+    public Map&lt;String, String&gt; getInfo() throws JobException {
+<span class="nc bnc" id="L708" title="All 2 branches missed.">        if (job != null) {</span>
+<span class="nc" id="L709">            Map&lt;String, String&gt; status = new HashMap&lt;String, String&gt;();</span>
+<span class="nc bnc" id="L710" title="All 2 branches missed.">            if (null != job.getJobID()) {</span>
+<span class="nc" id="L711">                status.put(JobInstance.MR_JOB_ID, job.getJobID().toString());</span>
+            }
+<span class="nc bnc" id="L713" title="All 2 branches missed.">            if (null != job.getTrackingURL()) {</span>
+<span class="nc" id="L714">                status.put(JobInstance.YARN_APP_URL, job.getTrackingURL().toString());</span>
+            }
+
+<span class="nc" id="L717">            return status;</span>
+        } else {
+<span class="nc" id="L719">            throw new JobException(&quot;Job is null&quot;);</span>
+        }
+    }
+
+    public Counters getCounters() throws JobException {
+<span class="nc bnc" id="L724" title="All 2 branches missed.">        if (job != null) {</span>
+            try {
+<span class="nc" id="L726">                return job.getCounters();</span>
+<span class="nc" id="L727">            } catch (IOException e) {</span>
+<span class="nc" id="L728">                throw new JobException(e);</span>
+            }
+        } else {
+<span class="nc" id="L731">            throw new JobException(&quot;Job is null&quot;);</span>
+        }
+    }
+
+    public void setAsync(boolean isAsync) {
+<span class="nc" id="L736">        this.isAsync = isAsync;</span>
+<span class="nc" id="L737">    }</span>
+
+    public Job getJob() {
+<span class="nc" id="L740">        return this.job;</span>
+    }
+
+    // tells MapReduceExecutable to skip this job
+    public boolean isSkipped() {
+<span class="nc" id="L745">        return false;</span>
+    }
+
+    @Override
+    public void setConf(Configuration conf) {
+<span class="nc" id="L750">        Configuration healSickConf = HadoopUtil.healSickConfig(conf);</span>
+<span class="nc" id="L751">        super.setConf(healSickConf);</span>
+<span class="nc" id="L752">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

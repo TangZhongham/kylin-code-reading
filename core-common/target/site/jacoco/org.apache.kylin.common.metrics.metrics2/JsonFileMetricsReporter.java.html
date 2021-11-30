@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JsonFileMetricsReporter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.metrics.metrics2</a> &gt; <span class="el_source">JsonFileMetricsReporter.java</span></div><h1>JsonFileMetricsReporter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.metrics.metrics2;
+
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.kylin.common.KylinConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.json.MetricsModule;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
+
+/**
+ * A metrics reporter for CodahaleMetrics that dumps metrics periodically into a file in JSON format.
+ */
+
+public class JsonFileMetricsReporter implements CodahaleReporter {
+
+<span class="nc" id="L50">    private static final Logger LOGGER = LoggerFactory.getLogger(JsonFileMetricsReporter.class);</span>
+    private final MetricRegistry metricRegistry;
+    private final ObjectWriter jsonWriter;
+    private final ScheduledExecutorService executorService;
+    private final KylinConfig conf;
+    private final long frequency;
+    private final String pathString;
+    private final Path path;
+
+<span class="nc" id="L59">    public JsonFileMetricsReporter(MetricRegistry registry, KylinConfig conf) {</span>
+<span class="nc" id="L60">        this.metricRegistry = registry;</span>
+<span class="nc" id="L61">        this.jsonWriter = new ObjectMapper()</span>
+<span class="nc" id="L62">                .registerModule(new MetricsModule(TimeUnit.MILLISECONDS, TimeUnit.MILLISECONDS, false))</span>
+<span class="nc" id="L63">                .writerWithDefaultPrettyPrinter();</span>
+<span class="nc" id="L64">        executorService = Executors.newSingleThreadScheduledExecutor();</span>
+<span class="nc" id="L65">        this.conf = conf;</span>
+
+<span class="nc" id="L67">        frequency = KylinConfig.getInstanceFromEnv().getMetricsReporterFrequency();</span>
+<span class="nc" id="L68">        pathString = KylinConfig.getInstanceFromEnv().getMetricsFileLocation();</span>
+<span class="nc" id="L69">        path = new Path(pathString);</span>
+<span class="nc" id="L70">    }</span>
+
+    @Override
+    public void start() {
+
+<span class="nc" id="L75">        final Path tmpPath = new Path(pathString + &quot;.tmp&quot;);</span>
+<span class="nc" id="L76">        URI tmpPathURI = tmpPath.toUri();</span>
+        final FileSystem fs;
+        try {
+<span class="nc bnc" id="L79" title="All 4 branches missed.">            if (tmpPathURI.getScheme() == null &amp;&amp; tmpPathURI.getAuthority() == null) {</span>
+                //default local
+<span class="nc" id="L81">                fs = FileSystem.getLocal(new Configuration());</span>
+            } else {
+<span class="nc" id="L83">                fs = FileSystem.get(tmpPathURI, new Configuration());</span>
+            }
+<span class="nc" id="L85">        } catch (IOException e) {</span>
+<span class="nc" id="L86">            LOGGER.error(&quot;Unable to access filesystem for path &quot; + tmpPath + &quot;. Aborting reporting&quot;, e);</span>
+<span class="nc" id="L87">            return;</span>
+<span class="nc" id="L88">        }</span>
+
+<span class="nc" id="L90">        Runnable task = new Runnable() {</span>
+            public void run() {
+                try {
+<span class="nc" id="L93">                    String json = null;</span>
+                    try {
+<span class="nc" id="L95">                        json = jsonWriter.writeValueAsString(metricRegistry);</span>
+<span class="nc" id="L96">                    } catch (JsonProcessingException e) {</span>
+<span class="nc" id="L97">                        LOGGER.error(&quot;Unable to convert json to string &quot;, e);</span>
+<span class="nc" id="L98">                        return;</span>
+<span class="nc" id="L99">                    }</span>
+
+<span class="nc" id="L101">                    fs.delete(tmpPath, true);</span>
+
+<span class="nc" id="L103">                    try (BufferedWriter bw = new BufferedWriter(</span>
+<span class="nc" id="L104">                            new OutputStreamWriter(fs.create(tmpPath, true), StandardCharsets.UTF_8))) {</span>
+<span class="nc" id="L105">                        bw.write(json);</span>
+<span class="nc" id="L106">                        fs.setPermission(tmpPath, FsPermission.createImmutable((short) 0644));</span>
+<span class="nc" id="L107">                    } catch (IOException e) {</span>
+<span class="nc" id="L108">                        LOGGER.error(&quot;Unable to write to temp file &quot; + tmpPath, e);</span>
+<span class="nc" id="L109">                        return;</span>
+<span class="nc" id="L110">                    }</span>
+
+                    try {
+<span class="nc" id="L113">                        fs.rename(tmpPath, path);</span>
+<span class="nc" id="L114">                        fs.setPermission(path, FsPermission.createImmutable((short) 0644));</span>
+<span class="nc" id="L115">                    } catch (IOException e) {</span>
+<span class="nc" id="L116">                        LOGGER.error(&quot;Unable to rename temp file &quot; + tmpPath + &quot; to &quot; + pathString, e);</span>
+<span class="nc" id="L117">                        return;</span>
+<span class="nc" id="L118">                    }</span>
+<span class="nc" id="L119">                } catch (Throwable t) {</span>
+                    // catch all errors (throwable and execptions to prevent subsequent tasks from being suppressed)
+<span class="nc" id="L121">                    LOGGER.error(&quot;Error executing scheduled task &quot;, t);</span>
+<span class="nc" id="L122">                }</span>
+<span class="nc" id="L123">            }</span>
+        };
+
+<span class="nc" id="L126">        executorService.scheduleWithFixedDelay(task, 0, frequency, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L127">    }</span>
+
+    @Override
+    public void close() {
+<span class="nc" id="L131">        executorService.shutdown();</span>
+<span class="nc" id="L132">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

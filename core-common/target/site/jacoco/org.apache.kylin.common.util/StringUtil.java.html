@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">StringUtil.java</span></div><h1>StringUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+import java.util.ArrayList;
+import java.util.Collection;
+
+import java.util.Iterator;
+import java.util.Locale;
+
+import org.apache.kylin.shaded.com.google.common.base.Splitter;
+import org.apache.kylin.shaded.com.google.common.collect.Iterables;
+import org.apache.commons.lang.StringUtils;
+
+/**
+ */
+public class StringUtil {
+
+<span class="nc" id="L35">    private StringUtil() {</span>
+<span class="nc" id="L36">        throw new IllegalStateException(&quot;Class StringUtil is an utility class !&quot;);</span>
+    }
+
+    public static String[] filterSystemArgs(String[] args) {
+<span class="fc" id="L40">        ArrayList&lt;String&gt; whatsLeft = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (String a : args) {</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (a.startsWith(&quot;-D&quot;)) {</span>
+                String key;
+                String value;
+<span class="fc" id="L45">                int cut = a.indexOf('=');</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                if (cut &lt; 0) {</span>
+<span class="fc" id="L47">                    key = a.substring(2);</span>
+<span class="fc" id="L48">                    value = &quot;&quot;;</span>
+                } else {
+<span class="nc" id="L50">                    key = a.substring(2, cut);</span>
+<span class="nc" id="L51">                    value = a.substring(cut + 1);</span>
+                }
+<span class="nc" id="L53">                System.setProperty(key, value);</span>
+<span class="nc" id="L54">            } else {</span>
+<span class="fc" id="L55">                whatsLeft.add(a);</span>
+            }
+        }
+<span class="fc" id="L58">        return (String[]) whatsLeft.toArray(new String[whatsLeft.size()]);</span>
+    }
+
+    /**
+     * Returns a substring by removing the specified suffix. If the given string
+     * does not ends with the suffix, the string is returned without change.
+     * 
+     * @param str
+     * @param suffix
+     * @return
+     */
+    public static String trimSuffix(String str, String suffix) {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (str.endsWith(suffix)) {</span>
+<span class="fc" id="L71">            return str.substring(0, str.length() - suffix.length());</span>
+        } else {
+<span class="fc" id="L73">            return str;</span>
+        }
+    }
+
+    public static String join(Iterable&lt;String&gt; parts, String separator) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (parts == null) {</span>
+<span class="fc" id="L79">            return null;</span>
+        }
+
+<span class="fc" id="L82">        Iterator&lt;String&gt; iterator = parts.iterator();</span>
+
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (iterator == null) {</span>
+<span class="nc" id="L85">            return null;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        } else if (!iterator.hasNext()) {</span>
+<span class="fc" id="L87">            return &quot;&quot;;</span>
+        } else {
+<span class="fc" id="L89">            StringBuilder buf = new StringBuilder();</span>
+<span class="fc" id="L90">            final String first = iterator.next();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (first != null) {</span>
+<span class="fc" id="L92">                buf.append(first);</span>
+            }
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            while (iterator.hasNext()) {</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                if (separator != null) {</span>
+<span class="fc" id="L96">                    buf.append(separator);</span>
+                }
+<span class="fc" id="L98">                final String part = iterator.next();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (part != null) {</span>
+<span class="fc" id="L100">                    buf.append(part);</span>
+                }
+<span class="fc" id="L102">            }</span>
+
+<span class="fc" id="L104">            return buf.toString();</span>
+        }
+    }
+
+    public static void toUpperCaseArray(String[] source, String[] target) {
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        if (source != null) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            for (int i = 0; i &lt; source.length; i++) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                if (source[i] != null) {</span>
+<span class="fc" id="L112">                    target[i] = source[i].toUpperCase(Locale.ROOT);</span>
+                }
+            }
+        }
+<span class="fc" id="L116">    }</span>
+
+    public static String noBlank(String str, String dft) {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        return StringUtils.isBlank(str) ? dft : str;</span>
+    }
+
+    public static String dropSuffix(String str, String suffix) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (str.endsWith(suffix))</span>
+<span class="fc" id="L124">            return str.substring(0, str.length() - suffix.length());</span>
+        else
+<span class="fc" id="L126">            return str;</span>
+    }
+
+    public static String min(Collection&lt;String&gt; strs) {
+<span class="nc" id="L130">        String min = null;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        for (String s : strs) {</span>
+<span class="nc bnc" id="L132" title="All 4 branches missed.">            if (min == null || min.compareTo(s) &gt; 0)</span>
+<span class="nc" id="L133">                min = s;</span>
+<span class="nc" id="L134">        }</span>
+<span class="nc" id="L135">        return min;</span>
+    }
+
+    public static String max(Collection&lt;String&gt; strs) {
+<span class="nc" id="L139">        String max = null;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        for (String s : strs) {</span>
+<span class="nc bnc" id="L141" title="All 4 branches missed.">            if (max == null || max.compareTo(s) &lt; 0)</span>
+<span class="nc" id="L142">                max = s;</span>
+<span class="nc" id="L143">        }</span>
+<span class="nc" id="L144">        return max;</span>
+    }
+
+    public static String min(String s1, String s2) {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (s1 == null)</span>
+<span class="nc" id="L149">            return s2;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        else if (s2 == null)</span>
+<span class="nc" id="L151">            return s1;</span>
+        else
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            return s1.compareTo(s2) &lt; 0 ? s1 : s2;</span>
+    }
+
+    public static String max(String s1, String s2) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (s1 == null)</span>
+<span class="nc" id="L158">            return s2;</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        else if (s2 == null)</span>
+<span class="nc" id="L160">            return s1;</span>
+        else
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            return s1.compareTo(s2) &gt; 0 ? s1 : s2;</span>
+    }
+
+    public static String[] subArray(String[] array, int start, int endExclusive) {
+<span class="nc bnc" id="L166" title="All 6 branches missed.">        if (start &lt; 0 || start &gt; endExclusive || endExclusive &gt; array.length)</span>
+<span class="nc" id="L167">            throw new IllegalArgumentException();</span>
+<span class="nc" id="L168">        String[] result = new String[endExclusive - start];</span>
+<span class="nc" id="L169">        System.arraycopy(array, start, result, 0, endExclusive - start);</span>
+<span class="nc" id="L170">        return result;</span>
+    }
+
+    public static void appendWithSeparator(StringBuilder src, String append) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (src == null) {</span>
+<span class="nc" id="L175">            throw new IllegalArgumentException();</span>
+        }
+<span class="nc bnc" id="L177" title="All 4 branches missed.">        if (src.length() &gt; 0 &amp;&amp; src.toString().endsWith(&quot;,&quot;) == false) {</span>
+<span class="nc" id="L178">            src.append(&quot;,&quot;);</span>
+        }
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (StringUtils.isBlank(append) == false) {</span>
+<span class="nc" id="L182">            src.append(append);</span>
+        }
+<span class="nc" id="L184">    }</span>
+
+    public static String[] splitAndTrim(String str, String splitBy) {
+<span class="fc" id="L187">        Splitter splitterWithTrim = Splitter.on(splitBy).trimResults().omitEmptyStrings();</span>
+
+<span class="fc" id="L189">        return Iterables.toArray(splitterWithTrim.split(str), String.class);</span>
+    }
+
+    public static String[] split(String str, String splitBy) {
+<span class="fc" id="L193">        return Iterables.toArray(Splitter.on(splitBy).split(str), String.class);</span>
+    }
+
+    public static String[] splitByComma(String str) {
+<span class="fc" id="L197">        return split(str, &quot;,&quot;);</span>
+    }
+
+    // calculating length in UTF-8 of Java String without actually encoding it
+    public static int utf8Length(CharSequence sequence) {
+<span class="nc" id="L202">        int count = 0;</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        for (int i = 0, len = sequence.length(); i &lt; len; i++) {</span>
+<span class="nc" id="L204">            char ch = sequence.charAt(i);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">            if (ch &lt;= 0x7F) {</span>
+<span class="nc" id="L206">                count++;</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            } else if (ch &lt;= 0x7FF) {</span>
+<span class="nc" id="L208">                count += 2;</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">            } else if (Character.isHighSurrogate(ch)) {</span>
+<span class="nc" id="L210">                count += 4;</span>
+<span class="nc" id="L211">                ++i;</span>
+            } else {
+<span class="nc" id="L213">                count += 3;</span>
+            }
+        }
+<span class="nc" id="L216">        return count;</span>
+    }
+
+    public static boolean equals(String a, String b) {
+<span class="nc bnc" id="L220" title="All 4 branches missed.">        return a == null ? b == null : a.equals(b);</span>
+    }
+
+    public static boolean isEmpty(String str) {
+<span class="nc bnc" id="L224" title="All 4 branches missed.">        return str == null || str.length() == 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

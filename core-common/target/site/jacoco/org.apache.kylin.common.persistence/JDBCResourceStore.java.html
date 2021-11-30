@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JDBCResourceStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">JDBCResourceStore.java</span></div><h1>JDBCResourceStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.sql.Blob;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.util.DBUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+
+<span class="nc bnc" id="L46" title="All 2 branches missed.">public class JDBCResourceStore extends PushdownResourceStore {</span>
+
+    public static final String JDBC_SCHEME = &quot;jdbc&quot;;
+<span class="nc" id="L49">    private static final ConcurrentHashMap&lt;String, Object&gt; lockObjectMap = new ConcurrentHashMap&lt;&gt;();</span>
+    private static final String META_TABLE_KEY = &quot;META_TABLE_KEY&quot;;
+    private static final String META_TABLE_TS = &quot;META_TABLE_TS&quot;;
+    private static final String META_TABLE_CONTENT = &quot;META_TABLE_CONTENT&quot;;
+<span class="nc" id="L53">    private static Logger logger = LoggerFactory.getLogger(JDBCResourceStore.class);</span>
+    private JDBCConnectionManager connectionManager;
+
+    // ============================================================================
+<span class="nc" id="L57">    private String[] tableNames = new String[2];</span>
+<span class="nc" id="L58">    private String metadataIdentifier = null;</span>
+    // For test
+<span class="nc" id="L60">    private long queriedSqlNum = 0;</span>
+
+    public JDBCResourceStore(KylinConfig kylinConfig) throws SQLException, IOException {
+<span class="nc" id="L63">        super(kylinConfig);</span>
+<span class="nc" id="L64">        StorageURL metadataUrl = kylinConfig.getMetadataUrl();</span>
+<span class="nc" id="L65">        checkScheme(metadataUrl);</span>
+<span class="nc" id="L66">        this.metadataIdentifier = metadataUrl.getIdentifier();</span>
+<span class="nc" id="L67">        this.tableNames[0] = metadataIdentifier;</span>
+<span class="nc" id="L68">        this.tableNames[1] = metadataIdentifier + &quot;_log&quot;;</span>
+<span class="nc" id="L69">        this.connectionManager = JDBCConnectionManager.getConnectionManager();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        for (int i = 0; i &lt; tableNames.length; i++) {</span>
+<span class="nc" id="L71">            createTableIfNeeded(tableNames[i]);</span>
+        }
+<span class="nc" id="L73">    }</span>
+
+    public static void checkScheme(StorageURL url) {
+<span class="nc" id="L76">        Preconditions.checkState(JDBC_SCHEME.equals(url.getScheme()));</span>
+<span class="nc" id="L77">    }</span>
+
+    private Object getConcurrentObject(String resPath) {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if (!lockObjectMap.containsKey(resPath)) {</span>
+<span class="nc" id="L81">            addObject(resPath);</span>
+        }
+<span class="nc" id="L83">        return lockObjectMap.get(resPath);</span>
+    }
+
+    private synchronized void addObject(String resPath) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (!lockObjectMap.containsKey(resPath)) {</span>
+<span class="nc" id="L88">            lockObjectMap.put(resPath, new Object());</span>
+        }
+<span class="nc" id="L90">    }</span>
+
+    private void executeSql(SqlOperation operation) throws SQLException, IOException {
+<span class="nc" id="L93">        Connection connection = null;</span>
+        try {
+<span class="nc" id="L95">            connection = connectionManager.getConn();</span>
+
+            // set a low translation level for best performance
+<span class="nc" id="L98">            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);</span>
+
+<span class="nc" id="L100">            operation.execute(connection);</span>
+<span class="nc" id="L101">            queriedSqlNum++;</span>
+        } finally {
+<span class="nc" id="L103">            DBUtils.closeQuietly(operation.rs);</span>
+<span class="nc" id="L104">            DBUtils.closeQuietly(operation.pstat);</span>
+<span class="nc" id="L105">            DBUtils.closeQuietly(connection);</span>
+        }
+<span class="nc" id="L107">    }</span>
+
+    private void createTableIfNeeded(final String tableName) throws SQLException, IOException {
+<span class="nc" id="L110">        JDBCResourceSQL sqls = getJDBCResourceSQL(tableName);</span>
+<span class="nc" id="L111">        executeSql(new SqlOperation() {</span>
+            @Override
+            public void execute(Connection connection) throws SQLException {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                if (checkTableExists(tableName, connection)) {</span>
+<span class="nc" id="L115">                    logger.info(&quot;Table [{}] already exists&quot;, tableName);</span>
+<span class="nc" id="L116">                    return;</span>
+                }
+
+<span class="nc" id="L119">                String createIfNeededSql = sqls.getCreateIfNeededSql(tableName);</span>
+<span class="nc" id="L120">                logger.info(&quot;Creating table: {}&quot;, createIfNeededSql);</span>
+<span class="nc" id="L121">                pstat = connection.prepareStatement(createIfNeededSql);</span>
+<span class="nc" id="L122">                pstat.executeUpdate();</span>
+
+                try {
+<span class="nc" id="L125">                    String indexName = &quot;IDX_&quot; + META_TABLE_TS;</span>
+<span class="nc" id="L126">                    String createIndexSql = sqls.getCreateIndexSql(indexName, tableName, META_TABLE_TS);</span>
+<span class="nc" id="L127">                    logger.info(&quot;Creating index: {}&quot;, createIndexSql);</span>
+<span class="nc" id="L128">                    pstat = connection.prepareStatement(createIndexSql);</span>
+<span class="nc" id="L129">                    pstat.executeUpdate();</span>
+<span class="nc" id="L130">                } catch (SQLException ex) {</span>
+<span class="nc" id="L131">                    logger.error(&quot;Failed to create index on {}&quot;, META_TABLE_TS, ex);</span>
+<span class="nc" id="L132">                }</span>
+<span class="nc" id="L133">            }</span>
+
+            private boolean checkTableExists(final String tableName, final Connection connection) throws SQLException {
+<span class="nc" id="L136">                PreparedStatement ps = null;</span>
+<span class="nc" id="L137">                ResultSet rs = null;</span>
+                try {
+<span class="nc" id="L139">                    String checkTableExistsSql = sqls.getCheckTableExistsSql(tableName);</span>
+<span class="nc" id="L140">                    ps = connection.prepareStatement(checkTableExistsSql);</span>
+<span class="nc" id="L141">                    rs = ps.executeQuery();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                    while (rs.next()) {</span>
+                        // use equalsIgnoreCase() as some RDBMS is case insensitive
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                        if (tableName.equalsIgnoreCase(rs.getString(1))) {</span>
+<span class="nc" id="L145">                            return true;</span>
+                        }
+                    }
+                } finally {
+<span class="nc" id="L149">                    DBUtils.closeQuietly(rs);</span>
+<span class="nc" id="L150">                    DBUtils.closeQuietly(ps);</span>
+                }
+
+<span class="nc" id="L153">                return false;</span>
+            }
+        });
+<span class="nc" id="L156">    }</span>
+
+    public long getQueriedSqlNum() {
+<span class="nc" id="L159">        return queriedSqlNum;</span>
+    }
+
+    public void close() {
+<span class="nc" id="L163">        connectionManager.close();</span>
+<span class="nc" id="L164">    }</span>
+
+    private boolean isJsonMetadata(String resourcePath) {
+<span class="nc" id="L167">        String trim = resourcePath.trim();</span>
+<span class="nc bnc" id="L168" title="All 4 branches missed.">        return trim.endsWith(&quot;.json&quot;) || trim.startsWith(ResourceStore.EXECUTE_RESOURCE_ROOT)</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">                || trim.startsWith(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT);</span>
+    }
+
+    @Override
+    protected void visitFolderImpl(final String folderPath, final boolean recursive, final VisitFilter filter,
+            final boolean loadContent, final Visitor visitor) throws IOException {
+
+        try {
+<span class="nc" id="L177">            executeSql(new SqlOperation() {</span>
+                @Override
+                public void execute(Connection connection) throws SQLException {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                    String folderPrefix = folderPath.endsWith(&quot;/&quot;) ? folderPath : folderPath + &quot;/&quot;;</span>
+<span class="nc" id="L181">                    String lookForPrefix = folderPrefix;</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                    if (filter.hasPathPrefixFilter()) {</span>
+<span class="nc" id="L183">                        Preconditions.checkArgument(filter.pathPrefix.startsWith(folderPrefix));</span>
+<span class="nc" id="L184">                        lookForPrefix = filter.pathPrefix;</span>
+                    }
+
+<span class="nc bnc" id="L187" title="All 2 branches missed.">                    if (isRootPath(folderPath)) {</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">                        for (int i = 0; i &lt; tableNames.length; i++) {</span>
+<span class="nc" id="L189">                            final String tableName = tableNames[i];</span>
+<span class="nc" id="L190">                            JDBCResourceSQL sqls = getJDBCResourceSQL(tableName);</span>
+<span class="nc" id="L191">                            String sql = sqls.getAllResourceSqlString(loadContent);</span>
+<span class="nc" id="L192">                            pstat = connection.prepareStatement(sql);</span>
+                            // '_' is LIKE wild char, need escape
+<span class="nc" id="L194">                            pstat.setString(1, lookForPrefix.replace(&quot;_&quot;, &quot;#_&quot;) + &quot;%&quot;);</span>
+<span class="nc" id="L195">                            pstat.setLong(2, filter.lastModStart);</span>
+<span class="nc" id="L196">                            pstat.setLong(3, filter.lastModEndExclusive);</span>
+<span class="nc" id="L197">                            rs = pstat.executeQuery();</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">                            while (rs.next()) {</span>
+<span class="nc" id="L199">                                String resPath = rs.getString(META_TABLE_KEY);</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">                                if (resPath.equals(folderPath))</span>
+<span class="nc" id="L201">                                    continue; // the folder itself exists as a resource? ignore..</span>
+
+<span class="nc bnc" id="L203" title="All 4 branches missed.">                                if (recursive || isDirectChild(folderPrefix, resPath)) {</span>
+<span class="nc" id="L204">                                    RawResource raw = rawResource(rs, loadContent, true);</span>
+                                    try {
+<span class="nc" id="L206">                                        visitor.visit(raw);</span>
+<span class="nc" id="L207">                                    } catch (IOException e) {</span>
+<span class="nc" id="L208">                                        throw new RuntimeException(e);</span>
+                                    } finally {
+<span class="nc" id="L210">                                        raw.close();</span>
+                                    }
+                                }
+<span class="nc" id="L213">                            }</span>
+                        }
+                    } else {
+<span class="nc" id="L216">                        JDBCResourceSQL sqls = getJDBCResourceSQL(getMetaTableName(folderPath));</span>
+<span class="nc" id="L217">                        String sql = sqls.getAllResourceSqlString(loadContent);</span>
+<span class="nc" id="L218">                        pstat = connection.prepareStatement(sql);</span>
+                        // '_' is LIKE wild char, need escape
+<span class="nc" id="L220">                        pstat.setString(1, lookForPrefix.replace(&quot;_&quot;, &quot;#_&quot;) + &quot;%&quot;);</span>
+<span class="nc" id="L221">                        pstat.setLong(2, filter.lastModStart);</span>
+<span class="nc" id="L222">                        pstat.setLong(3, filter.lastModEndExclusive);</span>
+<span class="nc" id="L223">                        rs = pstat.executeQuery();</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                        while (rs.next()) {</span>
+<span class="nc" id="L225">                            String resPath = rs.getString(META_TABLE_KEY);</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">                            if (resPath.equals(folderPath))</span>
+<span class="nc" id="L227">                                continue; // the folder itself exists as a resource? ignore..</span>
+
+<span class="nc bnc" id="L229" title="All 4 branches missed.">                            if (recursive || isDirectChild(folderPrefix, resPath)) {</span>
+<span class="nc" id="L230">                                RawResource raw = rawResource(rs, loadContent, true);</span>
+                                try {
+<span class="nc" id="L232">                                    visitor.visit(raw);</span>
+<span class="nc" id="L233">                                } catch (IOException e) {</span>
+<span class="nc" id="L234">                                    throw new RuntimeException(e);</span>
+                                } finally {
+<span class="nc" id="L236">                                    raw.close();</span>
+                                }
+                            }
+<span class="nc" id="L239">                        }</span>
+                    }
+<span class="nc" id="L241">                }</span>
+            });
+<span class="nc" id="L243">        } catch (SQLException e) {</span>
+<span class="nc" id="L244">            throw new IOException(e);</span>
+<span class="nc" id="L245">        }</span>
+<span class="nc" id="L246">    }</span>
+
+    private boolean isDirectChild(String folderPrefix, String resPath) {
+<span class="nc bnc" id="L249" title="All 4 branches missed.">        assert resPath.startsWith(folderPrefix);</span>
+<span class="nc" id="L250">        int cut = resPath.indexOf('/', folderPrefix.length());</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        return (cut &lt; 0);</span>
+    }
+
+    @Override
+    protected boolean existsImpl(String resPath) throws IOException {
+        try {
+<span class="nc" id="L257">            RawResource resource = getResourceInteral(resPath, false, false);</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">            return (resource != null);</span>
+<span class="nc" id="L259">        } catch (SQLException e) {</span>
+<span class="nc" id="L260">            throw new IOException(e);</span>
+        }
+    }
+
+    @Override
+    protected RawResource getResourceImpl(String resPath) throws IOException {
+        try {
+<span class="nc" id="L267">            return getResourceInteral(resPath, true, true);</span>
+<span class="nc" id="L268">        } catch (SQLException e) {</span>
+<span class="nc" id="L269">            throw new IOException(e);</span>
+        }
+    }
+
+    RawResource getResourceInteral(final String resourcePath, final boolean fetchContent, final boolean fetchTimestamp)
+            throws SQLException, IOException {
+<span class="nc" id="L275">        logger.trace(&quot;getResource method. resourcePath : {} , fetchConetent : {} , fetch TS : {}&quot;, resourcePath,</span>
+<span class="nc" id="L276">                fetchContent, fetchTimestamp);</span>
+
+<span class="nc" id="L278">        final RawResource[] holder = new RawResource[1];</span>
+
+<span class="nc" id="L280">        JDBCResourceSQL sqls = getJDBCResourceSQL(getMetaTableName(resourcePath));</span>
+<span class="nc" id="L281">        executeSql(new SqlOperation() {</span>
+            @Override
+            public void execute(Connection connection) throws SQLException {
+<span class="nc" id="L284">                pstat = connection.prepareStatement(sqls.getKeyEqualSqlString(fetchContent, fetchTimestamp));</span>
+<span class="nc" id="L285">                pstat.setString(1, resourcePath);</span>
+<span class="nc" id="L286">                rs = pstat.executeQuery();</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">                if (rs.next()) {</span>
+<span class="nc" id="L288">                    holder[0] = rawResource(rs, fetchContent, fetchTimestamp);</span>
+                }
+<span class="nc" id="L290">            }</span>
+        });
+
+<span class="nc" id="L293">        return holder[0];</span>
+    }
+
+    private RawResource rawResource(ResultSet rs, boolean fetchContent, boolean fetchTime) throws SQLException {
+<span class="nc" id="L297">        String path = rs.getString(META_TABLE_KEY);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        long ts = fetchTime ? rs.getLong(META_TABLE_TS) : -1;</span>
+
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (fetchContent) {</span>
+            try {
+<span class="nc" id="L302">                return new RawResource(path, ts, getInputStream(path, rs));</span>
+<span class="nc" id="L303">            } catch (IOException e) {</span>
+<span class="nc" id="L304">                return new RawResource(path, ts, e); // let the caller handle broken content</span>
+<span class="nc" id="L305">            } catch (SQLException e) {</span>
+<span class="nc" id="L306">                return new RawResource(path, ts, new IOException(e)); // let the caller handle broken content</span>
+            }
+        } else {
+<span class="nc" id="L309">            return new RawResource(path, ts);</span>
+        }
+    }
+
+    private InputStream getInputStream(String resPath, ResultSet rs) throws SQLException, IOException {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        if (rs == null) {</span>
+<span class="nc" id="L315">            return null;</span>
+        }
+
+<span class="nc" id="L318">        Blob blob = rs.getBlob(META_TABLE_CONTENT);</span>
+
+<span class="nc bnc" id="L320" title="All 4 branches missed.">        if (blob == null || blob.length() == 0) {</span>
+<span class="nc" id="L321">            return openPushdown(resPath); // empty bytes is pushdown indicator</span>
+        } else {
+<span class="nc" id="L323">            return blob.getBinaryStream();</span>
+        }
+    }
+
+    @Override
+    protected long getResourceTimestampImpl(String resPath) throws IOException {
+        try {
+<span class="nc" id="L330">            RawResource resource = getResourceInteral(resPath, false, true);</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">            return resource == null ? 0 : resource.lastModified();</span>
+<span class="nc" id="L332">        } catch (SQLException e) {</span>
+<span class="nc" id="L333">            throw new IOException(e);</span>
+        }
+    }
+
+    @Override
+    protected void putSmallResource(String resPath, ContentWriter content, long ts) throws IOException {
+        try {
+<span class="nc" id="L340">            putResourceInternal(resPath, content, ts);</span>
+<span class="nc" id="L341">        } catch (SQLException e) {</span>
+<span class="nc" id="L342">            throw new IOException(e);</span>
+<span class="nc" id="L343">        }</span>
+<span class="nc" id="L344">    }</span>
+
+    void putResourceInternal(final String resPath, final ContentWriter content, final long ts)
+            throws SQLException, IOException {
+<span class="nc" id="L348">        executeSql(new SqlOperation() {</span>
+            @Override
+            public void execute(Connection connection) throws SQLException, IOException {
+<span class="nc" id="L351">                byte[] bytes = content.extractAllBytes();</span>
+<span class="nc" id="L352">                synchronized (getConcurrentObject(resPath)) {</span>
+<span class="nc" id="L353">                    JDBCResourceSQL sqls = getJDBCResourceSQL(getMetaTableName(resPath));</span>
+<span class="nc" id="L354">                    boolean existing = existsImpl(resPath);</span>
+<span class="nc bnc" id="L355" title="All 2 branches missed.">                    if (existing) {</span>
+<span class="nc" id="L356">                        pstat = connection.prepareStatement(sqls.getReplaceSql());</span>
+<span class="nc" id="L357">                        pstat.setLong(1, ts);</span>
+<span class="nc" id="L358">                        pstat.setBlob(2, new BufferedInputStream(new ByteArrayInputStream(bytes)));</span>
+<span class="nc" id="L359">                        pstat.setString(3, resPath);</span>
+                    } else {
+<span class="nc" id="L361">                        pstat = connection.prepareStatement(sqls.getInsertSql());</span>
+<span class="nc" id="L362">                        pstat.setString(1, resPath);</span>
+<span class="nc" id="L363">                        pstat.setLong(2, ts);</span>
+<span class="nc" id="L364">                        pstat.setBlob(3, new BufferedInputStream(new ByteArrayInputStream(bytes)));</span>
+                    }
+
+<span class="nc bnc" id="L367" title="All 2 branches missed.">                    if (isContentOverflow(bytes, resPath)) {</span>
+<span class="nc" id="L368">                        logger.debug(&quot;Overflow! resource path: {}, content size: {}, timeStamp: {}&quot;, resPath,</span>
+<span class="nc" id="L369">                                bytes.length, ts);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">                        if (existing) {</span>
+<span class="nc" id="L371">                            pstat.setNull(2, Types.BLOB);</span>
+                        } else {
+<span class="nc" id="L373">                            pstat.setNull(3, Types.BLOB);</span>
+                        }
+
+<span class="nc" id="L376">                        RollbackablePushdown pushdown = writePushdown(resPath, ContentWriter.create(bytes));</span>
+                        try {
+<span class="nc" id="L378">                            int result = pstat.executeUpdate();</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">                            if (result != 1)</span>
+<span class="nc" id="L380">                                throw new SQLException();</span>
+<span class="nc" id="L381">                        } catch (Exception e) {</span>
+<span class="nc" id="L382">                            pushdown.rollback();</span>
+<span class="nc" id="L383">                            throw e;</span>
+                        } finally {
+<span class="nc" id="L385">                            pushdown.close();</span>
+                        }
+<span class="nc" id="L387">                    } else {</span>
+<span class="nc" id="L388">                        pstat.executeUpdate();</span>
+                    }
+<span class="nc" id="L390">                }</span>
+<span class="nc" id="L391">            }</span>
+        });
+<span class="nc" id="L393">    }</span>
+
+    private boolean isContentOverflow(byte[] content, String resPath) throws SQLException {
+<span class="nc bnc" id="L396" title="All 4 branches missed.">        if (kylinConfig.isJsonAlwaysSmallCell() &amp;&amp; isJsonMetadata(resPath)) {</span>
+
+<span class="nc" id="L398">            int smallCellMetadataWarningThreshold = kylinConfig.getSmallCellMetadataWarningThreshold();</span>
+<span class="nc" id="L399">            int smallCellMetadataErrorThreshold = kylinConfig.getSmallCellMetadataErrorThreshold();</span>
+
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            if (content.length &gt; smallCellMetadataWarningThreshold) {</span>
+<span class="nc" id="L402">                logger.warn(</span>
+                        &quot;A JSON metadata entry's size is not supposed to exceed kylin.metadata.jdbc.small-cell-meta-size-warning-threshold({}), resPath: {}, actual size: {}&quot;,
+<span class="nc" id="L404">                        smallCellMetadataWarningThreshold, resPath, content.length);</span>
+            }
+<span class="nc bnc" id="L406" title="All 2 branches missed.">            if (content.length &gt; smallCellMetadataErrorThreshold) {</span>
+<span class="nc" id="L407">                throw new SQLException(new IllegalArgumentException(</span>
+                        &quot;A JSON metadata entry's size is not supposed to exceed kylin.metadata.jdbc.small-cell-meta-size-error-threshold(&quot;
+                                + smallCellMetadataErrorThreshold + &quot;), resPath: &quot; + resPath + &quot;, actual size: &quot;
+                                + content.length));
+            }
+
+<span class="nc" id="L413">            return false;</span>
+        }
+
+<span class="nc" id="L416">        int maxSize = kylinConfig.getJdbcResourceStoreMaxCellSize();</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (content.length &gt; maxSize)</span>
+<span class="nc" id="L418">            return true;</span>
+        else
+<span class="nc" id="L420">            return false;</span>
+    }
+
+    @Override
+    protected long checkAndPutResourceImpl(String resPath, byte[] content, long oldTS, long newTS)
+            throws IOException, WriteConflictException {
+        try {
+<span class="nc" id="L427">            checkAndPutResourceInternal(resPath, content, oldTS, newTS);</span>
+<span class="nc" id="L428">            return newTS;</span>
+<span class="nc" id="L429">        } catch (SQLException e) {</span>
+<span class="nc" id="L430">            throw new IOException(e);</span>
+        }
+    }
+
+    void checkAndPutResourceInternal(final String resPath, final byte[] content, final long oldTS, final long newTS)
+            throws SQLException, IOException, WriteConflictException {
+<span class="nc" id="L436">        logger.trace(</span>
+                &quot;execute checkAndPutResource method. resPath : {} , oldTs : {} , newTs : {} , content null ? : {} &quot;,
+<span class="nc bnc" id="L438" title="All 2 branches missed.">                resPath, oldTS, newTS, content == null);</span>
+<span class="nc" id="L439">        executeSql(new SqlOperation() {</span>
+            @Override
+            public void execute(Connection connection) throws SQLException, IOException {
+<span class="nc" id="L442">                synchronized (getConcurrentObject(resPath)) {</span>
+<span class="nc" id="L443">                    JDBCResourceSQL sqls = getJDBCResourceSQL(getMetaTableName(resPath));</span>
+<span class="nc bnc" id="L444" title="All 2 branches missed.">                    if (!existsImpl(resPath)) {</span>
+<span class="nc bnc" id="L445" title="All 2 branches missed.">                        if (oldTS != 0) {</span>
+<span class="nc" id="L446">                            throw new IllegalStateException(</span>
+                                    &quot;For not exist file. OldTS have to be 0. but Actual oldTS is : &quot; + oldTS);
+                        }
+<span class="nc bnc" id="L449" title="All 2 branches missed.">                        if (isContentOverflow(content, resPath)) {</span>
+<span class="nc" id="L450">                            logger.debug(&quot;Overflow! resource path: {}, content size: {}&quot;, resPath, content.length);</span>
+<span class="nc" id="L451">                            pstat = connection.prepareStatement(sqls.getInsertSqlWithoutContent());</span>
+<span class="nc" id="L452">                            pstat.setString(1, resPath);</span>
+<span class="nc" id="L453">                            pstat.setLong(2, newTS);</span>
+<span class="nc" id="L454">                            RollbackablePushdown pushdown = writePushdown(resPath, ContentWriter.create(content));</span>
+                            try {
+<span class="nc" id="L456">                                int result = pstat.executeUpdate();</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">                                if (result != 1)</span>
+<span class="nc" id="L458">                                    throw new SQLException();</span>
+<span class="nc" id="L459">                            } catch (Throwable e) {</span>
+<span class="nc" id="L460">                                pushdown.rollback();</span>
+<span class="nc" id="L461">                                throw e;</span>
+                            } finally {
+<span class="nc" id="L463">                                pushdown.close();</span>
+                            }
+<span class="nc" id="L465">                        } else {</span>
+<span class="nc" id="L466">                            pstat = connection.prepareStatement(sqls.getInsertSql());</span>
+<span class="nc" id="L467">                            pstat.setString(1, resPath);</span>
+<span class="nc" id="L468">                            pstat.setLong(2, newTS);</span>
+<span class="nc" id="L469">                            pstat.setBlob(3, new BufferedInputStream(new ByteArrayInputStream(content)));</span>
+<span class="nc" id="L470">                            pstat.executeUpdate();</span>
+                        }
+                    } else {
+                        // Note the checkAndPut trick:
+                        // update {0} set {1}=?,{2}=? where {3}=? and {4}=?
+<span class="nc" id="L475">                        pstat = connection.prepareStatement(sqls.getUpdateContentAndTsSql());</span>
+<span class="nc" id="L476">                        pstat.setLong(1, newTS);</span>
+<span class="nc" id="L477">                        pstat.setString(3, resPath);</span>
+<span class="nc" id="L478">                        pstat.setLong(4, oldTS);</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">                        if (isContentOverflow(content, resPath)) {</span>
+<span class="nc" id="L480">                            pstat.setNull(2, Types.BLOB);</span>
+<span class="nc" id="L481">                            RollbackablePushdown pushdown = writePushdown(resPath, ContentWriter.create(content));</span>
+                            try {
+<span class="nc" id="L483">                                int result = pstat.executeUpdate();</span>
+<span class="nc bnc" id="L484" title="All 2 branches missed.">                                if (result != 1)</span>
+<span class="nc" id="L485">                                    throw new SQLException();</span>
+<span class="nc" id="L486">                            } catch (Throwable e) {</span>
+<span class="nc" id="L487">                                pushdown.rollback();</span>
+<span class="nc" id="L488">                                throw e;</span>
+                            } finally {
+<span class="nc" id="L490">                                pushdown.close();</span>
+                            }
+<span class="nc" id="L492">                        } else {</span>
+<span class="nc" id="L493">                            pstat.setBinaryStream(2, new BufferedInputStream(new ByteArrayInputStream(content)));</span>
+<span class="nc" id="L494">                            int result = pstat.executeUpdate();</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">                            if (result != 1) {</span>
+<span class="nc" id="L496">                                long realTime = getResourceTimestamp(resPath);</span>
+<span class="nc" id="L497">                                throw new WriteConflictException(&quot;Overwriting conflict &quot; + resPath + &quot;, expect old TS &quot;</span>
+                                        + oldTS + &quot;, but it is &quot; + realTime);
+                            }
+                        }
+                    }
+<span class="nc" id="L502">                }</span>
+<span class="nc" id="L503">            }</span>
+        });
+<span class="nc" id="L505">    }</span>
+
+    @Override
+    protected void updateTimestampImpl(final String resPath, final long timestamp) throws IOException {
+        try {
+<span class="nc" id="L510">            boolean skipHdfs = isJsonMetadata(resPath);</span>
+<span class="nc" id="L511">            JDBCResourceSQL sqls = getJDBCResourceSQL(getMetaTableName(resPath));</span>
+<span class="nc" id="L512">            executeSql(new SqlOperation() {</span>
+                @Override
+                public void execute(Connection connection) throws SQLException {
+<span class="nc" id="L515">                    pstat = connection.prepareStatement(sqls.getReplaceSqlWithoutContent());</span>
+<span class="nc" id="L516">                    pstat.setLong(1, timestamp);</span>
+<span class="nc" id="L517">                    pstat.setString(2, resPath);</span>
+<span class="nc" id="L518">                    pstat.executeUpdate();</span>
+<span class="nc" id="L519">                }</span>
+            });
+
+<span class="nc bnc" id="L522" title="All 2 branches missed.">            if (!skipHdfs) {</span>
+                try {
+<span class="nc" id="L524">                    updateTimestampPushdown(resPath, timestamp);</span>
+<span class="nc" id="L525">                } catch (Throwable e) {</span>
+<span class="nc" id="L526">                    throw new SQLException(e);</span>
+<span class="nc" id="L527">                }</span>
+            }
+<span class="nc" id="L529">        } catch (SQLException e) {</span>
+<span class="nc" id="L530">            throw new IOException(e);</span>
+<span class="nc" id="L531">        }</span>
+<span class="nc" id="L532">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(final String resPath) throws IOException {
+        try {
+<span class="nc" id="L537">            boolean skipHdfs = isJsonMetadata(resPath);</span>
+
+<span class="nc" id="L539">            JDBCResourceSQL sqls = getJDBCResourceSQL(getMetaTableName(resPath));</span>
+<span class="nc" id="L540">            executeSql(new SqlOperation() {</span>
+                @Override
+                public void execute(Connection connection) throws SQLException {
+<span class="nc" id="L543">                    pstat = connection.prepareStatement(sqls.getDeletePstatSql());</span>
+<span class="nc" id="L544">                    pstat.setString(1, resPath);</span>
+<span class="nc" id="L545">                    pstat.executeUpdate();</span>
+<span class="nc" id="L546">                }</span>
+            });
+
+<span class="nc bnc" id="L549" title="All 2 branches missed.">            if (!skipHdfs) {</span>
+                try {
+<span class="nc" id="L551">                    deletePushdown(resPath);</span>
+<span class="nc" id="L552">                } catch (Exception e) {</span>
+<span class="nc" id="L553">                    throw new SQLException(e);</span>
+<span class="nc" id="L554">                }</span>
+            }
+<span class="nc" id="L556">        } catch (SQLException e) {</span>
+<span class="nc" id="L557">            throw new IOException(e);</span>
+<span class="nc" id="L558">        }</span>
+<span class="nc" id="L559">    }</span>
+
+    @Override
+    protected void deleteResourceImpl(String resPath, long timestamp) throws IOException {
+        // considering deletePushDown operation, check timestamp at the beginning
+<span class="nc" id="L564">        long origLastModified = getResourceTimestampImpl(resPath);</span>
+<span class="nc bnc" id="L565" title="All 2 branches missed.">        if (checkTimeStampBeforeDelete(origLastModified, timestamp)) {</span>
+<span class="nc" id="L566">            deleteResourceImpl(resPath);</span>
+        } else {
+<span class="nc" id="L568">            throw new IOException(&quot;Resource &quot; + resPath + &quot; timestamp not match, [originLastModified: &quot;</span>
+                    + origLastModified + &quot;, timestampToDelete: &quot; + timestamp + &quot;]&quot;);
+        }
+<span class="nc" id="L571">    }</span>
+
+    @Override
+    protected String getReadableResourcePathImpl(String resPath) {
+<span class="nc" id="L575">        return metadataIdentifier + &quot;(key='&quot; + resPath + &quot;')@&quot; + kylinConfig.getMetadataUrl();</span>
+    }
+
+    @Override
+    protected String pushdownRootPath() {
+<span class="nc" id="L580">        String metastoreBigCellHdfsDirectory = kylinConfig.getMetastoreBigCellHdfsDirectory();</span>
+<span class="nc bnc" id="L581" title="All 2 branches missed.">        if (metastoreBigCellHdfsDirectory.endsWith(&quot;/&quot;))</span>
+<span class="nc" id="L582">            return metastoreBigCellHdfsDirectory + &quot;resources-jdbc&quot;;</span>
+        else
+<span class="nc" id="L584">            return metastoreBigCellHdfsDirectory + &quot;/&quot; + &quot;resources-jdbc&quot;;</span>
+    }
+
+    // visible for test
+    @Override
+    protected FileSystem pushdownFS() {
+<span class="nc" id="L590">        return super.pushdownFS();</span>
+    }
+
+    @Override
+    protected boolean isUnreachableException(Throwable ex) {
+<span class="nc bnc" id="L595" title="All 2 branches missed.">        if (super.isUnreachableException(ex)) {</span>
+<span class="nc" id="L596">            return true;</span>
+        }
+
+<span class="nc bnc" id="L599" title="All 2 branches missed.">        if (ex instanceof SocketTimeoutException)</span>
+<span class="nc" id="L600">            return true;</span>
+
+<span class="nc" id="L602">        List&lt;String&gt; exceptionList = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L603">        exceptionList.add(ex.getClass().getName());</span>
+
+<span class="nc" id="L605">        Throwable t = ex.getCause();</span>
+<span class="nc" id="L606">        int depth = 0;</span>
+<span class="nc bnc" id="L607" title="All 4 branches missed.">        while (t != null &amp;&amp; depth &lt; 5) {</span>
+<span class="nc" id="L608">            exceptionList.add(t.getClass().getName());</span>
+<span class="nc" id="L609">            depth++;</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">            if (t instanceof ConnectException) {</span>
+<span class="nc" id="L611">                return true;</span>
+            }
+<span class="nc" id="L613">            t = t.getCause();</span>
+        }
+
+<span class="nc" id="L616">        logger.trace(&quot;Not an unreachable exception with causes {}&quot;, exceptionList);</span>
+<span class="nc" id="L617">        return false;</span>
+    }
+
+    public String getMetaTableName(String resPath) {
+<span class="nc bnc" id="L621" title="All 2 branches missed.">        if (isRootPath(resPath)) {</span>
+<span class="nc" id="L622">            throw new IllegalArgumentException(&quot;Not supported&quot;);</span>
+        }
+
+<span class="nc bnc" id="L625" title="All 2 branches missed.">        if (resPath.startsWith(ResourceStore.BAD_QUERY_RESOURCE_ROOT)</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">                || resPath.startsWith(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT)</span>
+<span class="nc bnc" id="L627" title="All 2 branches missed.">                || resPath.startsWith(ResourceStore.TEMP_STATMENT_RESOURCE_ROOT)) {</span>
+<span class="nc" id="L628">            return tableNames[1];</span>
+        } else {
+<span class="nc" id="L630">            return tableNames[0];</span>
+        }
+    }
+
+    private JDBCResourceSQL getJDBCResourceSQL(String metaTableName) {
+<span class="nc" id="L635">        return new JDBCResourceSQL(kylinConfig.getMetadataDialect(), metaTableName, META_TABLE_KEY, META_TABLE_TS,</span>
+                META_TABLE_CONTENT);
+    }
+
+    public boolean isRootPath(String path) {
+<span class="nc" id="L640">        return &quot;/&quot;.equals(path);</span>
+    }
+
+<span class="nc" id="L643">    abstract static class SqlOperation {</span>
+<span class="nc" id="L644">        PreparedStatement pstat = null;</span>
+<span class="nc" id="L645">        ResultSet rs = null;</span>
+
+        abstract public void execute(final Connection connection) throws SQLException, IOException;
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

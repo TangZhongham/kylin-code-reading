@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecutableState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Job</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.job.execution</a> &gt; <span class="el_source">ExecutableState.java</span></div><h1>ExecutableState.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.job.execution;
+
+import java.util.Collection;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
+
+import org.apache.kylin.shaded.com.google.common.base.Supplier;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Multimap;
+import org.apache.kylin.shaded.com.google.common.collect.Multimaps;
+
+/**
+ */
+<span class="fc" id="L32">public enum ExecutableState {</span>
+
+<span class="fc" id="L34">    READY, RUNNING, ERROR, STOPPED, DISCARDED, SUCCEED;</span>
+
+    private static Multimap&lt;ExecutableState, ExecutableState&gt; VALID_STATE_TRANSFER;
+
+    static {
+<span class="fc" id="L39">        VALID_STATE_TRANSFER = Multimaps.newSetMultimap(Maps.&lt;ExecutableState, Collection&lt;ExecutableState&gt;&gt; newEnumMap(ExecutableState.class), new Supplier&lt;Set&lt;ExecutableState&gt;&gt;() {</span>
+            @Override
+            public Set&lt;ExecutableState&gt; get() {
+<span class="fc" id="L42">                return new CopyOnWriteArraySet&lt;ExecutableState&gt;();</span>
+            }
+        });
+
+        //scheduler
+<span class="fc" id="L47">        VALID_STATE_TRANSFER.put(ExecutableState.READY, ExecutableState.RUNNING);</span>
+<span class="fc" id="L48">        VALID_STATE_TRANSFER.put(ExecutableState.READY, ExecutableState.ERROR);</span>
+        //user
+<span class="fc" id="L50">        VALID_STATE_TRANSFER.put(ExecutableState.READY, ExecutableState.DISCARDED);</span>
+
+        //job
+<span class="fc" id="L53">        VALID_STATE_TRANSFER.put(ExecutableState.RUNNING, ExecutableState.READY);</span>
+        //job
+<span class="fc" id="L55">        VALID_STATE_TRANSFER.put(ExecutableState.RUNNING, ExecutableState.SUCCEED);</span>
+        //user
+<span class="fc" id="L57">        VALID_STATE_TRANSFER.put(ExecutableState.RUNNING, ExecutableState.DISCARDED);</span>
+        //scheduler,job
+<span class="fc" id="L59">        VALID_STATE_TRANSFER.put(ExecutableState.RUNNING, ExecutableState.ERROR);</span>
+
+<span class="fc" id="L61">        VALID_STATE_TRANSFER.put(ExecutableState.STOPPED, ExecutableState.DISCARDED);</span>
+<span class="fc" id="L62">        VALID_STATE_TRANSFER.put(ExecutableState.STOPPED, ExecutableState.READY);</span>
+
+<span class="fc" id="L64">        VALID_STATE_TRANSFER.put(ExecutableState.ERROR, ExecutableState.DISCARDED);</span>
+<span class="fc" id="L65">        VALID_STATE_TRANSFER.put(ExecutableState.ERROR, ExecutableState.READY);</span>
+
+
+<span class="fc" id="L68">        VALID_STATE_TRANSFER.put(ExecutableState.READY, ExecutableState.STOPPED);</span>
+<span class="fc" id="L69">        VALID_STATE_TRANSFER.put(ExecutableState.RUNNING, ExecutableState.STOPPED);</span>
+
+
+        //rollback
+<span class="fc" id="L73">        VALID_STATE_TRANSFER.put(ExecutableState.SUCCEED, ExecutableState.READY);</span>
+
+<span class="fc" id="L75">    }</span>
+
+    public boolean isFinalState() {
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">        return this == SUCCEED || this == DISCARDED;</span>
+    }
+
+    public static boolean isValidStateTransfer(ExecutableState from, ExecutableState to) {
+<span class="fc" id="L82">        return VALID_STATE_TRANSFER.containsEntry(from, to);</span>
+    }
+
+    public boolean isProgressing() {
+<span class="nc bnc" id="L86" title="All 4 branches missed.">        return this == READY || this == RUNNING;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

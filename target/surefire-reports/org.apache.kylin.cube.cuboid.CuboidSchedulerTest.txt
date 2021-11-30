@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.kylin.cube.cuboid.CuboidSchedulerTest
+-------------------------------------------------------------------------------
+Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 50.396 s - in org.apache.kylin.cube.cuboid.CuboidSchedulerTest

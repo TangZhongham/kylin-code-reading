@@ -1,0 +1,1122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CubeManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube</a> &gt; <span class="el_source">CubeManager.java</span></div><h1>CubeManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.JsonSerializer;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.Serializer;
+import org.apache.kylin.common.persistence.WriteConflictException;
+import org.apache.kylin.common.util.AutoReadWriteLock;
+import org.apache.kylin.common.util.AutoReadWriteLock.AutoLock;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.common.util.RandomUtil;
+import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.SnapshotTableDesc;
+import org.apache.kylin.metadata.TableMetadataManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CachedCrudAssist;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.IEngineAware;
+import org.apache.kylin.metadata.model.PartitionDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
+import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.Segments;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.project.RealizationEntry;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.metadata.realization.IRealizationProvider;
+import org.apache.kylin.metadata.realization.RealizationRegistry;
+import org.apache.kylin.metadata.realization.RealizationStatusEnum;
+import org.apache.kylin.metadata.realization.RealizationType;
+import org.apache.kylin.source.SourcePartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.kylin.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.kylin.shaded.com.google.common.base.Preconditions;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+/**
+ * @author yangli9
+ */
+public class CubeManager implements IRealizationProvider {
+
+<span class="fc" id="L83">    private static String ALPHA_NUM = &quot;0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ&quot;;</span>
+
+<span class="fc" id="L85">    private static int HBASE_TABLE_LENGTH = 10;</span>
+<span class="fc" id="L86">    private static int PARQUET_IDENTIFIER_LENGTH = 3;</span>
+
+<span class="fc" id="L88">    public static final Serializer&lt;CubeInstance&gt; CUBE_SERIALIZER = new JsonSerializer&lt;&gt;(CubeInstance.class);</span>
+
+<span class="fc" id="L90">    private static final Logger logger = LoggerFactory.getLogger(CubeManager.class);</span>
+
+    public static CubeManager getInstance(KylinConfig config) {
+<span class="fc" id="L93">        return config.getManager(CubeManager.class);</span>
+    }
+
+    // called by reflection
+    static CubeManager newInstance(KylinConfig config) throws IOException {
+<span class="fc" id="L98">        return new CubeManager(config);</span>
+    }
+
+    // ============================================================================
+
+    private KylinConfig config;
+
+    // cube name ==&gt; CubeInstance
+    private CaseInsensitiveStringCache&lt;CubeInstance&gt; cubeMap;
+    private CachedCrudAssist&lt;CubeInstance&gt; crud;
+
+    // protects concurrent operations around the cached map, to avoid for example
+    // writing an entity in the middle of reloading it (dirty read)
+<span class="fc" id="L111">    private AutoReadWriteLock cubeMapLock = new AutoReadWriteLock();</span>
+
+    // for generation hbase table name of a new segment
+<span class="fc" id="L114">    private ConcurrentMap&lt;String, String&gt; usedStorageLocation = new ConcurrentHashMap&lt;&gt;();</span>
+
+    // a few inner classes to group related methods
+<span class="fc" id="L117">    private SegmentAssist segAssist = new SegmentAssist();</span>
+
+<span class="fc" id="L119">    private Random ran = new Random();</span>
+
+<span class="fc" id="L121">    private CubeManager(KylinConfig cfg) throws IOException {</span>
+<span class="fc" id="L122">        logger.info(&quot;Initializing CubeManager with config {}&quot;, cfg);</span>
+<span class="fc" id="L123">        this.config = cfg;</span>
+<span class="fc" id="L124">        this.cubeMap = new CaseInsensitiveStringCache&lt;CubeInstance&gt;(config, &quot;cube&quot;);</span>
+<span class="fc" id="L125">        this.crud = new CachedCrudAssist&lt;CubeInstance&gt;(getStore(), ResourceStore.CUBE_RESOURCE_ROOT, CubeInstance.class,</span>
+<span class="fc" id="L126">                cubeMap) {</span>
+            @Override
+            protected CubeInstance initEntityAfterReload(CubeInstance cube, String resourceName) {
+<span class="fc" id="L129">                cube.init(config);</span>
+
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                for (CubeSegment segment : cube.getSegments()) {</span>
+<span class="fc" id="L132">                    usedStorageLocation.put(segment.getUuid(), segment.getStorageLocationIdentifier());</span>
+<span class="fc" id="L133">                }</span>
+<span class="fc" id="L134">                return cube;</span>
+            }
+        };
+<span class="fc" id="L137">        this.crud.setCheckCopyOnWrite(true);</span>
+
+        // touch lower level metadata before registering my listener
+<span class="fc" id="L140">        crud.reloadAll();</span>
+<span class="fc" id="L141">        Broadcaster.getInstance(config).registerListener(new CubeSyncListener(), &quot;cube&quot;);</span>
+<span class="fc" id="L142">    }</span>
+
+<span class="fc" id="L144">    private class CubeSyncListener extends Broadcaster.Listener {</span>
+
+        @Override
+        public void onProjectSchemaChange(Broadcaster broadcaster, String project) throws IOException {
+<span class="nc" id="L148">            ProjectManager projectManager = ProjectManager.getInstance(config);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">            for (IRealization real : projectManager.listAllRealizations(project)) {</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                if (real instanceof CubeInstance) {</span>
+<span class="nc" id="L151">                    reloadCubeQuietly(real.getName());</span>
+                }
+<span class="nc" id="L153">            }</span>
+<span class="nc" id="L154">            projectManager.reloadProjectL2Cache(project);</span>
+<span class="nc" id="L155">        }</span>
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey)
+                throws IOException {
+<span class="nc" id="L160">            String cubeName = cacheKey;</span>
+
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            if (event == Event.DROP)</span>
+<span class="nc" id="L163">                removeCubeLocal(cubeName);</span>
+            else
+<span class="nc" id="L165">                reloadCubeQuietly(cubeName);</span>
+
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            for (ProjectInstance prj : ProjectManager.getInstance(config).findProjects(RealizationType.CUBE,</span>
+                    cubeName)) {
+<span class="nc" id="L169">                broadcaster.notifyProjectDataUpdate(prj.getName());</span>
+<span class="nc" id="L170">            }</span>
+<span class="nc" id="L171">        }</span>
+    }
+
+    /**
+     * List all cubes from cache. Note the metadata may be out of date
+     * @return
+     */
+    public List&lt;CubeInstance&gt; listAllCubes() {
+<span class="fc" id="L179">        try (AutoLock lock = cubeMapLock.lockForRead()) {</span>
+<span class="fc" id="L180">            return new ArrayList&lt;CubeInstance&gt;(cubeMap.values());</span>
+        }
+    }
+
+    /**
+     * Reload the cubes from database and list all cubes
+     * @return
+     * @throws IOException
+     */
+    public List&lt;CubeInstance&gt; reloadAndListAllCubes() throws IOException {
+<span class="nc" id="L190">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L191">            crud.reloadAll();</span>
+        }
+<span class="nc" id="L193">        return listAllCubes();</span>
+    }
+
+    public CubeInstance getCube(String cubeName) {
+<span class="fc" id="L197">        try (AutoLock lock = cubeMapLock.lockForRead()) {</span>
+<span class="fc" id="L198">            return cubeMap.get(cubeName);</span>
+        }
+    }
+
+    public CubeInstance getCubeByUuid(String uuid) {
+<span class="nc" id="L203">        try (AutoLock lock = cubeMapLock.lockForRead()) {</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">            for (CubeInstance cube : cubeMap.values()) {</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">                if (uuid.equals(cube.getUuid()))</span>
+<span class="nc" id="L206">                    return cube;</span>
+<span class="nc" id="L207">            }</span>
+<span class="nc" id="L208">            return null;</span>
+        }
+    }
+
+    public List&lt;String&gt; getErrorCubes() {
+<span class="nc" id="L213">        return crud.getLoadFailedEntities();</span>
+    }
+
+    /**
+     * Get related Cubes by cubedesc name. By default, the desc name will be
+     * translated into upper case.
+     *
+     * @param descName CubeDesc name
+     * @return
+     */
+    public List&lt;CubeInstance&gt; getCubesByDesc(String descName) {
+<span class="nc" id="L224">        try (AutoLock lock = cubeMapLock.lockForRead()) {</span>
+<span class="nc" id="L225">            List&lt;CubeInstance&gt; list = listAllCubes();</span>
+<span class="nc" id="L226">            List&lt;CubeInstance&gt; result = new ArrayList&lt;CubeInstance&gt;();</span>
+<span class="nc" id="L227">            Iterator&lt;CubeInstance&gt; it = list.iterator();</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L229">                CubeInstance ci = it.next();</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">                if (descName.equalsIgnoreCase(ci.getDescName())) {</span>
+<span class="nc" id="L231">                    result.add(ci);</span>
+                }
+<span class="nc" id="L233">            }</span>
+<span class="nc" id="L234">            return result;</span>
+        }
+    }
+
+    public CubeInstance createCube(String cubeName, String projectName, CubeDesc desc, String owner)
+            throws IOException {
+<span class="fc" id="L240">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L241">            logger.info(&quot;Creating cube '{}--&gt;{}' from desc '{}'&quot;, projectName, cubeName, desc.getName());</span>
+
+            // save cube resource
+<span class="fc" id="L244">            CubeInstance cube = CubeInstance.create(cubeName, desc);</span>
+<span class="fc" id="L245">            cube.setOwner(owner);</span>
+<span class="fc" id="L246">            updateCubeWithRetry(new CubeUpdate(cube), 0);</span>
+
+<span class="fc" id="L248">            ProjectManager.getInstance(config).moveRealizationToProject(RealizationType.CUBE, cubeName, projectName,</span>
+                    owner);
+
+<span class="fc" id="L251">            return cube;</span>
+        }
+    }
+
+    public CubeInstance createCube(CubeInstance cube, String projectName, String owner) throws IOException {
+<span class="nc" id="L256">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L257">            logger.info(&quot;Creating cube '{}--&gt;{}' from instance object. '&quot;, projectName, cube.getName());</span>
+
+            // save cube resource
+<span class="nc" id="L260">            cube.setOwner(owner);</span>
+<span class="nc" id="L261">            updateCubeWithRetry(new CubeUpdate(cube), 0);</span>
+
+<span class="nc" id="L263">            ProjectManager.getInstance(config).moveRealizationToProject(RealizationType.CUBE, cube.getName(),</span>
+                    projectName, owner);
+
+<span class="nc" id="L266">            return cube;</span>
+        }
+    }
+
+    /**
+     * when clear all segments, it's supposed to reinitialize the CubeInstance
+     */
+    public CubeInstance clearSegments(CubeInstance cube) throws IOException {
+<span class="nc" id="L274">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L275">            cube = cube.latestCopyForWrite(); // get a latest copy</span>
+<span class="nc" id="L276">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="nc" id="L277">            update.setToRemoveSegs(cube.getSegments().toArray(new CubeSegment[cube.getSegments().size()]));</span>
+<span class="nc" id="L278">            update.setCuboids(Maps.&lt;Long, Long&gt; newHashMap());</span>
+<span class="nc" id="L279">            update.setCuboidsRecommend(Sets.&lt;Long&gt; newHashSet());</span>
+<span class="nc" id="L280">            update.setUpdateTableSnapshotPath(Maps.&lt;String, String&gt; newHashMap());</span>
+<span class="nc" id="L281">            update.setCreateTimeUTC(System.currentTimeMillis());</span>
+<span class="nc" id="L282">            update.setCuboidLastOptimized(0L);</span>
+<span class="nc" id="L283">            return updateCube(update);</span>
+        }
+    }
+
+    public CubeInstance updateCube(CubeUpdate update) throws IOException {
+<span class="fc" id="L288">        return updateCube(update, false);</span>
+    }
+
+    // try minimize the use of this method, use udpateCubeXXX() instead
+    public CubeInstance updateCube(CubeUpdate update, boolean isLocal) throws IOException {
+<span class="fc" id="L293">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L294">            CubeInstance cube = updateCubeWithRetry(update, 0, isLocal);</span>
+<span class="fc" id="L295">            return cube;</span>
+        }
+    }
+
+    public CubeInstance updateCubeStatus(CubeInstance cube, RealizationStatusEnum newStatus) throws IOException {
+<span class="fc" id="L300">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L301">            cube = cube.latestCopyForWrite(); // get a latest copy</span>
+<span class="fc" id="L302">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="fc" id="L303">            update.setStatus(newStatus);</span>
+<span class="fc" id="L304">            ProjectManager.getInstance(config).touchProject(cube.getProject());</span>
+<span class="fc" id="L305">            return updateCube(update);</span>
+        }
+    }
+
+    public CubeInstance updateCubeOwner(CubeInstance cube, String owner) throws IOException {
+<span class="nc" id="L310">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L311">            cube = cube.latestCopyForWrite(); // get a latest copy</span>
+<span class="nc" id="L312">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="nc" id="L313">            update.setOwner(owner);</span>
+<span class="nc" id="L314">            ProjectManager.getInstance(config).touchProject(cube.getProject());</span>
+<span class="nc" id="L315">            return updateCube(update);</span>
+        }
+    }
+
+    public CubeInstance updateCubeDropSegments(CubeInstance cube, Collection&lt;CubeSegment&gt; segsToDrop)
+            throws IOException {
+<span class="nc" id="L321">        CubeSegment[] arr = (CubeSegment[]) segsToDrop.toArray(new CubeSegment[segsToDrop.size()]);</span>
+<span class="nc" id="L322">        return updateCubeDropSegments(cube, arr);</span>
+    }
+
+    public CubeInstance updateCubeDropSegments(CubeInstance cube, CubeSegment... segsToDrop) throws IOException {
+<span class="fc" id="L326">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L327">            cube = cube.latestCopyForWrite(); // get a latest copy</span>
+<span class="fc" id="L328">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="fc" id="L329">            update.setToRemoveSegs(segsToDrop);</span>
+<span class="fc" id="L330">            return updateCube(update);</span>
+        }
+    }
+
+    public CubeInstance dropOptmizingSegments(CubeInstance cube, CubeSegment... segsToDrop) throws IOException {
+<span class="nc" id="L335">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L336">            cube = cube.latestCopyForWrite(); // get a latest copy</span>
+<span class="nc" id="L337">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="nc" id="L338">            update.setToRemoveSegs(segsToDrop);</span>
+<span class="nc" id="L339">            update.setCuboidsRecommend(Sets.&lt;Long&gt; newHashSet()); //Set recommend cuboids to be null</span>
+<span class="nc" id="L340">            return updateCube(update);</span>
+        }
+    }
+
+    public CubeInstance updateCubeSegStatus(CubeSegment seg, SegmentStatusEnum status) throws IOException {
+<span class="fc" id="L345">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L346">            CubeInstance cube = seg.getCubeInstance().latestCopyForWrite();</span>
+<span class="fc" id="L347">            seg = cube.getSegmentById(seg.getUuid());</span>
+
+<span class="fc" id="L349">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="fc" id="L350">            seg.setStatus(status);</span>
+<span class="fc" id="L351">            update.setToUpdateSegs(seg);</span>
+<span class="fc" id="L352">            return updateCube(update);</span>
+        }
+    }
+
+    public CubeInstance updateCubeLookupSnapshot(CubeInstance cube, String lookupTableName, String newSnapshotResPath)
+            throws IOException {
+<span class="nc" id="L358">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L359">            cube = cube.latestCopyForWrite();</span>
+
+<span class="nc" id="L361">            CubeUpdate update = new CubeUpdate(cube);</span>
+<span class="nc" id="L362">            Map&lt;String, String&gt; map = Maps.newHashMap();</span>
+<span class="nc" id="L363">            map.put(lookupTableName, newSnapshotResPath);</span>
+<span class="nc" id="L364">            update.setUpdateTableSnapshotPath(map);</span>
+<span class="nc" id="L365">            return updateCube(update);</span>
+        }
+    }
+
+    private CubeInstance updateCubeWithRetry(CubeUpdate update, int retry) throws IOException {
+<span class="fc" id="L370">        return updateCubeWithRetry(update, retry, false);</span>
+    }
+
+    private CubeInstance updateCubeWithRetry(CubeUpdate update, int retry, boolean isLocal) throws IOException {
+<span class="pc bpc" id="L374" title="2 of 4 branches missed.">        if (update == null || update.getCubeInstance() == null)</span>
+<span class="nc" id="L375">            throw new IllegalStateException();</span>
+
+<span class="fc" id="L377">        CubeInstance cube = update.getCubeInstance();</span>
+<span class="fc" id="L378">        logger.info(&quot;Updating cube instance '{}'&quot;, cube.getName());</span>
+
+<span class="fc" id="L380">        Segments&lt;CubeSegment&gt; newSegs = (Segments) cube.getSegments().clone();</span>
+
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (update.getToAddSegs() != null)</span>
+<span class="fc" id="L383">            newSegs.addAll(Arrays.asList(update.getToAddSegs()));</span>
+
+<span class="fc" id="L385">        List&lt;String&gt; toRemoveResources = Lists.newArrayList();</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">        if (update.getToRemoveSegs() != null) {</span>
+<span class="fc" id="L387">            processToRemoveSegments(update, newSegs, toRemoveResources);</span>
+        }
+
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        if (update.getToUpdateSegs() != null) {</span>
+<span class="fc" id="L391">            processToUpdateSegments(update, newSegs);</span>
+        }
+
+<span class="fc" id="L394">        Collections.sort(newSegs);</span>
+<span class="fc" id="L395">        newSegs.validate();</span>
+<span class="fc" id="L396">        cube.setSegments(newSegs);</span>
+
+<span class="fc" id="L398">        setCubeMember(cube, update);</span>
+
+        try {
+<span class="fc" id="L401">            cube = crud.save(cube, isLocal);</span>
+<span class="nc" id="L402">        } catch (WriteConflictException ise) {</span>
+<span class="nc" id="L403">            logger.warn(&quot;Write conflict to update cube {} at try {}, will retry...&quot;, cube.getName(), retry);</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">            if (retry &gt;= 7) {</span>
+<span class="nc" id="L405">                logger.error(&quot;Retried 7 times till got error, abandoning...&quot;, ise);</span>
+<span class="nc" id="L406">                throw ise;</span>
+            }
+
+<span class="nc" id="L409">            cube = crud.reload(cube.getName());</span>
+<span class="nc" id="L410">            update.setCubeInstance(cube.latestCopyForWrite());</span>
+<span class="nc" id="L411">            return updateCubeWithRetry(update, ++retry);</span>
+<span class="fc" id="L412">        }</span>
+
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        for (String resource : toRemoveResources) {</span>
+            try {
+<span class="fc" id="L416">                getStore().deleteResource(resource);</span>
+<span class="nc" id="L417">            } catch (IOException ioe) {</span>
+<span class="nc" id="L418">                logger.error(&quot;Failed to delete resource {}&quot;, toRemoveResources);</span>
+<span class="fc" id="L419">            }</span>
+<span class="fc" id="L420">        }</span>
+
+        //this is a duplicate call to take care of scenarios where REST cache service unavailable
+<span class="fc" id="L423">        ProjectManager.getInstance(cube.getConfig()).clearL2Cache(cube.getProject());</span>
+
+<span class="fc" id="L425">        return cube;</span>
+    }
+
+    private void setCubeMember(CubeInstance cube, CubeUpdate update) {
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        if (update.getStatus() != null) {</span>
+<span class="fc" id="L430">            cube.setStatus(update.getStatus());</span>
+        }
+
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">        if (update.getOwner() != null) {</span>
+<span class="nc" id="L434">            cube.setOwner(update.getOwner());</span>
+        }
+
+<span class="pc bpc" id="L437" title="1 of 2 branches missed.">        if (update.getCost() &gt; 0) {</span>
+<span class="nc" id="L438">            cube.setCost(update.getCost());</span>
+        }
+
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">        if (update.getCuboids() != null) {</span>
+<span class="nc" id="L442">            cube.setCuboids(update.getCuboids());</span>
+        }
+
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">        if (update.getCuboidsRecommend() != null) {</span>
+<span class="nc" id="L446">            cube.setCuboidsRecommend(update.getCuboidsRecommend());</span>
+        }
+
+<span class="pc bpc" id="L449" title="1 of 2 branches missed.">        if (update.getUpdateTableSnapshotPath() != null) {</span>
+<span class="nc bnc" id="L450" title="All 2 branches missed.">            for (Map.Entry&lt;String, String&gt; lookupSnapshotPathEntry : update.getUpdateTableSnapshotPath().entrySet()) {</span>
+<span class="nc" id="L451">                cube.putSnapshotResPath(lookupSnapshotPathEntry.getKey(), lookupSnapshotPathEntry.getValue());</span>
+<span class="nc" id="L452">            }</span>
+        }
+
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">        if (update.getCreateTimeUTC() &gt;= 0) {</span>
+<span class="nc" id="L456">            cube.setCreateTimeUTC(update.getCreateTimeUTC());</span>
+        }
+
+<span class="pc bpc" id="L459" title="1 of 2 branches missed.">        if (update.getCuboidLastOptimized() &gt;= 0) {</span>
+<span class="nc" id="L460">            cube.setCuboidLastOptimized(update.getCuboidLastOptimized());</span>
+        }
+<span class="fc" id="L462">    }</span>
+
+    private void processToUpdateSegments(CubeUpdate update, Segments&lt;CubeSegment&gt; newSegs) {
+<span class="fc bfc" id="L465" title="All 2 branches covered.">        for (CubeSegment segment : update.getToUpdateSegs()) {</span>
+<span class="pc bpc" id="L466" title="1 of 2 branches missed.">            for (int i = 0; i &lt; newSegs.size(); i++) {</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">                if (newSegs.get(i).getUuid().equals(segment.getUuid())) {</span>
+<span class="fc" id="L468">                    newSegs.set(i, segment);</span>
+<span class="fc" id="L469">                    break;</span>
+                }
+            }
+        }
+<span class="fc" id="L473">    }</span>
+
+    private void processToRemoveSegments(CubeUpdate update, Segments&lt;CubeSegment&gt; newSegs,
+            List&lt;String&gt; toRemoveResources) {
+<span class="fc" id="L477">        Iterator&lt;CubeSegment&gt; iterator = newSegs.iterator();</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L479">            CubeSegment currentSeg = iterator.next();</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">            for (CubeSegment toRemoveSeg : update.getToRemoveSegs()) {</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">                if (currentSeg.getUuid().equals(toRemoveSeg.getUuid())) {</span>
+<span class="fc" id="L482">                    logger.info(&quot;Remove segment {}&quot;, currentSeg);</span>
+<span class="fc" id="L483">                    toRemoveResources.add(currentSeg.getStatisticsResourcePath());</span>
+<span class="fc" id="L484">                    iterator.remove();</span>
+<span class="fc" id="L485">                    break;</span>
+                }
+            }
+<span class="fc" id="L488">        }</span>
+<span class="fc" id="L489">    }</span>
+
+    // for test
+    public CubeInstance reloadCube(String cubeName) {
+<span class="fc" id="L493">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L494">            return crud.reload(cubeName);</span>
+        }
+    }
+
+    public CubeInstance reloadCubeQuietly(String cubeName) {
+<span class="nc" id="L499">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L500">            CubeInstance cube = crud.reloadQuietly(cubeName);</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">            if (cube != null)</span>
+<span class="nc" id="L502">                Cuboid.clearCache(cube);</span>
+<span class="nc" id="L503">            return cube;</span>
+        }
+    }
+
+    public void removeCubeLocal(String cubeName) {
+<span class="nc" id="L508">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L509">            CubeInstance cube = cubeMap.get(cubeName);</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">            if (cube != null) {</span>
+<span class="nc" id="L511">                cubeMap.removeLocal(cubeName);</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">                for (CubeSegment segment : cube.getSegments()) {</span>
+<span class="nc" id="L513">                    usedStorageLocation.remove(segment.getUuid());</span>
+<span class="nc" id="L514">                }</span>
+<span class="nc" id="L515">                Cuboid.clearCache(cube);</span>
+            }
+        }
+<span class="nc" id="L518">    }</span>
+
+    public CubeInstance dropCube(String cubeName, boolean deleteDesc) throws IOException {
+<span class="fc" id="L521">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L522">            logger.info(&quot;Dropping cube '{}'&quot;, cubeName);</span>
+            // load projects before remove cube from project
+
+            // delete cube instance and cube desc
+<span class="fc" id="L526">            CubeInstance cube = getCube(cubeName);</span>
+
+            // remove cube and update cache
+<span class="fc" id="L529">            crud.delete(cube);</span>
+<span class="fc" id="L530">            Cuboid.clearCache(cube);</span>
+
+<span class="pc bpc" id="L532" title="1 of 4 branches missed.">            if (deleteDesc &amp;&amp; cube.getDescriptor() != null) {</span>
+<span class="fc" id="L533">                CubeDescManager.getInstance(config).removeCubeDesc(cube.getDescriptor());</span>
+            }
+
+            // delete cube from project
+<span class="fc" id="L537">            ProjectManager.getInstance(config).removeRealizationsFromProjects(RealizationType.CUBE, cubeName);</span>
+
+<span class="fc" id="L539">            return cube;</span>
+        }
+    }
+
+    private String getSnapshotResPath(CubeSegment cubeSegment, String tableName, SnapshotTableDesc snapshotTableDesc) {
+        String snapshotResPath;
+<span class="nc bnc" id="L545" title="All 4 branches missed.">        if (snapshotTableDesc == null || !snapshotTableDesc.isGlobal()) {</span>
+<span class="nc" id="L546">            snapshotResPath = cubeSegment.getSnapshotResPath(tableName);</span>
+        } else {
+<span class="nc" id="L548">            snapshotResPath = cubeSegment.getCubeInstance().getSnapshotResPath(tableName);</span>
+        }
+<span class="nc bnc" id="L550" title="All 2 branches missed.">        if (snapshotResPath == null) {</span>
+<span class="nc" id="L551">            throw new IllegalStateException(&quot;No snapshot for table '&quot; + tableName + &quot;' found on cube segment&quot;</span>
+<span class="nc" id="L552">                    + cubeSegment.getCubeInstance().getName() + &quot;/&quot; + cubeSegment);</span>
+        }
+<span class="nc" id="L554">        return snapshotResPath;</span>
+    }
+
+    @VisibleForTesting
+    /*private*/ String generateStorageLocation(int engineType) {
+<span class="fc" id="L559">        String namePrefix = config.getHBaseTableNamePrefix();</span>
+<span class="fc" id="L560">        String namespace = config.getHBaseStorageNameSpace();</span>
+<span class="fc" id="L561">        String tableName = &quot;&quot;;</span>
+        do {
+<span class="fc" id="L563">            StringBuffer sb = new StringBuffer();</span>
+<span class="fc" id="L564">            int identifierLength = HBASE_TABLE_LENGTH;</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">            if (engineType != IEngineAware.ID_SPARK_II) {</span>
+<span class="pc bpc" id="L566" title="1 of 6 branches missed.">                if ((namespace.equals(&quot;default&quot;) || namespace.equals(&quot;&quot;)) == false) {</span>
+<span class="fc" id="L567">                    sb.append(namespace).append(&quot;:&quot;);</span>
+                }
+<span class="fc" id="L569">                sb.append(namePrefix);</span>
+            } else {
+<span class="fc" id="L571">                identifierLength = PARQUET_IDENTIFIER_LENGTH;</span>
+            }
+<span class="fc bfc" id="L573" title="All 2 branches covered.">            for (int i = 0; i &lt; identifierLength; i++) {</span>
+<span class="fc" id="L574">                sb.append(ALPHA_NUM.charAt(ran.nextInt(ALPHA_NUM.length())));</span>
+            }
+<span class="fc" id="L576">            tableName = sb.toString();</span>
+<span class="pc bpc" id="L577" title="1 of 2 branches missed.">        } while (this.usedStorageLocation.containsValue(tableName));</span>
+<span class="fc" id="L578">        return tableName;</span>
+    }
+
+    public CubeInstance copyForWrite(CubeInstance cube) {
+<span class="fc" id="L582">        return crud.copyForWrite(cube);</span>
+    }
+
+    private boolean isReady(CubeSegment seg) {
+<span class="pc bpc" id="L586" title="1 of 2 branches missed.">        return seg.getStatus() == SegmentStatusEnum.READY;</span>
+    }
+
+    private TableMetadataManager getTableManager() {
+<span class="nc" id="L590">        return TableMetadataManager.getInstance(config);</span>
+    }
+
+
+    private ResourceStore getStore() {
+<span class="fc" id="L595">        return ResourceStore.getStore(this.config);</span>
+    }
+
+    @Override
+    public RealizationType getRealizationType() {
+<span class="fc" id="L600">        return RealizationType.CUBE;</span>
+    }
+
+    @Override
+    public IRealization getRealization(String name) {
+<span class="fc" id="L605">        return getCube(name);</span>
+    }
+
+    // ============================================================================
+    // Segment related methods
+    // ============================================================================
+
+    // append a full build segment
+    public CubeSegment appendSegment(CubeInstance cube) throws IOException {
+<span class="fc" id="L614">        return appendSegment(cube, null, null, null, null);</span>
+    }
+
+    public CubeSegment appendSegment(CubeInstance cube, TSRange tsRange) throws IOException {
+<span class="fc" id="L618">        return appendSegment(cube, tsRange, null, null, null);</span>
+    }
+
+    public CubeSegment appendSegment(CubeInstance cube, SourcePartition src) throws IOException {
+<span class="nc" id="L622">        return appendSegment(cube, src.getTSRange(), src.getSegRange(), src.getSourcePartitionOffsetStart(),</span>
+<span class="nc" id="L623">                src.getSourcePartitionOffsetEnd());</span>
+    }
+
+    CubeSegment appendSegment(CubeInstance cube, TSRange tsRange, SegmentRange segRange,
+            Map&lt;Integer, Long&gt; sourcePartitionOffsetStart, Map&lt;Integer, Long&gt; sourcePartitionOffsetEnd)
+            throws IOException {
+<span class="fc" id="L629">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L630">            return segAssist.appendSegment(cube, tsRange, segRange, sourcePartitionOffsetStart,</span>
+                    sourcePartitionOffsetEnd);
+        }
+    }
+
+    public CubeSegment refreshSegment(CubeInstance cube, TSRange tsRange, SegmentRange segRange) throws IOException {
+<span class="nc" id="L636">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L637">            return segAssist.refreshSegment(cube, tsRange, segRange);</span>
+        }
+    }
+
+    public CubeSegment[] optimizeSegments(CubeInstance cube, Set&lt;Long&gt; cuboidsRecommend) throws IOException {
+<span class="nc" id="L642">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L643">            return segAssist.optimizeSegments(cube, cuboidsRecommend);</span>
+        }
+    }
+
+    public CubeSegment mergeSegments(CubeInstance cube, TSRange tsRange, SegmentRange segRange, boolean force)
+            throws IOException {
+<span class="fc" id="L649">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L650">            return segAssist.mergeSegments(cube, tsRange, segRange, force);</span>
+        }
+    }
+
+    public void promoteNewlyBuiltSegments(CubeInstance cube, CubeSegment newSegment) throws IOException {
+<span class="fc" id="L655">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="fc" id="L656">            segAssist.promoteNewlyBuiltSegments(cube, newSegment);</span>
+        }
+<span class="fc" id="L658">    }</span>
+
+    public void promoteNewlyOptimizeSegments(CubeInstance cube, CubeSegment... optimizedSegments) throws IOException {
+<span class="nc" id="L661">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L662">            segAssist.promoteNewlyOptimizeSegments(cube, optimizedSegments);</span>
+        }
+<span class="nc" id="L664">    }</span>
+
+    public void promoteCheckpointOptimizeSegments(CubeInstance cube, Map&lt;Long, Long&gt; recommendCuboids,
+            CubeSegment... optimizedSegments) throws IOException {
+<span class="nc" id="L668">        try (AutoLock lock = cubeMapLock.lockForWrite()) {</span>
+<span class="nc" id="L669">            segAssist.promoteCheckpointOptimizeSegments(cube, recommendCuboids, optimizedSegments);</span>
+        }
+<span class="nc" id="L671">    }</span>
+
+    public List&lt;CubeSegment&gt; calculateHoles(String cubeName) {
+<span class="nc" id="L674">        return segAssist.calculateHoles(cubeName);</span>
+    }
+
+<span class="fc" id="L677">    private class SegmentAssist {</span>
+
+        CubeSegment appendSegment(CubeInstance cube, TSRange tsRange, SegmentRange segRange,
+                Map&lt;Integer, Long&gt; sourcePartitionOffsetStart, Map&lt;Integer, Long&gt; sourcePartitionOffsetEnd)
+                throws IOException {
+<span class="fc" id="L682">            CubeInstance cubeCopy = cube.latestCopyForWrite(); // get a latest copy</span>
+
+<span class="fc" id="L684">            checkInputRanges(tsRange, segRange);</span>
+
+            // fix start/end a bit
+<span class="fc" id="L687">            PartitionDesc partitionDesc = cubeCopy.getModel().getPartitionDesc();</span>
+<span class="pc bpc" id="L688" title="1 of 4 branches missed.">            if (partitionDesc != null &amp;&amp; partitionDesc.isPartitioned()) {</span>
+                // if missing start, set it to where last time ends
+<span class="fc bfc" id="L690" title="All 4 branches covered.">                if (tsRange != null &amp;&amp; tsRange.start.v == 0) {</span>
+<span class="fc" id="L691">                    CubeDesc cubeDesc = cubeCopy.getDescriptor();</span>
+<span class="fc" id="L692">                    CubeSegment last = cubeCopy.getLastSegment();</span>
+<span class="fc bfc" id="L693" title="All 2 branches covered.">                    if (last == null)</span>
+<span class="fc" id="L694">                        tsRange = new TSRange(cubeDesc.getPartitionDateStart(), tsRange.end.v);</span>
+<span class="pc bpc" id="L695" title="1 of 2 branches missed.">                    else if (!last.isOffsetCube())</span>
+<span class="fc" id="L696">                        tsRange = new TSRange(last.getTSRange().end.v, tsRange.end.v);</span>
+<span class="fc" id="L697">                }</span>
+            } else {
+                // full build
+<span class="fc" id="L700">                tsRange = null;</span>
+<span class="fc" id="L701">                segRange = null;</span>
+            }
+
+<span class="fc" id="L704">            CubeSegment newSegment = newSegment(cubeCopy, tsRange, segRange);</span>
+<span class="fc" id="L705">            newSegment.setSourcePartitionOffsetStart(sourcePartitionOffsetStart);</span>
+<span class="fc" id="L706">            newSegment.setSourcePartitionOffsetEnd(sourcePartitionOffsetEnd);</span>
+<span class="fc" id="L707">            validateNewSegments(cubeCopy, newSegment);</span>
+
+<span class="fc" id="L709">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="fc" id="L710">            update.setToAddSegs(newSegment);</span>
+<span class="fc" id="L711">            updateCube(update);</span>
+<span class="fc" id="L712">            return newSegment;</span>
+        }
+
+        public CubeSegment refreshSegment(CubeInstance cube, TSRange tsRange, SegmentRange segRange)
+                throws IOException {
+<span class="nc" id="L717">            CubeInstance cubeCopy = cube.latestCopyForWrite(); // get a latest copy</span>
+
+<span class="nc" id="L719">            checkInputRanges(tsRange, segRange);</span>
+<span class="nc" id="L720">            PartitionDesc partitionDesc = cubeCopy.getModel().getPartitionDesc();</span>
+<span class="nc bnc" id="L721" title="All 4 branches missed.">            if (partitionDesc == null || partitionDesc.isPartitioned() == false) {</span>
+                // full build
+<span class="nc" id="L723">                tsRange = null;</span>
+<span class="nc" id="L724">                segRange = null;</span>
+            }
+
+<span class="nc" id="L727">            CubeSegment newSegment = newSegment(cubeCopy, tsRange, segRange);</span>
+
+<span class="nc" id="L729">            Pair&lt;Boolean, Boolean&gt; pair = cubeCopy.getSegments().fitInSegments(newSegment);</span>
+<span class="nc bnc" id="L730" title="All 4 branches missed.">            if (pair.getFirst() == false || pair.getSecond() == false)</span>
+<span class="nc" id="L731">                throw new IllegalArgumentException(&quot;The new refreshing segment &quot; + newSegment</span>
+                        + &quot; does not match any existing segment in cube &quot; + cubeCopy);
+
+<span class="nc bnc" id="L734" title="All 2 branches missed.">            if (segRange != null) {</span>
+<span class="nc" id="L735">                CubeSegment toRefreshSeg = null;</span>
+<span class="nc bnc" id="L736" title="All 2 branches missed.">                for (CubeSegment cubeSegment : cubeCopy.getSegments()) {</span>
+<span class="nc bnc" id="L737" title="All 2 branches missed.">                    if (cubeSegment.getSegRange().equals(segRange)) {</span>
+<span class="nc" id="L738">                        toRefreshSeg = cubeSegment;</span>
+<span class="nc" id="L739">                        break;</span>
+                    }
+<span class="nc" id="L741">                }</span>
+
+<span class="nc bnc" id="L743" title="All 2 branches missed.">                if (toRefreshSeg == null) {</span>
+<span class="nc" id="L744">                    throw new IllegalArgumentException(</span>
+                            &quot;For streaming cube, only one segment can be refreshed at one time&quot;);
+                }
+
+<span class="nc" id="L748">                newSegment.setSourcePartitionOffsetStart(toRefreshSeg.getSourcePartitionOffsetStart());</span>
+<span class="nc" id="L749">                newSegment.setSourcePartitionOffsetEnd(toRefreshSeg.getSourcePartitionOffsetEnd());</span>
+            }
+
+<span class="nc" id="L752">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="nc" id="L753">            update.setToAddSegs(newSegment);</span>
+<span class="nc" id="L754">            updateCube(update);</span>
+
+<span class="nc" id="L756">            return newSegment;</span>
+        }
+
+        public CubeSegment[] optimizeSegments(CubeInstance cube, Set&lt;Long&gt; cuboidsRecommend) throws IOException {
+<span class="nc" id="L760">            CubeInstance cubeCopy = cube.latestCopyForWrite(); // get a latest copy</span>
+
+<span class="nc" id="L762">            List&lt;CubeSegment&gt; readySegments = cubeCopy.getSegments(SegmentStatusEnum.READY);</span>
+<span class="nc" id="L763">            CubeSegment[] optimizeSegments = new CubeSegment[readySegments.size()];</span>
+<span class="nc" id="L764">            int i = 0;</span>
+<span class="nc bnc" id="L765" title="All 2 branches missed.">            for (CubeSegment segment : readySegments) {</span>
+<span class="nc" id="L766">                CubeSegment newSegment = newSegment(cubeCopy, segment.getTSRange(), null);</span>
+<span class="nc" id="L767">                validateNewSegments(cubeCopy, newSegment);</span>
+
+<span class="nc" id="L769">                optimizeSegments[i++] = newSegment;</span>
+<span class="nc" id="L770">            }</span>
+
+<span class="nc" id="L772">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="nc" id="L773">            update.setCuboidsRecommend(cuboidsRecommend);</span>
+<span class="nc" id="L774">            update.setToAddSegs(optimizeSegments);</span>
+<span class="nc" id="L775">            updateCube(update);</span>
+
+<span class="nc" id="L777">            return optimizeSegments;</span>
+        }
+
+        public CubeSegment mergeSegments(CubeInstance cube, TSRange tsRange, SegmentRange segRange, boolean force)
+                throws IOException {
+<span class="fc" id="L782">            CubeInstance cubeCopy = cube.latestCopyForWrite(); // get a latest copy</span>
+
+<span class="pc bpc" id="L784" title="1 of 2 branches missed.">            if (cubeCopy.getSegments().isEmpty())</span>
+<span class="nc" id="L785">                throw new IllegalArgumentException(&quot;Cube &quot; + cubeCopy + &quot; has no segments&quot;);</span>
+
+<span class="fc" id="L787">            checkInputRanges(tsRange, segRange);</span>
+<span class="fc" id="L788">            checkCubeIsPartitioned(cubeCopy);</span>
+
+<span class="fc bfc" id="L790" title="All 2 branches covered.">            if (cubeCopy.getSegments().getFirstSegment().isOffsetCube()) {</span>
+                // offset cube, merge by date range?
+<span class="fc" id="L792">                segRange = getOffsetCubeSegRange(cubeCopy, tsRange, segRange);</span>
+<span class="fc" id="L793">                tsRange = null;</span>
+<span class="pc bpc" id="L794" title="1 of 2 branches missed.">                Preconditions.checkArgument(segRange != null);</span>
+            } else {
+                /**In case of non-streaming segment,
+                 * tsRange is the same as segRange,
+                 * either could fulfill the merge job,
+                 * so it needs to convert segRange to tsRange if tsRange is null.
+                 **/
+<span class="pc bpc" id="L801" title="1 of 2 branches missed.">                if (tsRange == null) {</span>
+<span class="nc" id="L802">                    tsRange = new TSRange((Long) segRange.start.v, (Long) segRange.end.v);</span>
+                }
+<span class="fc" id="L804">                segRange = null;</span>
+            }
+
+<span class="fc" id="L807">            CubeSegment newSegment = newSegment(cubeCopy, tsRange, segRange);</span>
+<span class="fc" id="L808">            newSegment.setMerged(true);</span>
+
+<span class="fc" id="L810">            Segments&lt;CubeSegment&gt; mergingSegments = cubeCopy.getMergingSegments(newSegment);</span>
+<span class="fc bfc" id="L811" title="All 2 branches covered.">            if (mergingSegments.size() &lt;= 1)</span>
+<span class="fc" id="L812">                throw new IllegalArgumentException(&quot;Range &quot; + newSegment.getSegRange()</span>
+<span class="fc" id="L813">                        + &quot; must contain at least 2 segments, but there is &quot; + mergingSegments.size());</span>
+
+<span class="fc" id="L815">            CubeSegment first = mergingSegments.get(0);</span>
+<span class="fc" id="L816">            CubeSegment last = mergingSegments.get(mergingSegments.size() - 1);</span>
+<span class="pc bpc" id="L817" title="1 of 2 branches missed.">            if (!force) {</span>
+<span class="nc" id="L818">                checkReadyForMerge(mergingSegments);</span>
+            }
+
+<span class="fc bfc" id="L821" title="All 2 branches covered.">            if (first.isOffsetCube()) {</span>
+<span class="fc" id="L822">                newSegment.setSegRange(new SegmentRange(first.getSegRange().start, last.getSegRange().end));</span>
+<span class="fc" id="L823">                newSegment.setSourcePartitionOffsetStart(first.getSourcePartitionOffsetStart());</span>
+<span class="fc" id="L824">                newSegment.setSourcePartitionOffsetEnd(last.getSourcePartitionOffsetEnd());</span>
+<span class="fc" id="L825">                newSegment.setTSRange(null);</span>
+            } else {
+<span class="fc" id="L827">                newSegment.setTSRange(new TSRange(mergingSegments.getTSStart(), mergingSegments.getTSEnd()));</span>
+<span class="fc" id="L828">                newSegment.setSegRange(null);</span>
+            }
+
+<span class="fc" id="L831">            validateNewSegments(cubeCopy, newSegment);</span>
+
+<span class="fc" id="L833">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="fc" id="L834">            update.setToAddSegs(newSegment);</span>
+<span class="fc" id="L835">            updateCube(update);</span>
+
+<span class="fc" id="L837">            return newSegment;</span>
+        }
+
+        private void checkReadyForMerge(Segments&lt;CubeSegment&gt; mergingSegments) {
+            // check if the segments to be merged are continuous
+<span class="nc bnc" id="L842" title="All 2 branches missed.">            for (int i = 0; i &lt; mergingSegments.size() - 1; i++) {</span>
+<span class="nc bnc" id="L843" title="All 2 branches missed.">                if (!mergingSegments.get(i).getSegRange().connects(mergingSegments.get(i + 1).getSegRange()))</span>
+<span class="nc" id="L844">                    throw new IllegalStateException(&quot;Merging segments must not have gaps between &quot;</span>
+<span class="nc" id="L845">                            + mergingSegments.get(i) + &quot; and &quot; + mergingSegments.get(i + 1));</span>
+            }
+
+            // check if the segments to be merged are not empty
+<span class="nc" id="L849">            List&lt;String&gt; emptySegment = Lists.newArrayList();</span>
+<span class="nc bnc" id="L850" title="All 2 branches missed.">            for (CubeSegment seg : mergingSegments) {</span>
+<span class="nc bnc" id="L851" title="All 4 branches missed.">                if (seg.getSizeKB() == 0 &amp;&amp; seg.getInputRecords() == 0) {</span>
+<span class="nc" id="L852">                    emptySegment.add(seg.getName());</span>
+                }
+<span class="nc" id="L854">            }</span>
+<span class="nc" id="L855">            long maxSegMergeSpan = KylinConfig.getInstanceFromEnv().getMaxSegmentMergeSpan();</span>
+
+<span class="nc bnc" id="L857" title="All 2 branches missed.">            for (CubeSegment seg : mergingSegments) {</span>
+<span class="nc bnc" id="L858" title="All 4 branches missed.">                if (maxSegMergeSpan &gt; 0 &amp;&amp; seg.getTSRange().duration() &gt; maxSegMergeSpan) {</span>
+<span class="nc" id="L859">                    throw new IllegalArgumentException(</span>
+                        &quot;Segment range is larger than the max segement merge span, couldn't merge unless 'forceMergeEmptySegment' set to true: &quot;
+                            + seg);
+                }
+<span class="nc" id="L863">            }</span>
+
+<span class="nc bnc" id="L865" title="All 2 branches missed.">            if (emptySegment.size() &gt; 0) {</span>
+<span class="nc" id="L866">                throw new IllegalArgumentException(</span>
+                        &quot;Empty cube segment found, couldn't merge unless 'forceMergeEmptySegment' set to true: &quot;
+                                + emptySegment);
+            }
+<span class="nc" id="L870">        }</span>
+
+        private SegmentRange getOffsetCubeSegRange(CubeInstance cubeCopy, TSRange tsRange, SegmentRange segRange) {
+<span class="pc bpc" id="L873" title="3 of 4 branches missed.">            if (segRange == null &amp;&amp; tsRange != null) {</span>
+<span class="nc" id="L874">                Pair&lt;CubeSegment, CubeSegment&gt; pair = cubeCopy.getSegments(SegmentStatusEnum.READY)</span>
+<span class="nc" id="L875">                        .findMergeOffsetsByDateRange(tsRange, Long.MAX_VALUE);</span>
+<span class="nc bnc" id="L876" title="All 2 branches missed.">                if (pair == null)</span>
+<span class="nc" id="L877">                    throw new IllegalArgumentException(</span>
+                            &quot;Find no segments to merge by &quot; + tsRange + &quot; for cube &quot; + cubeCopy);
+<span class="nc" id="L879">                segRange = new SegmentRange(pair.getFirst().getSegRange().start, pair.getSecond().getSegRange().end);</span>
+            }
+<span class="fc" id="L881">            return segRange;</span>
+        }
+
+        private void checkInputRanges(TSRange tsRange, SegmentRange segRange) {
+<span class="pc bpc" id="L885" title="1 of 4 branches missed.">            if (tsRange != null &amp;&amp; segRange != null) {</span>
+<span class="nc" id="L886">                throw new IllegalArgumentException(</span>
+                        &quot;Build or refresh cube segment either by TSRange or by SegmentRange, not both.&quot;);
+            }
+<span class="fc" id="L889">        }</span>
+
+        private void checkCubeIsPartitioned(CubeInstance cube) {
+<span class="fc bfc" id="L892" title="All 2 branches covered.">            if (cube.getDescriptor().getModel().getPartitionDesc().isPartitioned() == false) {</span>
+<span class="fc" id="L893">                throw new IllegalStateException(</span>
+                        &quot;there is no partition date column specified, only full build is supported&quot;);
+            }
+<span class="fc" id="L896">        }</span>
+
+        private CubeSegment newSegment(CubeInstance cube, TSRange tsRange, SegmentRange segRange) {
+<span class="fc" id="L899">            DataModelDesc modelDesc = cube.getModel();</span>
+
+<span class="fc" id="L901">            CubeSegment segment = new CubeSegment();</span>
+<span class="fc" id="L902">            segment.setUuid(RandomUtil.randomUUID().toString());</span>
+<span class="fc" id="L903">            segment.setName(CubeSegment.makeSegmentName(tsRange, segRange, modelDesc));</span>
+<span class="fc" id="L904">            segment.setCreateTimeUTC(System.currentTimeMillis());</span>
+<span class="fc" id="L905">            segment.setCubeInstance(cube);</span>
+
+            // let full build range be backward compatible
+<span class="fc bfc" id="L908" title="All 4 branches covered.">            if (tsRange == null &amp;&amp; segRange == null)</span>
+<span class="fc" id="L909">                tsRange = new TSRange(0L, Long.MAX_VALUE);</span>
+
+<span class="fc" id="L911">            segment.setTSRange(tsRange);</span>
+<span class="fc" id="L912">            segment.setSegRange(segRange);</span>
+<span class="fc" id="L913">            segment.setStatus(SegmentStatusEnum.NEW);</span>
+<span class="fc" id="L914">            segment.setStorageLocationIdentifier(generateStorageLocation(cube.getEngineType()));</span>
+<span class="fc" id="L915">            Map&lt;String, String&gt; additionalInfo = segment.getAdditionalInfo();</span>
+<span class="fc" id="L916">            additionalInfo.put(&quot;storageType&quot;, &quot;&quot; + cube.getStorageType());</span>
+<span class="fc" id="L917">            segment.setAdditionalInfo(additionalInfo);</span>
+<span class="fc" id="L918">            segment.setCubeInstance(cube);</span>
+
+<span class="fc" id="L920">            segment.validate();</span>
+<span class="fc" id="L921">            return segment;</span>
+        }
+
+        public void promoteNewlyBuiltSegments(CubeInstance cube, CubeSegment newSegCopy) throws IOException {
+            // double check the updating objects are not on cache
+<span class="pc bpc" id="L926" title="1 of 2 branches missed.">            if (newSegCopy.getCubeInstance().isCachedAndShared())</span>
+<span class="nc" id="L927">                throw new IllegalStateException();</span>
+
+<span class="fc" id="L929">            CubeInstance cubeCopy = getCube(cube.getName()).latestCopyForWrite();</span>
+
+<span class="pc bpc" id="L931" title="1 of 2 branches missed.">            if (StringUtils.isBlank(newSegCopy.getStorageLocationIdentifier()))</span>
+<span class="nc" id="L932">                throw new IllegalStateException(</span>
+<span class="nc" id="L933">                        String.format(Locale.ROOT, &quot;For cube %s, segment %s missing StorageLocationIdentifier&quot;,</span>
+<span class="nc" id="L934">                                cubeCopy.toString(), newSegCopy.toString()));</span>
+
+<span class="pc bpc" id="L936" title="1 of 2 branches missed.">            if (StringUtils.isBlank(newSegCopy.getLastBuildJobID()))</span>
+<span class="nc" id="L937">                throw new IllegalStateException(String.format(Locale.ROOT,</span>
+<span class="nc" id="L938">                        &quot;For cube %s, segment %s missing LastBuildJobID&quot;, cubeCopy.toString(), newSegCopy.toString()));</span>
+
+<span class="pc bpc" id="L940" title="1 of 2 branches missed.">            if (isReady(newSegCopy)) {</span>
+<span class="nc" id="L941">                logger.warn(&quot;For cube {}, segment {} state should be NEW but is READY&quot;, cubeCopy, newSegCopy);</span>
+            }
+
+<span class="fc" id="L944">            List&lt;CubeSegment&gt; tobe = cubeCopy.calculateToBeSegments(newSegCopy);</span>
+
+<span class="pc bpc" id="L946" title="1 of 2 branches missed.">            if (tobe.contains(newSegCopy) == false)</span>
+<span class="nc" id="L947">                throw new IllegalStateException(</span>
+<span class="nc" id="L948">                        String.format(Locale.ROOT, &quot;For cube %s, segment %s is expected but not in the tobe %s&quot;,</span>
+<span class="nc" id="L949">                                cubeCopy.toString(), newSegCopy.toString(), tobe.toString()));</span>
+
+<span class="fc" id="L951">            newSegCopy.setStatus(SegmentStatusEnum.READY);</span>
+
+<span class="fc" id="L953">            List&lt;CubeSegment&gt; toRemoveSegs = Lists.newArrayList();</span>
+<span class="fc bfc" id="L954" title="All 2 branches covered.">            for (CubeSegment segment : cubeCopy.getSegments()) {</span>
+<span class="fc bfc" id="L955" title="All 2 branches covered.">                if (!tobe.contains(segment))</span>
+<span class="fc" id="L956">                    toRemoveSegs.add(segment);</span>
+<span class="fc" id="L957">            }</span>
+
+<span class="fc" id="L959">            logger.info(&quot;Promoting cube {}, new segment {}, to remove segments {}&quot;, cubeCopy, newSegCopy, toRemoveSegs);</span>
+
+<span class="fc" id="L961">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="fc" id="L962">            update.setToRemoveSegs(toRemoveSegs.toArray(new CubeSegment[toRemoveSegs.size()]))</span>
+<span class="fc" id="L963">                    .setToUpdateSegs(newSegCopy);</span>
+<span class="pc bpc" id="L964" title="1 of 2 branches missed.">            if (cube.getConfig().isJobAutoReadyCubeEnabled()) {</span>
+<span class="fc" id="L965">                update.setStatus(RealizationStatusEnum.READY);</span>
+            }
+<span class="fc" id="L967">            updateCube(update);</span>
+<span class="fc" id="L968">        }</span>
+
+        public void promoteNewlyOptimizeSegments(CubeInstance cube, CubeSegment... optimizedSegments)
+                throws IOException {
+<span class="nc" id="L972">            CubeInstance cubeCopy = cube.latestCopyForWrite();</span>
+<span class="nc" id="L973">            CubeSegment[] segCopy = cube.regetSegments(optimizedSegments);</span>
+
+<span class="nc bnc" id="L975" title="All 2 branches missed.">            for (CubeSegment seg : segCopy) {</span>
+<span class="nc" id="L976">                seg.setStatus(SegmentStatusEnum.READY_PENDING);</span>
+            }
+
+<span class="nc" id="L979">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="nc" id="L980">            update.setToUpdateSegs(segCopy);</span>
+<span class="nc" id="L981">            updateCube(update);</span>
+<span class="nc" id="L982">        }</span>
+
+        public void promoteCheckpointOptimizeSegments(CubeInstance cube, Map&lt;Long, Long&gt; recommendCuboids,
+                CubeSegment... optimizedSegments) throws IOException {
+<span class="nc" id="L986">            CubeInstance cubeCopy = cube.latestCopyForWrite();</span>
+<span class="nc" id="L987">            CubeSegment[] optSegCopy = cubeCopy.regetSegments(optimizedSegments);</span>
+
+<span class="nc bnc" id="L989" title="All 2 branches missed.">            if (cubeCopy.getSegments().size() != optSegCopy.length * 2) {</span>
+<span class="nc" id="L990">                throw new IllegalStateException(String.format(Locale.ROOT,</span>
+                        &quot;For cube %s, every READY segment should be optimized and all segments should be READY before optimizing&quot;,
+<span class="nc" id="L992">                        cubeCopy.toString()));</span>
+            }
+
+<span class="nc" id="L995">            CubeSegment[] originalSegments = new CubeSegment[optSegCopy.length];</span>
+<span class="nc" id="L996">            int i = 0;</span>
+<span class="nc bnc" id="L997" title="All 2 branches missed.">            for (CubeSegment seg : optSegCopy) {</span>
+<span class="nc" id="L998">                originalSegments[i++] = cubeCopy.getOriginalSegmentToOptimize(seg);</span>
+
+<span class="nc bnc" id="L1000" title="All 2 branches missed.">                if (StringUtils.isBlank(seg.getStorageLocationIdentifier()))</span>
+<span class="nc" id="L1001">                    throw new IllegalStateException(</span>
+<span class="nc" id="L1002">                            String.format(Locale.ROOT, &quot;For cube %s, segment %s missing StorageLocationIdentifier&quot;,</span>
+<span class="nc" id="L1003">                                    cubeCopy.toString(), seg.toString()));</span>
+
+<span class="nc bnc" id="L1005" title="All 2 branches missed.">                if (StringUtils.isBlank(seg.getLastBuildJobID()))</span>
+<span class="nc" id="L1006">                    throw new IllegalStateException(String.format(Locale.ROOT,</span>
+<span class="nc" id="L1007">                            &quot;For cube %s, segment %s missing LastBuildJobID&quot;, cubeCopy.toString(), seg.toString()));</span>
+
+<span class="nc" id="L1009">                seg.setStatus(SegmentStatusEnum.READY);</span>
+            }
+
+<span class="nc" id="L1012">            logger.info(&quot;Promoting cube {}, new segments {}, to remove segments {}&quot;, cubeCopy,</span>
+<span class="nc" id="L1013">                    Arrays.toString(optSegCopy), originalSegments);</span>
+
+<span class="nc" id="L1015">            CubeUpdate update = new CubeUpdate(cubeCopy);</span>
+<span class="nc" id="L1016">            update.setToRemoveSegs(originalSegments) //</span>
+<span class="nc" id="L1017">                    .setToUpdateSegs(optSegCopy) //</span>
+<span class="nc" id="L1018">                    .setCuboids(recommendCuboids) //</span>
+<span class="nc" id="L1019">                    .setCuboidsRecommend(Sets.&lt;Long&gt; newHashSet());</span>
+<span class="nc bnc" id="L1020" title="All 2 branches missed.">            if (cube.getConfig().isJobAutoReadyCubeEnabled()) {</span>
+<span class="nc" id="L1021">                update.setStatus(RealizationStatusEnum.READY);</span>
+            }
+<span class="nc" id="L1023">            updateCube(update);</span>
+<span class="nc" id="L1024">        }</span>
+
+        private void validateNewSegments(CubeInstance cube, CubeSegment newSegments) {
+<span class="fc" id="L1027">            List&lt;CubeSegment&gt; tobe = cube.calculateToBeSegments(newSegments);</span>
+<span class="fc" id="L1028">            List&lt;CubeSegment&gt; newList = Arrays.asList(newSegments);</span>
+<span class="pc bpc" id="L1029" title="1 of 2 branches missed.">            if (tobe.containsAll(newList) == false) {</span>
+<span class="nc" id="L1030">                throw new IllegalStateException(String.format(Locale.ROOT,</span>
+                        &quot;For cube %s, the new segments %s do not fit in its current %s; the resulted tobe is %s&quot;,
+<span class="nc" id="L1032">                        cube.toString(), newList.toString(), cube.getSegments().toString(), tobe.toString()));</span>
+            }
+<span class="fc" id="L1034">        }</span>
+
+        /**
+         * Calculate the holes (gaps) in segments.
+         * @param cubeName
+         * @return
+         */
+        public List&lt;CubeSegment&gt; calculateHoles(String cubeName) {
+<span class="nc" id="L1042">            List&lt;CubeSegment&gt; holes = Lists.newArrayList();</span>
+<span class="nc" id="L1043">            final CubeInstance cube = getCube(cubeName);</span>
+<span class="nc" id="L1044">            DataModelDesc modelDesc = cube.getModel();</span>
+<span class="nc" id="L1045">            Preconditions.checkNotNull(cube);</span>
+<span class="nc" id="L1046">            final List&lt;CubeSegment&gt; segments = cube.getSegments();</span>
+<span class="nc" id="L1047">            logger.info(&quot;totally {} cubeSegments&quot;, segments.size());</span>
+<span class="nc bnc" id="L1048" title="All 2 branches missed.">            if (segments.size() == 0) {</span>
+<span class="nc" id="L1049">                return holes;</span>
+            }
+
+<span class="nc" id="L1052">            Collections.sort(segments);</span>
+<span class="nc bnc" id="L1053" title="All 2 branches missed.">            for (int i = 0; i &lt; segments.size() - 1; ++i) {</span>
+<span class="nc" id="L1054">                CubeSegment first = segments.get(i);</span>
+<span class="nc" id="L1055">                CubeSegment second = segments.get(i + 1);</span>
+<span class="nc bnc" id="L1056" title="All 2 branches missed.">                if (first.getSegRange().connects(second.getSegRange()))</span>
+<span class="nc" id="L1057">                    continue;</span>
+
+<span class="nc bnc" id="L1059" title="All 2 branches missed.">                if (first.getSegRange().apartBefore(second.getSegRange())) {</span>
+<span class="nc" id="L1060">                    CubeSegment hole = new CubeSegment();</span>
+<span class="nc" id="L1061">                    hole.setCubeInstance(cube);</span>
+<span class="nc bnc" id="L1062" title="All 2 branches missed.">                    if (first.isOffsetCube()) {</span>
+<span class="nc" id="L1063">                        hole.setSegRange(new SegmentRange(first.getSegRange().end, second.getSegRange().start));</span>
+<span class="nc" id="L1064">                        hole.setSourcePartitionOffsetStart(first.getSourcePartitionOffsetEnd());</span>
+<span class="nc" id="L1065">                        hole.setSourcePartitionOffsetEnd(second.getSourcePartitionOffsetStart());</span>
+<span class="nc" id="L1066">                        hole.setName(CubeSegment.makeSegmentName(null, hole.getSegRange(), modelDesc));</span>
+                    } else {
+<span class="nc" id="L1068">                        hole.setTSRange(new TSRange(first.getTSRange().end.v, second.getTSRange().start.v));</span>
+<span class="nc" id="L1069">                        hole.setName(CubeSegment.makeSegmentName(hole.getTSRange(), null, modelDesc));</span>
+                    }
+<span class="nc" id="L1071">                    holes.add(hole);</span>
+                }
+            }
+<span class="nc" id="L1074">            return holes;</span>
+        }
+
+    }
+
+    // ============================================================================
+    // Dictionary/Snapshot related methods
+    // ============================================================================
+
+    /**
+     * To keep &quot;select * from LOOKUP_TABLE&quot; has consistent and latest result, we manually choose
+     * CubeInstance here to answer such query.
+     */
+    public CubeInstance findLatestSnapshot(List&lt;RealizationEntry&gt; realizationEntries, String lookupTableName,
+            CubeInstance cubeInstance) {
+<span class="nc" id="L1089">        CubeInstance cube = null;</span>
+        try {
+<span class="nc bnc" id="L1091" title="All 2 branches missed.">            if (!realizationEntries.isEmpty()) {</span>
+<span class="nc" id="L1092">                long maxBuildTime = Long.MIN_VALUE;</span>
+<span class="nc" id="L1093">                RealizationRegistry registry = RealizationRegistry.getInstance(config);</span>
+<span class="nc bnc" id="L1094" title="All 2 branches missed.">                for (RealizationEntry entry : realizationEntries) {</span>
+<span class="nc" id="L1095">                    IRealization realization = registry.getRealization(entry.getType(), entry.getRealization());</span>
+<span class="nc bnc" id="L1096" title="All 6 branches missed.">                    if (realization != null &amp;&amp; realization.isReady() &amp;&amp; realization instanceof CubeInstance) {</span>
+<span class="nc" id="L1097">                        CubeInstance current = (CubeInstance) realization;</span>
+<span class="nc bnc" id="L1098" title="All 2 branches missed.">                        if (current.getDescriptor().findDimensionByTable(lookupTableName) != null) {</span>
+<span class="nc" id="L1099">                            CubeSegment segment = current.getLatestReadySegment();</span>
+<span class="nc bnc" id="L1100" title="All 2 branches missed.">                            if (segment != null) {</span>
+<span class="nc" id="L1101">                                long latestBuildTime = segment.getLastBuildTime();</span>
+<span class="nc bnc" id="L1102" title="All 2 branches missed.">                                if (latestBuildTime &gt; maxBuildTime) {</span>
+<span class="nc" id="L1103">                                    maxBuildTime = latestBuildTime;</span>
+<span class="nc" id="L1104">                                    cube = current;</span>
+                                }
+                            }
+                        }
+                    }
+<span class="nc" id="L1109">                }</span>
+            }
+<span class="nc" id="L1111">        } catch (Exception e) {</span>
+<span class="nc" id="L1112">            logger.info(&quot;Unexpected error.&quot;, e);</span>
+<span class="nc" id="L1113">            throw e;</span>
+<span class="nc" id="L1114">        }</span>
+<span class="nc bnc" id="L1115" title="All 2 branches missed.">        if (!cubeInstance.equals(cube)) {</span>
+<span class="nc" id="L1116">            logger.debug(&quot;Picked cube {} over {} as it provides a more recent snapshot of the lookup table {}&quot;, cube,</span>
+                    cubeInstance, lookupTableName);
+        }
+<span class="nc bnc" id="L1119" title="All 2 branches missed.">        return cube == null ? cubeInstance : cube;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

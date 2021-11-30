@@ -1,0 +1,418 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultCuboidScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Cube</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.cube.cuboid</a> &gt; <span class="el_source">DefaultCuboidScheduler.java</span></div><h1>DefaultCuboidScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.cube.cuboid;
+
+/**
+ */
+
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+
+import javax.annotation.Nullable;
+
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.cube.model.AggregationGroup;
+import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.cube.model.TooManyCuboidException;
+
+import org.apache.kylin.shaded.com.google.common.base.Predicate;
+import org.apache.kylin.shaded.com.google.common.collect.Iterators;
+import org.apache.kylin.shaded.com.google.common.collect.Lists;
+import org.apache.kylin.shaded.com.google.common.collect.Maps;
+import org.apache.kylin.shaded.com.google.common.collect.Sets;
+
+public class DefaultCuboidScheduler extends CuboidScheduler {
+    private final long max;
+    private final Set&lt;Long&gt; allCuboidIds;
+    private final Map&lt;Long, List&lt;Long&gt;&gt; parent2child;
+
+    public DefaultCuboidScheduler(CubeDesc cubeDesc) {
+<span class="fc" id="L53">        super(cubeDesc);</span>
+
+<span class="fc" id="L55">        int size = this.cubeDesc.getRowkey().getRowKeyColumns().length;</span>
+<span class="fc" id="L56">        this.max = (long) Math.pow(2, size) - 1;</span>
+
+<span class="fc" id="L58">        Pair&lt;Set&lt;Long&gt;, Map&lt;Long, List&lt;Long&gt;&gt;&gt; pair = buildTreeBottomUp();</span>
+<span class="fc" id="L59">        this.allCuboidIds = pair.getFirst();</span>
+<span class="fc" id="L60">        this.parent2child = pair.getSecond();</span>
+<span class="fc" id="L61">    }</span>
+
+    @Override
+    public int getCuboidCount() {
+<span class="fc" id="L65">        return allCuboidIds.size();</span>
+    }
+
+    @Override
+    public List&lt;Long&gt; getSpanningCuboid(long cuboid) {
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">        if (cuboid &gt; max || cuboid &lt; 0) {</span>
+<span class="nc" id="L71">            throw new IllegalArgumentException(&quot;Cuboid &quot; + cuboid + &quot; is out of scope 0-&quot; + max);</span>
+        }
+
+<span class="fc" id="L74">        List&lt;Long&gt; spanning = parent2child.get(cuboid);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (spanning == null) {</span>
+<span class="fc" id="L76">            return Collections.EMPTY_LIST;</span>
+        }
+<span class="fc" id="L78">        return spanning;</span>
+    }
+
+    @Override
+    public Set&lt;Long&gt; getAllCuboidIds() {
+<span class="fc" id="L83">        return Sets.newHashSet(allCuboidIds);</span>
+    }
+
+    @Override
+    public boolean isValid(long requestCuboid) {
+<span class="fc" id="L88">        return allCuboidIds.contains(requestCuboid);</span>
+    }
+
+    /** Returns a valid cuboid that best matches the request cuboid. */
+    @Override
+    public long findBestMatchCuboid(long cuboid) {
+<span class="fc" id="L94">        return findBestMatchCuboid1(cuboid);</span>
+    }
+
+    long findBestMatchCuboid1(long cuboid) {
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (isValid(cuboid)) {</span>
+<span class="fc" id="L99">            return cuboid;</span>
+        }
+
+<span class="fc" id="L102">        List&lt;Long&gt; onTreeCandidates = Lists.newArrayList();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (AggregationGroup agg : cubeDesc.getAggregationGroups()) {</span>
+<span class="fc" id="L104">            Long candidate = agg.translateToOnTreeCuboid(cuboid);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (candidate != null) {</span>
+<span class="fc" id="L106">                onTreeCandidates.add(candidate);</span>
+            }
+<span class="fc" id="L108">        }</span>
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (onTreeCandidates.size() == 0) {</span>
+<span class="fc" id="L111">            return getBaseCuboidId();</span>
+        }
+
+<span class="fc" id="L114">        long onTreeCandi = Collections.min(onTreeCandidates, Cuboid.cuboidSelectComparator);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (isValid(onTreeCandi)) {</span>
+<span class="fc" id="L116">            return onTreeCandi;</span>
+        }
+
+<span class="nc" id="L119">        return doFindBestMatchCuboid1(onTreeCandi);</span>
+    }
+
+    private long doFindBestMatchCuboid1(long cuboid) {
+<span class="nc" id="L123">        long parent = getOnTreeParent(cuboid);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        while (parent &gt; 0) {</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (cubeDesc.getAllCuboids().contains(parent)) {</span>
+<span class="nc" id="L126">                break;</span>
+            }
+<span class="nc" id="L128">            parent = getOnTreeParent(parent);</span>
+        }
+
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (parent &lt;= 0) {</span>
+<span class="nc" id="L132">            throw new IllegalStateException(&quot;Can't find valid parent for Cuboid &quot; + cuboid);</span>
+        }
+<span class="nc" id="L134">        return parent;</span>
+    }
+
+    private long getOnTreeParent(long child) {
+<span class="fc" id="L138">        Collection&lt;Long&gt; candidates = getOnTreeParents(child);</span>
+<span class="pc bpc" id="L139" title="1 of 4 branches missed.">        if (candidates == null || candidates.isEmpty()) {</span>
+<span class="fc" id="L140">            return -1;</span>
+        }
+<span class="fc" id="L142">        return Collections.min(candidates, Cuboid.cuboidSelectComparator);</span>
+    }
+
+    private Set&lt;Long&gt; getOnTreeParents(long child) {
+<span class="fc" id="L146">        List&lt;AggregationGroup&gt; aggrs = Lists.newArrayList();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (AggregationGroup agg : cubeDesc.getAggregationGroups()) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (agg.isOnTree(child)) {</span>
+<span class="fc" id="L149">                aggrs.add(agg);</span>
+            }
+<span class="fc" id="L151">        }</span>
+
+<span class="fc" id="L153">        return getOnTreeParents(child, aggrs);</span>
+    }
+
+    /**
+     * Collect cuboid from bottom up, considering all factor including black list
+     * Build tree steps:
+     * 1. Build tree from bottom up considering dim capping
+     * 2. Kick out blacked-out cuboids from the tree
+     * 3. Make sure all the cuboids have proper &quot;parent&quot;, if not add it to the tree.
+     *    Direct parent is not necessary, can jump *forward* steps to find in-direct parent.
+     *    For example, forward = 1, grandparent can also be the parent. Only if both parent
+     *    and grandparent are missing, add grandparent to the tree.
+     * @return Cuboid collection
+     */
+    protected Pair&lt;Set&lt;Long&gt;, Map&lt;Long, List&lt;Long&gt;&gt;&gt; buildTreeBottomUp() {
+<span class="fc" id="L168">        int forward = cubeDesc.getParentForward();</span>
+<span class="fc" id="L169">        KylinConfig config = cubeDesc.getConfig();</span>
+
+<span class="fc" id="L171">        Set&lt;Long&gt; cuboidHolder = new HashSet&lt;&gt;();</span>
+
+        // build tree structure
+<span class="fc" id="L174">        Set&lt;Long&gt; children = getLowestCuboids();</span>
+<span class="fc" id="L175">        long maxCombination = config.getCubeAggrGroupMaxCombination() * 10;</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        maxCombination = maxCombination &lt; 0 ? Long.MAX_VALUE : maxCombination;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        while (!children.isEmpty()) {</span>
+<span class="fc" id="L178">            cuboidHolder.addAll(children);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            if (cuboidHolder.size() &gt; maxCombination) {</span>
+<span class="fc" id="L180">                throw new IllegalStateException(&quot;Too many cuboids for the cube. Cuboid combination reached &quot;</span>
+<span class="fc" id="L181">                    + cuboidHolder.size() + &quot; and limit is &quot; + maxCombination + &quot;. Abort calculation.&quot;);</span>
+            }
+<span class="fc" id="L183">            children = getOnTreeParentsByLayer(children);</span>
+        }
+<span class="fc" id="L185">        cuboidHolder.add(Cuboid.getBaseCuboidId(cubeDesc));</span>
+
+        // kick off blacked
+<span class="fc" id="L188">        cuboidHolder = Sets.newHashSet(Iterators.filter(cuboidHolder.iterator(), new Predicate&lt;Long&gt;() {</span>
+            @Override
+            public boolean apply(@Nullable Long cuboidId) {
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                return !cubeDesc.isBlackedCuboid(cuboidId);</span>
+            }
+        }));
+
+        // fill padding cuboids
+<span class="fc" id="L196">        Map&lt;Long, List&lt;Long&gt;&gt; parent2Child = Maps.newHashMap();</span>
+<span class="fc" id="L197">        Queue&lt;Long&gt; cuboidScan = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L198">        cuboidScan.addAll(cuboidHolder);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        while (!cuboidScan.isEmpty()) {</span>
+<span class="fc" id="L200">            long current = cuboidScan.poll();</span>
+<span class="fc" id="L201">            long parent = getParentOnPromise(current, cuboidHolder, forward);</span>
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            if (parent &gt; 0) {</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                if (!cuboidHolder.contains(parent)) {</span>
+<span class="fc" id="L205">                    cuboidScan.add(parent);</span>
+<span class="fc" id="L206">                    cuboidHolder.add(parent);</span>
+                }
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                if (parent2Child.containsKey(parent)) {</span>
+<span class="fc" id="L209">                    parent2Child.get(parent).add(current);</span>
+                } else {
+<span class="fc" id="L211">                    parent2Child.put(parent, Lists.newArrayList(current));</span>
+                }
+            }
+<span class="fc" id="L214">        }</span>
+
+<span class="fc" id="L216">        return Pair.newPair(cuboidHolder, parent2Child);</span>
+    }
+
+    private long getParentOnPromise(long child, Set&lt;Long&gt; coll, int forward) {
+<span class="fc" id="L220">        long parent = getOnTreeParent(child);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (parent &lt; 0) {</span>
+<span class="fc" id="L222">            return -1;</span>
+        }
+
+<span class="fc bfc" id="L225" title="All 4 branches covered.">        if (coll.contains(parent) || forward == 0) {</span>
+<span class="fc" id="L226">            return parent;</span>
+        }
+
+<span class="fc" id="L229">        return getParentOnPromise(parent, coll, forward - 1);</span>
+    }
+
+    /**
+     * Get all parent for children cuboids, considering dim cap.
+     * @param children children cuboids
+     * @return all parents cuboids
+     */
+    private Set&lt;Long&gt; getOnTreeParentsByLayer(Collection&lt;Long&gt; children) {
+<span class="fc" id="L238">        Set&lt;Long&gt; parents = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        for (long child : children) {</span>
+<span class="fc" id="L240">            parents.addAll(getOnTreeParents(child));</span>
+<span class="fc" id="L241">        }</span>
+<span class="fc" id="L242">        parents = Sets.newHashSet(Iterators.filter(parents.iterator(), new Predicate&lt;Long&gt;() {</span>
+            @Override
+            public boolean apply(@Nullable Long cuboidId) {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (cuboidId == Cuboid.getBaseCuboidId(cubeDesc)) {</span>
+<span class="fc" id="L246">                    return true;</span>
+                }
+
+<span class="fc bfc" id="L249" title="All 2 branches covered.">                for (AggregationGroup agg : cubeDesc.getAggregationGroups()) {</span>
+<span class="fc bfc" id="L250" title="All 4 branches covered.">                    if (agg.isOnTree(cuboidId) &amp;&amp; checkDimCap(agg, cuboidId)) {</span>
+<span class="fc" id="L251">                        return true;</span>
+                    }
+<span class="fc" id="L253">                }</span>
+
+<span class="fc" id="L255">                return false;</span>
+            }
+        }));
+<span class="fc" id="L258">        return parents;</span>
+    }
+
+    /**
+     * Get lowest (not Cube building level) Cuboids for every Agg group
+     * @return lowest level cuboids
+     */
+    private Set&lt;Long&gt; getLowestCuboids() {
+<span class="fc" id="L266">        return getOnTreeParents(0L, cubeDesc.getAggregationGroups());</span>
+    }
+
+    private Set&lt;Long&gt; getOnTreeParents(long child, Collection&lt;AggregationGroup&gt; groups) {
+<span class="fc" id="L270">        Set&lt;Long&gt; parentCandidate = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (child == Cuboid.getBaseCuboidId(cubeDesc)) {</span>
+<span class="fc" id="L273">            return parentCandidate;</span>
+        }
+
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        for (AggregationGroup agg : groups) {</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            if (child == agg.getPartialCubeFullMask()) {</span>
+<span class="fc" id="L278">                parentCandidate.add(Cuboid.getBaseCuboidId(cubeDesc));</span>
+<span class="fc" id="L279">                return parentCandidate;</span>
+            }
+<span class="fc" id="L281">            parentCandidate.addAll(getOnTreeParents(child, agg));</span>
+<span class="fc" id="L282">        }</span>
+
+<span class="fc" id="L284">        return parentCandidate;</span>
+    }
+
+    /**
+     * Get all valid cuboids for agg group, ignoring padding
+     * @param agg agg group
+     * @return cuboidId list
+     */
+    public Set&lt;Long&gt; calculateCuboidsForAggGroup(AggregationGroup agg) {
+<span class="fc" id="L293">        Set&lt;Long&gt; cuboidHolder = new HashSet&lt;&gt;();</span>
+
+        // build tree structure
+<span class="fc" id="L296">        Set&lt;Long&gt; children = getLowestCuboids(agg);</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        while (!children.isEmpty()) {</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">            if (cuboidHolder.size() &gt; cubeDesc.getConfig().getCubeAggrGroupMaxCombination()) {</span>
+<span class="nc" id="L299">                throw new TooManyCuboidException(&quot;Holder size larger than kylin.cube.aggrgroup.max-combination&quot;);</span>
+            }
+<span class="fc" id="L301">            cuboidHolder.addAll(children);</span>
+<span class="fc" id="L302">            children = getOnTreeParentsByLayer(children, agg);</span>
+        }
+
+<span class="fc" id="L305">        return Sets.newHashSet(Iterators.filter(cuboidHolder.iterator(), new Predicate&lt;Long&gt;() {</span>
+            @Override
+            public boolean apply(@Nullable Long cuboidId) {
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">                return !cubeDesc.isBlackedCuboid(cuboidId);</span>
+            }
+        }));
+    }
+
+    private Set&lt;Long&gt; getOnTreeParentsByLayer(Collection&lt;Long&gt; children, final AggregationGroup agg) {
+<span class="fc" id="L314">        Set&lt;Long&gt; parents = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        for (long child : children) {</span>
+<span class="fc" id="L316">            parents.addAll(getOnTreeParents(child, agg));</span>
+<span class="fc" id="L317">        }</span>
+<span class="fc" id="L318">        parents = Sets.newHashSet(Iterators.filter(parents.iterator(), new Predicate&lt;Long&gt;() {</span>
+            @Override
+            public boolean apply(@Nullable Long cuboidId) {
+<span class="fc" id="L321">                return checkDimCap(agg, cuboidId);</span>
+            }
+        }));
+<span class="fc" id="L324">        return parents;</span>
+    }
+
+    private Set&lt;Long&gt; getLowestCuboids(AggregationGroup agg) {
+<span class="fc" id="L328">        return getOnTreeParents(0L, agg);</span>
+    }
+
+    private Set&lt;Long&gt; getOnTreeParents(long child, AggregationGroup agg) {
+<span class="fc" id="L332">        Set&lt;Long&gt; parentCandidate = new HashSet&lt;&gt;();</span>
+
+<span class="fc" id="L334">        long tmpChild = child;</span>
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">        if (tmpChild == agg.getPartialCubeFullMask()) {</span>
+<span class="nc" id="L336">            return parentCandidate;</span>
+        }
+
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (agg.getMandatoryColumnMask() != 0L) {</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">            if (agg.isMandatoryOnlyValid()) {</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">                if (fillBit(tmpChild, agg.getMandatoryColumnMask(), parentCandidate)) {</span>
+<span class="fc" id="L342">                    return parentCandidate;</span>
+                }
+            } else {
+<span class="fc" id="L345">                tmpChild |= agg.getMandatoryColumnMask();</span>
+            }
+        }
+
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        for (Long normal : agg.getNormalDims()) {</span>
+<span class="fc" id="L350">            fillBit(tmpChild, normal, parentCandidate);</span>
+<span class="fc" id="L351">        }</span>
+
+<span class="fc bfc" id="L353" title="All 2 branches covered.">        for (Long joint : agg.getJoints()) {</span>
+<span class="fc" id="L354">            fillBit(tmpChild, joint, parentCandidate);</span>
+<span class="fc" id="L355">        }</span>
+
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        for (AggregationGroup.HierarchyMask hierarchy : agg.getHierarchyMasks()) {</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            for (long mask : hierarchy.allMasks) {</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                if (fillBit(tmpChild, mask, parentCandidate)) {</span>
+<span class="fc" id="L360">                    break;</span>
+                }
+            }
+<span class="fc" id="L363">        }</span>
+
+<span class="fc" id="L365">        return parentCandidate;</span>
+    }
+
+    private boolean fillBit(long origin, long other, Set&lt;Long&gt; coll) {
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        if ((origin &amp; other) != other) {</span>
+<span class="fc" id="L370">            coll.add(origin | other);</span>
+<span class="fc" id="L371">            return true;</span>
+        }
+<span class="fc" id="L373">        return false;</span>
+    }
+
+    private boolean checkDimCap(AggregationGroup agg, long cuboidID) {
+<span class="fc" id="L377">        int dimCap = agg.getDimCap();</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        if (dimCap &lt;= 0)</span>
+<span class="fc" id="L379">            return true;</span>
+
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        return Long.bitCount(cuboidID) &lt;= dimCap;</span>
+    }
+
+    long findBestMatchCuboid2(long cuboid) {
+<span class="nc" id="L385">        long bestParent = doFindBestMatchCuboid2(cuboid, Cuboid.getBaseCuboidId(cubeDesc));</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">        if (bestParent &lt; -1) {</span>
+<span class="nc" id="L387">            throw new IllegalStateException(&quot;Cannot find the parent of the cuboid:&quot; + cuboid);</span>
+        }
+<span class="nc" id="L389">        return bestParent;</span>
+    }
+
+    private long doFindBestMatchCuboid2(long cuboid, long parent) {
+<span class="nc bnc" id="L393" title="All 2 branches missed.">        if (!canDerive(cuboid, parent)) {</span>
+<span class="nc" id="L394">            return -1;</span>
+        }
+<span class="nc" id="L396">        List&lt;Long&gt; children = parent2child.get(parent);</span>
+<span class="nc" id="L397">        List&lt;Long&gt; candidates = Lists.newArrayList();</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">        if (children != null) {</span>
+<span class="nc bnc" id="L399" title="All 2 branches missed.">            for (long child : children) {</span>
+<span class="nc" id="L400">                long candidate = doFindBestMatchCuboid2(cuboid, child);</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">                if (candidate &gt; 0) {</span>
+<span class="nc" id="L402">                    candidates.add(candidate);</span>
+                }
+<span class="nc" id="L404">            }</span>
+        }
+<span class="nc bnc" id="L406" title="All 2 branches missed.">        if (candidates.isEmpty()) {</span>
+<span class="nc" id="L407">            candidates.add(parent);</span>
+        }
+
+<span class="nc" id="L410">        return Collections.min(candidates, Cuboid.cuboidSelectComparator);</span>
+    }
+
+    private boolean canDerive(long cuboidId, long parentCuboid) {
+<span class="nc bnc" id="L414" title="All 2 branches missed.">        return (cuboidId &amp; ~parentCuboid) == 0;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

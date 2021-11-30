@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SSHClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">SSHClient.java</span></div><h1>SSHClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.common.util;
+
+/** 
+ * @author George Song (ysong1)
+ * 
+ */
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+
+import org.apache.commons.io.IOUtils;
+import org.slf4j.LoggerFactory;
+
+import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+
+public class SSHClient {
+<span class="nc" id="L44">    protected static final org.slf4j.Logger logger = LoggerFactory.getLogger(SSHClient.class);</span>
+    private static final String ERROR_IN_CHECK_ACK = &quot;Error in checkAck()&quot;;
+
+    private String hostname;
+    private int port;
+    private String username;
+    private String password;
+    private String identityPath;
+
+<span class="nc" id="L53">    public SSHClient(String hostname, int port, String username, String password) {</span>
+<span class="nc" id="L54">        this.hostname = hostname;</span>
+<span class="nc" id="L55">        this.username = username;</span>
+<span class="nc" id="L56">        this.port = port;</span>
+<span class="nc bnc" id="L57" title="All 4 branches missed.">        if (password != null &amp;&amp; new File(password).exists()) {</span>
+<span class="nc" id="L58">            this.identityPath = new File(password).getAbsolutePath();</span>
+<span class="nc" id="L59">            this.password = null;</span>
+        } else {
+<span class="nc" id="L61">            this.password = password;</span>
+<span class="nc" id="L62">            this.identityPath = null;</span>
+        }
+<span class="nc" id="L64">    }</span>
+
+    public void scpFileToRemote(String localFile, String remoteTargetDirectory) throws Exception {
+<span class="nc" id="L67">        FileInputStream fis = null;</span>
+        try {
+<span class="nc" id="L69">            logger.info(&quot;SCP file &quot; + localFile + &quot; to &quot; + remoteTargetDirectory);</span>
+
+<span class="nc" id="L71">            Session session = newJSchSession();</span>
+<span class="nc" id="L72">            session.connect();</span>
+
+<span class="nc" id="L74">            boolean ptimestamp = false;</span>
+
+            // exec 'scp -t rfile' remotely
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            String command = &quot;scp &quot; + (ptimestamp ? &quot;-p&quot; : &quot;&quot;) + &quot; -t &quot; + remoteTargetDirectory;</span>
+<span class="nc" id="L78">            Channel channel = session.openChannel(&quot;exec&quot;);</span>
+<span class="nc" id="L79">            ((ChannelExec) channel).setCommand(command);</span>
+
+            // get I/O streams for remote scp
+<span class="nc" id="L82">            OutputStream out = channel.getOutputStream();</span>
+<span class="nc" id="L83">            InputStream in = channel.getInputStream();</span>
+
+<span class="nc" id="L85">            channel.connect();</span>
+
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            if (checkAck(in) != 0) {</span>
+<span class="nc" id="L88">                System.exit(0);</span>
+            }
+
+<span class="nc" id="L91">            File _lfile = new File(localFile);</span>
+
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (ptimestamp) {</span>
+<span class="nc" id="L94">                command = &quot;T &quot; + (_lfile.lastModified() / 1000) + &quot; 0&quot;;</span>
+                // The access time should be sent here,
+                // but it is not accessible with JavaAPI ;-&lt;
+<span class="nc" id="L97">                command += (&quot; &quot; + (_lfile.lastModified() / 1000) + &quot; 0\n&quot;);</span>
+<span class="nc" id="L98">                out.write(command.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L99">                out.flush();</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">                if (checkAck(in) != 0) {</span>
+<span class="nc" id="L101">                    throw new Exception(ERROR_IN_CHECK_ACK);</span>
+                }
+            }
+
+            // send &quot;C0644 filesize filename&quot;, where filename should not include '/'
+<span class="nc" id="L106">            long filesize = _lfile.length();</span>
+<span class="nc" id="L107">            command = &quot;C0644 &quot; + filesize + &quot; &quot;;</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            if (localFile.lastIndexOf(&quot;/&quot;) &gt; 0) {</span>
+<span class="nc" id="L109">                command += localFile.substring(localFile.lastIndexOf(&quot;/&quot;) + 1);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            } else if (localFile.lastIndexOf(File.separator) &gt; 0) {</span>
+<span class="nc" id="L111">                command += localFile.substring(localFile.lastIndexOf(File.separator) + 1);</span>
+            } else {
+<span class="nc" id="L113">                command += localFile;</span>
+            }
+<span class="nc" id="L115">            command += &quot;\n&quot;;</span>
+<span class="nc" id="L116">            out.write(command.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L117">            out.flush();</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">            if (checkAck(in) != 0) {</span>
+<span class="nc" id="L119">                throw new Exception(ERROR_IN_CHECK_ACK);</span>
+            }
+
+            // send a content of lfile
+<span class="nc" id="L123">            fis = new FileInputStream(localFile);</span>
+<span class="nc" id="L124">            byte[] buf = new byte[1024];</span>
+            while (true) {
+<span class="nc" id="L126">                int len = fis.read(buf, 0, buf.length);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                if (len &lt;= 0)</span>
+<span class="nc" id="L128">                    break;</span>
+<span class="nc" id="L129">                out.write(buf, 0, len); // out.flush();</span>
+<span class="nc" id="L130">            }</span>
+<span class="nc" id="L131">            fis.close();</span>
+<span class="nc" id="L132">            fis = null;</span>
+            // send '\0'
+<span class="nc" id="L134">            buf[0] = 0;</span>
+<span class="nc" id="L135">            out.write(buf, 0, 1);</span>
+<span class="nc" id="L136">            out.flush();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            if (checkAck(in) != 0) {</span>
+<span class="nc" id="L138">                throw new Exception(ERROR_IN_CHECK_ACK);</span>
+            }
+<span class="nc" id="L140">            out.close();</span>
+
+<span class="nc" id="L142">            channel.disconnect();</span>
+<span class="nc" id="L143">            session.disconnect();</span>
+<span class="nc" id="L144">        } catch (Exception e) {</span>
+<span class="nc" id="L145">            throw e;</span>
+        } finally {
+<span class="nc" id="L147">            IOUtils.closeQuietly(fis);</span>
+        }
+<span class="nc" id="L149">    }</span>
+
+    public void scpFileToLocal(String rfile, String lfile) throws Exception {
+<span class="nc" id="L152">        FileOutputStream fos = null;</span>
+        try {
+<span class="nc" id="L154">            logger.info(&quot;SCP remote file &quot; + rfile + &quot; to local &quot; + lfile);</span>
+
+<span class="nc" id="L156">            String prefix = null;</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">            if (new File(lfile).isDirectory()) {</span>
+<span class="nc" id="L158">                prefix = lfile + File.separator;</span>
+            }
+
+<span class="nc" id="L161">            Session session = newJSchSession();</span>
+<span class="nc" id="L162">            session.connect();</span>
+            // exec 'scp -f rfile' remotely
+<span class="nc" id="L164">            String command = &quot;scp -f &quot; + rfile;</span>
+<span class="nc" id="L165">            Channel channel = session.openChannel(&quot;exec&quot;);</span>
+<span class="nc" id="L166">            ((ChannelExec) channel).setCommand(command);</span>
+
+            // get I/O streams for remote scp
+<span class="nc" id="L169">            OutputStream out = channel.getOutputStream();</span>
+<span class="nc" id="L170">            InputStream in = channel.getInputStream();</span>
+
+<span class="nc" id="L172">            channel.connect();</span>
+
+<span class="nc" id="L174">            byte[] buf = new byte[1024];</span>
+
+            // send '\0'
+<span class="nc" id="L177">            buf[0] = 0;</span>
+<span class="nc" id="L178">            out.write(buf, 0, 1);</span>
+<span class="nc" id="L179">            out.flush();</span>
+
+            while (true) {
+<span class="nc" id="L182">                int c = checkAck(in);</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">                if (c != 'C') {</span>
+<span class="nc" id="L184">                    break;</span>
+                }
+
+                // read '0644 '
+<span class="nc" id="L188">                in.read(buf, 0, 5);</span>
+
+<span class="nc" id="L190">                long filesize = 0L;</span>
+                while (true) {
+<span class="nc bnc" id="L192" title="All 2 branches missed.">                    if (in.read(buf, 0, 1) &lt; 0) {</span>
+                        // error
+<span class="nc" id="L194">                        break;</span>
+                    }
+<span class="nc bnc" id="L196" title="All 2 branches missed.">                    if (buf[0] == ' ')</span>
+<span class="nc" id="L197">                        break;</span>
+<span class="nc" id="L198">                    filesize = filesize * 10L + (long) (buf[0] - '0');</span>
+                }
+
+<span class="nc" id="L201">                String file = null;</span>
+<span class="nc" id="L202">                for (int i = 0;; i++) {</span>
+<span class="nc" id="L203">                    in.read(buf, i, 1);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                    if (buf[i] == (byte) 0x0a) {</span>
+<span class="nc" id="L205">                        file = new String(buf, 0, i, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L206">                        break;</span>
+                    }
+                }
+
+                // send '\0'
+<span class="nc" id="L211">                buf[0] = 0;</span>
+<span class="nc" id="L212">                out.write(buf, 0, 1);</span>
+<span class="nc" id="L213">                out.flush();</span>
+
+                // read a content of lfile
+<span class="nc bnc" id="L216" title="All 2 branches missed.">                fos = new FileOutputStream(prefix == null ? lfile : prefix + file);</span>
+                int foo;
+                while (true) {
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                    if (buf.length &lt; filesize)</span>
+<span class="nc" id="L220">                        foo = buf.length;</span>
+                    else
+<span class="nc" id="L222">                        foo = (int) filesize;</span>
+<span class="nc" id="L223">                    foo = in.read(buf, 0, foo);</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                    if (foo &lt; 0) {</span>
+                        // error 
+<span class="nc" id="L226">                        break;</span>
+                    }
+<span class="nc" id="L228">                    fos.write(buf, 0, foo);</span>
+<span class="nc" id="L229">                    filesize -= foo;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">                    if (filesize == 0L)</span>
+<span class="nc" id="L231">                        break;</span>
+                }
+<span class="nc" id="L233">                fos.close();</span>
+<span class="nc" id="L234">                fos = null;</span>
+
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                if (checkAck(in) != 0) {</span>
+<span class="nc" id="L237">                    System.exit(0);</span>
+                }
+
+                // send '\0'
+<span class="nc" id="L241">                buf[0] = 0;</span>
+<span class="nc" id="L242">                out.write(buf, 0, 1);</span>
+<span class="nc" id="L243">                out.flush();</span>
+<span class="nc" id="L244">            }</span>
+
+<span class="nc" id="L246">            in.close();</span>
+<span class="nc" id="L247">            out.close();</span>
+<span class="nc" id="L248">            session.disconnect();</span>
+<span class="nc" id="L249">        } catch (Exception e) {</span>
+<span class="nc" id="L250">            throw e;</span>
+        } finally {
+<span class="nc" id="L252">            IOUtils.closeQuietly(fos);</span>
+        }
+<span class="nc" id="L254">    }</span>
+
+    public SSHClientOutput execCommand(String command) throws Exception {
+<span class="nc" id="L257">        return execCommand(command, 7200, null);</span>
+    }
+
+    public SSHClientOutput execCommand(String command, int timeoutSeconds, Logger logAppender) throws Exception {
+        try {
+<span class="nc" id="L262">            logger.info(&quot;[&quot; + username + &quot;@&quot; + hostname + &quot;] Execute command: &quot; + command);</span>
+
+<span class="nc" id="L264">            StringBuffer text = new StringBuffer();</span>
+<span class="nc" id="L265">            int exitCode = -1;</span>
+
+<span class="nc" id="L267">            Session session = newJSchSession();</span>
+<span class="nc" id="L268">            session.connect();</span>
+
+<span class="nc" id="L270">            Channel channel = session.openChannel(&quot;exec&quot;);</span>
+<span class="nc" id="L271">            ((ChannelExec) channel).setCommand(command);</span>
+
+<span class="nc" id="L273">            channel.setInputStream(null);</span>
+
+            // channel.setOutputStream(System.out);
+
+<span class="nc" id="L277">            ((ChannelExec) channel).setErrStream(System.err);</span>
+
+<span class="nc" id="L279">            InputStream in = channel.getInputStream();</span>
+<span class="nc" id="L280">            InputStream err = ((ChannelExec) channel).getErrStream();</span>
+
+<span class="nc" id="L282">            channel.connect();</span>
+
+<span class="nc" id="L284">            int timeout = timeoutSeconds;</span>
+<span class="nc" id="L285">            byte[] tmp = new byte[1024];</span>
+            while (true) {
+<span class="nc" id="L287">                timeout--;</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                while (in.available() &gt; 0) {</span>
+<span class="nc" id="L289">                    int i = in.read(tmp, 0, 1024);</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">                    if (i &lt; 0)</span>
+<span class="nc" id="L291">                        break;</span>
+
+<span class="nc" id="L293">                    String line = new String(tmp, 0, i, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L294">                    text.append(line);</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">                    if (logAppender != null) {</span>
+<span class="nc" id="L296">                        logAppender.log(line);</span>
+                    }
+<span class="nc" id="L298">                }</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                while (err.available() &gt; 0) {</span>
+<span class="nc" id="L300">                    int i = err.read(tmp, 0, 1024);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">                    if (i &lt; 0)</span>
+<span class="nc" id="L302">                        break;</span>
+
+<span class="nc" id="L304">                    String line = new String(tmp, 0, i, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L305">                    text.append(line);</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">                    if (logAppender != null) {</span>
+<span class="nc" id="L307">                        logAppender.log(line);</span>
+                    }
+<span class="nc" id="L309">                }</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">                if (channel.isClosed()) {</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                    if (in.available() &gt; 0)</span>
+<span class="nc" id="L312">                        continue;</span>
+<span class="nc" id="L313">                    exitCode = channel.getExitStatus();</span>
+<span class="nc" id="L314">                    logger.info(&quot;[&quot; + username + &quot;@&quot; + hostname + &quot;] Command exit-status: &quot; + exitCode);</span>
+
+<span class="nc" id="L316">                    break;</span>
+                }
+                try {
+<span class="nc" id="L319">                    Thread.sleep(1000);</span>
+<span class="nc" id="L320">                } catch (Exception ee) {</span>
+<span class="nc" id="L321">                    throw ee;</span>
+<span class="nc" id="L322">                }</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">                if (timeout &lt; 0)</span>
+<span class="nc" id="L324">                    throw new Exception(&quot;Remote command not finished within &quot; + timeoutSeconds + &quot; seconds.&quot;);</span>
+            }
+<span class="nc" id="L326">            channel.disconnect();</span>
+<span class="nc" id="L327">            session.disconnect();</span>
+<span class="nc" id="L328">            return new SSHClientOutput(exitCode, text.toString());</span>
+<span class="nc" id="L329">        } catch (Exception e) {</span>
+<span class="nc" id="L330">            throw e;</span>
+        }
+    }
+
+    private Session newJSchSession() throws JSchException {
+<span class="nc" id="L335">        JSch jsch = new JSch();</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">        if (identityPath != null) {</span>
+<span class="nc" id="L337">            jsch.addIdentity(identityPath);</span>
+        }
+
+<span class="nc" id="L340">        Session session = jsch.getSession(username, hostname, port);</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (password != null) {</span>
+<span class="nc" id="L342">            session.setPassword(password);</span>
+        }
+<span class="nc" id="L344">        session.setConfig(&quot;StrictHostKeyChecking&quot;, &quot;no&quot;);</span>
+<span class="nc" id="L345">        return session;</span>
+    }
+
+    private int checkAck(InputStream in) throws IOException {
+<span class="nc" id="L349">        int b = in.read();</span>
+        // b may be 0 for success,
+        // 1 for error,
+        // 2 for fatal error,
+        // -1
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        if (b == 0)</span>
+<span class="nc" id="L355">            return b;</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">        if (b == -1)</span>
+<span class="nc" id="L357">            return b;</span>
+
+<span class="nc bnc" id="L359" title="All 4 branches missed.">        if (b == 1 || b == 2) {</span>
+<span class="nc" id="L360">            StringBuffer sb = new StringBuffer();</span>
+            int c;
+            do {
+<span class="nc" id="L363">                c = in.read();</span>
+<span class="nc" id="L364">                sb.append((char) c);</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">            } while (c != '\n');</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            if (b == 1) { // error</span>
+<span class="nc" id="L367">                logger.error(sb.toString());</span>
+            }
+<span class="nc bnc" id="L369" title="All 2 branches missed.">            if (b == 2) { // fatal error</span>
+<span class="nc" id="L370">                logger.error(sb.toString());</span>
+            }
+        }
+<span class="nc" id="L373">        return b;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OLAPEnumerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Query</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.query.enumerator</a> &gt; <span class="el_source">OLAPEnumerator.java</span></div><h1>OLAPEnumerator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+package org.apache.kylin.query.enumerator;
+
+import java.util.Arrays;
+
+import org.apache.calcite.DataContext;
+import org.apache.calcite.linq4j.Enumerator;
+import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.tuple.ITuple;
+import org.apache.kylin.metadata.tuple.ITupleIterator;
+import org.apache.kylin.query.relnode.OLAPContext;
+import org.apache.kylin.storage.IStorageQuery;
+import org.apache.kylin.storage.StorageFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ */
+public class OLAPEnumerator implements Enumerator&lt;Object[]&gt; {
+
+<span class="nc" id="L38">    private final static Logger logger = LoggerFactory.getLogger(OLAPEnumerator.class);</span>
+
+    private final OLAPContext olapContext;
+    private final DataContext optiqContext;
+    private Object[] current;
+    private ITupleIterator cursor;
+
+<span class="nc" id="L45">    public OLAPEnumerator(OLAPContext olapContext, DataContext optiqContext) {</span>
+<span class="nc" id="L46">        this.olapContext = olapContext;</span>
+<span class="nc" id="L47">        this.optiqContext = optiqContext;</span>
+<span class="nc" id="L48">        this.cursor = null;</span>
+<span class="nc" id="L49">    }</span>
+
+    @Override
+    public Object[] current() {
+<span class="nc" id="L53">        return current;</span>
+    }
+
+    @Override
+    public boolean moveNext() {
+        try {
+<span class="nc bnc" id="L59" title="All 2 branches missed.">            if (cursor == null) {</span>
+<span class="nc" id="L60">                cursor = queryStorage();</span>
+            }
+
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            if (!cursor.hasNext()) {</span>
+<span class="nc" id="L64">                return false;</span>
+            }
+
+<span class="nc" id="L67">            ITuple tuple = cursor.next();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            if (tuple == null) {</span>
+<span class="nc" id="L69">                return false;</span>
+            }
+<span class="nc" id="L71">            convertCurrentRow(tuple);</span>
+<span class="nc" id="L72">            return true;</span>
+<span class="nc" id="L73">        } catch (Exception e) {</span>
+            try {
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                if (cursor != null) {</span>
+<span class="nc" id="L76">                    cursor.close();</span>
+                }
+<span class="nc" id="L78">            } catch (Exception ee) {</span>
+<span class="nc" id="L79">                logger.info(&quot;Error when closing cursor, ignore it&quot;, ee);</span>
+<span class="nc" id="L80">            }</span>
+<span class="nc" id="L81">            throw e;</span>
+        }
+    }
+
+    private void convertCurrentRow(ITuple tuple) {
+        // give calcite a new array every time, see details in KYLIN-2134
+<span class="nc" id="L87">        Object[] values = tuple.getAllValues();</span>
+<span class="nc" id="L88">        current = Arrays.copyOf(values, values.length);</span>
+<span class="nc" id="L89">    }</span>
+
+    @Override
+    public void reset() {
+<span class="nc" id="L93">        close();</span>
+<span class="nc" id="L94">        cursor = queryStorage();</span>
+<span class="nc" id="L95">    }</span>
+
+    @Override
+    public void close() {
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        if (cursor != null)</span>
+<span class="nc" id="L100">            cursor.close();</span>
+<span class="nc" id="L101">    }</span>
+
+    private ITupleIterator queryStorage() {
+
+<span class="nc" id="L105">        logger.debug(&quot;query storage...&quot;);</span>
+        // bind dynamic variables
+<span class="nc" id="L107">        olapContext.bindVariable(optiqContext);</span>
+
+        // If olapContext is cached, then inherit it.
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (!olapContext.isBorrowedContext) {</span>
+<span class="nc" id="L111">            olapContext.resetSQLDigest();</span>
+        }
+<span class="nc" id="L113">        SQLDigest sqlDigest = olapContext.getSQLDigest();</span>
+
+        // query storage engine
+<span class="nc" id="L116">        IStorageQuery storageEngine = StorageFactory.createQuery(olapContext.realization);</span>
+<span class="nc" id="L117">        ITupleIterator iterator = storageEngine.search(olapContext.storageContext, sqlDigest,</span>
+                olapContext.returnTupleInfo);
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (logger.isDebugEnabled()) {</span>
+<span class="nc" id="L120">            logger.debug(&quot;return TupleIterator...&quot;);</span>
+        }
+
+<span class="nc" id="L123">        return iterator;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

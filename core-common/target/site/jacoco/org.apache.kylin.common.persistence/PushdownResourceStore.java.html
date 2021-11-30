@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PushdownResourceStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.persistence</a> &gt; <span class="el_source">PushdownResourceStore.java</span></div><h1>PushdownResourceStore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.persistence;
+
+import java.io.DataOutputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.HadoopUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * A big resource may not fit in a store cell. When that happens, HDFS becomes a fallback storage.
+ *
+ * This class helps to pushdown big resource to HDFS.
+ * - An empty byte array is saved to ResourceStore as an indicator of pushdown.
+ * - The big resource is saved as HDFS file according to its resource path.
+ * - Method like checkAndPut() does not work on big resource like such, because HDFS lack of transaction support.
+ */
+public abstract class PushdownResourceStore extends ResourceStore {
+<span class="nc" id="L43">    private static final Logger logger = LoggerFactory.getLogger(PushdownResourceStore.class);</span>
+
+    protected PushdownResourceStore(KylinConfig kylinConfig) {
+<span class="nc" id="L46">        super(kylinConfig);</span>
+<span class="nc" id="L47">    }</span>
+
+    protected final void putResourceImpl(String resPath, ContentWriter content, long ts) throws IOException {
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        if (content.isBigContent())</span>
+<span class="nc" id="L51">            putBigResource(resPath, content, ts);</span>
+        else
+<span class="nc" id="L53">            putSmallResource(resPath, content, ts);</span>
+<span class="nc" id="L54">    }</span>
+
+    protected abstract void putSmallResource(String resPath, ContentWriter content, long ts) throws IOException;
+
+    final void putBigResource(String resPath, ContentWriter content, long newTS) throws IOException {
+
+        // pushdown the big resource to DFS file
+<span class="nc" id="L61">        RollbackablePushdown pushdown = writePushdown(resPath, content);</span>
+
+        try {
+            // write a marker in resource store, to indicate the resource is now available
+<span class="nc" id="L65">            logger.debug(&quot;Writing marker for big resource {}&quot;, resPath);</span>
+<span class="nc" id="L66">            putResourceWithRetry(resPath, ContentWriter.create(BytesUtil.EMPTY_BYTE_ARRAY), newTS);</span>
+
+<span class="nc" id="L68">        } catch (Throwable ex) {</span>
+<span class="nc" id="L69">            pushdown.rollback();</span>
+<span class="nc" id="L70">            throw ex;</span>
+        } finally {
+<span class="nc" id="L72">            pushdown.close();</span>
+        }
+<span class="nc" id="L74">    }</span>
+
+    protected RollbackablePushdown writePushdown(String resPath, ContentWriter content) throws IOException {
+<span class="nc" id="L77">        return new RollbackablePushdown(resPath, content);</span>
+    }
+
+    public class RollbackablePushdown implements AutoCloseable {
+        FileSystem fs;
+        Path tempPath;
+        Path realPath;
+        Path backPath;
+        boolean hasOldFile;
+<span class="nc" id="L86">        boolean hasRollback = false;</span>
+        String resPathStr;
+
+<span class="nc" id="L89">        private RollbackablePushdown(String resPath, ContentWriter content) throws IOException {</span>
+<span class="nc" id="L90">            int salt = System.identityHashCode(resPath) + System.identityHashCode(content);</span>
+<span class="nc" id="L91">            tempPath = pushdownPath(resPath + &quot;.temp.&quot; + salt);</span>
+<span class="nc" id="L92">            realPath = pushdownPath(resPath);</span>
+<span class="nc" id="L93">            backPath = pushdownPath(resPath + &quot;.orig.&quot; + salt);</span>
+<span class="nc" id="L94">            resPathStr = resPath;</span>
+<span class="nc" id="L95">            fs = pushdownFS();</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (fs.exists(tempPath))</span>
+<span class="nc" id="L98">                fs.delete(tempPath, true);</span>
+
+<span class="nc" id="L100">            logger.debug(&quot;Writing pushdown file {}&quot;, tempPath);</span>
+<span class="nc" id="L101">            try (DataOutputStream out = fs.create(tempPath, true)) {</span>
+<span class="nc" id="L102">                content.write(out);</span>
+<span class="nc" id="L103">            } catch (IOException ex) {</span>
+<span class="nc" id="L104">                close();</span>
+<span class="nc" id="L105">                throw ex;</span>
+<span class="nc" id="L106">            }</span>
+
+            try {
+<span class="nc" id="L109">                hasOldFile = fs.exists(realPath);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (hasOldFile) {</span>
+<span class="nc" id="L111">                    logger.debug(&quot;Backup {} to {}&quot;, realPath, backPath);</span>
+<span class="nc" id="L112">                    fs.rename(realPath, backPath);</span>
+                }
+<span class="nc" id="L114">            } catch (IOException ex) {</span>
+<span class="nc" id="L115">                close();</span>
+<span class="nc" id="L116">                throw ex;</span>
+<span class="nc" id="L117">            }</span>
+
+<span class="nc" id="L119">            logger.debug(&quot;Move {} to {}&quot;, tempPath, realPath);</span>
+            try {
+<span class="nc" id="L121">                fs.rename(tempPath, realPath);</span>
+<span class="nc" id="L122">            } catch (IOException ex) {</span>
+<span class="nc" id="L123">                rollback();</span>
+<span class="nc" id="L124">                close();</span>
+<span class="nc" id="L125">                throw ex;</span>
+<span class="nc" id="L126">            }</span>
+<span class="nc" id="L127">        }</span>
+
+        public void rollback() {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">            if (hasRollback)</span>
+<span class="nc" id="L131">                return;</span>
+
+<span class="nc" id="L133">            hasRollback = true;</span>
+
+            try {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                logger.error(&quot;Rollback {} from {}&quot;, realPath, hasOldFile ? backPath.toString() : &quot;&lt;empty&gt;&quot;);</span>
+
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                if (fs.exists(realPath))</span>
+<span class="nc" id="L139">                    fs.delete(realPath, true);</span>
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">                if (hasOldFile) {</span>
+<span class="nc" id="L142">                    fs.rename(backPath, realPath);</span>
+                } else {
+<span class="nc" id="L144">                    logger.warn(&quot;Try delete empty entry {}&quot;, resPathStr);</span>
+<span class="nc" id="L145">                    deleteResourceImpl(resPathStr);</span>
+                }
+<span class="nc" id="L147">            } catch (IOException ex2) {</span>
+<span class="nc" id="L148">                logger.error(&quot;Rollback failed&quot;, ex2);</span>
+<span class="nc" id="L149">            }</span>
+<span class="nc" id="L150">        }</span>
+
+        @Override
+        public void close() {
+            try {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                if (fs.exists(tempPath))</span>
+<span class="nc" id="L156">                    fs.delete(tempPath, true);</span>
+<span class="nc" id="L157">            } catch (IOException e) {</span>
+<span class="nc" id="L158">                logger.error(&quot;Error cleaning up &quot; + tempPath, e);</span>
+<span class="nc" id="L159">            }</span>
+
+            try {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">                if (fs.exists(backPath))</span>
+<span class="nc" id="L163">                    fs.delete(backPath, true);</span>
+<span class="nc" id="L164">            } catch (IOException e) {</span>
+<span class="nc" id="L165">                logger.error(&quot;Error cleaning up &quot; + backPath, e);</span>
+<span class="nc" id="L166">            }</span>
+<span class="nc" id="L167">        }</span>
+
+    }
+
+    protected InputStream openPushdown(String resPath) throws IOException {
+        try {
+<span class="nc" id="L173">            Path p = pushdownPath(resPath);</span>
+<span class="nc" id="L174">            FileSystem fs = pushdownFS();</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            if (fs.exists(p)) {</span>
+<span class="nc" id="L176">                return fs.open(p);</span>
+            } else {
+<span class="nc" id="L178">                logger.error(&quot;Marker exists but real file not found, delete marker.&quot;);</span>
+<span class="nc" id="L179">                deleteResourceImpl(resPath);</span>
+<span class="nc" id="L180">                throw new FileNotFoundException(p.toString() + &quot;  (FS: &quot; + fs + &quot;)&quot;);</span>
+            }
+<span class="nc" id="L182">        } catch (Exception ex) {</span>
+<span class="nc" id="L183">            throw new IOException(&quot;Failed to read big resource &quot; + resPath, ex);</span>
+        }
+    }
+
+    protected abstract String pushdownRootPath();
+
+    protected FileSystem pushdownFS() {
+<span class="nc" id="L190">        return HadoopUtil.getFileSystem(new Path(kylinConfig.getMetastoreBigCellHdfsDirectory()));</span>
+    }
+
+    protected final Path pushdownPath(String resPath) {
+<span class="nc" id="L194">        Path p = new Path(pushdownRootPath() + resPath);</span>
+<span class="nc" id="L195">        return Path.getPathWithoutSchemeAndAuthority(p);</span>
+    }
+
+    protected void deletePushdown(String resPath) throws IOException {
+<span class="nc" id="L199">        deletePushdownFile(pushdownPath(resPath));</span>
+<span class="nc" id="L200">    }</span>
+
+    private void deletePushdownFile(Path path) throws IOException {
+<span class="nc" id="L203">        FileSystem fileSystem = pushdownFS();</span>
+
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (fileSystem.exists(path)) {</span>
+<span class="nc" id="L206">            fileSystem.delete(path, true);</span>
+<span class="nc" id="L207">            logger.debug(&quot;Delete temp file success. Temp file: {} .&quot;, path);</span>
+        } else {
+<span class="nc" id="L209">            logger.debug(&quot;{} is not exists in the file system.&quot;, path);</span>
+        }
+<span class="nc" id="L211">    }</span>
+
+    protected void updateTimestampPushdown(String resPath, long timestamp) throws IOException {
+<span class="nc" id="L214">        updateTimestampPushdownFile(pushdownPath(resPath), timestamp);</span>
+<span class="nc" id="L215">    }</span>
+
+    private void updateTimestampPushdownFile(Path path, long timestamp) throws IOException {
+<span class="nc" id="L218">        FileSystem fileSystem = pushdownFS();</span>
+
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        if (fileSystem.exists(path)) {</span>
+<span class="nc" id="L221">            fileSystem.setTimes(path, timestamp, -1);</span>
+<span class="nc" id="L222">            logger.debug(&quot;Update temp file timestamp success. Temp file: {} .&quot;, path);</span>
+        } else {
+<span class="nc" id="L224">            logger.debug(&quot;{} is not exists in the file system.&quot;, path);</span>
+        }
+<span class="nc" id="L226">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

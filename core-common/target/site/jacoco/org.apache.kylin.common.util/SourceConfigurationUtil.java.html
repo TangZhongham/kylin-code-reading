@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SourceConfigurationUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Common</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.common.util</a> &gt; <span class="el_source">SourceConfigurationUtil.java</span></div><h1>SourceConfigurationUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.common.util;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+
+/**
+ * @author ycq
+ * @since 2018-03-05
+ */
+public class SourceConfigurationUtil {
+
+<span class="fc" id="L41">    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(SourceConfigurationUtil.class);</span>
+    private static final String HIVE_CONF_PREFIX = &quot;hiveconf:&quot;;
+
+<span class="nc" id="L44">    private SourceConfigurationUtil() {</span>
+<span class="nc" id="L45">        throw new IllegalStateException(&quot;Class SourceConfigurationUtil is an utility class !&quot;);</span>
+    }
+
+    public static final String HIVE_CONF_FILENAME = &quot;kylin_hive_conf&quot;;
+    public static final String SQOOP_CONF_FILENAME = &quot;kylin_sqoop_conf&quot;;
+
+    public static Properties loadHiveJDBCProperties() {
+<span class="fc" id="L52">        Map&lt;String, String&gt; hiveConfiguration = loadHiveConfiguration();</span>
+<span class="fc" id="L53">        Properties ret = new Properties();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; entry : hiveConfiguration.entrySet()) {</span>
+<span class="fc" id="L55">            ret.put(HIVE_CONF_PREFIX + entry.getKey(), entry.getValue());</span>
+<span class="fc" id="L56">        }</span>
+<span class="fc" id="L57">        Map&lt;String, String&gt; overrideConf = KylinConfig.getInstanceFromEnv().getHiveConfigOverride();</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        for (Map.Entry&lt;String, String&gt; entry : overrideConf.entrySet()) {</span>
+<span class="nc" id="L59">            ret.put(HIVE_CONF_PREFIX + entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L60">        }</span>
+<span class="fc" id="L61">        return ret;</span>
+    }
+
+    public static Map&lt;String, String&gt; loadHiveConfiguration() {
+<span class="fc" id="L65">        return loadXmlConfiguration(HIVE_CONF_FILENAME, true);</span>
+    }
+
+    public static Map&lt;String, String&gt; loadSqoopConfiguration() {
+<span class="fc" id="L69">        return loadXmlConfiguration(SQOOP_CONF_FILENAME, false);</span>
+    }
+
+    private static Map&lt;String, String&gt; loadXmlConfiguration(String filename, boolean checkExist) {
+<span class="fc" id="L73">        Map&lt;String, String&gt; confProps = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L74">        File confFile = null;</span>
+<span class="fc" id="L75">        String xmlFileName = filename + &quot;.xml&quot;;</span>
+<span class="fc" id="L76">        String path = System.getProperty(KylinConfig.KYLIN_CONF);</span>
+
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (StringUtils.isNotEmpty(path)) {</span>
+<span class="fc" id="L79">            confFile = new File(path, xmlFileName);</span>
+<span class="pc bpc" id="L80" title="3 of 4 branches missed.">            if (!confFile.exists() &amp;&amp; path.contains(&quot;meta&quot;)) {</span>
+<span class="nc" id="L81">                confFile = null;</span>
+            }
+        }
+
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (confFile == null) {</span>
+<span class="nc" id="L86">            path = KylinConfig.getKylinHome();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            if (StringUtils.isEmpty(path)) {</span>
+<span class="nc" id="L88">                logger.error(&quot;KYLIN_HOME is not set, can not locate conf: {}&quot;, xmlFileName);</span>
+<span class="nc" id="L89">                return confProps;</span>
+            }
+<span class="nc" id="L91">            confFile = new File(path + File.separator + &quot;conf&quot;, xmlFileName);</span>
+<span class="nc" id="L92">            System.setProperty(KylinConfig.KYLIN_CONF, path + File.separator + &quot;conf&quot;);</span>
+        }
+
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if (!confFile.exists()) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (checkExist)</span>
+<span class="nc" id="L97">                throw new RuntimeException(</span>
+<span class="nc" id="L98">                        &quot;Failed to read &quot; + xmlFileName + &quot; at '&quot; + confFile.getAbsolutePath() + &quot;'&quot;);</span>
+            else
+<span class="nc" id="L100">                return confProps;</span>
+        }
+
+<span class="fc" id="L103">        String fileUrl = OptionsHelper.convertToFileURL(confFile.getAbsolutePath());</span>
+
+        try {
+<span class="fc" id="L106">            File file = new File(fileUrl);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (file.exists()) {</span>
+<span class="fc" id="L108">                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L109">                DocumentBuilder builder = factory.newDocumentBuilder();</span>
+<span class="fc" id="L110">                Document doc = builder.parse(file);</span>
+<span class="fc" id="L111">                NodeList nl = doc.getElementsByTagName(&quot;property&quot;);</span>
+<span class="fc" id="L112">                confProps.clear();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                for (int i = 0; i &lt; nl.getLength(); i++) {</span>
+<span class="fc" id="L114">                    String key = doc.getElementsByTagName(&quot;name&quot;).item(i).getFirstChild().getNodeValue();</span>
+<span class="fc" id="L115">                    String value = doc.getElementsByTagName(&quot;value&quot;).item(i).getFirstChild().getNodeValue();</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                    if (!key.equals(&quot;tmpjars&quot;)) {</span>
+<span class="fc" id="L117">                        confProps.put(key, value);</span>
+                    }
+                }
+            }
+<span class="nc" id="L121">        } catch (Exception e) {</span>
+<span class="nc" id="L122">            throw new RuntimeException(&quot;Failed to parse hive conf file &quot;, e);</span>
+<span class="fc" id="L123">        }</span>
+<span class="fc" id="L124">        return confProps;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

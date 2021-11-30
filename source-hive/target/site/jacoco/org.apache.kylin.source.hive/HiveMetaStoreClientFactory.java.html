@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HiveMetaStoreClientFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Hive Source</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.source.hive</a> &gt; <span class="el_source">HiveMetaStoreClientFactory.java</span></div><h1>HiveMetaStoreClientFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.source.hive;
+
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
+import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.kylin.common.KylinConfig;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+
+<span class="nc" id="L30">public class HiveMetaStoreClientFactory {</span>
+
+    /**
+     * Get hivemetastoreclient. At present, it supports hivecatalog and glue catalog. When it is configured as hcatalog,
+     * you can directly new hivemetastoreclient (hiveconf), which is more efficient.
+     * But if you need to use hcatutil.gethivemetastoreclient (hiveconf) to configure gluecatalog,
+     * you can get: com.amazon aws.glue.catalog.metastore.awsgluedatacataloghiveclientfactory according to the configuration file
+     *
+     * @param hiveConf
+     * @return metaStoreClient
+     * @throws MetaException
+     * @throws IOException
+     */
+    public static IMetaStoreClient getHiveMetaStoreClient(HiveConf hiveConf) throws MetaException, IOException {
+<span class="nc" id="L44">        IMetaStoreClient metaStoreClient = null;</span>
+<span class="nc" id="L45">        String hiveMetadataOption = KylinConfig.getInstanceFromEnv().getHiveMetaDataType();</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        if (&quot;hcatalog&quot;.equals(hiveMetadataOption)) {</span>
+<span class="nc" id="L47">            metaStoreClient = new HiveMetaStoreClient(hiveConf);</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">        } else if (&quot;gluecatalog&quot;.equals(hiveMetadataOption)) {</span>
+            // getHiveMetastoreClient is not available in CDH profile
+            try {
+<span class="nc" id="L51">                Class&lt;?&gt; clazz = Class.forName(&quot;org.apache.hive.hcatalog.common.HCatUtil&quot;);</span>
+<span class="nc" id="L52">                Method getHiveMetastoreClientMethod = clazz.getDeclaredMethod(&quot;getHiveMetastoreClient&quot;, HiveConf.class);</span>
+<span class="nc" id="L53">                metaStoreClient = (IMetaStoreClient) getHiveMetastoreClientMethod.invoke(null, hiveConf);</span>
+<span class="nc" id="L54">            } catch (Exception exp) {</span>
+<span class="nc" id="L55">                throw new IllegalStateException(&quot;Unable to create MetaStoreClient for &quot; + hiveMetadataOption, exp);</span>
+<span class="nc" id="L56">            }</span>
+        } else {
+<span class="nc" id="L58">            throw new IllegalArgumentException(hiveMetadataOption + &quot; is not a good option.&quot;);</span>
+        }
+<span class="nc" id="L60">        return metaStoreClient;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

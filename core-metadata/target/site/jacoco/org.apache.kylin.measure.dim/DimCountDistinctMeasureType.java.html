@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DimCountDistinctMeasureType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Kylin - Core Metadata</a> &gt; <a href="index.source.html" class="el_package">org.apache.kylin.measure.dim</a> &gt; <span class="el_source">DimCountDistinctMeasureType.java</span></div><h1>DimCountDistinctMeasureType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.kylin.measure.dim;
+
+import java.util.List;
+import java.util.Map;
+
+import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.measure.MeasureIngester;
+import org.apache.kylin.measure.MeasureType;
+import org.apache.kylin.measure.MeasureTypeFactory;
+import org.apache.kylin.metadata.datatype.DataType;
+import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.realization.SQLDigest;
+
+import org.apache.kylin.shaded.com.google.common.collect.ImmutableMap;
+
+<span class="fc" id="L35">public class DimCountDistinctMeasureType extends MeasureType&lt;Object&gt; {</span>
+    public static final String DATATYPE_DIM_DC = &quot;dim_dc&quot;;
+
+<span class="fc" id="L38">    public static class Factory extends MeasureTypeFactory&lt;Object&gt; {</span>
+
+        @Override
+        public MeasureType&lt;Object&gt; createMeasureType(String funcName, DataType dataType) {
+<span class="fc" id="L42">            return new DimCountDistinctMeasureType();</span>
+        }
+
+        @Override
+        public String getAggrFunctionName() {
+<span class="fc" id="L47">            return FunctionDesc.FUNC_COUNT_DISTINCT;</span>
+        }
+
+        @Override
+        public String getAggrDataTypeName() {
+<span class="fc" id="L52">            return DATATYPE_DIM_DC;</span>
+        }
+
+        @Override
+        public Class getAggrDataTypeSerializer() {
+<span class="fc" id="L57">            return DimCountDistincSerializer.class;</span>
+        }
+
+    }
+
+    @Override
+    public MeasureIngester newIngester() {
+<span class="nc" id="L64">        throw new UnsupportedOperationException(&quot;No ingester for this measure type.&quot;);</span>
+    }
+
+    @Override
+    public MeasureAggregator newAggregator() {
+<span class="nc" id="L69">        return new DimCountDistinctAggregator();</span>
+    }
+
+    @Override
+    public boolean needRewrite() {
+<span class="fc" id="L74">        return true;</span>
+    }
+
+    @Override
+    public boolean needRewriteField() {
+<span class="nc" id="L79">        return false;</span>
+    }
+
+<span class="fc" id="L82">    static final Map&lt;String, Class&lt;?&gt;&gt; UDAF_MAP = ImmutableMap.&lt;String, Class&lt;?&gt;&gt; of(FunctionDesc.FUNC_COUNT_DISTINCT,</span>
+            DimCountDistinctAggFunc.class);
+
+    @Override
+    public Map&lt;String, Class&lt;?&gt;&gt; getRewriteCalciteAggrFunctions() {
+<span class="fc" id="L87">        return UDAF_MAP;</span>
+    }
+
+    public void adjustSqlDigest(List&lt;MeasureDesc&gt; measureDescs, SQLDigest sqlDigest) {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        for (MeasureDesc measureDesc : measureDescs) {</span>
+<span class="nc" id="L92">            sqlDigest.groupbyColumns.addAll(measureDesc.getFunction().getParameter().getColRefs());</span>
+<span class="nc" id="L93">            sqlDigest.aggregations.remove(measureDesc.getFunction());</span>
+<span class="nc" id="L94">        }</span>
+<span class="nc" id="L95">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>
