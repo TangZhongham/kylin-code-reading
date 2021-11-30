@@ -1,0 +1,19 @@
+{
+  "username" : "MODELER",
+  "password" : "$2a$10$Le5ernTeGNIARwMJsY0WaOLioNQdb0QD11DwjeyNqqNRp5NaDo2FG",
+  "authorities" : [ {
+    "authority" : "ROLE_ANALYST"
+  }, {
+    "authority" : "ROLE_MODELER"
+  }, {
+    "authority" : "ALL_USERS"
+  } ],
+  "disabled" : false,
+  "defaultPassword" : false,
+  "locked" : false,
+  "lockedTime" : 0,
+  "wrongTime" : 0,
+  "uuid" : "3afa5896-35cb-7536-6d71-fb8f248d3b9a",
+  "last_modified" : 1638265648954,
+  "version" : "4.0.0.0"
+}

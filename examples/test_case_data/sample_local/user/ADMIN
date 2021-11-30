@@ -1,0 +1,21 @@
+{
+  "username" : "ADMIN",
+  "password" : "$2a$10$o3ktIWsGYxXNuUWQiYlZXOW5hWcqyNAFQsSSCSEWoC/BRVMAUjL32",
+  "authorities" : [ {
+    "authority" : "ROLE_ADMIN"
+  }, {
+    "authority" : "ROLE_ANALYST"
+  }, {
+    "authority" : "ROLE_MODELER"
+  }, {
+    "authority" : "ALL_USERS"
+  } ],
+  "disabled" : false,
+  "defaultPassword" : false,
+  "locked" : false,
+  "lockedTime" : 0,
+  "wrongTime" : 0,
+  "uuid" : "0619523d-3b1d-20ee-b094-4fa42a218e37",
+  "last_modified" : 1638265648763,
+  "version" : "4.0.0.0"
+}

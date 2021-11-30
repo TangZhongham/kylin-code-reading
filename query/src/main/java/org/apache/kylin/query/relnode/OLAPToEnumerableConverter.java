@@ -88,6 +88,7 @@ public class OLAPToEnumerableConverter extends ConverterImpl implements Enumerab
 
         QueryContextFacade.current().setWithoutSyntaxError(true);
         // post-order travel children
+        // 递归调用咩哥 OLAPRel 的implementOLAP 方法
         OLAPRel.OLAPImplementor olapImplementor = new OLAPRel.OLAPImplementor();
         olapImplementor.visitChild(getInput(), this);
 
@@ -107,9 +108,11 @@ public class OLAPToEnumerableConverter extends ConverterImpl implements Enumerab
             logger.debug("EXECUTION PLAN AFTER OLAPCONTEXT IS SET");
             logger.debug(dumpPlan);
         }
+        // 根据  纬度列+度量 查询满足本次查询的 cube
 
         RealizationChooser.selectRealization(contexts);
 
+        //
         QueryInfoCollector.current().setCubeNames(contexts.stream()
                 .filter(olapContext -> olapContext.realization != null)
                 .map(olapContext -> olapContext.realization.getCanonicalName())

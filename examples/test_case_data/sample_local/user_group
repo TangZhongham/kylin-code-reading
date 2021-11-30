@@ -1,0 +1,6 @@
+{
+  "groups" : [ "ALL_USERS", "ROLE_ADMIN", "ROLE_ANALYST", "ROLE_MODELER" ],
+  "uuid" : null,
+  "last_modified" : 1638265647867,
+  "version" : "4.0.0.0"
+}
