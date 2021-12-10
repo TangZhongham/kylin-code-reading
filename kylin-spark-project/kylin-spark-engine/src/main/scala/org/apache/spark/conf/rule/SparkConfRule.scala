@@ -177,6 +177,7 @@ class ExecutorInstancesRule extends SparkConfRule {
 
 class ShufflePartitionsRule extends SparkConfRule {
   override def doApply(helper: SparkConfHelper): Unit = {
+    // 可能是这个地方读不到 argodb 原表大小，导致task 数老是 2
     val sourceTableSize = helper.getOption(SparkConfHelper.SOURCE_TABLE_SIZE)
     val partitions = Math.max(2, Utils.byteStringAsMb(sourceTableSize) / 32).toString
     helper.setConf(SparkConfHelper.SHUFFLE_PARTITIONS, partitions)
